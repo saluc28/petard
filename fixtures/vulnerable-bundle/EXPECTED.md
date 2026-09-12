@@ -224,7 +224,7 @@ respect to the source being down, and that reason says nothing about the content
 Worth keeping in mind when writing other fixtures: **every 005 case consumed on the granting
 side is by construction also a 004 case**, because both start from a call to an external source.
 It is not an overlap to be removed, it is the same rule seen through two different questions,
-and the registry has made a rule of it.
+and the registry has made a rule of it (`taxonomy-registry/README.md` section 3).
 
 For this pattern the runtime outcome is irrelevant, because the finding is static. The hosts sit
 under `.invalid` (RFC 2606) and never resolve, so the fixture is reproducible without a network
@@ -325,6 +325,12 @@ with the naive form of `parent_of`:
 measuring a broken policy instead of a missing root. The 7 is more than the 3 of section 3
 because this counts the whole decision, where the owner route adds to the membership one, while
 section 3 measures the transitive branch alone with `verify/measure.rego`.
+
+The same property is checked one level up, on the pattern that rests on it. `PTD-OPA-003`
+measures a position by cutting the relation out of the data instead of walking it, and on a
+policy whose adjacency list is written the naive way it reports nothing, because there is
+nothing to report (`TestTransitiveGrantFollowsTheConstructThePolicyUses`). A graph walk of our
+own would report in both cases.
 
 ---
 

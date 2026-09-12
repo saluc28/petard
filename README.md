@@ -72,7 +72,33 @@ It lints clean under `regal`, and that is deliberate. The claim the project make
 code is correct and idiomatic and the defect is somewhere else: in the data somebody can write,
 in the key that is missing, in the source that does not answer.
 
-The taxonomy and the BloodHound export land next.
+## The taxonomy
+
+Five patterns live in `taxonomy-registry/`, which is versioned data rather than code, and are
+implemented against the fixture in `internal/taxonomy`. The registry is the source of truth;
+these are one-line glosses.
+
+| ID | What it looks for |
+|---|---|
+| `PTD-OPA-001` | the subject writes an attribute the policy reads to decide about them |
+| `PTD-OPA-002` | a deny rule is silent for part of the data, so the check does not apply there |
+| `PTD-OPA-003` | a position in a hierarchy grants everything below it, and nothing says so |
+| `PTD-OPA-004` | a decision depends on an external source, so whoever controls it decides |
+| `PTD-OPA-005` | a check that needs an external source stops applying when it does not answer |
+
+Only one claim in there deserves the words privilege escalation, and it comes from chaining two
+of them: on the fixture, `PTD-OPA-001` and `PTD-OPA-003` together produce a single
+`PTD_CanEscalateTo`, from a principal who can write one field to the position of a principal who
+can read a whole subtree, naming the document to write and the endpoint to write it through. The
+value is not invented: the engine leaves that document unknown and asks OPA what is left of the
+decision, so "some value here works" is an answer rather than a guess.
+
+What holds the whole claim up is the write model in `internal/writemodel`: who can write what is
+not in the policy and has to be declared. Without it every match stays a candidate, and the
+engine reports how many of the paths the decisions read the model covers, so that a clean run is
+distinguishable from an empty model.
+
+The BloodHound export lands next.
 
 ## License
 
