@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/saluc28/petard/internal/fixture"
 )
 
 func fixtureData(t *testing.T) *Data {
@@ -272,6 +274,91 @@ allow if data.settings.open == true
 	if !shut.Never() {
 		t.Errorf("Never() = false, want true: nothing can make it hold (%v)", shut.Conditions)
 	}
+}
+
+// The claim the design makes about scale, measured instead of asserted: the
+// number of residual conditions follows the cardinality of the data and not the
+// size of the policy.
+//
+// The same four rules against three generated worlds, and the count tracks the
+// documents rather than the rego. It is what defaultMaxResiduals exists for,
+// and it is the measurement behind a value that would otherwise only be
+// declared.
+//
+// Measured, it bites early. Forty documents leave a hundred and sixty
+// conditions, because a document is reachable by more than one branch of the
+// decision, so the default is reached at somewhere around sixty four documents:
+// on a real dataset a report is nearly always truncated. That is a choice about
+// what a report can show rather than a limit on what the analysis can do, and
+// it is worth knowing which of the two it is.
+func TestResidualsFollowTheCardinalityOfTheData(t *testing.T) {
+	tests := []struct {
+		name    string
+		params  fixture.Params
+		atLeast int
+		bounded bool
+	}{
+		{name: "small", params: fixture.Small(11), atLeast: 100},
+		{name: "medium", params: fixture.Medium(11), bounded: true},
+		{name: "large", params: fixture.Large(11), bounded: true},
+	}
+
+	bundle, err := Load([]string{fixtureDir(t, "policy-v1")}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := generatedData(t, tt.params)
+
+			// The default bound, so that what is measured is what a run without
+			// flags would report.
+			residuals, err := Residuals(t.Context(), bundle, data,
+				Request{Decision: "data.quill.authz.allow"}, Limits{})
+			if err != nil {
+				t.Fatalf("Residuals() error = %v", err)
+			}
+
+			t.Logf("%d documents, %d users: %d conditions, truncated %v",
+				tt.params.Documents, tt.params.Users, len(residuals.Conditions), residuals.Truncated)
+
+			if residuals.Truncated != tt.bounded {
+				t.Errorf("truncated = %v, want %v: the bound is meant to bite here and not there",
+					residuals.Truncated, tt.bounded)
+			}
+			if tt.bounded {
+				if len(residuals.Conditions) != defaultMaxResiduals {
+					t.Errorf("conditions = %d, want the %d the bound allows", len(residuals.Conditions), defaultMaxResiduals)
+				}
+				return
+			}
+			if len(residuals.Conditions) < tt.atLeast {
+				t.Errorf("conditions = %d, want at least %d: the count should follow the documents",
+					len(residuals.Conditions), tt.atLeast)
+			}
+		})
+	}
+}
+
+// generatedData writes a generated world and loads it.
+func generatedData(t *testing.T, params fixture.Params) *Data {
+	t.Helper()
+
+	dataset, err := fixture.Generate(params)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	dir := t.TempDir()
+	if err := dataset.Write(dir); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	data, err := LoadData([]string{dir})
+	if err != nil {
+		t.Fatalf("LoadData() error = %v", err)
+	}
+	return data
 }
 
 // The count of residuals follows the cardinality of the data, so it has a
