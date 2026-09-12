@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.md text eol=lf
+*.go text eol=lf
+*.rego text eol=lf
+*.json text eol=lf
