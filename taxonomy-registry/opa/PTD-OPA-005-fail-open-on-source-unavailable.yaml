@@ -1,0 +1,415 @@
+schema_version: 1
+
+id: PTD-OPA-005
+name: fail-open-on-source-unavailable
+title: A check that needs an external source stops applying when it does not answer
+engine: opa
+status: implemented
+
+category:
+  id: FAIL-OPEN-ON-ABSENCE
+  title: Fail-open on absence
+  summary: >
+    A security check stops applying, not because somebody switched it off, but because the data
+    it rests on is not there. The logic is right; its domain of application is smaller than it
+    looks, and the difference is invisible in the code.
+    Abstract category: it holds for any engine where the absence of a piece of data produces the
+    absence of a decision instead of an error.
+  category_note: >
+    **The same category as `PTD-OPA-002`, and that is not a mistake.** It is the case in the
+    registry where two instances of the same engine share an abstract category, because the
+    absence has two disjoint causes: in 002 the data is not **in the data**, which is persistent
+    and observable in a snapshot, while here the data is not there **because the network did not
+    bring it**, which is transient and observable in no snapshot. The preconditions, the signals
+    and the engine capabilities all differ.
+
+summary: >
+  A decision consumes a value obtained with `http.send` during evaluation, and the consumption
+  sits on the **denying side**: a `deny` rule, or a Gatekeeper `violation`. When the source does
+  not answer, the expression that reads the response is undefined, the deny rule produces
+  nothing, and access goes through.
+  No attacker is needed: a timeout is enough. That is why this pattern is probably the most
+  widespread of the five, since the other four require somebody to do something and this one
+  fires on its own the day the enrichment endpoint gets slow.
+  The finding is not "you use `raise_error: false`". Checked by running it: **the fail-open
+  happens without that option too.** `raise_error: false` does not cause the defect, it switches
+  off the only mitigation that would make it visible, and that is the thing to report.
+
+preconditions:
+  - capability: No attacker capability is required for the basic defect
+    note: >
+      It is the lowest precondition in the registry, and its main characteristic. The check
+      switches itself off through unavailability: endpoint maintenance, saturation, an expired
+      DNS record, an unrenewed certificate, latency past the timeout.
+  - capability: To provoke it, making the source unreachable is enough
+    note: >
+      Much weaker than the precondition of `PTD-OPA-004`, and that is the point: there you need
+      to control the **content** of the response, here you only need to stop there being one.
+      Anybody who can degrade the connection, through the network, DNS or saturating the
+      service, switches the check off without touching either the policy or the data.
+  - capability: The decision consumes the response on the denying side
+    note: >
+      This is the discriminating condition and not a detail. On the granting side, with a
+      `default allow := false`, the very same code fails **closed**: that is service
+      unavailability, not an authorization problem. See the matrix in `verified.how`.
+  - capability: The caller does not ask for `strict-builtin-errors`
+    note: >
+      That is the mitigation, and it lives outside the policy. If the PEP asks for it and
+      `raise_error` is at its default, the error becomes fatal and the fail-open does not
+      happen.
+
+mechanism:
+  description: >
+    `http.send` runs during evaluation. When the request fails there are two behaviours, and
+    both were checked to give the same outcome on the denying side.
+    With `raise_error` at its default the builtin produces an error; OPA by default **suppresses
+    builtin errors** and makes the expression undefined, and evaluation carries on.
+    With `raise_error: false` the builtin produces no error at all: it returns an object
+    `{"error": {...}, "status_code": 0}`, **with no `body` field**, and every read of
+    `.body.<field>` is undefined for the same reason.
+    Either way the body of the deny rule is not satisfied, the rule produces nothing, and the
+    `not denied` above it succeeds. Not `false`: **nothing**, as in `PTD-OPA-002`.
+    The whole difference between the two lies in what the deployment can still do to notice.
+  example: |
+    package quill.authz
+
+    default allow := false
+
+    # the PEP consumes allow; the risk check lives on the deny side
+    allow if {
+        input.action == "read"
+        not denied
+    }
+
+    # enrichment from an external scoring service
+    denied if {
+        enrichment := http.send({
+            "method": "GET",
+            "url": "https://risk.internal/score",
+            "raise_error": false,
+        })
+        enrichment.body.risk_score > 80
+    }
+  example_note: >
+    `opa check` accepts it without any warning. As long as the scoring service answers, the
+    policy behaves exactly as written and no test catches it out. The day it does not answer,
+    `denied` is undefined and every request goes through.
+
+detection:
+  ast_source: compiled
+  ast_source_note: >
+    The same reason as `PTD-OPA-004`: in the raw AST `x := http.send(...)` is a single
+    expression and the nested call is not an `Expr`. In the compiled form the call is an
+    expression of its own with an output variable, and the request object **stays an
+    inspectable literal**, so the `raise_error` option is readable statically.
+  requires:
+    - taint
+    - binding-resolution
+    - rule-graph
+  requires_note: >
+    It does not require `concrete-data`, unlike `PTD-OPA-002`. That is the substantial
+    difference between the two patterns of this category: the absence in 002 is only observable
+    in the data, this one is deduced from the structure. The pattern is detectable on a bundle
+    with no data loaded at all.
+  signals:
+    - order: 1
+      check: >
+        In the compiled body of a rule there is a call to a builtin that depends on the network
+        during evaluation: `http.send`, `net.lookup_ip_addr`, or a custom builtin of the host
+        declared in the analysis configuration.
+      rationale: >
+        The same signal 1 as `PTD-OPA-004`, and it is computed once for both patterns.
+    - order: 2
+      check: >
+        Establish that the rule sits on the **negative side** of the decision: reached under
+        `not` from an entrypoint, or building a set whose being non-empty denies.
+      rationale: >
+        This is the signal that decides whether the defect is a fail-open or harmless, and it
+        was checked to really discriminate: the same code, opposite outcomes on the two sides.
+        It reuses signal 1 of `PTD-OPA-002` and inherits its weak point, that which side applies
+        the check depends on the PEP, which is outside the policy.
+    - order: 3
+      check: >
+        Follow the chain of bindings from the output variable of the call and check that a term
+        derived from that output is **necessary** for the body to be satisfied.
+      rationale: >
+        This is the taint signal, used here for a different question from 004: not "who controls
+        the value" but "does the body survive if the value never arrives". Checked as computable
+        on the compiled form: `http.send({...}, __local1__)` to `__local0__ = __local1__` to
+        `__local0__.body.risk_score`.
+    - order: 4
+      check: >
+        Check that **no** term of the chain in the same body reads the `error` or `status_code`
+        field of the response, in any branch of the rule.
+      rationale: >
+        This is what separates the vulnerable form from the defensive one, and it is not a
+        heuristic: checked by running it on both forms, following the aliases back to the output
+        variable and looking for the reference to the field. The vulnerable form gives false,
+        the defensive one true on both branches, including the branch where the check appears
+        under `not`.
+    - order: 5
+      check: >
+        Read the `raise_error` option from the request object, where it is a literal, and record
+        whether the `strict-builtin-errors` mitigation is still available.
+      rationale: >
+        **This is not the signal that produces the finding: it is the one that establishes how
+        bad it is.** With `raise_error` at the default the deployment still has a switch; with
+        `raise_error: false` it does not, because there is no error left to make fatal.
+        If the request object is computed rather than literal, record it as undeterminable
+        instead of assuming the default.
+  confidence: B
+  confidence_note: >
+    The chain from builtin to decision is structural and would be worth A as in `PTD-OPA-004`.
+    It drops to B because of signal 2: establishing which side applies the check is the same
+    weakness as `PTD-OPA-002`, and it stays the fragile point until it is declared in the
+    entrypoints. It does not depend on recognizing the subject, because there is no subject to
+    identify here.
+    The engine computes A, for the same reason as `PTD-OPA-002`: it starts only from rules
+    annotated `entrypoint: true` and stops with an error if there are none, so the denying side
+    is a negated edge of a declared descent rather than a heuristic. The file stays at `B`
+    because that is the level of the pattern when decisions have to be recognized, which is the
+    general case. A bundle with no annotations is analyzable because entrypoints can be
+    **declared** from outside, not because the engine learned to recognize them, so the descent
+    stays declared and the computed level stays A.
+  requires_write_model: false
+  requires_write_model_note: >
+    Not needed, and for a different reason from all the others: there is nobody writing. The
+    value is not falsified, it goes missing. It is the only pattern in the registry whose defect
+    has no author.
+
+graph:
+  emits: finding
+  emits_note: >
+    `finding`, like `PTD-OPA-002` and for the same reason: it is observable that the check does
+    not apply, without needing to know who writes what. It does not emit `PTD_CanEscalateTo`,
+    because there is no principal reaching another one.
+  edge: PTD_TaintedBy
+  edge_note: >
+    The same edge kind as `PTD-OPA-004`, with `failure_mode` telling them apart: there the
+    decision depends on the **content** of the response, here on its **existence**. It reuses
+    the same `PTD_Principal` node for the endpoint when 004 has already created it, so the same
+    host appears once in the graph with two edges saying two different things about it.
+  from: PTD_Attribute
+  to: PTD_Principal
+  from_note: >
+    As in `PTD-OPA-004`: the edge runs from the value that was believed towards whoever
+    answered, and whoever answered is a `PTD_Principal`.
+  traversable: false
+  traversable_note: >
+    False, as in 002 and 004. Nothing is being crossed here: it is an observation that a check
+    stops covering. Marking it traversable would produce paths in the interface that nobody can
+    walk.
+  properties:
+    - endpoint: the URL or host, or `dynamic` with the expression that computes it
+    - failure_mode: always `unavailability`, telling it apart from the content taint of 004
+    - enforcing_side: how it was established which side applies the check
+    - mitigation_available: whether `strict-builtin-errors` would still have any effect
+  properties_note: >
+    The finding carries the host, the decision, the rule that goes quiet and **one sentence
+    about the mitigation** rather than three fields describing it in pieces. Three values on
+    their own are not actionable and together they say one thing: with `raise_error: false`
+    there is no error left to make fatal, at the default the caller can still ask for
+    `strict-builtin-errors`, and with a computed request it cannot be said, which is a third
+    thing again.
+    A property for whether the error is handled does not appear, because that is already inside
+    signal 4: a rule where something consumes the error is not reported at all.
+    As with the other patterns, these properties live in the finding and not in the exported
+    edge.
+
+false_positives:
+  - condition: >
+      The fail-open is intentional and declared: the service accepts degrading permissively when
+      the enrichment is unavailable, so as not to block traffic.
+    discriminator: >
+      None automatic from the code: it is a choice of availability over security, and the two
+      forms are identical in the AST. The realistic distinction is that a conscious choice gets
+      written explicitly, as a branch that consumes `error` and decides, while here it is not
+      written at all. Signal 4 therefore separates the deliberate from the accidental to the
+      extent that the deliberate was written down. The report has to ask for confirmation rather
+      than assert that it is a defect.
+  - condition: >
+      The deny rule is redundant and another check, elsewhere, covers the same case.
+    discriminator: >
+      The same limit as `PTD-OPA-002`: the signal sees one decision at a time. A defence in
+      another decision is not seen.
+  - condition: >
+      The consumption sits on the granting side and the outcome is fail-closed.
+    discriminator: >
+      Signal 2, and it was checked to discriminate. This is not a false positive if the pattern
+      is written properly: it is a case signal 2 has to exclude, and if it does not, the pattern
+      reports unavailability and calls it escalation.
+  - condition: >
+      The endpoint is in the same pod or the same process, and its unavailability implies the
+      unavailability of the PEP anyway.
+    discriminator: >
+      None from the code. It has to be classified once together with the endpoints of 004, on
+      the same versioned list.
+
+not_a_lint_rule: >
+  This is the pattern where the question deserves the most severity, because a lint rule on
+  `raise_error: false` is trivial to write. It would look for the wrong thing, and that is
+  checked by running it: **the fail-open happens identically without that option**, so such a
+  rule would miss the majority of cases, all the ones written at the default, and would report
+  the defensive policies that use `raise_error: false` precisely in order to handle the error.
+  What decides whether the defect exists is which side of the decision applies the check, which
+  depends on how the PEP combines decisions; and what decides whether it is still mitigable is
+  whether the caller passes `strict-builtin-errors`, which is a **per request** parameter chosen
+  by the PEP. Both facts live outside the policy file, and neither is in the Rego.
+  There is also the consequence a linter does not produce at all: the endpoint enters the graph,
+  and its reachability becomes an edge in the authorization model.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  case: >
+    A deny rule imposes a limit on a risk score obtained from an external scoring service, and
+    does not handle the service not answering. The fixture's host does not resolve, so the case
+    is reproducible without a network and without mocks.
+  expected_edge: >
+    PTD_TaintedBy from the decision to the attribute, with `failure_mode: unavailability` and
+    `mitigation_available: false`.
+  expected_note: >
+    Three counter cases, and all three are needed because the pattern has three ways of getting
+    it wrong.
+    (a) **The defensive form**: the same call on the deny side, with a branch that consumes
+    `enrichment.error` and denies. It gives `allow: false`, and the engine must not report it.
+    (b) **The other side**: the very same call consumed by an `allow` with
+    `default allow := false`. It fails closed, and the engine must not report it: this is the
+    counter case that proves signal 2.
+    (c) **The default case**: the same vulnerable form **without** `raise_error: false`. The
+    engine **must** report it, with `mitigation_available: true`. It is the inverted counter
+    case, and the only way to prove the pattern is not a disguised lint rule on `raise_error`.
+
+references:
+  - title: OPA, http.send and the raise_error option
+    note: >
+      Checked by running it on 2026-08-03. On a network failure with `raise_error: false` the
+      builtin returns `{"error": {"code": "eval_http_send_network_error", "message": "..."},
+      "status_code": 0}`. There is no `body` field, which is why every read of `.body.<field>`
+      is undefined. The shape is identical for a host that does not resolve and for a timeout,
+      with only the `message` differing.
+  - title: OPA, strict-builtin-errors, the mitigation and where it lives
+    note: >
+      Checked on 2026-08-03. `opa eval --strict-builtin-errors` is documented as "treat the
+      first built-in function error encountered as fatal"; in Go it is
+      `rego.StrictBuiltinErrors(bool)` in `opa/v1/rego`. On the server it is **not a startup
+      flag** (`opa run --help` does not expose it) but a per request query parameter,
+      `ParamStrictBuiltinErrors = "strict-builtin-errors"`, read in `v1/server/server.go` on
+      both GET and POST of `/v1/data`.
+      What that means for the pattern: the mitigation is a decision of the **caller**, taken on
+      every request. It is not in the policy, not in the server configuration, and not visible
+      to any analysis of the bundle.
+  - title: regal, rule categories
+    note: >
+      Checked on 2026-08-01 and again at the source of v0.42.0, no `security` category. Even if
+      there were a rule about `raise_error`, it would look for the wrong condition: see
+      `not_a_lint_rule`.
+
+verified:
+  date: 2026-08-22
+  tool_version: opa 1.19.0
+  how: >
+    Executed, and the result corrected the starting assumption that `raise_error: false` is what
+    makes the rule undefined. The mechanism was right, the cause was not.
+    The real matrix, with a host that does not resolve, the same input, and the response
+    consumed on the deny side:
+      default (raise_error implicit)  + normal eval             ->  allow = TRUE   exit 0
+      raise_error: false              + normal eval             ->  allow = TRUE   exit 0
+      default (raise_error implicit)  + --strict-builtin-errors ->  ERROR          exit 2
+      raise_error: false              + --strict-builtin-errors ->  allow = TRUE   exit 0
+    The fail-open is therefore OPA's default behaviour, suppressing builtin errors and making
+    them undefined. `raise_error: false` does not cause it: it **removes the way out**, because
+    no error is left to make fatal.
+    On the same code consumed from the allow side with `default allow := false`, both variants
+    give `allow = false`: fail-closed. The side is the discriminator, not the option.
+    A timeout produces the same structure as a failed DNS lookup (`context deadline exceeded`),
+    which is what makes "a timeout is enough" true.
+    Signals 3, 4 and 5 were checked computable on the compiled form with a Go program over
+    `opa/v1/ast`: the request object stays a literal and `raise_error` is readable; the chain
+    `http.send({...}, __local1__)` to `__local0__ = __local1__` to `__local0__.body.risk_score`
+    is followable; and the consumption of `.error` separates the two forms, false on the
+    vulnerable body, true on both branches of the defensive one, including the branch where it
+    appears under `not`.
+    The implementation is `internal/taxonomy/sourceunavailable.go`, reusing the taint already
+    computed for `PTD-OPA-004` and the negative side already computed for `PTD-OPA-002`: signal
+    1 is literally the same code, as this file asks for. On the fixture, **two findings**, the
+    same in both syntax variants: `allow_vulnerable`, with the note that `raise_error: false`
+    leaves no error to make fatal, and `allow_default_option`, with the note that the caller can
+    still ask for `strict-builtin-errors`. That second one is the inverted counter case, and the
+    proof that the pattern is not a lint rule on the option: the form without the option is
+    reported just like the other.
+    The two remaining counter cases stay silent: `allow_defensive` because a branch of the same
+    rule reads `enrichment.error`, and `allow_positive_side` because the value reaches the
+    decision in granting position, which leaves it a finding of **004**, saying something else
+    about the same rule.
+    Signal 5 is exercised on all its outcomes: option absent, `false`, `true`, option computed
+    (which gives undeterminable rather than the default), and the request **passed by name**,
+    which is followed back to the object and read as if it were written inline. That last one is
+    the common form in which a request gets built above the call, and it holds for the endpoint
+    of `PTD-OPA-004` too, which is read from the same object.
+    regal v0.42.0 reports **no violations** on the fixture, which holds the case and all three
+    counter cases of this pattern, the vulnerable form without `raise_error: false` included.
+    That check counted most here, because this is the pattern a lint rule would be easiest to
+    write for: regal does not have one, and if it did it would look for the wrong condition.
+
+notes:
+  - note: >
+      The fragile point is still signal 2 outside annotated bundles: `not denied` from a
+      declared entrypoint is exact, the general case is not, and it is the same inheritance as
+      `PTD-OPA-002`.
+  - note: >
+      A request built by an expression, for instance with `object.union`, stays undeterminable,
+      and rightly so: there the option depends on values the analysis does not have.
+  - note: >
+      How widespread this pattern really is has not been measured. "The most common of the five"
+      rests on an argument, that it is the only one requiring no attacker, and not on a number.
+      A corpus of Kubernetes admission policies does not answer it, because those policies read
+      `input` and never call the network: across the 142 Rego files of
+      `open-policy-agent/gatekeeper-library` at commit `e4d3bd2448b2`, calls to nondeterministic
+      builtins are **zero**. It takes a corpus that talks to the network, and until there is one
+      the claim stays what it is.
+  - note: >
+      The declared false positives are not measured, which is why the status is `implemented`
+      and not `verified`.
+
+related:
+  - id: PTD-OPA-002
+    note: >
+      **Same abstract category, disjoint cause.** 002 is the persistent absence in the data, 005
+      the transient absence caused by the network. They share the signal about the negative side
+      and therefore its weak point, and diverge on everything else, to the point that 002
+      requires `concrete-data` and 005 does not.
+  - id: PTD-OPA-004
+    note: >
+      Same builtin, opposite question. 004 asks who controls the **value** that arrives; 005
+      asks what happens when **nothing arrives**. The precondition of 005 is far lower, which is
+      why it is assessed first when both fire on the same endpoint.
+      The two signal 1 are the same computation and are run once.
+      `allow_positive_side` is a correct counter case of 005, where unavailability fails closed,
+      and at the same time a finding of 004, because the content of the response grants access.
+      Both statements hold on the same rule. In general, every case of 005 consumed on the
+      granting side is by construction also a case of 004.
+  - id: PTD-OPA-001
+    note: >
+      No direct relation. Cited for completeness: 001 and 004 are about falsified data, 002 and
+      005 about missing data. It is the sharpest split in the registry, and it suggests two
+      super-categories if it ever grew.
+
+open_questions:
+  - question: >
+      How does the engine know whether the PEP passes `strict-builtin-errors`?
+    note: >
+      It cannot know from the bundle: it is a per request parameter. It has to be declared in
+      the analysis configuration, next to the entrypoints and the write model. With no
+      declaration the cautious assumption is that it is not passed, which is also the CLI
+      default and the commonest case.
+      It is the third thing the analyst has to declare about the system around OPA, and the list
+      is getting long enough that they are worth gathering into a single deployment context
+      file.
+  - question: >
+      Does the pattern hold for bundles downloaded during evaluation?
+    note: >
+      A bundle that cannot be reached leaves OPA with the last good copy, which is a different
+      failure: stale data, not absent data. That is not this pattern and probably deserves one
+      of its own, about a decision taken on revoked data still held in memory. To be looked at
+      when there is a real case.

@@ -1,0 +1,392 @@
+schema_version: 1
+
+id: PTD-OPA-003
+name: transitive-grant-via-ownership
+title: A position in a hierarchy grants everything below it, and nothing says so
+engine: opa
+status: implemented
+
+category:
+  id: TRANSITIVE-GRANT
+  title: Transitive grant through an intermediate object
+  summary: >
+    Access propagates along a relation between objects: containment, ownership, an org chart.
+    How far it propagates is visible neither in the policy nor in any single record. A tiny
+    position at the top is worth many positions at the bottom.
+    Abstract category: it holds for any engine with transitive relations, and for ReBAC models
+    in general.
+
+summary: >
+  The policy grants access to a resource if the subject holds a position, a membership or an
+  ownership, in an **ancestor** of that resource. This is the intended behaviour: hierarchies
+  exist for it. The problem is that the **reach** appears nowhere: not in the policy, not in the
+  subject's record, not in the resource.
+  In the fixture, a user who is a member of one project that contains no documents at all
+  reaches all 18 documents of the dataset.
+  The finding is not "there is a bug". It is **what that position is worth**.
+
+preconditions:
+  - capability: There is a transitive relation between resources in `data`
+    note: >
+      Typically a `parent`, `owner` or `contains` field, or an explicit adjacency list.
+  - capability: A decision grants access based on a position in an ancestor
+    note: Not in the resource itself, but in something that contains it.
+  - capability: At least one principal sits in a high position of the hierarchy
+    note: >
+      It does not have to be an attacker. It has to exist: that is what makes the position a
+      target, and it is the information the report has to hand over.
+
+mechanism:
+  description: >
+    **Recursion between rules is forbidden in Rego**: a rule that depends on itself produces
+    `rego_recursion_error` at compile time. Transitivity therefore cannot be written as a
+    recursive rule, and whoever writes the policy has three routes: the `graph.reachable`
+    builtin, a traversal with `walk`, or the closure materialized directly in the data.
+    The pattern has to recognize all three, because they are the same thing written three ways.
+  example: |
+    package quill.authz
+
+    default allow := false
+
+    # the hierarchy as an adjacency list: child -> [parent].
+    # The comprehension gives [] to the nodes with no parent, so that every
+    # project is a key of the graph. See example_note: written the way that
+    # comes naturally, the root disappears from the ancestors.
+    parent_of[child] := parents if {
+        some child
+        data.projects[child]
+        parents := [p | p := data.projects[child].parent]
+    }
+
+    # transitive closure through the builtin: recursion between rules is not allowed
+    ancestors_of(proj) := graph.reachable(parent_of, {proj})
+
+    allow if {
+        input.action == "read"
+        doc := data.documents[input.doc]
+        some anc in ancestors_of(doc.project)
+        input.user in data.projects[anc].members
+    }
+  example_note: >
+    It compiles, it is idiomatic, and it implements a hierarchy correctly. There is nothing to
+    fix in the code: the finding is about the shape of the data, not about the policy.
+    The comprehension matters. Written as `parents := [data.projects[child].parent]`, which
+    skips the nodes with no parent, `root` never appears among the ancestors, because
+    `graph.reachable` only returns nodes that are keys of the graph object. With that form the
+    principal described in `verified.how`, a member of `root` alone, reaches **0** documents
+    instead of 18, and nothing raises an error. See the last entry of `false_positives`.
+
+detection:
+  ast_source: compiled
+  requires:
+    - rule-graph
+    - concrete-data
+    - binding-resolution
+  signals:
+    - order: 1
+      check: >
+        In the body of a rule that contributes to a decision there is a transitive closure
+        construct: a call to `graph.reachable` or `graph.reachable_paths`, a use of `walk`, or a
+        reference to a path in `data` that the model declares as a materialized closure.
+      rationale: >
+        These are the only three possible forms, since recursion between rules is forbidden by
+        the compiler. **The set of forms is closed at three, but the signal recognizes two.**
+        `graph.reachable` and `walk` are builtins and are identifiable in the AST; a
+        materialized closure **contains no construct at all**, it is an ordinary read of `data`,
+        and no analysis of the policy can tell it from any other field.
+        So the signal is complete **on condition** that the model declares which paths are
+        precomputed closures, exactly as it declares write paths. Without that declaration the
+        pattern has a silent false negative, and it is recorded in the open questions as the
+        biggest hole in this pattern.
+        `walk` also expresses the **opposite direction**: it traverses a nested document and
+        yields the *descendants* rather than the ancestors, because nesting stands for
+        containment.
+    - order: 2
+      check: >
+        Identify the **relation** being crossed: the paths in `data` read by the rule that
+        builds the adjacency list passed to the construct, or the document passed to the builtin
+        directly.
+      rationale: >
+        On the fixture the relation is `data.projects[_].parent`, and what says so are the reads
+        inside `parent_of`, not the call: passing a rule that builds the adjacency is the
+        idiomatic form, and the name of that rule is not a piece of `data`.
+        The direction is not established, and it does not need to be. Signal 3 does not rebuild
+        anything, and the difference between two evaluations does not need to know which way the
+        relation was being walked. The direction stays useful to whoever reads a report, without
+        being a prerequisite of the number.
+    - order: 3
+      check: >
+        Evaluate the decision against the **concrete data** twice for each principal: once with
+        the data as it stands, once with the relation **cut away**. The difference between the
+        two answers is what the propagation grants.
+      rationale: >
+        This is the signal that produces the finding, and it is a number rather than an
+        observation.
+        The cut is what replaces rebuilding the graph: the path from signal 2 is removed from
+        the data and OPA is asked the same decision again. Neither answer holds an idea of ours
+        about what reaching means, so their difference cannot inherit a wrong one. See the last
+        entry of `false_positives`, which is why the pattern is written this way.
+    - order: 4
+      check: >
+        Report the positions where the direct count is zero and the transitive count is not.
+      rationale: >
+        This is the case nobody spots by hand: the principal's record says nothing, the resource
+        says nothing, and the link lives only in the chain.
+        Half of this signal is deliberately not implemented. Reporting positions above an
+        amplification threshold would need a threshold, and a fixed one would be arbitrary; see
+        the open question about it. Until then a position with ten direct and a thousand
+        transitive is a declared false negative.
+  confidence: B
+  confidence_note: >
+    The decisive signal is computed on concrete data. It drops to C or D when identifying the
+    principal in the membership term is heuristic.
+    The engine computes it per instance from the shape of the request, and on the fixture it is
+    `D`: the principals are the keys of the collection the subject indexes, so the list of who
+    exists is worth exactly as much as the recognition of the subject. It is the same reason 001
+    sits at C to D, and the opposite of 002, where the confidence rises because the declaration
+    is there.
+  requires_write_model: false
+  requires_write_model_note: >
+    Not needed for the basic finding, which is a measurement of what a position is worth.
+    It is needed for **the escalation edge**: see `graph.emits_note`.
+
+graph:
+  emits: candidate
+  emits_note: >
+    On its own the pattern does not produce an escalation: a hierarchy that propagates access
+    works as it should. It produces the information that a certain position **is worth a lot**,
+    which is to say it identifies the targets, the equivalent of the tier zero idea.
+    It becomes a `finding` with `PTD_CanEscalateTo` **only when it chains** with a pattern that
+    explains how that position is obtained: `PTD-OPA-001`, when the membership or the field that
+    determines it is writable by the subject.
+    The chain lives in `internal/taxonomy/escalation.go`, and on the fixture it emits **one**
+    `PTD_CanEscalateTo`, from `mallory` to `dave`. The candidate stays next to the finding
+    instead of being replaced: they say two different things, one that the position is worth
+    something, the other that somebody can take it.
+    It is measured as three differences between OPA's answers about the same decision: the
+    principal gets nothing today; leaving **unknown** the document the write model attributes to
+    them, they get something, which answers "there is a value that works" without anybody having
+    to invent which; and part of what they would get runs through the relation from signal 2,
+    which is what ties the gain to **this** position rather than to some route or other.
+    Without the third comparison the chain would report anybody who can write something that
+    grants something, and would say escalation where the honest word is access.
+  edge: PTD_CanPerform
+  from: PTD_Principal
+  to: PTD_Resource
+  traversable: true
+  traversable_note: >
+    Traversable, because something really is being crossed here: it is the ability to reach a
+    resource. It is the edge that makes the path appear in the interface once the chain closes.
+  properties:
+    - reach_transitive: how much the decision grants with the relation in place
+    - reach_direct: how much it grants with the relation cut
+    - amplification: the ratio between the two
+    - relation: the path in `data` the propagation depends on
+  properties_note: >
+    **The two `reach_*` count residual conditions, which is to say routes and not resources.** A
+    document a decision grants through two different branches counts twice, and that is the
+    honest reading of what partial evaluation returns: extracting the distinct resources would
+    mean interpreting the text of the residual, which is to say rebuilding semantics, which is
+    the thing this pattern exists in order not to do. The ratio between the two numbers stays
+    meaningful because both are measured the same way.
+    Two properties an earlier draft of this file listed are **not emitted**. `via_chain`, the
+    ancestry that grants the access, is exactly the reconstruction the engine avoids;
+    `seed_position`, in the idiomatic form, is the formal parameter of the function holding the
+    call, and the compiler has renamed it, so it would only be reportable when the policy writes
+    it as a constant. In their place the finding carries the **relation**, which is the thing to
+    act on.
+    As with the other patterns, these properties live in the finding and not in the exported
+    edge, whose properties are a closed list.
+
+false_positives:
+  - condition: >
+      The principal exists in the data but no real request ever names them, or there is a
+      principal the engine does not see at all.
+    discriminator: >
+      The principals are the **keys of the collection the subject indexes**
+      (`data.users[input.user]...` gives `data.users`), because a policy does not list who
+      exists, it reads them. Two opposite limits follow, and both are declared: a principal no
+      rule decides about appears in no collection indexed by the subject and stays invisible;
+      and a collection that also holds entries which are not principals counts them as
+      principals. The discriminator would be a list of identities declared next to the write
+      model, which does not exist today.
+  - condition: >
+      The decision grants to that principal anyway, whatever resource they ask for.
+    discriminator: >
+      The pattern stays silent, and that is a choice: with no resource to count there is no
+      number of routes to compare, and a decision that does not discriminate is a different fact
+      from a position that is worth a lot. A declared false negative, which does not come up on
+      the fixture and which deserves a pattern of its own.
+  - condition: >
+      The breadth is intentional and known: a global administration role reaches everything by
+      definition.
+    discriminator: >
+      A list of positions known to be privileged, versioned next to the write model. They have
+      to be **kept out of the noise but not out of the report**: that a position is legitimately
+      enormous is a fact the analyst has to see, not suppress.
+      The differential measurement closes the most frequent case on its own: an administrator
+      who reaches everything **without** the relation is not reported, because the cut takes
+      nothing away from them. On the fixture that is `bob`, deliberate noise, who stays silent
+      with no list at all. What the list is still needed for is the residual case, a role whose
+      breadth really does depend on the hierarchy.
+  - condition: >
+      The hierarchy in the snapshot being analyzed is deeper or wider than in production.
+    discriminator: >
+      Where the snapshot came from and when, declared in the report, as for `PTD-OPA-002`.
+  - condition: >
+      The decision imposes other conditions that cut the real reach down: a tenant constraint, a
+      classification, an action.
+    discriminator: >
+      The count in signal 3 has to evaluate the **whole decision**, not the transitive branch
+      alone. Counting reachability in the graph while ignoring the rest of the body inflates the
+      number, and the finding loses its credibility at the first check.
+  - condition: >
+      **The engine computes reachability with an implementation of its own instead of following
+      the construct the policy actually uses.** It is the most insidious false positive of this
+      pattern, because it comes neither from the data nor from the policy but from the engine.
+    discriminator: >
+      Checked on 2026-08-03 with `opa 1.19.0`: `graph.reachable` puts a node in the result only
+      if that node is a **key** of the graph object. A node that is reachable but has no entry
+      of its own does not appear, not even when it is the node the walk starts from. In a
+      `child -> parent` hierarchy the root is exactly a node with no entry of its own.
+      Measured on the fixture: with the naive form of `parent_of`, an engine using mathematical
+      reachability would say *"this position reaches 18 documents"* while the real policy grants
+      **0**. A systematic false positive, on a pattern that emits a **traversable** edge.
+      The engine replicates no semantics at all. `internal/opaengine/partial.go` never computes
+      reachability: the decision is partially evaluated by OPA against the concrete data, and
+      the residual conditions are the documents granted. Having no idea of its own about what
+      `graph.reachable` means, the engine cannot have a wrong one, and that holds for any
+      construct rather than for this one alone.
+      Measured by `TestResidualsFollowTheConstructThePolicyUses`, which loads the fixture and a
+      copy with the naive form of `parent_of`: the position of `dave` is worth **18** documents
+      with the hierarchy written properly and **0** with the naive one. The control is `alice`,
+      a member of a leaf, who stays at **7** in both: if that count dropped too, the test would
+      be measuring a broken policy instead of a missing root.
+
+not_a_lint_rule: >
+  A linter sees `graph.reachable(parent_of, {proj})` and has nothing to say, correctly: it is
+  the right way to write a hierarchy in Rego, where recursion between rules is forbidden.
+  The finding is a **number that depends on the data**: how many resources that position
+  reaches. It changes with the policy untouched every time somebody adds a child project.
+  It takes building the graph from the real data and walking it, which is the definition of what
+  a linter does not do.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  case: >
+    A hierarchy `root -> div{1,2,3} -> team{i}{j}`, with 18 documents all in the leaves. One
+    principal is a member of `root` alone, which contains no documents.
+  expected_edge: >
+    PTD_CanPerform towards all 18 resources, with reach_direct 0 and reach_transitive 18.
+  expected_note: >
+    The fixture also holds the counter case: a principal who is a member of a leaf, whose
+    amplification is 1 and who therefore must not be reported.
+    And it holds the **closed chain** with PTD-OPA-001, a writable field that determines
+    membership in `root`, because that is where the graph produces a route instead of two
+    separate observations.
+
+references:
+  - title: OPA, recursion between rules is forbidden
+    note: >
+      Checked on 2026-08-03 by running it: a rule that depends on itself produces
+      `rego_recursion_error: rule ... is recursive`. It is the constraint that decides which
+      forms the pattern has to recognize, and it narrows the set to three.
+  - title: BloodHound, the tier zero idea
+    note: >
+      The basic finding of this pattern is conceptually the same: identify the positions whose
+      possession amounts to possessing a great deal else. A framing reference, not a technical
+      one.
+  - title: regal, rule categories
+    note: Checked on 2026-08-01 and again at the source of v0.42.0, no `security` category.
+
+verified:
+  date: 2026-08-22
+  tool_version: opa 1.19.0
+  how: >
+    Executed, not argued. The recursion ban is confirmed by the compiler's message, and
+    `graph.reachable` works with the example policy compiling without warnings.
+    The three forms have all been run against the same three level hierarchy:
+      A  adjacency plus graph.reachable  ->  ancestors [div1, root, team11]   builtin, visible
+      B  nesting plus walk               ->  descendants [div1, team11]       builtin, visible
+      C  materialized closure            ->  ancestors [div1, root]           NO construct
+    B gives the opposite direction, descendants rather than ancestors, because nesting is
+    containment. C is invisible to any analysis of the policy, which is why the signal covers
+    two forms out of three and why the model has to declare precomputed closures.
+    On the fixture, a hierarchy of root, 3 divisions and 6 teams with 18 documents all in the
+    leaves:
+      dave    member of root alone         ->  direct 0, transitive 18
+      alice   member of the team11 leaf    ->  direct 3, transitive 3   (counter case)
+      carol   member of the team21 leaf    ->  direct 3, transitive 3   (counter case)
+      bob     owner of the projects, member of none  ->  0, 0
+    The ratio is the finding: one membership, zero contained resources, the whole dataset
+    reached. `bob` is deliberate noise, `owner` of nearly every project while the policy decides
+    on `members`. An engine that confuses the two fields reports `bob`, and is wrong.
+    The implementation is `internal/taxonomy/transitivegrant.go`, with `Data.Without` in
+    `internal/opaengine/partial.go` for the cut and `ReadSet.Closures` for signals 1 and 2. On
+    the fixture it emits one **candidate**: `dave`, who with the hierarchy in place gets
+    `data.quill.authz.allow` in **18 ways** and without it in **0**, through
+    `data.projects[_].parent`, at confidence D. The other four principals stay silent, each for
+    the right reason: `alice` 7 against 7 and `carol` 5 against 5, because their membership is
+    on a leaf; `bob` **13 against 13**, because an administrator gets nothing from the hierarchy
+    that was not already there; `mallory` 0 against 0.
+    The last of the declared false positives is measured by
+    `TestTransitiveGrantFollowsTheConstructThePolicyUses`: on the same policy with the adjacency
+    list written the naive way the pattern **reports nothing**, because the policy grants
+    nothing, while a graph walk of our own would report in both cases.
+    The chain with `PTD-OPA-001` produces one `PTD_CanEscalateTo`, `mallory` towards `dave`, for
+    the path `data.users.mallory.profile.department` that the write model declares writable by
+    the subject through `PATCH /api/v1/me/profile`. Measured: **0** ways today, **55** with that
+    document left unknown, and **36** of the 55 disappear when `data.projects[_].parent` is cut.
+    The other four principals are not reported because they already get something out of that
+    decision: for them writing the field is a widening, and saying what a widening is worth
+    needs the threshold the open question below declares arbitrary without generated data.
+    regal v0.42.0 reports **no violations** on the fixture. That counts here in particular:
+    `graph.reachable` over a hierarchy is the **right** way to write transitivity in Rego, and
+    the linter confirms it by having nothing to say.
+
+notes:
+  - note: >
+      The declared false positives are not measured, which is why the status is `implemented`
+      and not `verified`.
+  - note: >
+      The cost of signal 3 on deep hierarchies is not measured, and it is no longer the cost of
+      walking a graph: it is **two partial evaluations per principal and per decision**. It
+      grows with the number of principals, which is the cardinality of the data.
+  - note: >
+      The fixture instantiates form A only. B and C are checked in isolation but are not in the
+      bundle, and the cost of adding them is now known: `walk` is recognized as a construct, but
+      its first argument is the document being traversed rather than a relation to cut, so
+      signal 3 on that form is exercised by nothing.
+
+related:
+  - id: PTD-OPA-001
+    note: >
+      **The chain.** 001 explains how a position is obtained, by writing a field that determines
+      it; 003 explains what that position is worth. Apart they are two observations; together
+      they are an attack path, and it is the only place in the registry where the graph produces
+      something neither pattern produces alone.
+  - id: PTD-OPA-002
+    note: >
+      Orthogonal: 002 is about a check that does not apply, 003 about access that applies more
+      widely than it looks.
+
+open_questions:
+  - question: >
+      What amplification threshold deserves a report?
+    note: >
+      The case "direct zero, transitive many" is always worth reporting. For the rest a fixed
+      threshold would be arbitrary: it probably has to be computed on the distribution of the
+      dataset, reporting positions beyond some percentile, rather than on an absolute number.
+      To be decided with generated data and not at a desk.
+      It stays open with the pattern implemented, and it is the one half of a signal the engine
+      does not compute: preferring a declared false negative to an invented threshold is the
+      same choice made about the bounds elsewhere, where a default that has not been measured is
+      declared as such instead of being presented as a measurement.
+  - question: >
+      How do you recognize a transitive closure **materialized in the data**?
+    note: >
+      If somebody precomputes the ancestors and writes them into
+      `data.projects[x].all_ancestors`, the policy uses no graph builtin and signal 1 does not
+      fire. It takes a declaration in the model, as for the write paths. It is the biggest hole
+      in this pattern.

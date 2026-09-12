@@ -1,0 +1,254 @@
+schema_version: 1
+
+id: PTD-OPA-001
+name: attribute-self-write
+title: The subject writes an attribute the policy reads to decide about them
+engine: opa
+status: implemented
+
+category:
+  id: ATTR-SELF-WRITE
+  title: Attribute self-write
+  summary: >
+    An authorization decision depends on a piece of data the subject of that decision can write.
+    The check is there and the logic is right, but the data it rests on is under the control of
+    the person being checked.
+    Abstract category: it holds for any engine that keeps the policy apart from the data it
+    consumes.
+
+summary: >
+  The policy reads an attribute of the subject out of `data` in order to grant permissions,
+  typically a tier, a department or a flag, and that attribute sits in a record the subject can
+  change through the system around OPA: a profile API, a signup form, a self-service endpoint,
+  a sync from an IdP the user controls.
+  The attacker does not attack OPA. They write their own profile, and the policy grants the
+  rest. It is mass assignment applied to ABAC.
+
+preconditions:
+  - capability: The subject can write, directly or indirectly, the record the policy reads
+      about them
+    note: >
+      "Indirectly" counts and has to be looked for: a field exposed in a form, an attribute
+      synced from an IdP where the user has self-service, a webhook that accepts unvalidated
+      attributes, a CSV import.
+  - capability: The specific field the policy reads is among the writable ones
+    note: >
+      This is the precondition that separates a finding from noise. Being able to write
+      `displayName` in the same record where `tier` lives is not the same as being able to
+      write `tier`. See the first entry of `false_positives`.
+  - capability: The policy does not revalidate the value against an authoritative source before
+      using it
+    note: If the policy compares it against another source, the pattern falls away.
+
+mechanism:
+  description: >
+    In Rego the read has the shape `data.<collection>[<subject key>].<field>`, where the key
+    derives from `input`. That is the normal and correct shape of a lookup: the subject selects
+    their own record, as they should. The defect is not in the policy, it is in that record
+    being writable by them.
+    This is why the pattern is **not detectable by looking at the policy alone**, and it is the
+    reason `requires_write_model` exists.
+  example: |
+    package quill.authz
+
+    default allow := false
+
+    # an entirely normal lookup: the subject selects their own profile
+    allow if {
+        data.users[input.user].profile.department == "security"
+        input.action == "read"
+    }
+  example_note: >
+    It compiles and it is idiomatic. No linter has any reason to complain.
+    It becomes an escalation only if `profile.department` is writable by the user.
+
+detection:
+  ast_source: compiled
+  requires:
+    - binding-resolution
+    - rule-graph
+  signals:
+    - order: 1
+      check: >
+        The rule belongs to the set of rules that contribute to a decision, meaning it is
+        reachable from a known entrypoint through `compiler.Graph`.
+      rationale: Rules out helpers nobody uses, and dead code.
+    - order: 2
+      check: >
+        In the body of the rule there is a reference rooted at `data.` which, once the local
+        bindings are resolved, holds a term derived from `input` in **index position**.
+      example: >
+        The compiled form shows `data.users[__local4__].profile.department` and, in the same
+        body, `__local4__ = input.user`. After substitution the resolved reference is
+        `data.users[input.user].profile.department`.
+      rationale: >
+        This is the signal that the subject **selects** the record being read. On its own it is
+        not a defect, it is a lookup. Signal 4 is what needs it.
+    - order: 3
+      check: >
+        The reference does not appear under a negation (`not`), nor in a context where its value
+        narrows instead of widening.
+      rationale: >
+        The first half is exact rather than heuristic: in the compiled form `Expr.Negated` is a
+        boolean field of the expression, so telling a reference under `not` apart is reading a
+        bool. The second half is not covered here: a reference inside a rule that is itself
+        negated somewhere else is not visible at this level. That is a property of the rule
+        graph rather than of the expression, and it is answered with `compiler.Graph`.
+    - order: 4
+      check: >
+        The **whole field path** of the resolved reference, not merely its collection prefix,
+        appears in the `WrittenBy` model with the subject of the decision among those who can
+        write it.
+      rationale: >
+        This is the step that turns a candidate into a finding, and the only one that cannot be
+        automated from the policy alone.
+  confidence: C
+  confidence_note: >
+    The level depends on how it was established that `input.user` **is** the subject: with a
+    `# METADATA schemas` block it rises to A, with an AuthZEN shaped request to B, with a domain
+    recognizer to C, with a heuristic on field names to D. The value here is the cautious
+    default, and the engine has to write it per instance rather than inherit it from the file.
+    On the fixture the engine computes `D`, because the subject is recognized from the names of
+    the fields and not declared.
+  requires_write_model: true
+
+graph:
+  emits: finding
+  emits_note: >
+    `finding` **only** when the `WrittenBy` model is present and covers the field path. With no
+    model, or with a model whose granularity is the record rather than the field, the engine
+    emits `candidate` and says so.
+  edge: PTD_CanEscalateTo
+  from: PTD_Principal
+  to: PTD_Principal
+  traversable: true
+  properties:
+    - attribute_path: the resolved reference, for instance `data.users[input.user].profile.department`
+    - via_write_path: the `WrittenBy` entry that made it a finding
+    - confidence: the level reached on this instance
+    - residual: the residual condition left by partial evaluation, where there is one
+
+false_positives:
+  - condition: >
+      The subject can write the record but not the field being read. A writable `displayName`
+      and a server-side `tier` live in the same object.
+    discriminator: >
+      The `WrittenBy` model has to have **field granularity**, not record granularity. A model
+      at collection level produces systematic false positives on every pattern in this family.
+  - condition: >
+      The policy revalidates the value against an authoritative source in the same body, or
+      compares it against data the subject cannot write.
+    discriminator: >
+      Look, in the same body, for another reference to `data.` that constrains the value and is
+      not indexed by the subject. Detectable, but not specified yet: see the open question about
+      revalidation.
+  - condition: >
+      The reference sits under `not`, or in a body that **denies** access. Writing that field
+      denies you access rather than granting it.
+    discriminator: Signal 3. It covers the simple case; composite forms it does not.
+  - condition: >
+      The field is only writable through a flow that already requires more privilege than the
+      escalation would grant.
+    discriminator: >
+      None automatic. It is a judgement about the system, and it belongs in the report as a
+      note rather than being suppressed in silence.
+
+not_a_lint_rule: >
+  A linter sees one policy file. Here the policy is correct and idiomatic: `regal` has nothing
+  to report, and it should not have. The defect lives in the relation between a path in `data`
+  and whoever can write it, a fact that sits **outside** the Rego, in the system around OPA.
+  That takes the graph, not the analysis of one file.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  case: >
+    An unprivileged user can write `profile.department` on their own record. A rule grants
+    `read` across tenants to whoever has `profile.department == "security"`.
+  expected_edge: >
+    PTD_CanEscalateTo from the unprivileged principal to the cross-tenant level of access.
+  expected_note: >
+    The fixture also holds the **counter case**: a second field of the same record, read by a
+    decision but NOT writable by the user, which the engine must not report. Without a counter
+    case only recall is being measured.
+
+references:
+  - title: AWS IAM Privilege Escalation Methods, Rhino Security Labs
+    note: >
+      The structural model for this taxonomy. Consulted on 2026-08-01: around 21 methods in a
+      numbered list with no categories, three parts each (description, command, impact), and no
+      per-method mitigation. What makes them actionable is the **required permissions** built
+      into each description, and that is where the `preconditions` field comes from.
+  - title: OPA, Security documentation
+    note: >
+      Consulted on 2026-08-01: it covers TLS, binding to localhost, credentials, and the
+      authorization policy of the API itself. It **does not cover** this class of risk.
+  - title: regal, rule categories
+    note: >
+      Checked on 2026-08-01 and again at the source of v0.42.0: `bugs`, `custom`, `idiomatic`,
+      `imports`, `performance`, `style`, `testing`. **No `security` category.**
+
+verified:
+  date: 2026-08-08
+  tool_version: opa 1.19.0
+  how: >
+    Signals 1 and 2 are executable, not argued: the resolver rebuilds
+    `data.profiles[input.subject.id].tier` out of `data.profiles[__local4__].tier` plus the
+    binding `__local4__ = input.subject.id` in the same body. The example in
+    `mechanism.example` was run: `opa check` accepts it without a warning, and `opa eval`
+    returns `true` for the user whose field is "security" and `false` for the other. The policy
+    works exactly as described, and that is the point: there is nothing broken to look at.
+    On the fixture the engine emits one finding on `data.users[_].profile.department` and
+    **stays silent on the counter case** `data.users[_].roles`. The counter case is the
+    measurement that counts: the first three signals fire on both, since both are read by a
+    decision and indexed by the subject, and only signal 4 against the field-granular model
+    separates them. A test checks that the first three signals really do hold on the counter
+    case, because otherwise the silence would only prove the read had been missed.
+    Signal 2 inside `is_member` works through the interprocedural walk in
+    `internal/opaengine/calls.go`, and it is the second occurrence of the same finding: the
+    provenance `input.user` comes from the call site in `allow`, not from the body of the
+    function. One finding per fact and not per line, so the two reads of the same field are two
+    places to look inside a single finding; counting them separately would double every
+    precision number.
+    regal v0.42.0 (which embeds OPA 1.18.2) reports **no violations** on the fixture, which
+    holds the case and the counter case of this pattern and of the other four. The central
+    claim of the registry is executed rather than argued.
+
+notes:
+  - note: >
+      The declared false positives are not measured yet, and that is what separates
+      `implemented` from `verified`. Two of the four are about intent rather than structure, so
+      no generated dataset settles them; what a generator does settle is that the engine does
+      not invent this finding on worlds it has never seen.
+
+related:
+  - id: PTD-OPA-003
+    note: >
+      Transitive grant through ownership **chains** with this one: write an attribute, get a
+      position in an ancestor, inherit the children. The chain is more interesting than either
+      link, and it is why the edge is traversable.
+      The chain lives in `internal/taxonomy/escalation.go`, and its finding comes out under the
+      id of `PTD-OPA-003`, which is where the registry says a candidate becomes a finding once
+      somebody can take the position.
+      This pattern brings two things to the chain, and that is why it is the first link: the
+      writable path, and the **position of the capture** that the model binds to the subject,
+      which is what turns everybody's path into one person's document
+      (`data.users[_].profile.department` becomes `data.users.mallory.profile.department`).
+      What the chain needs from here is a **finding** and not a candidate. With no write model
+      this pattern emits candidates, and building a path on top of one would rest the strongest
+      claim in the registry on a declaration nobody made.
+
+open_questions:
+  - question: >
+      How do you detect revalidation, the second entry of `false_positives`, without doing
+      semantic analysis of the body?
+    note: >
+      A heuristic along the lines of "there is another reference to `data.` in the same body
+      that is not indexed by the subject" is probably too coarse. To be studied with the fixture
+      in hand.
+  - question: >
+      Is confidence a property of the instance or of the policy?
+    note: >
+      A policy can carry METADATA annotations on some rules and not on others. The engine
+      computes it per instance, which is the answer this file assumes, but it wants proving on a
+      real bundle rather than on the fixture.

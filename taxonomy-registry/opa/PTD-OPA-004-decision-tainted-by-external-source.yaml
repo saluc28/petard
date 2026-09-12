@@ -1,0 +1,285 @@
+schema_version: 1
+
+id: PTD-OPA-004
+name: decision-tainted-by-external-source
+title: A decision depends on an external source, so whoever controls it decides
+engine: opa
+status: implemented
+
+category:
+  id: EXTERNAL-SOURCE-TAINT
+  title: Unverified external data source
+  summary: >
+    An authorization decision consumes a value arriving from outside the trust perimeter of the
+    policy engine, without that value being authenticated or constrained. Whoever controls the
+    source, legitimately or not, controls the decision.
+    Abstract category: it holds for any engine that can call out during evaluation, or consume
+    unsigned data.
+
+summary: >
+  The policy calls `http.send` during evaluation to enrich the decision, and uses a field of the
+  response to grant access. The trust perimeter quietly stretches to that endpoint: whoever
+  controls it, whoever can impersonate it, whoever can get in the middle of the connection, or
+  simply whoever can write its content, decides in place of the policy.
+  The finding is not "it uses `http.send`", which anyone can see. It is **which decision**
+  depends on **which endpoint**, and therefore who has to be added to the graph as a principal.
+
+preconditions:
+  - capability: Control, even partial, over the response of the external source
+    note: >
+      The forms differ in severity: owning the service, being able to write its data, being able
+      to impersonate the host through DNS, certificates or the network, or being able to
+      intercept the connection. The precondition belongs in the report for what it is, an
+      extension of the perimeter.
+  - capability: The policy does not constrain the value it receives
+    note: >
+      No signature verified, no comparison against an authoritative internal source, no allow
+      list of acceptable values.
+  - capability: The capabilities of the deployment do not forbid the builtin
+    note: >
+      `opa build --capabilities` restricts the builtins a policy may use. If `http.send` is
+      excluded from the capabilities the bundle is built with, the pattern does not apply, and
+      that is the structural mitigation rather than a mitigating circumstance.
+
+mechanism:
+  description: >
+    `http.send` runs during evaluation of the policy. The value it returns enters the body of
+    the rule like any other, and from there the decision. In the compiled form the call becomes
+    an expression of its own with an output variable, and the value propagates through aliases:
+    it is that chain that has to be followed, not the presence of the builtin.
+  example: |
+    package quill.authz
+
+    default allow := false
+
+    allow if {
+        input.action == "read"
+        enrichment := http.send({
+            "method": "GET",
+            "url": "https://idp.internal/attrs",
+            "raise_error": false,
+        })
+        enrichment.body.clearance == "high"
+    }
+  example_note: >
+    `opa check` accepts it **without any warning**. There is nothing syntactically wrong with
+    it, and that is why the pattern exists.
+
+detection:
+  ast_source: compiled
+  ast_source_note: >
+    The compiled form is mandatory here, and this pattern is the reason the rule is stated that
+    way for the whole registry. In the raw AST, `x := http.send(...)` is a single expression
+    `assign(x, http.send(...))` and the nested call **is not an Expr**, so a pass over
+    `WalkExprs` of the raw tree never sees it. The compiler pulls it out into a separate
+    expression with an output variable, and that is where it becomes followable.
+  requires:
+    - taint
+    - binding-resolution
+    - rule-graph
+  signals:
+    - order: 1
+      check: >
+        In the compiled body of a rule that contributes to a decision there is a call to a
+        builtin that brings in external data: `http.send`, `net.lookup_ip_addr`, or a custom
+        builtin registered by the host.
+      rationale: >
+        The list is not closed: custom builtins are the part that has to be declared in the
+        analysis configuration, the same way entrypoints are.
+    - order: 2
+      check: >
+        Follow the chain of bindings from the output variable of the call, and establish whether
+        a term derived from that output reaches the decision.
+      rationale: >
+        This is **the taint signal**, and no other pattern in the registry exercises it.
+        Checked as computable: on a compiled body the resolver follows
+        `http.send({...}, __local2__)` to `__local0__ = __local2__` to
+        `__local0__.body.privileged`, and returns the provenance `http.send` for that reference.
+    - order: 3
+      check: >
+        Extract the URL or the host from the call, where it is a constant. Where it is computed,
+        record it as a **dynamic destination** and report it separately.
+      rationale: >
+        A destination computed from `input` is a pattern of its own and a worse one: whoever
+        makes the request also chooses who the policy goes and asks. To be promoted to its own
+        pattern when a real case turns up.
+    - order: 4
+      check: >
+        Check that the value is not constrained in the same body: no comparison against an
+        untainted path in `data`, no signature check.
+      rationale: "Same limitation as the analogous signal in 001: it covers the simple case."
+  confidence: A
+  confidence_note: >
+    The highest in the registry, and the only case where it does not depend on recognizing the
+    subject: the chain from builtin to decision is a structural fact of the compiled AST, not an
+    inference about who the principal is. The pattern writes the level itself rather than
+    inheriting it from the shape recognizers, because nothing here is claimed about a subject.
+  requires_write_model: false
+  requires_write_model_note: >
+    Not needed. The external source **is** the writer, and its identity is the URL.
+
+graph:
+  emits: finding
+  edge: PTD_TaintedBy
+  edge_note: >
+    It also emits a **new node**: the external endpoint as a `PTD_Principal`. That is the most
+    important consequence of the pattern, since whoever controls that host enters the
+    authorization graph as an actor, visible next to the real users.
+    A `PTD_CanEscalateTo` out of that node is added only if the model declares who controls it.
+  from: PTD_Attribute
+  to: PTD_Principal
+  from_note: >
+    `PTD_TaintedBy` runs from the value that was believed towards whoever answered, not the
+    other way round, and whoever answered is a `PTD_Principal`.
+  traversable: false
+  traversable_note: >
+    A `TaintedBy` edge is a dependency, not a capability, so it is not traversable. What would
+    be traversable is the edge starting at the external principal, if anybody declares it.
+  properties:
+    - endpoint: the URL or host, or `dynamic` with the expression that computes it
+    - taint_path: the chain from the builtin to the decision
+    - constrained: whether the value is constrained in the same body
+    - raise_error: the value of that option in the call
+  properties_note: >
+    As with the other patterns, these properties live in the finding and not yet in the exported
+    edge, whose properties are a closed list: they end up in ingested data, so they are added
+    once and together.
+
+false_positives:
+  - condition: >
+      The endpoint is internal and inside the trust perimeter, with mTLS and a service run by
+      the same team.
+    discriminator: >
+      None automatic from the code. The report has to list the endpoints and ask for them to be
+      classified once, exactly as with the privileged positions of 003.
+      **It still gets reported**: that a decision depends on a service, even a trusted one, is
+      an architectural fact the analyst has to see.
+  - condition: >
+      The response is signed and the policy verifies the signature with `io.jwt.verify_*` or
+      something like it.
+    discriminator: >
+      Look in the same body for a verification builtin applied to a term of the taint chain.
+      Detectable, not specified yet.
+  - condition: >
+      The tainted value feeds a branch that **narrows** instead of granting.
+    discriminator: Same negation signal as 001, with the same limits on composite forms.
+
+not_a_lint_rule: >
+  A linter can say "this policy uses `http.send`", and that would be noise, because every policy
+  that enriches uses it. It cannot say **which decision** depends on **which endpoint**, which
+  takes following the alias chain through several expressions of the compiled body.
+  Above all it cannot do the thing that counts: **add the endpoint to the graph as a principal**,
+  putting whoever controls that host next to the users in the same view. A linter produces a
+  warning; here the result is one more actor in the authorization model.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  case: >
+    A rule grants access based on a field of the response from an enrichment endpoint.
+  expected_edge: >
+    PTD_TaintedBy from the decision to the attribute, plus a PTD_Principal node for the
+    endpoint.
+  expected_note: >
+    The counter case is indispensable: a second `http.send` call whose result reaches **no**
+    decision, used for a log or assigned and never used. The engine must not report it. It is
+    the counter case that tells the taint apart from the mere presence of the builtin, and the
+    only way to prove signal 2 really works.
+
+references:
+  - title: OPA, capabilities
+    note: >
+      Checked on 2026-08-03: `opa build --capabilities` takes a version or a `capabilities.json`
+      file and restricts the builtins a policy may use. It is the structural mitigation of the
+      pattern, and belongs in the report next to the finding.
+  - title: regal, rule categories
+    note: >
+      Checked on 2026-08-01 and again at the source of v0.42.0: no `security` category, and no
+      rule about `http.send`.
+
+verified:
+  date: 2026-08-09
+  tool_version: opa 1.19.0
+  how: >
+    `opa check` accepts the example policy without any warning. The taint mechanism was checked
+    on the compiled body: the resolver identifies `__local0__.body.privileged` as coming from
+    the output of `http.send()`, following `http.send({...}, __local2__)` to
+    `__local0__ = __local2__`. Real output. It was also checked that the raw AST does **not**
+    see the nested call under a pass over the expressions, while the compiled form does.
+    On the fixture, in Rego v1 and v0 with the same numbers, the engine measures **7 values read
+    from outside the policy**, all of them from `http.send`, and carries **2** of them all the
+    way to a decision in granting position: `quill.enrichment.allow` from
+    `idp.petard-fixture.invalid` and `quill.risk.allow_positive_side` from
+    `risk.petard-fixture.invalid`. The other 5 reach a decision only under `not`. Signal 2 is
+    what counts here: the propagation arrives at the decision across the rule graph, so the
+    pattern separates "the policy calls `http.send`" from "this decision depends on that
+    endpoint".
+    **The counter case `audit_trace` stays silent, and for the right reason.** On the fixture
+    alone that silence would prove nothing: the rule is not annotated and nobody calls it, so
+    the walk never visits it, and "does not contribute to a decision" would be
+    indistinguishable from "the engine does not look at that builtin". There is therefore a test
+    that puts the same shape under the engine twice, once as it is in the fixture and once with
+    a decision that reads it: in the second case the taint appears. That test is what turns the
+    first silence into a measurement.
+    Signal 3 is closed for the constant case: the URL is read from the call and the finding
+    carries the host, which is the identity of the answering party. A computed destination stays
+    distinguishable, reported as such rather than as an unreadable host, with a test of its own.
+    Negation is computed **on the path** rather than on the expression: a rule reached only
+    through `not denied_x` carries the flag for that decision, and the same rule read positively
+    by another decision does not.
+    One finding per fact: the fact is the pair of a decision and an external party, and the
+    places to look sit inside the finding. Two paths to the same host are the same party.
+    regal v0.42.0 reports **no violations** on the fixture, which holds the case and the counter
+    case of this pattern, and it has no rule about `http.send` at all.
+
+notes:
+  - note: >
+      Signal 4 is not implemented: checking that the value is not constrained in the same body
+      is specified in words and nothing more.
+  - note: >
+      Recognizing custom builtins registered by the host is untested, and it depends on the
+      collector knowing the capabilities of the deployment being analyzed, which today it does
+      not. The list of builtins that carry data in from outside is closed at `http.send` and
+      `net.lookup_ip_addr`: that is **narrower than nondeterminism**, on purpose, because
+      `time.now_ns` and `rand.intn` are nondeterministic without having another end to them.
+  - note: >
+      The declared false positives are not measured, which is why the status is `implemented`
+      and not `verified`. They are about intent and about the shape of the policy rather than
+      about the data, so measuring them would mean generating **policies**, which is a second
+      tool and not one more parameter of this one.
+
+related:
+  - id: PTD-OPA-001
+    note: >
+      The same question, who controls the data that decides, on a different source: there a
+      writable path in `data`, here an external service. If the registry grew, they would
+      deserve a shared super-category.
+  - id: PTD-OPA-005
+    note: >
+      **Same builtin, opposite question.** 005 is about the response not arriving; 004 is about
+      its content. `raise_error: false` does not cause the fail-open of 005, and the pattern
+      that matters there is which side of the decision consumes the response.
+      Operationally, signal 1 of this pattern and signal 1 of 005 are the same computation and
+      are run once.
+      **The two overlap on `allow_positive_side`.** That rule grants access when the service
+      answers with a low score, so it is a case of 004: whoever controls the host grants access
+      to anybody. It is at the same time a correct counter case of 005, where the source being
+      unavailable makes it fail closed, because **005 is about the absence of the response and
+      004 about its content**. Both statements hold on the same rule and neither silences the
+      other. In general, every case of 005 consumed on the granting side is by construction also
+      a case of 004, because both start from a call to an external source.
+      How two rules hitting the same site are usually treated, checked by running it: `regal`
+      v0.42.0 on a line that violates two rules reports **two distinct violations**, one per
+      rule (`use-in-operator` and `prefer-snake-case`, same line, different columns).
+      Deduplication in an analysis tool is per rule and site, not per site. Silencing 004
+      because 005 is quiet on that rule would introduce a dependency between patterns that this
+      registry does not have: the relation between instances is declared here, in `related`, and
+      it does not filter results.
+
+open_questions:
+  - question: >
+      How does the collector learn about the custom builtins the host registered?
+    note: >
+      A host embedding OPA can register builtins of its own that read anything at all. They have
+      to be declared in the analysis configuration. Without that, signal 1 sees only the
+      standard builtins.
