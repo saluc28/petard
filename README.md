@@ -61,16 +61,22 @@ Analyzing a policy never calls the endpoints written in it. A call to `http.send
 the residual condition, where it says something true: that the decision cannot be settled from
 the data alone.
 
-## The fixture
+## How the claims are checked
+
+Two fixtures, because they carry two different risks.
 
 `fixtures/vulnerable-bundle/` is a policy with escalation built into it on purpose, written by
-hand in both Rego syntaxes, next to an `EXPECTED.md` that declares in words what an analysis
-has to find and what it has to stay quiet about. Every pattern gets a case and a counter case,
-because a tool that finds everything and invents half of it is unusable in an assessment.
+hand in both Rego syntaxes, next to an `EXPECTED.md` that declares in words what an analysis has
+to find and what it has to stay quiet about. Every pattern gets a case and a counter case there.
 
 It lints clean under `regal`, and that is deliberate. The claim the project makes is that the
 code is correct and idiomatic and the defect is somewhere else: in the data somebody can write,
 in the key that is missing, in the source that does not answer.
+
+`internal/fixture` generates worlds from a seed and states the truth about each one, which is
+what turns "did it find the planted escalation" into a measurement of precision as well as
+recall. A pattern that finds everything and invents half of it is unusable in an assessment, and
+only generated ground truth makes that visible.
 
 ## The taxonomy
 

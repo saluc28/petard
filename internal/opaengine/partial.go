@@ -29,8 +29,9 @@ import (
 // Partial evaluation expands concrete data into a disjunction, so the count
 // grows with the cardinality of the data and not with the size of the policy:
 // a decision that reads a collection of ten thousand documents can leave ten
-// thousand conditions behind. The value is a declared default and not a
-// measured one, like the bounds of the interprocedural walk.
+// thousand conditions behind. The value is a declared default and not a derived
+// one, like the bounds of the interprocedural walk;
+// TestResidualsFollowTheCardinalityOfTheData measures where it starts to cut.
 const defaultMaxResiduals = 256
 
 var (
