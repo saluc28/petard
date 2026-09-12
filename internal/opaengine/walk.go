@@ -10,6 +10,22 @@ import (
 // they depend on, collecting the data references of each and the calls between
 // them.
 
+// rulePath names the document a rule contributes to, as data.pkg.rule.
+//
+// It is what a report prints and what a decision is addressed by, so the
+// variable tail of a ref head has no place in it: a rule written
+// parent_of[child] := parents belongs to data.quill.authz.parent_of, and
+// printing parent_of[child] would name something nobody can query.
+//
+// OPA's own (*ast.Rule).Path computes exactly this and is deprecated, because
+// two rules whose heads share a ground prefix collapse onto one name. That is a
+// real limit, and it is the one accepted here: the replacement OPA points at,
+// Ref, puts the variable back. What follows is what Path does, spelled out, so
+// that the deprecation does not have to be suppressed to keep the behaviour.
+func rulePath(rule *ast.Rule) ast.Ref {
+	return rule.Module.Package.Path.Extend(rule.Head.Ref().GroundPrefix())
+}
+
 // refReader walks the rules that make up the decisions, collecting the data
 // references of each and the calls between them.
 type refReader struct {
@@ -137,7 +153,7 @@ func (r *refReader) walk() {
 func (r *refReader) skipped() []string {
 	visited := make(map[string]bool, len(r.visited))
 	for rule := range r.visited {
-		visited[rule.Path().String()] = true
+		visited[rulePath(rule).String()] = true
 	}
 
 	var skipped []string
@@ -456,7 +472,7 @@ func (r *refReader) markClosure(operator ast.Ref, expr *ast.Expr, sc scope) {
 func (r *refReader) markUnderWith(expr *ast.Expr) {
 	ast.WalkRefs(expr, func(ref ast.Ref) bool {
 		for _, rule := range r.compiler.GetRulesForVirtualDocument(ref) {
-			r.underWith[rule.Path().String()] = true
+			r.underWith[rulePath(rule).String()] = true
 		}
 		return false
 	})

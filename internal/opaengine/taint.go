@@ -167,7 +167,7 @@ type decisionPaths map[string]bool
 func (r *refReader) taintOf(rule *ast.Rule, candidate foundRef, source binding, reached decisionPaths) Taint {
 	ref, _ := r.readable(candidate.resolved.ref)
 	taint := Taint{
-		Rule:          rule.Path().String(),
+		Rule:          rulePath(rule).String(),
 		Ref:           ref,
 		Origin:        source.origin.String(),
 		Endpoint:      endpointOf(source, candidate.bindings),
@@ -231,7 +231,7 @@ func (r *refReader) decisionReach(decisions []*ast.Rule) map[*ast.Rule]decisionP
 
 	reached := make(map[*ast.Rule]decisionPaths)
 	for _, decision := range decisions {
-		name := decision.Path().String()
+		name := rulePath(decision).String()
 
 		seen := make(map[state]bool)
 		queue := []state{{rule: decision, clean: true}}

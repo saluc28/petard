@@ -701,7 +701,7 @@ func expandSupport(query ast.Body, support []*ast.Module) ([]Condition, string, 
 	)
 	for _, module := range support {
 		for _, rule := range module.Rules {
-			if !rule.Path().Equal(ref) {
+			if !rulePath(rule).Equal(ref) {
 				continue
 			}
 			found = true

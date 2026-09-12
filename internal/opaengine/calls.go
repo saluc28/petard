@@ -90,7 +90,7 @@ func (b *callBudget) spend(callee *ast.Rule) bool {
 		return true
 	}
 	b.warn("gave up after %d call paths while resolving %s: raise MaxCallPaths to follow the rest",
-		b.limits.maxCallPaths(), callee.Path())
+		b.limits.maxCallPaths(), rulePath(callee))
 	return false
 }
 
@@ -120,7 +120,7 @@ func (r *refReader) parameterProvenance(rule *ast.Rule, param ast.Var, budget *c
 	}
 	if depth >= budget.limits.maxCallDepth() {
 		budget.warn("stopped at %d calls deep while resolving %s: raise MaxCallDepth to follow further",
-			budget.limits.maxCallDepth(), rule.Path())
+			budget.limits.maxCallDepth(), rulePath(rule))
 		return ProvenanceUnresolved, nil
 	}
 
@@ -139,7 +139,7 @@ func (r *refReader) parameterProvenance(rule *ast.Rule, param ast.Var, budget *c
 		}
 		best, bestTrace = provenance, &Trace{
 			Term:    trace.Term,
-			Callers: append([]string{site.caller.Path().String()}, trace.Callers...),
+			Callers: append([]string{rulePath(site.caller).String()}, trace.Callers...),
 		}
 	}
 	return best, bestTrace
