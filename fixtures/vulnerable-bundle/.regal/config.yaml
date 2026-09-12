@@ -1,0 +1,29 @@
+# regal configuration for the fixture.
+#
+# It is what makes the claim all five patterns rest on executable rather than
+# merely argued: regal has nothing to report here, and it should not have. For
+# that claim to count the fixture has to lint clean, and the only rules turned
+# off have to be the ones that cannot apply by construction.
+#
+# Every exclusion here has a reason. None of them is in the `bugs` category,
+# and regal has no `security` category: checked in the source of regal v0.42.0,
+# where the categories are bugs, custom, idiomatic, imports, performance, style
+# and testing.
+rules:
+  idiomatic:
+    directory-package-mismatch:
+      # The fixture is laid out by SYNTAX VARIANT (policy-v1 / policy-v0) and
+      # not by package, because it has to supply the very same policy in two
+      # versions of Rego to exercise dual parsing. Following the rule would
+      # mean duplicating the quill/authz/ tree twice, and would break the `-d`
+      # commands EXPECTED.md documents.
+      level: ignore
+
+  imports:
+    unresolved-reference:
+      # regal does not know the shape of `data`: the paths data.users,
+      # data.projects, data.tenants and data.documents are resolved by the JSON
+      # under data/, which is not part of the lint. It is noise on any policy
+      # that reads external data, which is to say on every policy this project
+      # analyzes.
+      level: ignore

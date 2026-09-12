@@ -1,0 +1,29 @@
+{
+  "users": {
+    "alice": {
+      "tenant": "berq",
+      "roles": ["editor"],
+      "profile": {"department": "eng"}
+    },
+    "bob": {
+      "tenant": "berq",
+      "roles": ["admin"],
+      "profile": {"department": "ops"}
+    },
+    "carol": {
+      "tenant": "dolm",
+      "roles": ["viewer"],
+      "profile": {"department": "sales"}
+    },
+    "dave": {
+      "tenant": "berq",
+      "roles": ["viewer"],
+      "profile": {"department": "finance"}
+    },
+    "mallory": {
+      "tenant": "berq",
+      "roles": ["viewer"],
+      "profile": {"department": "sales"}
+    }
+  }
+}
