@@ -32,13 +32,15 @@ one, and it lives next to the kinds so the schema and the model cannot drift apa
 ## What the engine does
 
 `internal/opaengine` loads a bundle in either Rego syntax, v1 or v0, and records which one it
-read. A tool that analyzes somebody else's policies does not get to pick the syntax, and a
-bundle that is half of each loads as neither, with an error naming every file involved.
+read. A tool that analyzes somebody else's policies does not get to pick the syntax: every one
+of the 51 bundles in the `open-policy-agent/gatekeeper-library` corpus parses as v0, and none of
+them as v1. A bundle that is half of each loads as neither, with an error naming every file
+involved.
 
 Its starting points are the decisions: the rules the policy annotates as entrypoints, plus any
-the caller declares. Whole families of Rego annotate nothing, and the alternative to declaring
-the decision is guessing which rule a policy engine happens to query, so Petard stops instead
-of guessing.
+the caller declares. Whole families of Rego annotate nothing, and that same corpus has no
+`# METADATA` block at all across its 142 files. The alternative to declaring the decision is
+guessing which rule a policy engine happens to query, so Petard stops instead of guessing.
 
 From the decisions it walks the rules they depend on, following calls into functions and
 leaving alone the expressions that mock the world with a `with` modifier, and reports:
@@ -104,7 +106,69 @@ not in the policy and has to be declared. Without it every match stays a candida
 engine reports how many of the paths the decisions read the model covers, so that a clean run is
 distinguishable from an empty model.
 
-The BloodHound export lands next.
+## The export
+
+`internal/opengraph` turns the model into a BloodHound OpenGraph payload, over
+[bhgraph](https://github.com/saluc28/bhgraph), and `schema/petard.json` is the extension
+definition schema that tells BloodHound which of the edges its pathfinding may walk. The schema
+is generated from the model and checked by a golden test, so the two cannot disagree.
+
+## Running it
+
+The fixture, with the write model and the concrete data:
+
+```
+go run ./cmd/analyze-opa -write-model fixtures/vulnerable-bundle/write-model.yaml -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
+```
+
+A bundle that annotates no entrypoint, with the decision declared the way `opa build` takes one:
+
+```
+go run ./cmd/analyze-opa -entrypoint k8sallowedrepos/violation path/to/policy
+```
+
+The engine against a body of Rego written by other people, which does not live in this
+repository:
+
+```
+go run ./cmd/measure-corpus /path/to/corpus/src
+```
+
+The same analysis as a BloodHound OpenGraph payload:
+
+```
+go run ./cmd/export-opengraph -out graph.json -write-model fixtures/vulnerable-bundle/write-model.yaml -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
+```
+
+Add `-url` with `-install` and `-upload` to install the schema and run the ingest job. The
+credentials come from `BLOODHOUND_TOKEN_ID` and `BLOODHOUND_TOKEN_KEY` and cannot be passed as
+flags: a token on a command line ends up in the shell history and in the process list.
+
+## Layout
+
+```
+cmd/analyze-opa       reads a bundle and reports what its decisions depend on
+cmd/export-opengraph  the same analysis as a graph BloodHound can ingest
+cmd/measure-corpus    runs the engine over a corpus of third-party policies
+internal/opaengine    everything that knows what Rego is
+internal/graph        the engine-neutral model, all a second engine has to fill
+internal/opengraph    the adapter to what BloodHound ingests, over bhgraph
+internal/taxonomy     the registry reader and the patterns
+internal/writemodel   who can write which path, declared rather than inferred
+internal/fixture      generated worlds, and the truth about them
+taxonomy-registry/    the patterns as versioned data
+schema/               the extension definition schema, generated from the model
+fixtures/             the bundle written by hand, in Rego v1 and v0
+```
+
+## Not built yet
+
+The proof that the round trip works. The payload, the schema, the signed install and the
+three-call ingest are written and tested against a server that behaves like the API, but nobody
+has yet watched BloodHound's own pathfinding walk the escalation of the fixture. That is the
+criterion, and it needs the stack running.
+
+Cedar as a second engine, which is what the engine-neutral model exists for.
 
 ## License
 

@@ -1,0 +1,79 @@
+{
+  "schema": {
+    "name": "petard",
+    "display_name": "Petard",
+    "version": "v0.1.0",
+    "namespace": "PTD_"
+  },
+  "node_kinds": [
+    {
+      "name": "PTD_Principal",
+      "display_name": "Principal",
+      "description": "Anything that can hold privilege: a user, a role, a service account, or an external system that decides on their behalf.",
+      "is_display_kind": true,
+      "icon": "user",
+      "color": "#4d7ea8"
+    },
+    {
+      "name": "PTD_Action",
+      "display_name": "Action",
+      "description": "An operation a principal may be allowed to perform, as the policy names it.",
+      "is_display_kind": false,
+      "icon": "bolt",
+      "color": "#e0a458"
+    },
+    {
+      "name": "PTD_Resource",
+      "display_name": "Resource",
+      "description": "What an action is performed on, named by the document a decision turned out to allow.",
+      "is_display_kind": true,
+      "icon": "file",
+      "color": "#6a994e"
+    },
+    {
+      "name": "PTD_Attribute",
+      "display_name": "Attribute",
+      "description": "A field a decision depends on, whether it was read from data or believed from an external answer. It is what an escalation aims at.",
+      "is_display_kind": false,
+      "icon": "tag",
+      "color": "#9b5de5"
+    },
+    {
+      "name": "PTD_Rule",
+      "display_name": "Rule",
+      "description": "A rule of the analyzed policy. Whether the PEP asks for it directly is the is_decision property.",
+      "is_display_kind": false,
+      "icon": "gavel",
+      "color": "#bc4749"
+    }
+  ],
+  "relationship_kinds": [
+    {
+      "name": "PTD_CanPerform",
+      "description": "The principal can get this out of a decision, given the data as it stands. The condition property is what still has to hold.",
+      "is_traversable": true
+    },
+    {
+      "name": "PTD_Reads",
+      "description": "The rule depends on this attribute. A dependency, not a capability, which is why it is not traversable.",
+      "is_traversable": false
+    },
+    {
+      "name": "PTD_WrittenBy",
+      "description": "The attribute can be written by this principal. It describes the system around OPA and is declared rather than derived from any policy.",
+      "is_traversable": true
+    },
+    {
+      "name": "PTD_CanEscalateTo",
+      "description": "The principal can reach the position the other one holds, by writing something they are allowed to write. The only edge that means privilege escalation.",
+      "is_traversable": true
+    },
+    {
+      "name": "PTD_TaintedBy",
+      "description": "The value comes from this external source rather than from the policy. A dependency, not a capability.",
+      "is_traversable": false
+    }
+  ],
+  "environments": [],
+  "relationship_findings": []
+}
