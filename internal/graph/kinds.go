@@ -158,9 +158,9 @@ const (
 
 	// PropConfidence is the level the shape of the request was recognized at,
 	// on the A to E scale of the design, and it travels on everything whose
-	// claim rests on that recognition. Section 6.8 makes it non negotiable: an
-	// edge derived from a guess about field names must not be indistinguishable
-	// from one derived from a declaration.
+	// claim rests on that recognition. It is not negotiable: an edge derived
+	// from a guess about field names must not be indistinguishable from one
+	// derived from a declaration.
 	PropConfidence = "confidence"
 
 	// PropDecision is the decision an edge was measured against. A capability

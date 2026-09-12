@@ -1,0 +1,79 @@
+# The WrittenBy model of the Quill fixture.
+#
+# It is the one part of the fixture that is NOT derivable from the policy: it
+# describes the system around OPA. Here it is declared by hand, the way it will
+# have to be in the general case.
+schema_version: 1
+model: write-paths
+
+entries:
+  # ---------------------------------------------------------------------
+  # THE PTD-OPA-001 CASE, and the root of the chain towards 003.
+  # The subject writes their own department from the self-service form.
+  - path: data.users.{owner}.profile.department
+    writable_by:
+      - principal: "{owner}"
+        via: "PATCH /api/v1/me/profile"
+        note: >
+          A field exposed in the profile form. No validation against a closed
+          list of departments, and no approval step.
+        confidence: asserted
+
+  # The rest of the profile is just as writable, but no decision reads it: it
+  # is here to prove the engine does not report write paths nobody reads.
+  - path: data.users.{owner}.profile.*
+    writable_by:
+      - principal: "{owner}"
+        via: "PATCH /api/v1/me/profile"
+        confidence: asserted
+
+  # ---------------------------------------------------------------------
+  # THE PTD-OPA-001 COUNTER CASE.
+  # Same record, a field a decision reads, but NOT writable by the subject.
+  # Signal 2 fires, signal 4 does not: no finding.
+  # An administrator who can elevate anybody is the expected behaviour.
+  - path: data.users.{owner}.roles
+    writable_by:
+      - principal: role:admin
+        via: "PUT /api/v1/users/{id}/roles"
+        note: Reserved to the administration console.
+        confidence: asserted
+
+  # ---------------------------------------------------------------------
+  # Explicit project membership: written by the project owner, not by the
+  # subject of the decision. It is the LEGITIMATE route to the same position
+  # the 001 -> 003 chain reaches by writing a profile field.
+  - path: data.projects.{project}.members
+    writable_by:
+      - principal: "owner_of:{project}"
+        via: "POST /api/v1/projects/{project}/members"
+        confidence: asserted
+
+  # ---------------------------------------------------------------------
+  # Written by a system, not by a user. Relevant to PTD-OPA-002: whoever can
+  # make this path ABSENT turns the MFA check off. Being able to delete a field
+  # is a different capability from being able to write one, and the format has
+  # no way to declare it yet.
+  - path: data.tenants.{tenant}.policy.require_mfa
+    writable_by:
+      - principal: system:provisioning
+        via: "tenant onboarding job"
+        note: >
+          The dolm tenant was created before the field existed, and the job was
+          never re-run against it. That is where the PTD-OPA-002 fail-open
+          comes from, and it is a fact about the data rather than about the
+          policy.
+        confidence: asserted
+
+# ---------------------------------------------------------------------------
+# Paths deliberately NOT declared, to keep the world closed.
+# What is not declared is not writable, so an incomplete model produces false
+# negatives rather than false positives.
+#
+#   data.projects.{project}.department   <- writable by the subject, this would
+#                                           be a second route into the chain
+#   data.projects.{project}.parent       <- restructuring the hierarchy is a
+#                                           different capability, and probably
+#                                           a pattern of its own
+#   data.documents.*                     <- no decision in the fixture reads a
+#                                           field of it to grant

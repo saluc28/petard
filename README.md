@@ -10,14 +10,14 @@ line between whoever takes a decision and whoever writes the data that decision 
 A linter sees one file. Petard is built to see the policy, the data and who can write it,
 together.
 
-## What is here
+## The graph model
 
-The graph model, in `internal/graph`. It is the first thing rather than an afterthought because
-of what it costs to change later: the kind names and the property keys end up in ingested data
-and in saved Cypher queries, so renaming one means re-ingesting every graph and rewriting every
-query that mentions it. Getting them right is cheap now and expensive in a month.
+The model lives in `internal/graph`, and it comes before the things that fill it because of what
+it costs to change later: the kind names and the property keys end up in ingested data and in
+saved Cypher queries, so renaming one means re-ingesting every graph and rewriting every query
+that mentions it. Getting them right is cheap now and expensive in a month.
 
-Two things about it are worth reading before the rest arrives.
+Two things about it are worth knowing.
 
 Nothing from OPA's AST crosses this package boundary. Residual conditions enter as strings that
 are already serialized, which is the constraint that lets a second policy engine reuse the model
@@ -29,7 +29,50 @@ not in the export. Marking an edge traversable when it does not represent a capa
 paths in the interface that nobody can walk, so it is a semantic decision rather than a cosmetic
 one, and it lives next to the kinds so the schema and the model cannot drift apart.
 
-The OPA engine, the taxonomy and the BloodHound export land next.
+## What the engine does
+
+`internal/opaengine` loads a bundle in either Rego syntax, v1 or v0, and records which one it
+read. A tool that analyzes somebody else's policies does not get to pick the syntax, and a
+bundle that is half of each loads as neither, with an error naming every file involved.
+
+Its starting points are the decisions: the rules the policy annotates as entrypoints, plus any
+the caller declares. Whole families of Rego annotate nothing, and the alternative to declaring
+the decision is guessing which rule a policy engine happens to query, so Petard stops instead
+of guessing.
+
+From the decisions it walks the rules they depend on, following calls into functions and
+leaving alone the expressions that mock the world with a `with` modifier, and reports:
+
+- every place a decision reads `data`, with the normalized path, the reference as the author
+  wrote it, the file and the line, and whether the read sits under a negation
+- who chooses the document each read lands on: the caller, other data, a builtin, or nobody
+  the analysis can name
+- the values a decision depends on that the policy did not compute, such as the body of an
+  HTTP response, and which decisions each of them reaches
+- the shape of the request, with the level of confidence it was recognized at, which runs from
+  a declared standard down to a guess about field names and travels with the answer
+
+Given concrete data it also evaluates every decision partially, and reports what is left of
+each one once the documents are known. It is also how a position in a hierarchy gets a number:
+by asking OPA what the decision still depends on, instead of walking the relation ourselves and
+getting an answer the policy would not agree with.
+
+Analyzing a policy never calls the endpoints written in it. A call to `http.send` stays inside
+the residual condition, where it says something true: that the decision cannot be settled from
+the data alone.
+
+## The fixture
+
+`fixtures/vulnerable-bundle/` is a policy with escalation built into it on purpose, written by
+hand in both Rego syntaxes, next to an `EXPECTED.md` that declares in words what an analysis
+has to find and what it has to stay quiet about. Every pattern gets a case and a counter case,
+because a tool that finds everything and invents half of it is unusable in an assessment.
+
+It lints clean under `regal`, and that is deliberate. The claim the project makes is that the
+code is correct and idiomatic and the defect is somewhere else: in the data somebody can write,
+in the key that is missing, in the source that does not answer.
+
+The taxonomy and the BloodHound export land next.
 
 ## License
 

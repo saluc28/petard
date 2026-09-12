@@ -1,0 +1,13 @@
+{
+  "tenants": {
+    "berq": {
+      "status": "active",
+      "policy": {
+        "require_mfa": true
+      }
+    },
+    "dolm": {
+      "status": "active"
+    }
+  }
+}

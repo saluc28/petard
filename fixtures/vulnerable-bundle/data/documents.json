@@ -1,0 +1,27 @@
+{
+  "documents": {
+    "d-t11-1": {"project": "team11", "owner": "alice", "classification": "internal", "tags": ["draft"]},
+    "d-t11-2": {"project": "team11", "owner": "alice", "classification": "internal", "tags": []},
+    "d-t11-3": {"project": "team11", "owner": "alice", "classification": "confidential", "tags": []},
+
+    "d-t12-1": {"project": "team12", "owner": "alice", "classification": "internal", "tags": []},
+    "d-t12-2": {"project": "team12", "owner": "bob", "classification": "internal", "tags": []},
+    "d-t12-3": {"project": "team12", "owner": "bob", "classification": "confidential", "tags": []},
+
+    "d-t21-1": {"project": "team21", "owner": "carol", "classification": "internal", "tags": []},
+    "d-t21-2": {"project": "team21", "owner": "carol", "classification": "internal", "tags": []},
+    "d-t21-3": {"project": "team21", "owner": "bob", "classification": "confidential", "tags": []},
+
+    "d-t22-1": {"project": "team22", "owner": "bob", "classification": "internal", "tags": []},
+    "d-t22-2": {"project": "team22", "owner": "bob", "classification": "internal", "tags": []},
+    "d-t22-3": {"project": "team22", "owner": "bob", "classification": "confidential", "tags": []},
+
+    "d-t31-1": {"project": "team31", "owner": "bob", "classification": "internal", "tags": []},
+    "d-t31-2": {"project": "team31", "owner": "bob", "classification": "internal", "tags": []},
+    "d-t31-3": {"project": "team31", "owner": "bob", "classification": "confidential", "tags": []},
+
+    "d-t32-1": {"project": "team32", "owner": "bob", "classification": "internal", "tags": []},
+    "d-t32-2": {"project": "team32", "owner": "bob", "classification": "internal", "tags": []},
+    "d-t32-3": {"project": "team32", "owner": "bob", "classification": "confidential", "tags": []}
+  }
+}

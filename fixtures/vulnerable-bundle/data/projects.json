@@ -1,0 +1,20 @@
+{
+  "projects": {
+    "root": {
+      "tenant": "berq",
+      "owner": "bob",
+      "members": ["dave"],
+      "department": "platform"
+    },
+    "div1": {"tenant": "berq", "owner": "bob", "parent": "root", "members": []},
+    "div2": {"tenant": "berq", "owner": "bob", "parent": "root", "members": []},
+    "div3": {"tenant": "berq", "owner": "bob", "parent": "root", "members": []},
+
+    "team11": {"tenant": "berq", "owner": "alice", "parent": "div1", "members": ["alice"]},
+    "team12": {"tenant": "berq", "owner": "alice", "parent": "div1", "members": []},
+    "team21": {"tenant": "berq", "owner": "bob", "parent": "div2", "members": ["carol"]},
+    "team22": {"tenant": "berq", "owner": "bob", "parent": "div2", "members": []},
+    "team31": {"tenant": "berq", "owner": "bob", "parent": "div3", "members": []},
+    "team32": {"tenant": "berq", "owner": "bob", "parent": "div3", "members": []}
+  }
+}
