@@ -314,7 +314,7 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 	result.Warnings = sortedUnique(append(result.Warnings, warnings...))
 
 	for _, rule := range decisions {
-		result.Decisions = append(result.Decisions, rule.Path().String())
+		result.Decisions = append(result.Decisions, rulePath(rule).String())
 	}
 	result.Decisions = sortedUnique(result.Decisions)
 	result.SkippedUnderWith = reader.skipped()
@@ -333,7 +333,7 @@ func (r *refReader) closures(reads []Read, reach map[*ast.Rule]decisionPaths) []
 	for _, found := range r.foundClosures {
 		closure := Closure{
 			Builtin:   found.builtin,
-			Rule:      found.rule.Path().String(),
+			Rule:      rulePath(found.rule).String(),
 			Decisions: reachedDecisions(reach[found.rule]),
 		}
 		if len(found.args) > 0 {
@@ -375,7 +375,7 @@ func (r *refReader) relationOf(arg *ast.Term, bindings map[ast.Var]binding, read
 
 	// A rule of the policy: the relation is whatever that rule reads.
 	if rules := r.compiler.GetRulesForVirtualDocument(ref); len(rules) > 0 {
-		return pathsReadBy(reads, rules[0].Path().String())
+		return pathsReadBy(reads, rulePath(rules[0]).String())
 	}
 	if resolved := substituteRef(ref, bindings); isDataRooted(resolved.ref) {
 		return []string{normalize(resolved.ref)}
@@ -523,7 +523,7 @@ func (b *Bundle) RulesNamed(name string) []string {
 	var paths []string
 	for _, module := range b.Compiler.Modules {
 		ast.WalkRules(module, func(rule *ast.Rule) bool {
-			path := rule.Path()
+			path := rulePath(rule)
 			if last, isString := path[len(path)-1].Value.(ast.String); isString && string(last) == name {
 				paths = append(paths, path.String())
 			}

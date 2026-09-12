@@ -48,7 +48,7 @@ func (r *refReader) readOf(rule *ast.Rule, candidate foundRef, budget *callBudge
 	read := Read{
 		Path:          normalize(candidate.resolved.ref),
 		Ref:           ref,
-		Rule:          rule.Path().String(),
+		Rule:          rulePath(rule).String(),
 		Provenance:    provenance,
 		Origin:        origin,
 		Trace:         trace,
@@ -76,7 +76,7 @@ func (r *refReader) readOf(rule *ast.Rule, candidate foundRef, budget *callBudge
 // than read off the rule at hand. Its absence is an answer too: a rule with no
 // default is undefined when nothing holds, and undefined is not false.
 func (r *refReader) defaultOf(rule *ast.Rule) string {
-	for _, sibling := range r.compiler.GetRulesExact(rule.Path()) {
+	for _, sibling := range r.compiler.GetRulesExact(rulePath(rule)) {
 		if sibling.Default {
 			return valueOf(sibling)
 		}
