@@ -4,7 +4,7 @@ A policy with escalation built into it on purpose, next to the statement, in wor
 analysis has to produce from it and what it has to stay quiet about. It is the criterion the
 patterns are measured against.
 
-Every number here was executed and not estimated, with `opa 1.19.0`. Section 7 has the commands
+Every number here was executed and not estimated, with `opa 1.20.2`. Section 7 has the commands
 to regenerate them.
 
 ---

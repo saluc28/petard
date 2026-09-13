@@ -189,8 +189,8 @@ references:
       `imports`, `performance`, `style`, `testing`. **No `security` category.**
 
 verified:
-  date: 2026-08-08
-  tool_version: opa 1.19.0
+  date: 2026-09-13
+  tool_version: opa 1.20.2
   how: >
     Signals 1 and 2 are executable, not argued: the resolver rebuilds
     `data.profiles[input.subject.id].tier` out of `data.profiles[__local4__].tier` plus the

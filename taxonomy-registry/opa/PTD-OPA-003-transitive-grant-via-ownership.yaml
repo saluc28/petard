@@ -300,8 +300,8 @@ references:
     note: Checked on 2026-08-01 and again at the source of v0.42.0, no `security` category.
 
 verified:
-  date: 2026-08-22
-  tool_version: opa 1.19.0
+  date: 2026-09-13
+  tool_version: opa 1.20.2
   how: >
     Executed, not argued. The recursion ban is confirmed by the compiler's message, and
     `graph.reachable` works with the example policy compiling without warnings.

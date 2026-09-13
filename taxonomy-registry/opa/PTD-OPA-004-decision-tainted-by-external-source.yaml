@@ -198,8 +198,8 @@ references:
       rule about `http.send`.
 
 verified:
-  date: 2026-08-09
-  tool_version: opa 1.19.0
+  date: 2026-09-13
+  tool_version: opa 1.20.2
   how: >
     `opa check` accepts the example policy without any warning. The taint mechanism was checked
     on the compiled body: the resolver identifies `__local0__.body.privileged` as coming from

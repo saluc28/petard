@@ -237,8 +237,8 @@ references:
       rule for this case.
 
 verified:
-  date: 2026-08-22
-  tool_version: opa 1.19.0
+  date: 2026-09-13
+  tool_version: opa 1.20.2
   how: >
     The mechanism was executed rather than argued. With
     `data.tenants.berq.policy.require_mfa=true` and `data.tenants.dolm={}`, and the same input

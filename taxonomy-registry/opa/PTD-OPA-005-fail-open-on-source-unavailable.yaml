@@ -306,8 +306,8 @@ references:
       `not_a_lint_rule`.
 
 verified:
-  date: 2026-08-22
-  tool_version: opa 1.19.0
+  date: 2026-09-13
+  tool_version: opa 1.20.2
   how: >
     Executed, not argued, and the matrix is the part worth reading: the option everybody blames
     is not what makes the rule undefined. With a host that does not resolve, the same input, and
