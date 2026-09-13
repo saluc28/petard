@@ -33,8 +33,8 @@ one, and it lives next to the kinds so the schema and the model cannot drift apa
 
 `internal/opaengine` loads a bundle in either Rego syntax, v1 or v0, and records which one it
 read. A tool that analyzes somebody else's policies does not get to pick the syntax: every one
-of the 51 bundles in the `open-policy-agent/gatekeeper-library` corpus parses as v0, and none of
-them as v1. A bundle that is half of each loads as neither, with an error naming every file
+of the 51 bundles in the `open-policy-agent/gatekeeper-library` corpus parses as v0 and none of
+them as v1, while all 28 in `open-policy-agent/contrib` parse as v1. A bundle that is half of each loads as neither, with an error naming every file
 involved.
 
 Its starting points are the decisions: the rules the policy annotates as entrypoints, plus any

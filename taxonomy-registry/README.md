@@ -215,8 +215,29 @@ about an object that is being admitted and almost never about who is asking for 
 between whoever decides and whoever writes the data, which is the material of this registry, is
 barely there.
 
+`open-policy-agent/contrib`, at commit `90f7ca99ce603c4ce3e40cc990b5a33bb895b557`, is a different
+kind of corpus: 28 units, all of them Rego v1, among them OPA behind Kafka, Kong, PAM, a
+Kubernetes authorizer and an AuthZEN proxy, and in front of databases that filter by a decision.
+Each of those queries its own decision, so each unit was run through `analyze-opa` with the
+decision its configuration or code queries; `measure-corpus` declares decisions by rule name,
+which suits Gatekeeper and not this. 16 units have a request to decide about. The other 12 are
+configuration checks, libraries, test inputs and a bundle signing demo.
+
+| Units | What the decisions read | What the patterns say |
+|---|---|---|
+| 1, the AuthZEN interop policy | `data.users[input.subject.id].roles` and `.email` | `PTD-OPA-001`: two candidates, confidence B |
+| 2, Puppet and a Kubernetes node selector | a document the request picks, with no recognizable subject | nothing |
+| 6, data filtering over SQL, Elasticsearch, MongoDB and Azure, and an image policy | documents that other data picks | nothing |
+| 7, an HTTP API, Kafka, Kong, PAM, a Kubernetes authorizer, Dart, Wasm | no `data` | nothing |
+
+No value from outside the policy reaches any of the 16 decisions, so `PTD-OPA-004` and
+`PTD-OPA-005` have nothing to look at. The two candidates of the AuthZEN policy stay candidates:
+whether a user can change their own `roles` depends on the application that stores them, and the
+write model is where that is declared.
+
 `verified` needs a measurement of the **declared** false positives, which for 004 and 005 would
-mean generating policies rather than data, and for the others a corpus that crosses that line.
+mean generating policies rather than data, and for the others more than one policy that crosses
+that line, with a write model that says who writes what.
 
 ### The fixture
 
