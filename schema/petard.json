@@ -3,7 +3,7 @@
     "name": "petard",
     "display_name": "Petard",
     "version": "v0.1.0",
-    "namespace": "PTD_"
+    "namespace": "PTD"
   },
   "node_kinds": [
     {

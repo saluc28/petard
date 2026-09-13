@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/saluc28/bhgraph"
@@ -45,6 +46,36 @@ func TestSchemaDescribesEveryKindOfTheModel(t *testing.T) {
 	for _, kind := range graph.EdgeKinds() {
 		if !slices.Contains(declared, string(kind)) {
 			t.Errorf("the model declares %s and the schema does not", kind)
+		}
+	}
+}
+
+// BloodHound refuses an extension unless every kind name starts with the
+// declared namespace followed by an underscore, and it adds that underscore
+// itself (cmd/api/src/model/graphschema.go:508 at v9.7.0). bhgraph only checks
+// that the name starts with the namespace, so a namespace of "PTD_" passes it
+// and fails on the server. This test holds the schema to the server's rule, not
+// to the looser one.
+func TestSchemaKindsCarryTheNamespaceTheWayTheServerReadsIt(t *testing.T) {
+	schema := Schema()
+
+	ns := schema.Schema.Namespace
+	if ns == "" || ns[len(ns)-1] == '_' {
+		t.Fatalf("namespace = %q: the server appends the underscore, so the declared one must not end with it", ns)
+	}
+
+	prefix := ns + "_"
+	var names []string
+	for _, kind := range schema.NodeKinds {
+		names = append(names, kind.Name)
+	}
+	for _, kind := range schema.RelationshipKinds {
+		names = append(names, kind.Name)
+	}
+	for _, name := range names {
+		rest, found := strings.CutPrefix(name, prefix)
+		if !found || strings.TrimSpace(rest) == "" {
+			t.Errorf("kind %q does not start with %q followed by a name, and the server would refuse the schema", name, prefix)
 		}
 	}
 }
