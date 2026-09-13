@@ -77,29 +77,33 @@ func ParsePath(path string) (Path, error) {
 	return Path{Segments: segments}, nil
 }
 
-// parseSegments reads one dot separated part, which may carry an index:
-// users[_] is the collection and the index that follows it.
+// parseSegments reads one dot separated part, which may carry indices:
+// users[_] is the collection and the index that follows it, and git[_][_] is a
+// collection of collections, with one index for each level.
 func parseSegments(part string) ([]Segment, error) {
 	if part == "" {
 		return nil, fmt.Errorf("empty segment")
 	}
 
-	name, index, hasIndex := strings.Cut(part, "[")
+	name, indices, hasIndex := strings.Cut(part, "[")
 	segments := []Segment{segmentOf(name)}
 	if !hasIndex {
 		return segments, nil
 	}
 
-	index, ok := strings.CutSuffix(index, "]")
+	indices, ok := strings.CutSuffix(indices, "]")
 	if !ok {
 		return nil, fmt.Errorf("unclosed [ in %q", part)
 	}
-	if index != "_" {
-		// A concrete index would be a path to one document, and the model
-		// speaks about shapes. Writing it out is almost certainly a mistake.
-		return nil, fmt.Errorf("index [%s] in %q: only [_] is a path, a concrete index names one document", index, part)
+	for index := range strings.SplitSeq(indices, "][") {
+		if index != "_" {
+			// A concrete index would be a path to one document, and the model
+			// speaks about shapes. Writing it out is almost certainly a mistake.
+			return nil, fmt.Errorf("index [%s] in %q: only [_] is a path, a concrete index names one document", index, part)
+		}
+		segments = append(segments, Segment{Kind: SegmentCapture})
 	}
-	return append(segments, Segment{Kind: SegmentCapture}), nil
+	return segments, nil
 }
 
 func segmentOf(name string) Segment {

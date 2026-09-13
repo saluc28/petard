@@ -113,6 +113,9 @@ func TestPathMatching(t *testing.T) {
 		{name: "a subtree covers what is below", entry: "data.users.{owner}.profile.*", read: "data.users[_].profile.department", expected: true},
 		{name: "a subtree covers deeply", entry: "data.users.*", read: "data.users[_].profile.department.name", expected: true},
 		{name: "a subtree does not cross the collection", entry: "data.users.*", read: "data.projects[_].members", expected: false},
+		// The engine writes one [_] for each level of a nested collection.
+		{name: "a capture for each level of a nested collection", entry: "data.git.{file}.{line}.Author", read: "data.git[_][_].Author", expected: true},
+		{name: "a nested collection is not the level above it", entry: "data.git.{file}.Author", read: "data.git[_][_].Author", expected: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,6 +132,16 @@ func TestPathMatching(t *testing.T) {
 				t.Errorf("%q matches %q = %t, want %t", tt.entry, tt.read, got, tt.expected)
 			}
 		})
+	}
+}
+
+// A concrete index names one document wherever it sits, the second level of a
+// nested collection included.
+func TestParsePathRefusesAConcreteIndex(t *testing.T) {
+	for _, path := range []string{"data.users[alice].roles", "data.git[_][3].Author", "data.git[3][_].Author"} {
+		if _, err := ParsePath(path); err == nil {
+			t.Errorf("ParsePath(%q) error = nil, want a refusal", path)
+		}
 	}
 }
 
