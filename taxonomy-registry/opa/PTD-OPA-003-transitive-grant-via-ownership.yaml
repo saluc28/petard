@@ -189,12 +189,11 @@ graph:
     mean interpreting the text of the residual, which is to say rebuilding semantics, which is
     the thing this pattern exists in order not to do. The ratio between the two numbers stays
     meaningful because both are measured the same way.
-    Two properties an earlier draft of this file listed are **not emitted**. `via_chain`, the
-    ancestry that grants the access, is exactly the reconstruction the engine avoids;
-    `seed_position`, in the idiomatic form, is the formal parameter of the function holding the
-    call, and the compiler has renamed it, so it would only be reportable when the policy writes
-    it as a constant. In their place the finding carries the **relation**, which is the thing to
-    act on.
+    **Two things a report might expect are deliberately absent.** The ancestry that grants the
+    access is exactly the reconstruction the engine avoids. The position the propagation starts
+    from, in the idiomatic form, is the formal parameter of the function holding the call, which
+    the compiler has renamed, so it is only nameable when the policy writes it as a constant. In
+    their place the finding carries the **relation**, which is the thing to act on.
     As with the other patterns, these properties live in the finding and not in the exported
     edge, whose properties are a closed list.
 
@@ -350,9 +349,9 @@ notes:
       The declared false positives are not measured, which is why the status is `implemented`
       and not `verified`.
   - note: >
-      The cost of signal 3 on deep hierarchies is not measured, and it is no longer the cost of
-      walking a graph: it is **two partial evaluations per principal and per decision**. It
-      grows with the number of principals, which is the cardinality of the data.
+      The cost of signal 3 on deep hierarchies is not measured. It is **two partial evaluations
+      per principal and per decision**, so it grows with the number of principals, which is the
+      cardinality of the data and not the depth of the hierarchy.
   - note: >
       The fixture instantiates form A only. B and C are checked in isolation but are not in the
       bundle, and the cost of adding them is now known: `walk` is recognized as a construct, but

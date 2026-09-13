@@ -564,8 +564,8 @@ func (rs *ResidualSet) Never() bool {
 // Residuals evaluates a decision against the concrete data, leaving part of the
 // request unknown, and reports the conditions under which it can still hold.
 //
-// This is the step the design calls level 2, and the reason it exists rather
-// than a graph walk of our own: the conditions come out of OPA evaluating the
+// This is where reading the policy turns into measuring it against the data,
+// and the reason it exists rather than a graph walk of our own: the conditions come out of OPA evaluating the
 // policy, so they carry the semantics of whatever the policy actually uses. The
 // fixture makes that concrete with graph.reachable, which includes a node only
 // if the node is a key of the graph object. Computing reachability ourselves,

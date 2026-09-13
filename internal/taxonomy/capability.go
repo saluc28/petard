@@ -99,7 +99,7 @@ func addWriter(g *graph.Graph, read string, entry writemodel.Entry, writer write
 // AddCapabilities puts into the graph what each principal can get out of each
 // decision, given the documents as they stand.
 //
-// It is the authorization graph of the design, and the only part of the model
+// It is the authorization graph itself, and the only part of the model
 // that is a measurement of today rather than a reading of the policy: the same
 // bundle against different data produces a different set of these edges, which
 // is the point of having them.

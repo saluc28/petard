@@ -37,8 +37,7 @@ const (
 	NodeKindRule NodeKind = "PTD_Rule"
 )
 
-// NodeKinds returns every node kind the model declares, in the order the design
-// lists them.
+// NodeKinds returns every node kind the model declares, in a fixed order.
 //
 // It exists so that the exporter can walk the kinds instead of repeating them:
 // a schema that declares four of five kinds produces nodes BloodHound cannot
@@ -157,10 +156,10 @@ const (
 	PropUnderNegation = "under_negation"
 
 	// PropConfidence is the level the shape of the request was recognized at,
-	// on the A to E scale of the design, and it travels on everything whose
-	// claim rests on that recognition. It is not negotiable: an edge derived
-	// from a guess about field names must not be indistinguishable from one
-	// derived from a declaration.
+	// on the A to E scale, and it travels on everything whose claim rests on
+	// that recognition. It is not negotiable: an edge derived from a guess
+	// about field names must not be indistinguishable from one derived from a
+	// declaration.
 	PropConfidence = "confidence"
 
 	// PropDecision is the decision an edge was measured against. A capability

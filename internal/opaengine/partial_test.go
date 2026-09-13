@@ -201,8 +201,8 @@ func TestResidualsDoNotCallTheEndpointsThePolicyNames(t *testing.T) {
 }
 
 // A decision without a default leaves its conditions in the residual queries
-// themselves, with no support module in between. It is the shape the design
-// verified first, and the one real policies are least likely to have.
+// themselves, with no support module in between. It is the simplest shape a
+// decision can have, and the one real policies are least likely to have.
 func TestResidualsWithoutADefault(t *testing.T) {
 	dir := writeSources(t, map[string]string{
 		"policy.rego": `package t
@@ -276,7 +276,7 @@ allow if data.settings.open == true
 	}
 }
 
-// The claim the design makes about scale, measured instead of asserted: the
+// The claim this package makes about scale, measured instead of asserted: the
 // number of residual conditions follows the cardinality of the data and not the
 // size of the policy.
 //

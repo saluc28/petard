@@ -98,7 +98,7 @@ var descriptions = map[graph.EdgeKind]string{
 // Environments are left empty on purpose. The environment of a Petard graph
 // would be the analyzed bundle, and the model has no node for a bundle: adding
 // one to fill a field that only does anything in BloodHound Enterprise would
-// mean an eleventh kind on a list the design declares closed. The field is
+// mean an eleventh kind on a list the model declares closed. The field is
 // legal empty, and what it would buy in Community Edition is nothing.
 func Schema() bhgraph.Extension {
 	extension := bhgraph.Extension{

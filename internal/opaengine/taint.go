@@ -111,7 +111,7 @@ type TaintedDecision struct {
 	//
 	// It is one flag rather than two because the caller would have to combine
 	// them anyway, and getting that combination wrong is exactly the silent
-	// false positive the design warns about. Both halves are exact: Expr.
+	// false positive this flag exists to avoid. Both halves are exact: Expr.
 	// Negated is a bool in the AST, and the path is walked here. A read keeps
 	// them apart instead, in ReachedDecision, since the question asked of a
 	// missing document needs the two halves separately.

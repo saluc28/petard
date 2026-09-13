@@ -197,8 +197,8 @@ func writablePaths(selfWrite []Finding) []Finding {
 	return writable
 }
 
-// AddEscalations puts the chain into the graph, as the one edge the design
-// calls real privilege escalation.
+// AddEscalations puts the chain into the graph, as the one edge that means
+// privilege escalation.
 //
 // The principals are nodes of their own here, and they are the first ones the
 // analysis creates: everything else in the graph so far comes from reading the

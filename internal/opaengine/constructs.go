@@ -8,7 +8,7 @@ import (
 // understand.
 //
 // It exists to answer a question the fixture cannot: which of the edge cases
-// the design worried about show up in policies written by other people, and how
+// the resolver has to handle show up in policies written by other people, and how
 // often. The counts are over the whole compiled bundle rather than over the
 // rules the decisions reach, because a bundle whose decisions cannot be found
 // still has forms worth counting, and a number that silently changed meaning

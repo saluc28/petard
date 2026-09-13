@@ -169,7 +169,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 // It is behind a flag because the model is not the report: the report is what
 // an analyst reads, and the model is what the exporter will serialize. Until
 // there is an exporter, counting what the model holds is the only way to see
-// that every kind the design declares has something in it, and that a kind
+// that every kind the model declares has something in it, and that a kind
 // nothing fills is a hole rather than a decision.
 func reportGraph(ctx context.Context, out io.Writer, a taxonomy.Analysis, findings taxonomy.Findings) error {
 	g, gaps, err := taxonomy.Assemble(ctx, a, findings)

@@ -182,8 +182,8 @@ func (r *refReader) walkBody(body ast.Body, outer scope, found *[]foundRef) {
 // bindingsOf reads what a body says about its variables, and adds the two
 // things a body alone cannot know.
 //
-// collectBindings stays pure and works on an ast.Body, as the design says it
-// should. Knowing that a call returns a value takes the arity of the callee,
+// collectBindings stays pure and works on an ast.Body, and it is worth keeping
+// that way. Knowing that a call returns a value takes the arity of the callee,
 // which lives in the rule graph, and telling an iterating variable from a
 // formal parameter takes the head of the rule. Both are here, where that
 // context exists, instead of being pushed down into a function whose whole

@@ -105,7 +105,7 @@ func TestTaintedByExternalSourceIgnoresBuiltinsWithNoOtherEnd(t *testing.T) {
 // One finding per fact, and the fact is that a decision depends on a party.
 // A source read in two rules that both feed the same decision widened the trust
 // perimeter of that decision once, and counting it twice would inflate every
-// precision number the design is judged by.
+// precision number the patterns are judged by.
 func TestTaintedByExternalSourceGroupsByDecisionAndSource(t *testing.T) {
 	reads := &opaengine.ReadSet{Taints: []opaengine.Taint{
 		{

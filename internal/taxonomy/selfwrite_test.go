@@ -37,7 +37,7 @@ func analyzeFixture(t *testing.T) (*opaengine.ReadSet, opaengine.Shape, *writemo
 // This is the case and the counter case of PTD-OPA-001, and the counter case is
 // the one that matters: the same record, both fields picked by the subject, and
 // only the write model tells them apart. A model at record granularity would
-// report both, which is the systematic false positive the design warns about.
+// report both, which is the systematic false positive the registry declares.
 func TestSelfWriteOnFixture(t *testing.T) {
 	reads, shape, model := analyzeFixture(t)
 

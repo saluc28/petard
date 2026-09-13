@@ -42,7 +42,7 @@ func chainOn(t *testing.T, a Analysis) []Finding {
 	return escalations
 }
 
-// The criterion at the centre of the design, and the only claim in the whole
+// The central criterion, and the only claim in the whole
 // registry that deserves the words privilege escalation.
 //
 // mallory holds nothing: no membership, no document, the viewer role. Writing

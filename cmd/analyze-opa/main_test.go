@@ -35,7 +35,7 @@ func TestRunReportsTheMeasures(t *testing.T) {
 	}
 }
 
-// Every kind the design declares has to have something in it, or it is a hole
+// Every kind the model declares has to have something in it, or it is a hole
 // rather than a decision. This is the run that says so, and the numbers move
 // with the fixture on purpose: what is asserted is that no kind is empty.
 func TestRunBuildsEveryKindOfTheModel(t *testing.T) {
@@ -316,7 +316,7 @@ func TestRunReportsWhatAPositionIsWorth(t *testing.T) {
 	}
 }
 
-// The criterion at the centre of the design, seen from the command line: one
+// The central criterion, seen from the command line: one
 // escalation, and the report has to carry the three things that make it
 // actionable, who ends up where, what to write, and how the write happens.
 func TestRunReportsTheEscalation(t *testing.T) {

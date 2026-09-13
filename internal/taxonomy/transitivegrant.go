@@ -46,7 +46,7 @@ const transitiveConfidence = "E"
 // construct the policy really uses, and a difference between two of its answers
 // cannot inherit a semantics we never wrote.
 //
-// It emits a candidate and not a finding, and the distinction is the design's:
+// It emits a candidate and not a finding, and the distinction is the registry's:
 // a hierarchy that propagates access is doing its job. What the pattern says is
 // that a position is worth a lot, which is a target rather than a defect. It
 // becomes a path only together with a pattern that says how that position can

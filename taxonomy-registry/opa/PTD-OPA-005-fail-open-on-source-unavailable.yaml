@@ -309,10 +309,9 @@ verified:
   date: 2026-08-22
   tool_version: opa 1.19.0
   how: >
-    Executed, and the result corrected the starting assumption that `raise_error: false` is what
-    makes the rule undefined. The mechanism was right, the cause was not.
-    The real matrix, with a host that does not resolve, the same input, and the response
-    consumed on the deny side:
+    Executed, not argued, and the matrix is the part worth reading: the option everybody blames
+    is not what makes the rule undefined. With a host that does not resolve, the same input, and
+    the response consumed on the deny side:
       default (raise_error implicit)  + normal eval             ->  allow = TRUE   exit 0
       raise_error: false              + normal eval             ->  allow = TRUE   exit 0
       default (raise_error implicit)  + --strict-builtin-errors ->  ERROR          exit 2
