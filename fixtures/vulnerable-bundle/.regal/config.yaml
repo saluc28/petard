@@ -1,6 +1,6 @@
 # regal configuration for the fixture.
 #
-# It is what makes the claim all five patterns rest on executable rather than
+# It is what makes the claim all six patterns rest on executable rather than
 # merely argued: regal has nothing to report here, and it should not have. For
 # that claim to count the fixture has to lint clean, and the only rules turned
 # off have to be the ones that cannot apply by construction.

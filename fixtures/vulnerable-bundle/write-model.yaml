@@ -28,15 +28,23 @@ entries:
         confidence: asserted
 
   # ---------------------------------------------------------------------
-  # THE PTD-OPA-001 COUNTER CASE.
-  # Same record, a field a decision reads, but NOT writable by the subject.
-  # Signal 2 fires, signal 4 does not: no finding.
-  # An administrator who can elevate anybody is the expected behaviour.
+  # THE PTD-OPA-001 COUNTER CASE, and the write of the PTD-OPA-006 case.
+  # Same record, a field a decision reads, but written by a role rather than
+  # by the subject as such. Signal 2 of 001 fires, signal 4 does not: no
+  # finding. An administrator who can elevate anybody is the expected
+  # behaviour; support staff who can make themselves editor is 006.
   - path: data.users.{owner}.roles
     writable_by:
       - principal: role:admin
         via: "PUT /api/v1/users/{id}/roles"
-        note: Reserved to the administration console.
+        note: Any role.
+        confidence: asserted
+      - principal: role:support
+        via: "PUT /api/v1/users/{id}/roles"
+        note: >
+          Viewer and editor only, for anybody, themselves included. Which
+          values may be written is decided by data.quill.admin.allow, the
+          decision the PEP of this endpoint consumes.
         confidence: asserted
 
   # ---------------------------------------------------------------------

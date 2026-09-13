@@ -28,14 +28,14 @@ fixtures/vulnerable-bundle/
 
 ### The two variants are the same policy
 
-Checked on every rule the two variants define, against every input under `inputs/`, which is 36
-pairs: no divergence between `policy-v1` and `policy-v0`. The same pair of trees is also the
-test of dual parsing:
+Checked on every rule value the two variants produce, against every input under `inputs/`, which
+is 91 values over 8 inputs: no divergence between `policy-v1` and `policy-v0`. The same pair of
+trees is also the test of dual parsing:
 
 | | v1 parser | v0 parser (`--v0-compatible`) |
 |---|---|---|
-| `policy-v1/` | passes | 13 errors |
-| `policy-v0/` | 20 errors, "`if` keyword is required before rule body" | passes |
+| `policy-v1/` | passes | 15 errors |
+| `policy-v0/` | 24 errors, "`if` keyword is required before rule body" | passes |
 
 ---
 
@@ -72,7 +72,8 @@ place where the two facts meet.
 > (`PATCH /api/v1/me/profile`) beside it, and the three places to look: the two reads of the
 > field and the call that follows the hierarchy.
 >
-> It is the only `PTD_CanEscalateTo` the fixture may produce. Any other one is a false positive
+> Apart from the one `PTD-OPA-006` is written to find (section 3), it is the only
+> `PTD_CanEscalateTo` the fixture may produce. Any other one is a false positive
 > and counts as one.
 
 The value to write is not invented. The document `data.users.mallory.profile.department` is left
@@ -112,7 +113,7 @@ Without the second only recall gets measured, and precision matters as much.
 | | where | expected |
 |---|---|---|
 | **case** | `authz.rego`, `allow` on `profile.department == "security"` | **finding**, the write model has the field as writable by the subject |
-| **counter case** | `authz.rego`, `allow` on `"admin" in ...roles` | **nothing**, same record, but `roles` is written by `role:admin` alone |
+| **counter case** | `authz.rego`, `allow` on `"admin" in ...roles` | **nothing**, same record, but `roles` is written by a role, `role:admin` or `role:support`, and not by the subject as such |
 
 The counter case is the most important one in the fixture: signal 2 fires on **both**, because
 in each of them the reference is indexed by the subject. Only signal 4, against a write model
@@ -251,6 +252,36 @@ fail-open happens identically in both forms; the option only changes whether
 So both forms get reported, and what separates them is only the sentence about mitigation. A
 lint rule on `raise_error: false` would have reported the wrong one of the two.
 
+### PTD-OPA-006, a write one decision allows and another decision grants on
+
+Two decisions, each of them sound on its own: `admin.rego` lets support staff assign `viewer` and
+`editor` to anybody, themselves included, and `publish.rego` lets editors publish. `carol` holds
+`support`. The pattern is `draft`: the engine does not look for it yet, and this is what it has
+to produce once it does.
+
+| | where | expected |
+|---|---|---|
+| **case** | `admin.rego` lets `carol` write `editor` into her own `roles`; `publish.rego` grants `publish` on `"editor" in ...roles` | **finding**, `PTD_CanEscalateTo` from `carol` to `alice`, who holds `editor` |
+| **counter case** | `publish.rego`, `withdraw` on `"admin" in ...roles` | **nothing**, the assignment decision does not let support write `admin` |
+
+Measured with `data.quill.verify.split_grant`:
+
+```
+carol publishes, roles as they stand            publish.allow = false
+carol assigns herself editor                    admin.allow   = TRUE
+carol assigns herself admin                     admin.allow   = false
+carol publishes, roles ["support", "editor"]    publish.allow = TRUE
+carol withdraws, roles ["support", "editor"]    publish.allow = false
+```
+
+The counter case is what keeps the pattern honest. A check that stopped at "the assignment
+decision lets carol write the field the publishing decision reads" would report the withdraw
+branch too. What separates the two is the value: the write is allowed for `editor` and not for
+`admin`, and only the first opens a branch.
+
+`PTD-OPA-001` stays silent on the same field, and that is right: `roles` is written by a role,
+`role:support`, and not by the subject as such, which is the line between the two patterns.
+
 ---
 
 ## 4. What the engine must not report
@@ -270,9 +301,12 @@ legitimate finding for another.
 | 7 | `allow_defensive` | 004, 005 | for 005 the error is handled; for 004 the value reaches the decision only under a `not` |
 | 8 | `allow_positive_side` | 005 | fail-closed, this is availability. **For 004 it is a finding**, because the content of the answer grants |
 | 9 | `data.users.{owner}.profile.*` | 001 | writable, but no decision reads it |
+| 10 | `withdraw` on `"admin" in ...roles` | 006 | support cannot assign `admin`, so no allowed write reaches the branch |
 
 Expected precision: **one `PTD_CanEscalateTo`** (mallory), **seven findings and one candidate**,
-and none of the rows above under the pattern they belong to.
+and none of the rows above under the pattern they belong to. Once `PTD-OPA-006` is implemented
+the count grows by exactly one of each: the escalation from `carol` to `alice`, which is also its
+finding.
 
 The seven: one from 001, one from 002, two from 004 (section 3), two from 005, and mallory's
 escalation, which comes out under the id of 003 because that is where the registry says a
@@ -339,11 +373,11 @@ own would report in both cases.
 The registry rests on one claim: **if `regal` can find it by reading a file, it is not a
 pattern.**
 
-Run on 2026-08-03 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant here, but worth
+Run on 2026-09-14 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant here, but worth
 saying):
 
 ```
-regal lint fixtures/vulnerable-bundle/policy-v1   →  4 files linted. No violations found.
+regal lint fixtures/vulnerable-bundle/policy-v1   →  6 files linted. No violations found.
 ```
 
 The rule categories were confirmed **at the source**, by listing the directories in the pinned
@@ -428,7 +462,7 @@ path with the index as a capture.
 | path read by the decisions | covered |
 |---|---|
 | `data.users.{u}.profile.department` | ✅ writable by `{owner}` |
-| `data.users.{u}.roles` | ✅ writable by `role:admin` |
+| `data.users.{u}.roles` | ✅ writable by `role:admin` and `role:support` |
 | `data.projects.{p}.members` | ✅ writable by `owner_of:{project}` |
 | `data.tenants.{t}.policy.require_mfa` | ✅ written by `system:provisioning` |
 | `data.tenants.{t}.status` | ❌ |
@@ -480,6 +514,10 @@ opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy
 
 ```bash
 opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f raw 'data.quill.verify.chain_after'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.split_grant'
 ```
 
 Dual parsing, where the first has to pass and the second has to fail:

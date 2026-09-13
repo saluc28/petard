@@ -27,8 +27,9 @@ allow if {
 }
 
 # PTD-OPA-001 COUNTER CASE, same record, a field the subject does NOT write.
-# roles[] is written by an administrator alone. Signal 2 fires (the reference
-# is indexed by the subject) and signal 4 does not: no finding.
+# roles[] is assigned through the administration API, by a role rather than by
+# the subject as such. Signal 2 fires (the reference is indexed by the subject)
+# and signal 4 does not: no finding.
 allow if {
 	input.action == "read"
 	"admin" in data.users[input.user].roles

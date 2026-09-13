@@ -84,8 +84,8 @@ only generated ground truth makes that visible.
 
 ## The taxonomy
 
-Five patterns live in `taxonomy-registry/`, which is versioned data rather than code, and are
-implemented against the fixture in `internal/taxonomy`. The registry is the source of truth;
+Six patterns live in `taxonomy-registry/`, which is versioned data rather than code, and five of
+them are implemented against the fixture in `internal/taxonomy`. The registry is the source of truth;
 these are one-line glosses.
 
 | ID | What it looks for |
@@ -95,9 +95,10 @@ these are one-line glosses.
 | `PTD-OPA-003` | a position in a hierarchy grants everything below it, and nothing says so |
 | `PTD-OPA-004` | a decision depends on an external source, so whoever controls it decides |
 | `PTD-OPA-005` | a check that needs an external source stops applying when it does not answer |
+| `PTD-OPA-006` | one decision lets a principal write the data another decision grants on; documented, not implemented yet |
 
-Only one claim in there deserves the words privilege escalation, and it comes from chaining two
-of them: on the fixture, `PTD-OPA-001` and `PTD-OPA-003` together produce a single
+Among the implemented ones, only one claim deserves the words privilege escalation, and it comes
+from chaining two of them: on the fixture, `PTD-OPA-001` and `PTD-OPA-003` together produce a single
 `PTD_CanEscalateTo`, from a principal who can write one field to the position of a principal who
 can read a whole subtree, naming the document to write and the endpoint to write it through. The
 value is not invented: the engine leaves that document unknown and asks OPA what is left of the

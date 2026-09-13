@@ -1,0 +1,252 @@
+schema_version: 1
+
+id: PTD-OPA-006
+name: write-allowed-by-another-decision
+title: One decision lets a principal write the data another decision grants on
+engine: opa
+status: draft
+
+category:
+  id: SPLIT-GRANT
+  title: A grant split across two decisions
+  summary: >
+    One decision governs who may change a piece of authorization data, and another decision
+    grants on that data. Each is reasonable on its own, and what they grant together appears in
+    neither. It is the shape of the methods Rhino Security Labs catalogued for AWS, where
+    `iam:PassRole` and `ec2:RunInstances` together hand somebody a role neither gives alone.
+    Abstract category: it holds wherever the authority to change what a policy reads is itself
+    decided by a policy.
+
+summary: >
+  A decision in the bundle lets a principal write a value into a document that a second decision
+  reads to grant. The principal does not hold that grant today; after a write the first decision
+  allows, they do.
+  In the fixture, support staff may assign the roles viewer and editor to anybody, themselves
+  included, and editors may publish. `carol` holds support, cannot publish, and can make herself
+  an editor.
+  The finding is not that either decision is wrong. It is that nobody reads them together.
+
+preconditions:
+  - capability: The principal holds what the first decision requires to allow the write
+    note: >
+      In the fixture, the role `support`. Nothing else: no administrator, no second account.
+  - capability: The first decision allows writing a value the second decision grants on
+    note: >
+      Into a document the second decision reads for that principal: their own record, when the
+      assignment is allowed for anybody, themselves included.
+  - capability: The endpoint that performs the write consumes the first decision
+    note: >
+      Both decisions are served by the same bundle, or by bundles analyzed together. A write
+      authorized outside OPA is the territory of the write model alone.
+
+mechanism:
+  description: >
+    Rego has no notion of a write. A decision about an assignment endpoint and a decision about
+    publishing are two unrelated rules that happen to read and govern the same document, and
+    nothing in either file points at the other: the link is in the system around OPA, where one
+    PEP asks the first decision before writing and another asks the second before granting.
+  example: |
+    package quill
+
+    # the decision the PEP of PUT /api/v1/users/{id}/roles consumes
+    default allow_assign := false
+
+    allow_assign if {
+        input.action == "assign_role"
+        "support" in data.users[input.user].roles
+        input.role in {"viewer", "editor"}
+    }
+
+    # the decision the PEP of POST /api/v1/documents/{id}/publish consumes
+    default allow_publish := false
+
+    allow_publish if {
+        input.action == "publish"
+        "editor" in data.users[input.user].roles
+    }
+  example_note: >
+    Both rules compile without a warning and each does exactly what it says. With
+    `data.users.carol.roles` as ["support"], carol is allowed to assign editor and is not allowed
+    to publish; with ["support", "editor"] she publishes.
+    The example keeps both decisions in one package so that it fits one module. In the fixture
+    they are two packages, which is the realistic form: two files, written and reviewed apart.
+
+detection:
+  ast_source: compiled
+  requires:
+    - binding-resolution
+    - rule-graph
+    - concrete-data
+  signals:
+    - order: 1
+      check: >
+        A decision reads a path in `data` whose index derives from the subject, in granting
+        position: the first three signals of `PTD-OPA-001`, unchanged.
+      rationale: >
+        The read is where the grant depends on a document, and it is the same read 001 starts
+        from. What differs is who the write model says writes it.
+    - order: 2
+      check: >
+        The write model covers that path with a writer that is not a capture of the path, and
+        names the decision of the bundle that the writing endpoint consumes.
+      rationale: >
+        A role or a system writing a field is what 001 deliberately leaves alone. What this
+        pattern adds is that the rules deciding what that role may write are in the bundle, and
+        can be asked. The format of the write model has no field for naming that decision yet:
+        see the open questions.
+    - order: 3
+      check: >
+        Partially evaluate the granting decision for each principal with that principal's
+        document left unknown, and collect the constant values the residual conditions compare
+        the document against.
+      rationale: >
+        These are the values that would grant, taken from OPA's answer rather than from reading
+        the policy: on the fixture, "editor" for publish and "admin" for withdraw. Collecting the
+        constants of a residual is structural; it does not interpret what the condition means.
+    - order: 4
+      check: >
+        Ask the first decision, for the same principal, whether writing each of those values into
+        their document is allowed.
+      rationale: >
+        This is what separates the case from the counter case: support may write editor and may
+        not write admin, so the withdraw branch is never reached. Without this signal the pattern
+        would report every branch that reads a field somebody can write.
+    - order: 5
+      check: >
+        Evaluate the granting decision again with the document holding an allowed value, and
+        report the principals it grants now and did not grant before.
+      rationale: >
+        The whole decision is evaluated, not the branch, so any other condition the decision
+        imposes still applies. A principal who already held the grant is not reported: for them
+        the write changes nothing.
+  confidence: C
+  confidence_note: >
+    As for `PTD-OPA-001`, the claim rests on the recognition of the subject, which on the fixture
+    is D, a guess on field names. The link between the endpoint and the first decision is
+    declared in the write model, which makes it asserted rather than inferred.
+  requires_write_model: true
+  requires_write_model_note: >
+    The pattern cannot run without it: nothing in either decision says that one governs a write
+    the other depends on.
+
+graph:
+  emits: finding
+  emits_note: >
+    A finding once the write model names the decision behind the write, since at that point every
+    step is an answer OPA gave. Without the model, the reads of signal 1 are what 001 already
+    reports as candidates, and this pattern adds nothing to them.
+  edge: PTD_CanEscalateTo
+  from: PTD_Principal
+  to: PTD_Principal
+  traversable: true
+  traversable_note: >
+    Traversable for the same reason as the escalation of the 001 to 003 chain: the principal can
+    take the position, through a write the bundle allows. The target is a principal who holds the
+    granting value today; on the fixture, `alice`, the editor.
+  properties:
+    - via_write_path: the entry of the write model the write goes through
+    - authorized_by: the decision the writing endpoint consumes
+    - value: the value written
+    - decision: the decision that grants after the write
+
+false_positives:
+  - condition: >
+      The first decision allows the write, but the system around OPA adds a step it does not
+      show: an approval, a ticket, a second person.
+    discriminator: >
+      Declared in the note of the writer in the write model, as for any other write path. The
+      finding stays, with the step next to it, because an approval nobody audits is still the only
+      thing between the principal and the grant.
+  - condition: >
+      The first decision allows assigning the role to anybody, and the endpoint refuses to let a
+      principal assign it to themselves.
+    discriminator: >
+      If the decision reads the target of the write and compares it to the subject, signal 4
+      answers no by itself. If the check lives only in the endpoint, the declaration belongs in
+      the write model. Two principals holding the first capability can still assign each other,
+      which makes the escalation need two accounts rather than one.
+  - condition: >
+      The combination is intended: support staff are meant to be able to publish.
+    discriminator: >
+      Intent is in no dataset. A list of known delegations, versioned next to the write model,
+      keeps them in the report and out of the noise.
+  - condition: >
+      The granting decision also depends on other data the principal does not control, such as a
+      tenant or a classification.
+    discriminator: >
+      Signal 5 evaluates the whole decision with the written value, so a condition that still
+      does not hold leaves the principal unreported.
+
+not_a_lint_rule: >
+  Each file is correct and idiomatic on its own, and a linter reads one file at a time. The defect
+  is in the composition of two decisions through a document neither of them owns, and in a fact
+  found only in the system around OPA: that one of them governs the write the other depends on.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  case: >
+    `admin.rego` lets support staff assign viewer and editor to anybody, themselves included.
+    `publish.rego` lets editors publish. `carol` holds support.
+  expected_edge: >
+    PTD_CanEscalateTo from carol to alice, the principal who holds editor, through
+    data.users.{owner}.roles, authorized by data.quill.admin.allow, for data.quill.publish.allow.
+  expected_note: >
+    The counter case is the withdraw branch of the same decision, which grants on admin: the
+    assignment decision does not let support write admin, so no allowed write reaches it.
+
+references:
+  - title: Rhino Security Labs, AWS IAM privilege escalation methods
+    note: >
+      RhinoSecurityLabs/AWS-IAM-Privilege-Escalation, README.md at commit
+      9ea10d3b31255a3a989b1a5cf2fade2fd29ea466, checked on 2026-09-14. Method 3, "Creating an EC2
+      instance with an existing instance profile", needs `iam:PassRole` and `ec2:RunInstances`
+      together. A framing reference: the same shape, two grants that do not escalate apart.
+  - title: regal, rule categories
+    note: Checked on 2026-08-01 and again at the source of v0.42.0, no `security` category.
+
+verified:
+  date: 2026-09-14
+  tool_version: opa 1.20.2
+  how: >
+    The example was run with opa 1.20.2 and 1.19.0, with the same results: `opa check` accepts it
+    without a warning; with carol holding support, allow_assign is true for editor and
+    allow_publish is false; with roles ["support", "editor"], allow_publish is true.
+    On the fixture, `data.quill.verify.split_grant`: carol does not publish as the data stands;
+    the assignment decision allows her editor and not admin; with roles ["support", "editor"] she
+    publishes and still cannot withdraw.
+    Adding the two decisions leaves every result of the five implemented patterns where it was:
+    seven findings, one candidate and one `PTD_CanEscalateTo`, with the write model covering 4 of
+    9 paths. `PTD-OPA-001` reports nothing on `roles`, which a role writes and the subject does
+    not.
+    regal v0.42.0 reports no violations on `policy-v1`.
+    Nothing in the engine looks for this pattern yet, which is why the status is `draft`.
+
+related:
+  - id: PTD-OPA-001
+    note: >
+      The boundary. 001 is the subject writing their own field, declared as a capture of the
+      path. 006 is a role writing the field for anybody, the subject included, with the decision
+      that allows it in the bundle. The same read can be the start of either.
+  - id: PTD-OPA-003
+    note: >
+      Could chain as 001 does: a write the first decision allows could open a position in a
+      hierarchy rather than a flat grant. Not in the fixture.
+
+open_questions:
+  - question: >
+      How does the write model name the decision an endpoint consumes?
+    note: >
+      Today the link is prose in the note of the writer. It needs a field, and a way of saying
+      which part of the request carries the value and the target, since the decision reads them
+      from input while the write model speaks of paths.
+  - question: >
+      Are the constants of a residual always the values that grant?
+    note: >
+      For a comparison with a literal, yes. A decision that grants on a value computed from other
+      data leaves nothing to collect, and signal 3 then has a declared false negative.
+  - question: >
+      What about two principals holding the first capability?
+    note: >
+      When the first decision forbids assigning to oneself, two support accounts can still assign
+      each other. Whether that is reported, and at what confidence, is not decided.

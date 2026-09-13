@@ -75,6 +75,7 @@ func TestAddWritePathsOnlyNamesRealEntities(t *testing.T) {
 	expected := []string{
 		"data.tenants[_].policy.require_mfa -> system:provisioning",
 		"data.users[_].roles -> role:admin",
+		"data.users[_].roles -> role:support",
 	}
 	if !slices.Equal(written, expected) {
 		t.Errorf("write edges = %v, want %v", written, expected)

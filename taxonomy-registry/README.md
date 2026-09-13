@@ -16,7 +16,7 @@ Two checks say what is not covered elsewhere.
 `imports`, `performance`, `style`, `testing`, confirmed at the source of v0.42.0 by listing the
 rule directories rather than reading them off a documentation page. The official linter of the
 OPA ecosystem, written by the maintainers, has no notion of "this Rego is dangerous". And
-`regal lint` on the fixture, which holds the case and the counter case of all five patterns,
+`regal lint` on the fixture, which holds the case and the counter case of all six patterns,
 reports zero violations.
 
 **OPA's security documentation is about the server, not about the policy.** It covers TLS,
@@ -157,6 +157,7 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-003` | TRANSITIVE-GRANT | opa | candidate | B | `implemented`, and it chains with 001, which is where a route comes from |
 | `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `implemented`, and the one that exercises taint |
 | `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `implemented`, with the lowest precondition: no attacker needed |
+| `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `draft`, with the case and the counter case in the fixture and nothing in the engine yet |
 
 Between them the five exercise `binding-resolution`, `concrete-data`, `rule-graph` and `taint`.
 
@@ -242,16 +243,15 @@ that line, with a write model that says who writes what.
 ### The fixture
 
 `fixtures/vulnerable-bundle/` holds a case **and at least one counter case** for each of the
-five, in Rego v1 and v0, with the write model and an `EXPECTED.md` that declares in words what
+six, in Rego v1 and v0, with the write model and an `EXPECTED.md` that declares in words what
 the engine has to find and what it must not. The numbers there are executed, not estimated.
 
 ### Candidates not yet written
 
-Three, and the registry is the only place they are listed. A candidate nobody wrote down here is
+Two, and the registry is the only place they are listed. A candidate nobody wrote down here is
 a candidate nobody finds again.
 
 | Candidate | What is unresolved |
 |---|---|
-| Role hierarchy expansion with no upper bound | The weakest of the three. To be decided whether it deserves a file of its own or is a property of `PTD-OPA-003` |
-| Privilege creep: chains across different policies that together grant an action neither grants alone | The only one that does not start from a single rule, which makes it the test of the schema: if the schema holds this, it holds nearly anything |
+| Role hierarchy expansion with no upper bound | The weaker of the two. To be decided whether it deserves a file of its own or is a property of `PTD-OPA-003` |
 | `every` over an empty collection is true, so a check written with `every` stops applying exactly when there is nothing to apply it to | The same shape as `PTD-OPA-002` on another axis. Probably a third OPA instance of `FAIL-OPEN-ON-ABSENCE`, but first it has to be shown that its signals do not overlap those of 002 and 005, otherwise it is a pattern the registry already holds, written out a third time |

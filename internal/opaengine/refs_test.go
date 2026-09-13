@@ -72,12 +72,12 @@ func TestReadsFindsExactlyTheDeclaredPaths(t *testing.T) {
 
 // The second measure, kept apart from the first on purpose.
 //
-// Seven of the ten reads name a document the caller of the decision chooses.
-// The other three are chosen by the data: two index data.projects with a
-// project that comes out of ancestors_of, which walks the hierarchy stored in
+// Eleven of the fourteen reads name a document the caller of the decision
+// chooses. The other three are chosen by the data: two index data.projects with
+// a project that comes out of ancestors_of, which walks the hierarchy stored in
 // data, and one iterates over data.projects in the head of parent_of.
 //
-// None of the three is unresolved, and that matters as much as the seven.
+// None of the three is unresolved, and that matters as much as the eleven.
 // "The data picks it" is an answer, and it excludes those reads from the self
 // write family with a reason; "I do not know" would leave them as maybes
 // forever.
@@ -93,7 +93,7 @@ func TestReadsSeparatesProvenanceFromDiscovery(t *testing.T) {
 	}
 
 	counts := map[Provenance]int{
-		ProvenanceInput:      7,
+		ProvenanceInput:      11,
 		ProvenanceData:       3,
 		ProvenanceUnresolved: 0,
 		ProvenanceBuiltin:    0,
@@ -110,8 +110,8 @@ func TestReadsSeparatesProvenanceFromDiscovery(t *testing.T) {
 	if len(reads.Reads) != total {
 		t.Errorf("reads = %d, but the provenances add up to %d", len(reads.Reads), total)
 	}
-	if len(reads.Reads) != 10 {
-		t.Errorf("reads = %d, want 10: nine distinct paths, one of which is read twice", len(reads.Reads))
+	if len(reads.Reads) != 14 {
+		t.Errorf("reads = %d, want 14: nine distinct paths, roles read five times and the department twice", len(reads.Reads))
 	}
 }
 
@@ -204,14 +204,16 @@ func TestReadsListsTheDecisions(t *testing.T) {
 		t.Fatalf("Reads() error = %v", err)
 	}
 
-	// Seven, not four: the three counter cases of PTD-OPA-005 are decisions
+	// Nine, not six: the three counter cases of PTD-OPA-005 are decisions
 	// the PEP consumes like the others. Leaving them unannotated made the
 	// engine ignore them, so "the engine must not flag allow_defensive" was
 	// satisfied for the wrong reason, and "it must flag allow_default_option"
 	// could not be satisfied at all.
 	expected := []string{
+		"data.quill.admin.allow",
 		"data.quill.authz.allow",
 		"data.quill.enrichment.allow",
+		"data.quill.publish.allow",
 		"data.quill.risk.allow_default_option",
 		"data.quill.risk.allow_defensive",
 		"data.quill.risk.allow_positive_side",

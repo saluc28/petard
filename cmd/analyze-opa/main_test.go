@@ -22,7 +22,7 @@ func TestRunReportsTheMeasures(t *testing.T) {
 	for _, expected := range []string{
 		"parsed as rego v1",
 		"data paths read by the decisions: 9",
-		"reads:                            10",
+		"reads:                            14",
 		"data.users[_].profile.department",
 		// The level travels with the shape: a guess about field names must not
 		// read like a declaration.

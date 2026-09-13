@@ -12,7 +12,7 @@
     },
     "carol": {
       "tenant": "dolm",
-      "roles": ["viewer"],
+      "roles": ["support"],
       "profile": {"department": "sales"}
     },
     "dave": {

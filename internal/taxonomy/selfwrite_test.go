@@ -169,8 +169,8 @@ func TestLoadRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadRegistry() error = %v", err)
 	}
-	if len(patterns) != 5 {
-		t.Errorf("patterns = %d, want the five of the registry", len(patterns))
+	if len(patterns) != 6 {
+		t.Errorf("patterns = %d, want the six of the registry", len(patterns))
 	}
 
 	pattern, ok := Find(patterns, AttrSelfWrite)

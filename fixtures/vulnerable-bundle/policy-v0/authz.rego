@@ -21,7 +21,7 @@ allow {
 	data.users[input.user].profile.department == "security"
 }
 
-# PTD-OPA-001 COUNTER CASE, roles[] is not written by the subject
+# PTD-OPA-001 COUNTER CASE, roles[] is assigned by a role, not by the subject
 allow {
 	input.action == "read"
 	"admin" in data.users[input.user].roles

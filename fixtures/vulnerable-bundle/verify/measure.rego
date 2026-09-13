@@ -75,3 +75,30 @@ coverage := {
 	"status_covered": count(status_covered),
 	"status_uncovered": tenant_keys - status_covered,
 }
+
+# --- PTD-OPA-006: a write one decision allows, a grant another one makes -----
+# carol holds support and not editor. The role assignment decision lets her
+# assign editor, to herself too, and not admin.
+carol_publishes := {"user": "carol", "action": "publish", "doc": "d-t21-1"}
+
+carol_withdraws := {"user": "carol", "action": "withdraw", "doc": "d-t21-1"}
+
+carol_assigns_editor := {"user": "carol", "action": "assign_role", "target": "carol", "role": "editor"}
+
+carol_assigns_admin := {"user": "carol", "action": "assign_role", "target": "carol", "role": "admin"}
+
+split_grant := {
+	"publish_before": publish_before,
+	"assign_editor": assign_editor,
+	"assign_admin": assign_admin,
+	"publish_after": publish_after,
+	"withdraw_after": withdraw_after,
+} if {
+	publish_before := data.quill.publish.allow with input as carol_publishes
+	assign_editor := data.quill.admin.allow with input as carol_assigns_editor
+	assign_admin := data.quill.admin.allow with input as carol_assigns_admin
+	publish_after := data.quill.publish.allow with input as carol_publishes
+		with data.users.carol.roles as ["support", "editor"]
+	withdraw_after := data.quill.publish.allow with input as carol_withdraws
+		with data.users.carol.roles as ["support", "editor"]
+}

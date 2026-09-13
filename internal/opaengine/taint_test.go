@@ -118,9 +118,9 @@ func TestTaintsOnFixture(t *testing.T) {
 
 			// The measure the fixture is checked against must not move because
 			// a second measure was added next to it: a tainted value names no
-			// document under data, so it is not one of the ten reads.
-			if len(reads.Reads) != 10 || len(reads.Paths()) != 9 {
-				t.Errorf("reads = %d over %d paths, want 10 over 9: taints must not be counted as reads",
+			// document under data, so it is not one of the fourteen reads.
+			if len(reads.Reads) != 14 || len(reads.Paths()) != 9 {
+				t.Errorf("reads = %d over %d paths, want 14 over 9: taints must not be counted as reads",
 					len(reads.Reads), len(reads.Paths()))
 			}
 
