@@ -140,9 +140,25 @@ The same analysis as a BloodHound OpenGraph payload:
 go run ./cmd/export-opengraph -out graph.json -write-model fixtures/vulnerable-bundle/write-model.yaml -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
 ```
 
-Add `-url` with `-install` and `-upload` to install the schema and run the ingest job. The
-credentials come from `BLOODHOUND_TOKEN_ID` and `BLOODHOUND_TOKEN_KEY` and cannot be passed as
-flags: a token on a command line ends up in the shell history and in the process list.
+Against a real instance, with the schema installed, the payload ingested, and the server asked
+whether it can walk what was just uploaded:
+
+```
+go run ./cmd/export-opengraph -url https://bloodhound.example -install -upload -verify -write-model fixtures/vulnerable-bundle/write-model.yaml -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
+```
+
+`-verify` is the one that answers the question the rest only sets up. For every
+`PTD_CanEscalateTo` in the payload it asks BloodHound for the shortest path between the two
+principals, with `only_traversable`, and fails if the server will not walk one. A graph that
+claims a path nobody can take is the single thing this tool must not produce.
+
+It refuses to run when the `opengraph_extension_management` feature flag is off. With it off,
+pathfinding answers from the built-in AD and Azure kinds alone and says "path not found"
+whether or not the path is there, so the check would report a confident no for the wrong
+reason.
+
+The credentials come from `BLOODHOUND_TOKEN_ID` and `BLOODHOUND_TOKEN_KEY` and cannot be passed
+as flags: a token on a command line ends up in the shell history and in the process list.
 
 ## Layout
 
@@ -163,10 +179,10 @@ fixtures/             the bundle written by hand, in Rego v1 and v0
 
 ## Not built yet
 
-The proof that the round trip works. The payload, the schema, the signed install and the
-three-call ingest are written and tested against a server that behaves like the API, but nobody
-has yet watched BloodHound's own pathfinding walk the escalation of the fixture. That is the
-criterion, and it needs the stack running.
+The proof that the round trip works. Everything up to and including the question is written and
+tested against a server that answers the way the API does, `-verify` included, but no real
+BloodHound has answered it yet. Until one does, "the escalation is walkable" is something this
+repository knows how to ask and not something it has been told.
 
 Cedar as a second engine, which is what the engine-neutral model exists for.
 

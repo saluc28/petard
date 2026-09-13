@@ -2,9 +2,10 @@
 //
 // It runs the same analysis analyze-opa reports on, assembles the internal
 // graph, and writes it as an ingest payload. Pointed at a BloodHound instance
-// it can also install the extension definition schema and run the ingest job,
-// which is what turns a set of findings into a path somebody can walk in the
-// UI.
+// it can also install the extension definition schema, run the ingest job, and
+// ask the server to walk the escalations it just uploaded, which is the only
+// answer that says the round trip works rather than that every step returned
+// 200.
 //
 // The credentials are read from the environment and cannot be passed as flags.
 // A token on a command line ends up in the shell history and in the process
@@ -15,16 +16,20 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/saluc28/bhgraph"
 	"github.com/saluc28/bhgraph/client"
 
+	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
@@ -83,6 +88,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	url := flags.String("url", "", "base url of the BloodHound API; without it nothing is sent")
 	install := flags.Bool("install", false, "install the extension definition schema before uploading")
 	upload := flags.Bool("upload", false, "upload the payload as an ingest job")
+	verify := flags.Bool("verify", false, "ask the server to walk every escalation the payload declares")
+	wait := flags.Duration("wait", 2*time.Minute, "how long to wait for the ingest to be processed")
 
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
@@ -96,12 +103,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "export-opengraph: -rego-v0 and -rego-v1 ask for opposite things")
 		return exitUsage
 	}
-	if (*install || *upload) && *url == "" {
-		fmt.Fprintln(stderr, "export-opengraph: -install and -upload need -url")
+	if (*install || *upload || *verify) && *url == "" {
+		fmt.Fprintln(stderr, "export-opengraph: -install, -upload and -verify need -url")
 		return exitUsage
 	}
-	if *out == "" && !*install && !*upload {
-		fmt.Fprintln(stderr, "export-opengraph: nothing to do, give -out or -url with -install or -upload")
+	if *out == "" && !*install && !*upload && !*verify {
+		fmt.Fprintln(stderr, "export-opengraph: nothing to do, give -out or -url with -install, -upload or -verify")
 		return exitUsage
 	}
 
@@ -140,13 +147,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "written to %s\n", *out)
 	}
 
-	if *install || *upload {
-		if err := send(ctx, stdout, *url, payload, *install, *upload); err != nil {
+	if *install || *upload || *verify {
+		steps := remote{install: *install, upload: *upload, verify: *verify, wait: *wait}
+		if err := send(ctx, stdout, *url, payload, steps); err != nil {
 			fmt.Fprintf(stderr, "export-opengraph: %v\n", err)
 			return exitFailure
 		}
 	}
 	return exitOK
+}
+
+// remote is what the run is asked to do against the instance, kept together
+// because the steps have an order and a caller that passes three booleans in
+// the wrong slots gets a plausible looking run that proves nothing.
+type remote struct {
+	install bool
+	upload  bool
+	verify  bool
+	wait    time.Duration
 }
 
 // build runs the analysis and turns what it found into a payload BloodHound
@@ -195,13 +213,14 @@ func write(path string, payload bhgraph.Graph) error {
 	return os.WriteFile(path, append(encoded, '\n'), 0o600)
 }
 
-// send installs the schema and runs the ingest job, in that order.
+// send installs the schema, runs the ingest job and checks the result, in that
+// order.
 //
 // The order is the whole point rather than a preference: a payload whose kinds
 // no installed schema declares is accepted and then shows up as nodes the UI
 // cannot classify and edges pathfinding will not walk. Installing first is what
 // makes the graph structured instead of generic.
-func send(ctx context.Context, out io.Writer, url string, payload bhgraph.Graph, install, upload bool) error {
+func send(ctx context.Context, out io.Writer, url string, payload bhgraph.Graph, steps remote) error {
 	tokenID, tokenKey := os.Getenv(envTokenID), os.Getenv(envTokenKey)
 	if tokenID == "" || tokenKey == "" {
 		return fmt.Errorf("set %s and %s: a token on a command line ends up in the shell history", envTokenID, envTokenKey)
@@ -212,7 +231,19 @@ func send(ctx context.Context, out io.Writer, url string, payload bhgraph.Graph,
 		return err
 	}
 
-	if install {
+	// confirmed says the extension flag was read and is on. It stays false when
+	// the token could not read it, which changes nothing about what runs and
+	// everything about what a later "does not walk" is allowed to claim.
+	confirmed := false
+	if steps.install || steps.verify {
+		on, err := requireExtensions(ctx, out, api)
+		if err != nil {
+			return err
+		}
+		confirmed = on
+	}
+
+	if steps.install {
 		schema := opengraph.Schema()
 		if err := api.InstallExtension(ctx, schema); err != nil {
 			return fmt.Errorf("installing the schema: %w", err)
@@ -224,14 +255,170 @@ func send(ctx context.Context, out io.Writer, url string, payload bhgraph.Graph,
 			len(schema.TraversableKinds()), len(schema.RelationshipKinds))
 	}
 
-	if upload {
+	if steps.upload {
 		job, err := api.Ingest(ctx, payload)
 		if err != nil {
 			return fmt.Errorf("uploading: %w", err)
 		}
-		// The job id is the only handle on what happens next: ingest is
-		// asynchronous, and what went wrong surfaces later or not at all.
-		fmt.Fprintf(out, "ingest job %d started; ask BloodHound for its status\n", job)
+		fmt.Fprintf(out, "ingest job %d started\n", job)
+		if err := awaitJob(ctx, out, api, job, steps.wait); err != nil {
+			return err
+		}
+	}
+
+	if steps.verify {
+		return walkEscalations(ctx, out, api, payload, confirmed)
 	}
 	return nil
+}
+
+// requireExtensions refuses to go on when the extension management flag is off.
+//
+// It governs two things, and the second is the one that bites. The extensions
+// route is not registered without it, which fails loudly. Pathfinding also
+// ignores the kinds of an installed schema without it, and that fails quietly:
+// a shortest path query answers from the built-in AD and Azure kinds alone and
+// returns "path not found", which is indistinguishable from an escalation that
+// really is not walkable. A check that can answer no for the wrong reason is
+// worse than no check, so this is a refusal.
+//
+// It reports whether the flag was read and is on. A flag that could not be read
+// at all is not a refusal: reading the flags needs a role that can read the
+// application configuration, and a token without it gets a 403 here, which is a
+// weaker credential rather than a broken instance.
+func requireExtensions(ctx context.Context, out io.Writer, api *client.Client) (bool, error) {
+	on, err := api.FeatureEnabled(ctx, client.FeatureFlagExtensions)
+	if err != nil {
+		fmt.Fprintf(out, "could not read the %s flag, carrying on: %v\n", client.FeatureFlagExtensions, err)
+		return false, nil
+	}
+	if !on {
+		return false, fmt.Errorf("the %s feature flag is off: the extensions route is not registered and pathfinding "+
+			"would ignore these kinds. Turn it on under Administration, Early Access Features", client.FeatureFlagExtensions)
+	}
+	return true, nil
+}
+
+// awaitJob waits for the ingest to be processed.
+//
+// Ingest returning means the payload was accepted, not that the graph holds it:
+// processing is asynchronous, and a job that failed halfway looks exactly like
+// one that succeeded until somebody asks. The completed tasks endpoint lists a
+// task once it is done, with whatever errors it collected, so an empty list is
+// "still working" and a non-empty one is the answer.
+func awaitJob(ctx context.Context, out io.Writer, api *client.Client, job client.JobID, wait time.Duration) error {
+	deadline := time.Now().Add(wait)
+	for {
+		raw, err := api.JobStatus(ctx, job)
+		if err != nil {
+			return fmt.Errorf("asking about job %d: %w", job, err)
+		}
+
+		var body struct {
+			Data []struct {
+				FileName string   `json:"file_name"`
+				Errors   []string `json:"errors"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(raw, &body); err != nil {
+			return fmt.Errorf("reading the status of job %d: %w", job, err)
+		}
+
+		if len(body.Data) > 0 {
+			var failed []string
+			for _, task := range body.Data {
+				failed = append(failed, task.Errors...)
+			}
+			if len(failed) > 0 {
+				return fmt.Errorf("job %d finished with %d error(s): %s", job, len(failed), strings.Join(failed, "; "))
+			}
+			fmt.Fprintf(out, "job %d processed %d file(s) with no errors\n", job, len(body.Data))
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			return fmt.Errorf("job %d has not been processed after %s: raise -wait, or ask BloodHound directly", job, wait)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(jobPollInterval):
+		}
+	}
+}
+
+// jobPollInterval is how often awaitJob asks again. It is a variable rather
+// than a constant so that the test which exercises the waiting can shrink it:
+// a test that really slept two seconds to prove a loop works would be paid for
+// on every run forever.
+var jobPollInterval = 2 * time.Second
+
+// walkEscalations asks the server to walk every escalation the payload declares.
+//
+// This is the criterion the whole export exists for. Everything before it can
+// succeed on an instance where the graph is present and unwalkable: the schema
+// installs, the ingest is accepted, the nodes appear, and pathfinding still
+// refuses to cross an edge it was not told it may cross. Only asking for the
+// path answers that, and asking with only_traversable is what makes the answer
+// mean anything, since without it the server would happily walk edges the UI
+// never will.
+//
+// The ids come from the payload, which build already uppercased. BloodHound
+// uppercases object ids on the generic ingest path unless use_raw_object_id is
+// on, so ids that are already uppercase match either way.
+func walkEscalations(ctx context.Context, out io.Writer, api *client.Client, payload bhgraph.Graph, flagConfirmed bool) error {
+	escalation := string(graph.EdgeKindCanEscalateTo)
+
+	var edges []bhgraph.Edge
+	for _, edge := range payload.Edges {
+		if edge.Kind == escalation {
+			edges = append(edges, edge)
+		}
+	}
+	if len(edges) == 0 {
+		fmt.Fprintf(out, "no %s to walk: the analysis found no escalation to check\n", escalation)
+		return nil
+	}
+
+	walked := 0
+	for _, edge := range edges {
+		from, to := edge.Start.Value, edge.End.Value
+		switch _, err := api.ShortestPath(ctx, from, to, true); {
+		case err == nil:
+			walked++
+			fmt.Fprintf(out, "  %s -> %s: pathfinding walks it\n", from, to)
+		case isNotFound(err):
+			// A 404 here is an answer and not a failure: the server looked and
+			// found nothing between those two nodes.
+			fmt.Fprintf(out, "  %s -> %s: pathfinding does not walk it\n", from, to)
+		default:
+			return fmt.Errorf("asking for the path %s -> %s: %w", from, to, err)
+		}
+	}
+
+	fmt.Fprintf(out, "%d of %d escalations are walkable in BloodHound\n", walked, len(edges))
+	if walked == len(edges) {
+		return nil
+	}
+
+	failure := fmt.Sprintf("%d escalation(s) the analysis emitted cannot be walked, so the graph says something the server does not",
+		len(edges)-walked)
+	if !flagConfirmed {
+		// The flag could not be read, and with it off pathfinding answers from
+		// the built-in kinds alone. Naming that here is the difference between
+		// a finding and a wrong finding.
+		failure += fmt.Sprintf(" (the %s flag could not be read, and with it off this is what the server answers "+
+			"whether or not the path exists)", client.FeatureFlagExtensions)
+	}
+	return errors.New(failure)
+}
+
+// isNotFound reports whether the server answered 404.
+//
+// The shortest path endpoint returns 404 "path not found" when there is no
+// path, rather than an empty graph, so this is how a result is told from a
+// transport or credential problem.
+func isNotFound(err error) bool {
+	var apiErr *client.APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
 }

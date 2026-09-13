@@ -61,7 +61,10 @@ to find and what it must not, and it was written before the engine: changing it
 to match a new result turns the criterion into a description of whatever the
 code happens to do.
 
-The end-to-end run against a live BloodHound is manual and not in CI.
+The end-to-end run against a live BloodHound is manual and not in CI. It is
+`export-opengraph -url ... -install -upload -verify`, it needs the
+`opengraph_extension_management` feature flag on, and if you run it, say in the
+pull request which BloodHound version answered.
 
 ## Changing a pattern
 
