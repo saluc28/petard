@@ -147,6 +147,9 @@ whether it can walk what was just uploaded:
 go run ./cmd/export-opengraph -url https://bloodhound.example -install -upload -verify -write-model fixtures/vulnerable-bundle/write-model.yaml -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
 ```
 
+On the fixture, against BloodHound CE 9.7.0, the one escalation the analysis emits comes back
+walkable: `MALLORY -> DAVE`.
+
 `-verify` is the one that answers the question the rest only sets up. For every
 `PTD_CanEscalateTo` in the payload it asks BloodHound for the shortest path between the two
 principals, with `only_traversable`, and fails if the server will not walk one. A graph that
@@ -178,11 +181,6 @@ fixtures/             the bundle written by hand, in Rego v1 and v0
 ```
 
 ## Not built yet
-
-The proof that the round trip works. Everything up to and including the question is written and
-tested against a server that answers the way the API does, `-verify` included, but no real
-BloodHound has answered it yet. Until one does, "the escalation is walkable" is something this
-repository knows how to ask and not something it has been told.
 
 Cedar as a second engine, which is what the engine-neutral model exists for.
 
