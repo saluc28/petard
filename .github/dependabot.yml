@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "ci"]
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The Go dependencies are few and each one is load bearing: OPA is the parser
+  # and the evaluator, bhgraph is what BloodHound accepts, yaml reads the
+  # registry and the write model. Grouped, because a week where two of them move
+  # is one review and not three.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    labels: ["dependencies"]
+    groups:
+      go:
+        patterns: ["*"]

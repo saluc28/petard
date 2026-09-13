@@ -1,0 +1,98 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # A weekly run catches vulnerabilities disclosed after the last commit.
+    # This one has dependencies, so the findings can come from anywhere in the
+    # tree and not only from the standard library.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+  # For the workflow-run endpoint CodeQL reads to send its status report. A
+  # private repository does not grant it by default, and without it the log
+  # carries a "Resource not accessible by integration" warning that is easy to
+  # mistake for the cause of a failure. It is not one: see the note on the jobs.
+  actions: read
+
+# The gosec and CodeQL jobs both end by uploading SARIF to code scanning, which
+# GitHub provides free on public repositories and, on private ones, only with
+# Advanced Security. On a private repository the analysis runs, succeeds, and
+# then fails at the upload with "Code scanning is not enabled for this
+# repository", which reads like a broken workflow rather than a missing feature.
+# So both skip unless the repository is public. When the visibility cannot be
+# read from the event payload they run anyway, because being public is the case
+# that matters. govulncheck uploads nothing and always runs.
+jobs:
+  govulncheck:
+    name: Vulnerability check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: govulncheck
+        uses: golang/govulncheck-action@v1
+
+  gosec:
+    name: gosec
+    runs-on: ubuntu-latest
+    if: github.event.repository.private != true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # This reads files whose paths somebody else chose and builds
+      # authenticated HTTP requests to an instance somebody else runs, so a SAST
+      # pass over the file and network code earns its slot here.
+      # Pinned to a patch version, unlike every other action here: securego/gosec
+      # publishes no floating v2 tag, so @v2 does not resolve at all. Dependabot
+      # bumps it weekly.
+      # The exclusions are the ones .golangci.yml already carries, with the
+      # reasoning written there. gosec does not read that file, and without them
+      # the Security tab fills with twelve findings that were decided against
+      # once, which is how a tab becomes one nobody opens.
+      # No quotes and no path-scoped rule in here on purpose: the action's
+      # entrypoint expands its arguments unquoted, so a quoted value arrives at
+      # the binary with the quotes still on it and matches nothing. G104 is
+      # errcheck's beat anyway, and errcheck runs over the whole tree in the
+      # lint workflow with a rule gosec cannot express.
+      - name: gosec
+        uses: securego/gosec@v2.28.0
+        with:
+          args: -no-fail -exclude=G104,G304,G404 -fmt sarif -out gosec-results.sarif ./...
+
+      - name: Upload gosec results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: gosec-results.sarif
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    if: github.event.repository.private != true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: go
+          config-file: .github/codeql/codeql-config.yml
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4

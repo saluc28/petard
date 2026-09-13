@@ -1,0 +1,54 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.25 is the minimum declared in go.mod, so it has to be tested: it is
+        # the version that decides whether the compatibility claim is true.
+        # stable is what most people will actually be on.
+        go: ["1.25", "stable"]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+
+      # A go.mod or go.sum that tidy would change is a dependency somebody added
+      # without recording it, and the next person to run tidy gets it in a diff
+      # that has nothing to do with their change.
+      - name: Check the module files are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          test -z "$unformatted" || (echo "not gofmt-ed:" && echo "$unformatted" && exit 1)
+
+      - name: Build
+        run: go build ./...
+
+      # -race catches data races, -shuffle=on catches tests that only pass in
+      # the order they were written.
+      - name: Test
+        run: go test -race -shuffle=on -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        if: matrix.go == 'stable'
+        run: go tool cover -func=coverage.out | tail -n 1

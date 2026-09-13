@@ -1,0 +1,73 @@
+version: "2"
+
+# The linter set is deliberately small. A wall of style warnings gains nothing
+# and a noisy config is one people learn to skip. Everything enabled here can
+# fail a build without argument.
+linters:
+  enable:
+    # Correctness
+    - errcheck # unchecked errors
+    - govet
+    - staticcheck
+    - ineffassign # assignments that are never used
+    - bodyclose # HTTP response bodies that are never closed
+    - errorlint # errors compared with == instead of errors.Is
+    - nilerr # returning nil when err is not nil
+
+    # Clarity
+    - unused
+    - misspell
+    - unconvert # redundant type conversions
+    - wastedassign
+    - copyloopvar
+
+    # Security surface
+    - gosec
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    gosec:
+      excludes:
+        # G104: unhandled errors. That is errcheck's job, errcheck is enabled
+        # above, and it takes a per-path exclusion that gosec cannot express.
+        # Leaving both on means every unchecked error is reported twice and the
+        # narrower rule loses.
+        - G104
+        # G304: file inclusion via a variable. Reading a path somebody named on
+        # the command line is what this tool does: a policy bundle, a data
+        # directory, a write model. Every hit is that one, and leaving the rule
+        # on would teach us to skim the list.
+        - G304
+        # G404: weak random number generator. The world generator is seeded on
+        # purpose, because the same Params have to produce the same world, and
+        # crypto/rand cannot do that. It draws test data, never a secret.
+        - G404
+
+  exclusions:
+    rules:
+      # Tests deliberately ignore errors on paths whose failure is the point,
+      # and construct inputs that gosec reads as hardcoded credentials.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+
+      # The commands write to the stdout and stderr they were handed, and a
+      # failed write to those leaves nothing useful to do about it. The one
+      # thing written to a file is the payload, and that goes through
+      # os.WriteFile, whose error is returned.
+      - path: ^cmd/
+        linters:
+          - errcheck
+        text: 'fmt\.Fprint|\.Flush'
+
+issues:
+  # Nothing is hidden. The defaults cap a repeated finding at three, which turns
+  # a deprecation used in ten places into a list of three and an unfixed rest.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt

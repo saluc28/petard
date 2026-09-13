@@ -1,6 +1,10 @@
 package opaengine
 
-import "github.com/open-policy-agent/opa/v1/ast"
+import (
+	"fmt"
+
+	"github.com/open-policy-agent/opa/v1/ast"
+)
 
 // maxRefExpansion bounds how deep substituteRef keeps replacing a variable
 // with the term it stands for. Alias chains are cycle safe on their own, but a
@@ -11,9 +15,23 @@ const maxRefExpansion = 16
 // The two document roots. They are plain variables in the AST, but nothing
 // binds them and nothing should try to resolve them.
 var (
-	dataRoot  = ast.DefaultRootDocument.Value.(ast.Var)
-	inputRoot = ast.InputRootDocument.Value.(ast.Var)
+	dataRoot  = rootVar(ast.DefaultRootDocument)
+	inputRoot = rootVar(ast.InputRootDocument)
 )
+
+// rootVar reads the variable out of one of OPA's root document terms.
+//
+// Those terms are package level values of OPA's own and have been variables
+// since there was an AST, so the assertion cannot fail on any bundle. Naming it
+// is about the day it does: a bare assertion would panic at init with nothing
+// to go on, and this one says which term changed shape.
+func rootVar(term *ast.Term) ast.Var {
+	name, ok := term.Value.(ast.Var)
+	if !ok {
+		panic(fmt.Sprintf("opaengine: root document %v is a %T, not a variable", term, term.Value))
+	}
+	return name
+}
 
 // bindingKind says how a variable came to stand for something.
 type bindingKind int
