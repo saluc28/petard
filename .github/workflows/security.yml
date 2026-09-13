@@ -67,7 +67,7 @@ jobs:
       # errcheck's beat anyway, and errcheck runs over the whole tree in the
       # lint workflow with a rule gosec cannot express.
       - name: gosec
-        uses: securego/gosec@v2.28.0
+        uses: securego/gosec@v2.29.0
         with:
           args: -no-fail -exclude=G104,G304,G404 -fmt sarif -out gosec-results.sarif ./...
 
