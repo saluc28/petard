@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/open-policy-agent/opa v1.20.2
-	github.com/saluc28/bhgraph v0.2.1
+	github.com/saluc28/bhgraph v0.2.2
 	go.yaml.in/yaml/v3 v3.0.5
 )
 
