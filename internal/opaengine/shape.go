@@ -132,6 +132,16 @@ func recognizeAuthZEN(paths []string) (Shape, bool) {
 	if !hasSubject || !hasAction || !hasResource {
 		return Shape{}, false
 	}
+
+	// The standard makes the subject an object and names its identity: id is
+	// required, and is the unique identifier of the subject scoped to its type
+	// (api/authorization-api-1_0.md at v0.1.22 of openid/authzen). A document
+	// picked by the subject is picked by that field, so it is the subject when
+	// the policy reads it. Type and properties name no principal, so a policy
+	// that reads only those keeps the object.
+	if id, readsID := underPrefix(paths, subject+".id"); readsID {
+		subject = id
+	}
 	return Shape{
 		Subject:    subject,
 		Action:     action,

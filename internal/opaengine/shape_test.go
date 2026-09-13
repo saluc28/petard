@@ -15,6 +15,19 @@ func TestRecognizeShape(t *testing.T) {
 			name:       "the AuthZEN shape",
 			inputPaths: []string{"input.action.name", "input.context.time", "input.resource.id", "input.subject.id"},
 			expected: Shape{
+				Subject:    "input.subject.id",
+				Action:     "input.action",
+				Resource:   "input.resource",
+				Confidence: ConfidenceAuthZEN,
+				Recognizer: "authzen",
+			},
+		},
+		{
+			// Type and properties name no principal, so the subject stays the
+			// object when the policy never reads its id.
+			name:       "the AuthZEN shape without the id of the subject",
+			inputPaths: []string{"input.action.name", "input.resource.type", "input.subject.properties.department"},
+			expected: Shape{
 				Subject:    "input.subject",
 				Action:     "input.action",
 				Resource:   "input.resource",
@@ -102,6 +115,41 @@ func TestRecognizeShape(t *testing.T) {
 				t.Errorf("shape = %+v, want %+v", got, tt.expected)
 			}
 		})
+	}
+}
+
+// AuthZEN makes the subject an object and its id the identity, so a document
+// picked by data.users[input.subject.id] is picked by whoever is asking.
+func TestSubjectIndexedReadsUnderAuthZEN(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"policy.rego": `package authzen
+
+default allow["decision"] := false
+
+allow["decision"] if {
+	input.action.name == "can_delete_todo"
+	input.resource.properties.ownerID == data.users[input.subject.id].email
+}
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	bundle.Entrypoints = []string{"authzen/allow"}
+
+	reads, err := Reads(bundle, Limits{})
+	if err != nil {
+		t.Fatalf("Reads() error = %v", err)
+	}
+	shape := RecognizeShape(reads)
+	if shape.Subject != "input.subject.id" {
+		t.Fatalf("Subject = %q, want input.subject.id", shape.Subject)
+	}
+
+	indexed := SubjectIndexedReads(shape, reads)
+	if len(indexed) != 1 || indexed[0].Path != "data.users[_].email" {
+		t.Errorf("SubjectIndexedReads() = %v, want the read of data.users[_].email", indexed)
 	}
 }
 
