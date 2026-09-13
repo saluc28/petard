@@ -29,7 +29,7 @@ the rest of the rules, and `taxonomy-registry/SCHEMA.md` has the fields.
 
 ## Getting set up
 
-Go 1.25 or newer.
+Go 1.26 or newer, which is the floor OPA declares.
 
 ```
 go build ./...

@@ -15,10 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 1.25 is the minimum declared in go.mod, so it has to be tested: it is
-        # the version that decides whether the compatibility claim is true.
+        # The minimum declared in go.mod has to be tested: it is the version
+        # that decides whether the compatibility claim is true. It is not a
+        # choice, it is OPA's own floor, and it moves when OPA moves.
         # stable is what most people will actually be on.
-        go: ["1.25", "stable"]
+        go: ["1.26", "stable"]
 
     steps:
       - uses: actions/checkout@v7
