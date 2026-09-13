@@ -40,7 +40,9 @@ involved.
 Its starting points are the decisions: the rules the policy annotates as entrypoints, plus any
 the caller declares. Whole families of Rego annotate nothing, and that same corpus has no
 `# METADATA` block at all across its 142 files. The alternative to declaring the decision is
-guessing which rule a policy engine happens to query, so Petard stops instead of guessing.
+guessing which rule a policy engine happens to query, so Petard stops instead of guessing. A
+declared decision can also be the document that rules with a reference in their head build
+together, such as `authzen/allow` for rules written `allow["decision"]`.
 
 From the decisions it walks the rules they depend on, following calls into functions and
 leaving alone the expressions that mock the world with a `with` modifier, and reports:

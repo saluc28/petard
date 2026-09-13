@@ -24,8 +24,9 @@ import (
 // declare.
 var ErrNoDecisions = errors.New("opaengine: no rule is annotated as an entrypoint, and none was declared")
 
-// ErrNoSuchEntrypoint is returned when a declared entrypoint names no rule of
-// the bundle.
+// ErrNoSuchEntrypoint is returned when a declared entrypoint names neither a
+// rule of the bundle nor a document that rules with a reference in their head
+// build.
 //
 // A declaration that matches nothing is a mistake worth stopping for: taking it
 // as zero decisions would report a policy nobody looked at as a policy that
@@ -435,11 +436,32 @@ func entrypointRules(bundle *Bundle) ([]*ast.Rule, error) {
 		}
 		found := compiler.GetRulesExact(ref)
 		if len(found) == 0 {
+			found = documentRules(compiler, ref)
+		}
+		if len(found) == 0 {
 			return nil, fmt.Errorf("%w: %s", ErrNoSuchEntrypoint, declared)
 		}
 		keep(found)
 	}
 	return rules, nil
+}
+
+// documentRules returns the rules that build the document ref names when no
+// rule has that exact path.
+//
+// A rule whose head is a reference reaches past the name it starts with:
+// allow["decision"] builds data.authzen.allow, and opa build takes that
+// document as an entrypoint. A package is a document as well, but the rules
+// under it are the whole policy rather than one decision, so only the rules of
+// a package shorter than ref are kept and a package stays refused.
+func documentRules(compiler *ast.Compiler, ref ast.Ref) []*ast.Rule {
+	var rules []*ast.Rule
+	for _, rule := range compiler.GetRulesWithPrefix(ref) {
+		if len(rule.Module.Package.Path) < len(ref) {
+			rules = append(rules, rule)
+		}
+	}
+	return rules
 }
 
 // entrypointRef turns a declared decision into the reference that names it.

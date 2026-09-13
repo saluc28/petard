@@ -462,6 +462,36 @@ func TestReadsFromADeclaredEntrypoint(t *testing.T) {
 	}
 }
 
+// A decision can be a document that rules with a reference in their head build
+// together, the way allow["decision"] builds data.authzen.allow. opa build takes
+// that document as an entrypoint, so it is taken here too.
+func TestReadsFromADeclaredDocumentBuiltByRefHeads(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"policy.rego": `package authzen
+
+default allow["decision"] := false
+
+allow["decision"] if "admin" in data.users[input.subject.id].roles
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	bundle.Entrypoints = []string{"authzen/allow"}
+
+	reads, err := Reads(bundle, Limits{})
+	if err != nil {
+		t.Fatalf("Reads() error = %v", err)
+	}
+	if !slices.Equal(reads.Decisions, []string{"data.authzen.allow.decision"}) {
+		t.Errorf("Decisions = %v, want the rules that build the document", reads.Decisions)
+	}
+	if !slices.Equal(reads.Paths(), []string{"data.users[_].roles"}) {
+		t.Errorf("Paths() = %v, want the read indexed by the subject", reads.Paths())
+	}
+}
+
 // A declaration that matches nothing is a typo, and taking it as zero decisions
 // would report a policy nobody looked at as a policy that reads nothing.
 func TestReadsRefusesEntrypointsItCannotUse(t *testing.T) {
@@ -472,6 +502,7 @@ func TestReadsRefusesEntrypointsItCannotUse(t *testing.T) {
 	}{
 		{name: "names no rule", declared: "data.t.allow", expected: ErrNoSuchEntrypoint},
 		{name: "names a rule of no package", declared: "violation", expected: ErrNoSuchEntrypoint},
+		{name: "names a package rather than a document in it", declared: "data.t", expected: ErrNoSuchEntrypoint},
 		{name: "names more than one document", declared: "data.t.violation[_]", expected: ErrBadEntrypoint},
 		{name: "is not a reference at all", declared: "data.t.", expected: ErrBadEntrypoint},
 	}
