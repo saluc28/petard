@@ -1,0 +1,7 @@
+.DS_Store
+Thumbs.db
+
+# What the documented commands leave in the working tree: the coverage profile
+# the test step writes, and the payload the README example exports.
+coverage.out
+graph.json

@@ -1,0 +1,8 @@
+name: Petard CodeQL config
+
+queries:
+  - uses: security-and-quality
+
+# Nothing is excluded. Every Go package here is either the analysis or a command
+# that drives it, and the fixtures CodeQL would have no interest in are Rego and
+# JSON, which it does not read.

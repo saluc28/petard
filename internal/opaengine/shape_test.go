@@ -121,11 +121,18 @@ func TestConfidenceLevels(t *testing.T) {
 
 	// The order is the point: a declaration has to outrank a guess, and the
 	// comparison is what decides which recognizer wins.
-	if !(ConfidenceDeclared > ConfidenceAuthZEN &&
-		ConfidenceAuthZEN > ConfidenceDomain &&
-		ConfidenceDomain > ConfidenceNames &&
-		ConfidenceNames > ConfidenceNone) {
-		t.Error("the confidence levels are not ordered from A down to E")
+	descending := []Confidence{
+		ConfidenceDeclared,
+		ConfidenceAuthZEN,
+		ConfidenceDomain,
+		ConfidenceNames,
+		ConfidenceNone,
+	}
+	for i := 1; i < len(descending); i++ {
+		if descending[i-1] <= descending[i] {
+			t.Errorf("%s does not outrank %s, so the levels are not ordered from A down to E",
+				descending[i-1], descending[i])
+		}
 	}
 }
 
