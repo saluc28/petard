@@ -2,7 +2,7 @@
 
 Attack-path analysis for policy-as-code. Petard reads Rego (OPA) policies, works out what
 their decisions depend on, and applies a curated taxonomy of privilege-escalation patterns to
-what it finds. The result is meant to leave the tool as a structured BloodHound OpenGraph.
+what it finds. The result leaves the tool as a structured BloodHound OpenGraph.
 
 The parser is not the point. The taxonomy is: the catalogue of ways a policy and the data it
 reads can be turned against the system they protect, and above all the ones that cross the
@@ -12,10 +12,10 @@ together.
 
 ## The graph model
 
-The model lives in `internal/graph`, and it comes before the things that fill it because of what
-it costs to change later: the kind names and the property keys end up in ingested data and in
-saved Cypher queries, so renaming one means re-ingesting every graph and rewriting every query
-that mentions it. Getting them right is cheap now and expensive in a month.
+The model lives in `internal/graph`. The kind names and the property keys are a contract before
+they are code: they end up in ingested data and in saved Cypher queries, so renaming one means
+re-ingesting every graph and rewriting every query that mentions it. Getting them right is cheap
+now and expensive in a month.
 
 Two things about it are worth knowing.
 

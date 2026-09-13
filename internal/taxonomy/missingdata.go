@@ -34,8 +34,8 @@ const enforcingSideDeclared = "declared entrypoint, reached under a negation"
 // ErrNeedsData is returned when a pattern that reads the concrete data is asked
 // to run without it.
 //
-// It is an error rather than an empty result, for the reason the design gives
-// about silence everywhere else: a run that found nothing and a run that could
+// It is an error rather than an empty result, for the same reason silence is
+// refused everywhere else: a run that found nothing and a run that could
 // not look produce the same picture, and only one of them means the policy is
 // fine.
 var ErrNeedsData = errors.New("taxonomy: the pattern reads the concrete data, and none was loaded")

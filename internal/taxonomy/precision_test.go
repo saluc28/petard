@@ -53,8 +53,8 @@ func analyzeGenerated(t *testing.T, params fixture.Params) (*fixture.Dataset, An
 	}
 }
 
-// The measurement the design asks for before any pattern may be called
-// verified, and the one a hand written bundle cannot give.
+// The measurement a pattern needs before the registry may call it verified,
+// and the one a hand written bundle cannot give.
 //
 // With one case written by hand the only question is "does the engine find that
 // one", and a pattern that reported everything would pass it. Here K principals

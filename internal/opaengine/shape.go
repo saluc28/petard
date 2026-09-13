@@ -16,7 +16,7 @@ import (
 // the recognizers read what is there, in order of how much the evidence is
 // worth, and whatever they conclude carries the level it was concluded at.
 
-// Confidence is how much a shape is worth, on the scale of the design.
+// Confidence is how much a shape is worth, on a scale of A to E.
 //
 // It travels with the shape and into the exported graph, because an edge
 // derived from a guess about names must not look, to whoever reads the graph,
@@ -45,8 +45,8 @@ const (
 	ConfidenceDeclared
 )
 
-// String returns the level as the design names it, A to E, because that is
-// what ends up in a report and in the graph.
+// String returns the level as A to E, because that is what ends up in a report
+// and in the graph.
 func (c Confidence) String() string {
 	switch c {
 	case ConfidenceDeclared:

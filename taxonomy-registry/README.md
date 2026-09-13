@@ -160,11 +160,10 @@ find, the pattern is not verifiable and stays `status: draft`.
 
 Between them the five exercise `binding-resolution`, `concrete-data`, `rule-graph` and `taint`.
 
-`partial-eval` is not among the capabilities a pattern requires. Partial evaluation is a tool of
-the engine, the one it measures what a decision grants today with, and in 002 it is how the
-fixture checks the **consequence** of a finding. The distinction is worth keeping:
-`detection.requires` says what it takes to **find** a defect, not what it takes to show its
-effect.
+`partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
+the engine measures with, and in 002 it is how the fixture checks the **consequence** of a
+finding. The distinction is worth keeping: `detection.requires` says what it takes to **find** a
+defect, not what it takes to show its effect.
 
 ### The chain, and what holds it up
 
@@ -176,7 +175,7 @@ id of `PTD-OPA-003`, where the registry says a candidate becomes a finding.
 
 The chain is the only claim in the registry that deserves the words privilege escalation, and
 what holds it up is **the write model**. Without one, 001 produces a candidate and the chain
-stays quiet, while everything else is measured as before. That is the closed world rule applied
+stays quiet, while everything else is still measured. That is the closed world rule applied
 where it matters most: an incomplete model costs false negatives, not false positives.
 
 ### Why nothing is `verified`
@@ -200,10 +199,8 @@ generated data cannot settle is most of what these files actually declare:
 
 The engine has been run over `open-policy-agent/gatekeeper-library`, at commit
 `e4d3bd2448b20bc7910417f5b2cf18b63a0bd33c`: 51 units under `src/`, 142 Rego files, all of them
-written by other people. **No pattern moved a millimetre**, and it is worth saying why, because
-the opposite temptation was strong.
-
-On that corpus the five find **zero**, and not because of a limit in the engine:
+written by other people. On that corpus the five find **zero**, and not because of a limit in
+the engine:
 
 | Pattern | Why it is silent |
 |---|---|
@@ -218,9 +215,8 @@ about an object that is being admitted and almost never about who is asking for 
 between whoever decides and whoever writes the data, which is the material of this registry, is
 barely there.
 
-`verified` therefore still needs what it needed: a measurement of the **declared** false
-positives, which for 004 and 005 would mean generating policies rather than data, and for the
-others a corpus that crosses that line.
+`verified` needs a measurement of the **declared** false positives, which for 004 and 005 would
+mean generating policies rather than data, and for the others a corpus that crosses that line.
 
 ### The fixture
 
@@ -230,11 +226,11 @@ the engine has to find and what it must not. The numbers there are executed, not
 
 ### Candidates not yet written
 
-Three, and this is the only place all of them are listed: a candidate that lives only in
-somebody's notes does not exist by the next reading.
+Three, and the registry is the only place they are listed. A candidate nobody wrote down here is
+a candidate nobody finds again.
 
-| Candidate | Where the reasoning stopped |
+| Candidate | What is unresolved |
 |---|---|
 | Role hierarchy expansion with no upper bound | The weakest of the three. To be decided whether it deserves a file of its own or is a property of `PTD-OPA-003` |
 | Privilege creep: chains across different policies that together grant an action neither grants alone | The only one that does not start from a single rule, which makes it the test of the schema: if the schema holds this, it holds nearly anything |
-| `every` over an empty collection is true, so a check written with `every` stops applying exactly when there is nothing to apply it to | The same shape as `PTD-OPA-002` on another axis. Probably a third OPA instance of `FAIL-OPEN-ON-ABSENCE`, but first it has to be shown that its signals do not overlap those of 002 and 005, otherwise it is a pattern already written in a third prose |
+| `every` over an empty collection is true, so a check written with `every` stops applying exactly when there is nothing to apply it to | The same shape as `PTD-OPA-002` on another axis. Probably a third OPA instance of `FAIL-OPEN-ON-ABSENCE`, but first it has to be shown that its signals do not overlap those of 002 and 005, otherwise it is a pattern the registry already holds, written out a third time |

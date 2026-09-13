@@ -59,8 +59,8 @@ jobs:
       # bumps it weekly.
       # The exclusions are the ones .golangci.yml already carries, with the
       # reasoning written there. gosec does not read that file, and without them
-      # the Security tab fills with twelve findings that were decided against
-      # once, which is how a tab becomes one nobody opens.
+      # the Security tab fills with twelve findings this repository does not
+      # treat as defects, which is how a tab becomes one nobody opens.
       # No quotes and no path-scoped rule in here on purpose: the action's
       # entrypoint expands its arguments unquoted, so a quoted value arrives at
       # the binary with the quotes still on it and matches nothing. G104 is

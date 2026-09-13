@@ -36,8 +36,8 @@ linters:
         - G104
         # G304: file inclusion via a variable. Reading a path somebody named on
         # the command line is what this tool does: a policy bundle, a data
-        # directory, a write model. Every hit is that one, and leaving the rule
-        # on would teach us to skim the list.
+        # directory, a write model. Every hit is that one, and a rule whose every
+        # hit is expected is a rule people learn to skim past.
         - G304
         # G404: weak random number generator. The world generator is seeded on
         # purpose, because the same Params have to produce the same world, and
