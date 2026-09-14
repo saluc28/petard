@@ -251,15 +251,14 @@ notes:
     written value and the target from, since a decision speaks of input while the write model
     speaks of data paths. The target is optional, since a decision that never reads who a write is
     aimed at needs none, and it is set to the subject for a write to one's own record.
-
-open_questions:
-  - question: >
-      Are the constants of a residual always the values that grant?
-    note: >
-      For a comparison with a literal, yes. A decision that grants on a value computed from other
-      data leaves nothing to collect, and signal 3 then has a declared false negative.
-  - question: >
-      What about two principals holding the first capability?
-    note: >
-      When the first decision forbids assigning to oneself, two support accounts can still assign
-      each other. Whether that is reported, and at what confidence, is not decided.
+  - >
+    Known false negative: the constants of signal 3 are the values that grant only for a
+    comparison with a literal. A decision that grants on a value computed from other data leaves
+    nothing to collect, and the pattern stays silent there rather than guess the value, which
+    would cost the precision the whole approach rests on.
+  - >
+    Known false negative: the engine measures the write to the principal's own document, one
+    account acting alone. When the first decision forbids assigning to oneself, two accounts that
+    both hold the capability can still assign each other, and that collusion of two is left
+    unreported. It is a different shape, closer to a collusion pattern than to this one, and
+    folding it in would lower the confidence of the single account finding that is the point here.
