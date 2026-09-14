@@ -357,6 +357,13 @@ notes:
       bundle, and the cost of adding them is now known: `walk` is recognized as a construct, but
       its first argument is the document being traversed rather than a relation to cut, so
       signal 3 on that form is exercised by nothing.
+  - note: >
+      A role hierarchy is this pattern, not a new one. The relation the signals cut is named by
+      what the rule building it reads, whatever it connects: projects in the fixture, a
+      `role inherits role` graph just as well. Rego forbids recursion between rules, so any
+      unbounded role expansion runs through `graph.reachable` or `walk`, which is exactly signal
+      1. A role that reaches far only through the inheritance graph is measured here like any
+      other position.
 
 related:
   - id: PTD-OPA-001

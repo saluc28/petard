@@ -252,10 +252,15 @@ the engine has to find and what it must not. The numbers there are executed, not
 
 ### Candidates not yet written
 
-Two, and the registry is the only place they are listed. A candidate nobody wrote down here is
-a candidate nobody finds again.
+One, and the registry is the only place it is listed. A candidate nobody wrote down here is a
+candidate nobody finds again.
 
 | Candidate | What is unresolved |
 |---|---|
-| Role hierarchy expansion with no upper bound | The weaker of the two. To be decided whether it deserves a file of its own or is a property of `PTD-OPA-003` |
-| `every` over an empty collection is true, so a check written with `every` stops applying exactly when there is nothing to apply it to | The same shape as `PTD-OPA-002` on another axis. Probably a third OPA instance of `FAIL-OPEN-ON-ABSENCE`, but first it has to be shown that its signals do not overlap those of 002 and 005, otherwise it is a pattern the registry already holds, written out a third time |
+| `every` over an empty collection is true, so a check written with `every` stops applying exactly when there is nothing to apply it to | A third OPA instance of `FAIL-OPEN-ON-ABSENCE`. The signals do not overlap 002 or 005: the construct is `ast.Every` with an empty domain, an empty set rather than 002's missing key, and there is no network source, so 005's taint does not apply. What it still needs is a case and a counter case in the fixture before it can be written as a file |
+
+**Resolved: role hierarchy expansion is not a pattern of its own.** It is `PTD-OPA-003`. The
+relation the transitive signals cut is named by what the rule building it reads, whatever that
+relation connects, and Rego forbids recursion between rules, so an unbounded role expansion runs
+through `graph.reachable` or `walk` like any other hierarchy. A role that reaches far only through
+the inheritance graph is measured there, with no file of its own.
