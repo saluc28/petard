@@ -44,6 +44,29 @@ func TestLoadFixture(t *testing.T) {
 	if position, ok := department.Path.CapturePosition("owner"); !ok || position != 2 {
 		t.Errorf("capture {owner} at %d (found %t), want position 2", position, ok)
 	}
+
+	// The roles entry carries the split-grant declaration: support may write
+	// it, and what support may write is decided by another rule of the bundle.
+	roles := model.Entries[2]
+	if roles.RawPath != "data.users.{owner}.roles" {
+		t.Fatalf("third entry = %q, want the roles path", roles.RawPath)
+	}
+	support := roles.WritableBy[1]
+	if support.Principal != "role:support" {
+		t.Fatalf("second writer of roles = %q, want role:support", support.Principal)
+	}
+	if support.AuthorizedBy == nil {
+		t.Fatal("role:support has no authorized_by, so PTD-OPA-006 cannot ask which value it may write")
+	}
+	if support.AuthorizedBy.Decision != "data.quill.admin.allow" {
+		t.Errorf("authorized_by decision = %q, want data.quill.admin.allow", support.AuthorizedBy.Decision)
+	}
+	if support.AuthorizedBy.Value != "input.role" {
+		t.Errorf("authorized_by value = %q, want input.role", support.AuthorizedBy.Value)
+	}
+	if roles.WritableBy[0].AuthorizedBy != nil {
+		t.Error("role:admin carries an authorized_by it should not: only the constrained writer needs one")
+	}
 }
 
 func TestModelCovering(t *testing.T) {
@@ -177,6 +200,18 @@ func TestLoadRejects(t *testing.T) {
 			name:        "a subtree in the middle",
 			content:     "schema_version: 1\nmodel: write-paths\nentries:\n  - path: data.users.*.roles\n    writable_by:\n      - principal: role:admin\n        via: console\n",
 			expectedErr: nil, // parse error, not one of the sentinels
+		},
+		{
+			name: "an authorized_by that names no value",
+			// The decision is there, but nothing says which part of the request
+			// carries the value, so the pattern could not ask what may be written.
+			content:     "schema_version: 1\nmodel: write-paths\nentries:\n  - path: data.users.{owner}.roles\n    writable_by:\n      - principal: role:support\n        via: PUT /roles\n        authorized_by:\n          decision: data.quill.admin.allow\n",
+			expectedErr: ErrInvalid,
+		},
+		{
+			name:        "an authorized_by whose decision is not a data path",
+			content:     "schema_version: 1\nmodel: write-paths\nentries:\n  - path: data.users.{owner}.roles\n    writable_by:\n      - principal: role:support\n        via: PUT /roles\n        authorized_by:\n          decision: admin/allow\n          value: input.role\n",
+			expectedErr: ErrInvalid,
 		},
 	}
 	for _, tt := range tests {

@@ -46,6 +46,9 @@ entries:
           values may be written is decided by data.quill.admin.allow, the
           decision the PEP of this endpoint consumes.
         confidence: asserted
+        authorized_by:
+          decision: data.quill.admin.allow
+          value: input.role
 
   # ---------------------------------------------------------------------
   # Explicit project membership: written by the project owner, not by the
