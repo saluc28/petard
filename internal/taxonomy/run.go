@@ -31,6 +31,11 @@ type Findings struct {
 	Tainted     []Finding
 	Unavailable []Finding
 
+	// SplitGrant holds the escalations that come from one decision governing a
+	// write another decision grants on. Like the chain, each is a
+	// PTD_CanEscalateTo between two principals.
+	SplitGrant []Finding
+
 	// Skipped names the patterns that could not run, and what it would have
 	// taken. A pattern left out in silence reads as a pattern that found
 	// nothing, which is the one thing these patterns exist to disprove.
@@ -44,6 +49,7 @@ func (f Findings) All() []Finding {
 	all = append(all, f.Transitive...)
 	all = append(all, f.Tainted...)
 	all = append(all, f.Unavailable...)
+	all = append(all, f.SplitGrant...)
 	return all
 }
 
@@ -70,6 +76,7 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 	if a.Data == nil {
 		found.Skipped[DenyUndefinedOnMissingData] = needsData
 		found.Skipped[TransitiveGrantViaOwnership] = needsData
+		found.Skipped[WriteAllowedByAnotherDecision] = needsData
 	} else {
 		if found.MissingData, err = FailOpenOnMissingData(ctx, a.Reads, a.Data); err != nil {
 			return Findings{}, err
@@ -84,6 +91,10 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 			return Findings{}, err
 		}
 		found.Transitive = append(escalations, positions...)
+
+		if found.SplitGrant, err = SplitGrant(ctx, a); err != nil {
+			return Findings{}, err
+		}
 	}
 
 	found.Tainted = TaintedByExternalSource(a.Reads)

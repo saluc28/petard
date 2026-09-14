@@ -347,6 +347,38 @@ func TestRunReportsTheEscalation(t *testing.T) {
 	}
 }
 
+// The split grant, seen from the command line: carol writing herself editor is
+// a second escalation next to the chain, under the id of the pattern that finds
+// it, with the value to write and the decision that allows it.
+func TestRunReportsTheSplitGrant(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
+		"-write-model", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
+		"-data", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data"),
+		fixture("policy-v1"),
+	}
+
+	if code := run(args, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+
+	out := stdout.String()
+	for _, expected := range []string{
+		"PTD-OPA-006 finding: carol can write editor into data.users[_].roles",
+		"which data.quill.admin.allow allows, and data.quill.publish.allow then grants the position alice holds",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the report does not contain %q:\n%s", expected, out)
+		}
+	}
+	// The counter case is the withdraw branch on admin, a value support cannot
+	// write, so no edge to the principal who holds admin comes out.
+	if strings.Contains(out, "the position bob holds") {
+		t.Errorf("an edge to bob, who holds admin support cannot write, was reported:\n%s", out)
+	}
+}
+
 // Without the declaration of who writes what, the same run still measures
 // everything else and claims no escalation: the chain rests on the one fact no
 // policy can supply.

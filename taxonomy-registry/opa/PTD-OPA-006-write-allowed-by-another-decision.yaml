@@ -4,7 +4,7 @@ id: PTD-OPA-006
 name: write-allowed-by-another-decision
 title: One decision lets a principal write the data another decision grants on
 engine: opa
-status: draft
+status: implemented
 
 category:
   id: SPLIT-GRANT
@@ -92,8 +92,10 @@ detection:
       rationale: >
         A role or a system writing a field is what 001 deliberately leaves alone. What this
         pattern adds is that the rules deciding what that role may write are in the bundle, and
-        can be asked. The format of the write model has no field for naming that decision yet:
-        see the open questions.
+        can be asked. The writer names that decision in its `authorized_by`, by its data path, the
+        way a PEP names the decision it queries, and names the fields the decision reads the
+        written value and the target from, since the decision speaks of input and the model of
+        data paths.
     - order: 3
       check: >
         Partially evaluate the granting decision for each principal with that principal's
@@ -209,18 +211,24 @@ verified:
   date: 2026-09-14
   tool_version: opa 1.20.2
   how: >
-    The example was run with opa 1.20.2 and 1.19.0, with the same results: `opa check` accepts it
-    without a warning; with carol holding support, allow_assign is true for editor and
-    allow_publish is false; with roles ["support", "editor"], allow_publish is true.
-    On the fixture, `data.quill.verify.split_grant`: carol does not publish as the data stands;
-    the assignment decision allows her editor and not admin; with roles ["support", "editor"] she
-    publishes and still cannot withdraw.
-    Adding the two decisions leaves every result of the five implemented patterns where it was:
-    seven findings, one candidate and one `PTD_CanEscalateTo`, with the write model covering 4 of
-    9 paths. `PTD-OPA-001` reports nothing on `roles`, which a role writes and the subject does
-    not.
+    The engine finds the case and stays quiet about the counter case on the fixture. It leaves
+    carol's `roles` unknown and reads off the values the publishing decision would grant on,
+    "editor" and "admin"; asks the assignment decision which of them carol may write, and gets
+    editor and not admin; evaluates publishing again with editor written in, and carol grants where
+    she did not before. The one `PTD_CanEscalateTo` it emits runs from carol to alice, who holds
+    editor, through `data.users.{owner}.roles`, authorized by `data.quill.admin.allow`, for
+    `data.quill.publish.allow`. The withdraw branch, which grants on admin, opens nothing, because
+    the assignment decision does not let support write admin.
+    The numbers behind it, measured with `data.quill.verify.split_grant`: carol does not publish as
+    the data stands; the assignment decision allows her editor and not admin; with roles
+    ["support", "editor"] she publishes and still cannot withdraw.
+    On the whole fixture the engine now reports eight findings, one candidate and two
+    `PTD_CanEscalateTo`, with the write model covering 4 of 9 paths. `PTD-OPA-001` reports nothing
+    on `roles`, which a role writes and the subject does not.
     regal v0.42.0 reports no violations on `policy-v1`.
-    Nothing in the engine looks for this pattern yet, which is why the status is `draft`.
+    The status is `implemented` rather than `verified` for the same reason as `PTD-OPA-003`: the
+    generated worlds plant the 001 to 003 chain and not this one, so precision against generated
+    data is measured for the chain and not yet for the split grant.
 
 related:
   - id: PTD-OPA-001
@@ -233,13 +241,18 @@ related:
       Could chain as 001 does: a write the first decision allows could open a position in a
       hierarchy rather than a flat grant. Not in the fixture.
 
+notes:
+  - >
+    How the write model names the decision an endpoint consumes is settled: the writer's
+    `authorized_by` names it by its data path, `data.quill.admin.allow`, the way every PEP
+    configures the decision it queries (opa.authorizer.url ending /v1/data/kafka/authz/allow,
+    POLICY_PATH /v1/data/httpapi/authz, authz_endpoint /v1/data/sshd/authz, in
+    open-policy-agent/contrib at 90f7ca9), and names the input fields the decision reads the
+    written value and the target from, since a decision speaks of input while the write model
+    speaks of data paths. The target is optional, since a decision that never reads who a write is
+    aimed at needs none, and it is set to the subject for a write to one's own record.
+
 open_questions:
-  - question: >
-      How does the write model name the decision an endpoint consumes?
-    note: >
-      Today the link is prose in the note of the writer. It needs a field, and a way of saying
-      which part of the request carries the value and the target, since the decision reads them
-      from input while the write model speaks of paths.
   - question: >
       Are the constants of a residual always the values that grant?
     note: >

@@ -197,8 +197,9 @@ func writablePaths(selfWrite []Finding) []Finding {
 	return writable
 }
 
-// AddEscalations puts the chain into the graph, as the one edge that means
-// privilege escalation.
+// AddEscalations puts each escalation into the graph, the edges that mean
+// privilege escalation: the 001 to 003 chain and the split grant alike, both of
+// them a PTD_CanEscalateTo between two principals.
 //
 // The principals are nodes of their own here, and they are the first ones the
 // analysis creates: everything else in the graph so far comes from reading the
@@ -256,6 +257,12 @@ func escalationProperties(finding Finding) map[string]any {
 	}
 	if finding.Via != "" {
 		properties[graph.PropVia] = finding.Via
+	}
+	if finding.AuthorizedBy != "" {
+		properties[graph.PropAuthorizedBy] = finding.AuthorizedBy
+	}
+	if finding.Value != "" {
+		properties[graph.PropValue] = finding.Value
 	}
 	if len(finding.Relation) > 0 {
 		properties[graph.PropRelation] = strings.Join(finding.Relation, ", ")

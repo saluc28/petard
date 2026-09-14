@@ -72,7 +72,7 @@ place where the two facts meet.
 > (`PATCH /api/v1/me/profile`) beside it, and the three places to look: the two reads of the
 > field and the call that follows the hierarchy.
 >
-> Apart from the one `PTD-OPA-006` is written to find (section 3), it is the only
+> Apart from the one `PTD-OPA-006` finds (section 3), it is the only
 > `PTD_CanEscalateTo` the fixture may produce. Any other one is a false positive
 > and counts as one.
 
@@ -256,8 +256,7 @@ lint rule on `raise_error: false` would have reported the wrong one of the two.
 
 Two decisions, each of them sound on its own: `admin.rego` lets support staff assign `viewer` and
 `editor` to anybody, themselves included, and `publish.rego` lets editors publish. `carol` holds
-`support`. The pattern is `draft`: the engine does not look for it yet, and this is what it has
-to produce once it does.
+`support`. The engine emits the edge below and stays quiet about the counter case.
 
 | | where | expected |
 |---|---|---|
@@ -303,14 +302,13 @@ legitimate finding for another.
 | 9 | `data.users.{owner}.profile.*` | 001 | writable, but no decision reads it |
 | 10 | `withdraw` on `"admin" in ...roles` | 006 | support cannot assign `admin`, so no allowed write reaches the branch |
 
-Expected precision: **one `PTD_CanEscalateTo`** (mallory), **seven findings and one candidate**,
-and none of the rows above under the pattern they belong to. Once `PTD-OPA-006` is implemented
-the count grows by exactly one of each: the escalation from `carol` to `alice`, which is also its
-finding.
+Expected precision: **two `PTD_CanEscalateTo`** (mallory and carol), **eight findings and one
+candidate**, and none of the rows above under the pattern they belong to.
 
-The seven: one from 001, one from 002, two from 004 (section 3), two from 005, and mallory's
+The eight: one from 001, one from 002, two from 004 (section 3), two from 005, mallory's
 escalation, which comes out under the id of 003 because that is where the registry says a
-candidate turns into a finding.
+candidate turns into a finding, and carol's escalation under 006. The two escalations are the two
+findings that are also `PTD_CanEscalateTo` edges.
 
 ---
 
@@ -417,7 +415,8 @@ Readable with `opa inspect -a`. They serve three purposes:
 There are no `schemas:`, and that is deliberate: they would raise the confidence of a finding
 artificially. The realistic case is that nobody writes them.
 
-**Seven decisions are annotated**, and that includes all four rules of `risk.rego`. A rule
+**Nine decisions are annotated**, among them all four rules of `risk.rego` and the two halves of
+the split grant, `admin` and `publish`. A rule
 without the annotation is a rule the engine never looks at, and leaving the three counter cases
 of `risk.rego` unannotated would break the fixture in two directions at once: *"the engine must
 not report `allow_defensive`"* would be satisfied for the wrong reason, because that rule would

@@ -270,37 +270,40 @@ func TestRunVerifiesTheEscalationIsWalkable(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
-	// The fixture emits exactly one escalation, and asking about it is the
-	// whole verification: no query means the check silently did nothing.
-	if len(server.pathQueries) != 1 {
-		t.Fatalf("shortest path queries = %v, want the one escalation the fixture emits", server.pathQueries)
+	// The fixture emits two escalations, the 001 to 003 chain and the split
+	// grant, and every one of them has to be asked about: a query missing means
+	// the check silently skipped a path it claims is walkable.
+	if len(server.pathQueries) != 2 {
+		t.Fatalf("shortest path queries = %v, want the two escalations the fixture emits", server.pathQueries)
 	}
-	query, err := url.ParseQuery(server.pathQueries[0])
-	if err != nil {
-		t.Fatalf("parsing the query: %v", err)
+	for _, raw := range server.pathQueries {
+		query, err := url.ParseQuery(raw)
+		if err != nil {
+			t.Fatalf("parsing the query: %v", err)
+		}
+
+		// Without only_traversable the server walks edges the UI never will, and
+		// the answer stops meaning what the report says it means.
+		if query.Get("only_traversable") != "true" {
+			t.Errorf("query = %v, want only_traversable=true", raw)
+		}
+		for _, param := range []string{"start_node", "end_node"} {
+			value := query.Get(param)
+			if value == "" {
+				t.Errorf("%s is empty in %q", param, raw)
+				continue
+			}
+			// BloodHound uppercases object ids on ingest, so asking in any other
+			// case looks for a node the server does not have and answers 404 for
+			// the wrong reason.
+			if value != strings.ToUpper(value) {
+				t.Errorf("%s = %q, which is not an id the server will have", param, value)
+			}
+		}
 	}
 
-	// Without only_traversable the server walks edges the UI never will, and
-	// the answer stops meaning what the report says it means.
-	if query.Get("only_traversable") != "true" {
-		t.Errorf("query = %v, want only_traversable=true", server.pathQueries[0])
-	}
-	for _, param := range []string{"start_node", "end_node"} {
-		value := query.Get(param)
-		if value == "" {
-			t.Errorf("%s is empty", param)
-			continue
-		}
-		// BloodHound uppercases object ids on ingest, so asking in any other
-		// case looks for a node the server does not have and answers 404 for
-		// the wrong reason.
-		if value != strings.ToUpper(value) {
-			t.Errorf("%s = %q, which is not an id the server will have", param, value)
-		}
-	}
-
-	if out := stdout.String(); !strings.Contains(out, "1 of 1 escalations are walkable") {
-		t.Errorf("the report does not say the path was walked:\n%s", out)
+	if out := stdout.String(); !strings.Contains(out, "2 of 2 escalations are walkable") {
+		t.Errorf("the report does not say both paths were walked:\n%s", out)
 	}
 }
 

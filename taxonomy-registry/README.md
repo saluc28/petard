@@ -157,27 +157,30 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-003` | TRANSITIVE-GRANT | opa | candidate | B | `implemented`, and it chains with 001, which is where a route comes from |
 | `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `implemented`, and the one that exercises taint |
 | `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `implemented`, with the lowest precondition: no attacker needed |
-| `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `draft`, with the case and the counter case in the fixture and nothing in the engine yet |
+| `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `implemented`, the second edge that means escalation, from a role's write rather than a position |
 
-Between them the five exercise `binding-resolution`, `concrete-data`, `rule-graph` and `taint`.
+Between them the six exercise `binding-resolution`, `concrete-data`, `rule-graph` and `taint`.
 
 `partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
 the engine measures with, and in 002 it is how the fixture checks the **consequence** of a
 finding. The distinction is worth keeping: `detection.requires` says what it takes to **find** a
 defect, not what it takes to show its effect.
 
-### The chain, and what holds it up
+### The two escalations, and what holds them up
 
-The chain from `PTD-OPA-001` to `PTD-OPA-003` is closed: on the fixture exactly one
-`PTD_CanEscalateTo` comes out, from `mallory` to `dave`, with the path to write and the endpoint
-to write it through. It lives in `internal/taxonomy/escalation.go`, which is not a sixth
-pattern: it is the place where two of them meet, and that is why its result comes out under the
-id of `PTD-OPA-003`, where the registry says a candidate becomes a finding.
+Two claims in the registry deserve the words privilege escalation, and each is a
+`PTD_CanEscalateTo` between two principals. The first is the chain from `PTD-OPA-001` to
+`PTD-OPA-003`, closed on the fixture as one edge from `mallory` to `dave`, with the path to write
+and the endpoint to write it through. It lives in `internal/taxonomy/escalation.go`, which is not
+a pattern of its own but the place where two of them meet, and that is why its result comes out
+under the id of `PTD-OPA-003`, where the registry says a candidate becomes a finding. The second
+is `PTD-OPA-006`, one edge from `carol` to `alice`: a value one decision lets her write, and
+another decision grants on.
 
-The chain is the only claim in the registry that deserves the words privilege escalation, and
-what holds it up is **the write model**. Without one, 001 produces a candidate and the chain
-stays quiet, while everything else is still measured. That is the closed world rule applied
-where it matters most: an incomplete model costs false negatives, not false positives.
+What holds both up is **the write model**. Without one, 001 produces a candidate and the chain
+stays quiet, 006 has no decision behind the write to ask, and everything else is still measured.
+That is the closed world rule applied where it matters most: an incomplete model costs false
+negatives, not false positives.
 
 ### Why nothing is `verified`
 
@@ -200,7 +203,7 @@ generated data cannot settle is most of what these files actually declare:
 
 The engine has been run over `open-policy-agent/gatekeeper-library`, at commit
 `e4d3bd2448b20bc7910417f5b2cf18b63a0bd33c`: 51 units under `src/`, 142 Rego files, all of them
-written by other people. On that corpus the five find **zero**, and not because of a limit in
+written by other people. On that corpus the six find **zero**, and not because of a limit in
 the engine:
 
 | Pattern | Why it is silent |
@@ -209,6 +212,7 @@ the engine:
 | `PTD-OPA-002` | the few policies that read `data` all read the same inventory document Gatekeeper replicates |
 | `PTD-OPA-003` | no transitive construct anywhere in the corpus |
 | `PTD-OPA-004`, `PTD-OPA-005` | **zero** calls to nondeterministic builtins in the whole corpus |
+| `PTD-OPA-006` | needs a write model naming the decision behind a write, and the corpus ships none |
 
 A zero against a real corpus is neither a confirmation nor a refutation of the declared false
 positives: it is a measurement of what that corpus holds. Kubernetes admission policies decide
