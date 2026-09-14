@@ -316,6 +316,100 @@ func (d *Data) Without(ctx context.Context, paths ...string) (*Data, error) {
 	return &Data{store: inmem.NewFromObject(documents), Files: slices.Clone(d.Files)}, nil
 }
 
+// With returns the same documents with one path set to a value, creating the
+// segments on the way if they are not there, and leaves the data it was called
+// on untouched.
+//
+// It is the other side of Without: where a question about a relation cuts a
+// path away, a question about a write puts a value where the write would leave
+// one, and asks the decision what it grants then. The path has to be concrete,
+// a document rather than a collection, since a write lands on one record.
+func (d *Data) With(ctx context.Context, path string, value any) (*Data, error) {
+	ref, err := ast.ParseRef(path)
+	if err != nil {
+		return nil, fmt.Errorf("opaengine: reading the path %s: %w", path, err)
+	}
+	at, err := concretePath(ref)
+	if err != nil {
+		return nil, err
+	}
+
+	root, err := storage.ReadOne(ctx, d.store, storage.Path{})
+	if err != nil {
+		return nil, fmt.Errorf("opaengine: reading the data: %w", err)
+	}
+	documents, isObject := clone(root).(map[string]any)
+	if !isObject {
+		return nil, fmt.Errorf("opaengine: the data holds a %T at its root", root)
+	}
+
+	set(documents, at, value)
+	return &Data{store: inmem.NewFromObject(documents), Files: slices.Clone(d.Files)}, nil
+}
+
+// Value returns the document a concrete path names, and whether it is there.
+// A path that is not concrete, or names nothing, is not a value: the first is
+// an error, the second is the false the caller asked about.
+func (d *Data) Value(ctx context.Context, path string) (any, bool, error) {
+	ref, err := ast.ParseRef(path)
+	if err != nil {
+		return nil, false, fmt.Errorf("opaengine: reading the path %s: %w", path, err)
+	}
+	at, err := concretePath(ref)
+	if err != nil {
+		return nil, false, err
+	}
+
+	txn, err := d.store.NewTransaction(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("opaengine: opening a read of the data: %w", err)
+	}
+	defer d.store.Abort(ctx, txn)
+
+	value, err := d.store.Read(ctx, txn, at)
+	if storage.IsNotFound(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("opaengine: reading data.%s: %w", strings.Join(at, "."), err)
+	}
+	return value, true, nil
+}
+
+// concretePath turns a data rooted reference with no dynamic segment into the
+// store path of the one document it names.
+func concretePath(ref ast.Ref) (storage.Path, error) {
+	if !isDataRooted(ref) {
+		return nil, fmt.Errorf("opaengine: %s names no document under data", ref)
+	}
+	at := make(storage.Path, 0, len(ref)-1)
+	for _, term := range ref[1:] {
+		segment, named := namedSegment(term)
+		if !named {
+			return nil, fmt.Errorf("opaengine: %s is a collection, not one document", ref)
+		}
+		at = append(at, segment)
+	}
+	return at, nil
+}
+
+// set writes a value into a tree, creating the objects the path passes through.
+func set(documents map[string]any, at storage.Path, value any) {
+	if len(at) == 0 {
+		return
+	}
+	holder := documents
+	for _, segment := range at[:len(at)-1] {
+		next, isObject := holder[segment].(map[string]any)
+		if !isObject {
+			next = map[string]any{}
+			holder[segment] = next
+		}
+		holder = next
+	}
+	holder[at[len(at)-1]] = value
+}
+
 // clone deep copies a document.
 //
 // The store of OPA round trips what it is given through JSON, which would copy
@@ -585,6 +679,26 @@ func (rs *ResidualSet) Never() bool {
 // which is also where they belong: a decision that still depends on a call is a
 // decision nobody can settle from the data alone.
 func Residuals(ctx context.Context, bundle *Bundle, data *Data, ask Request, limits Limits) (*ResidualSet, error) {
+	queries, err := partial(ctx, bundle, data, ask)
+	if err != nil {
+		return nil, err
+	}
+
+	unknowns := ask.Unknowns
+	if len(unknowns) == 0 {
+		unknowns = []string{ast.InputRootDocument.String()}
+	}
+	result := &ResidualSet{Decision: ask.Decision, Unknowns: slices.Clone(unknowns)}
+	result.Conditions, result.Default, result.Always = conditionsOf(queries)
+	result.bound(limits.maxResiduals())
+	return result, nil
+}
+
+// partial runs partial evaluation and returns what OPA left of the decision.
+// It is the one place the rego options are built, so that a second question
+// asked of the same decision cannot phrase the evaluation differently from
+// Residuals and get an answer that does not line up with it.
+func partial(ctx context.Context, bundle *Bundle, data *Data, ask Request) (*rego.PartialQueries, error) {
 	if data == nil {
 		return nil, ErrNoData
 	}
@@ -608,11 +722,174 @@ func Residuals(ctx context.Context, bundle *Bundle, data *Data, ask Request, lim
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", ErrPartial, ask.Decision, err)
 	}
+	return queries, nil
+}
 
-	result := &ResidualSet{Decision: ask.Decision, Unknowns: slices.Clone(unknowns)}
-	result.Conditions, result.Default, result.Always = conditionsOf(queries)
-	result.bound(limits.maxResiduals())
-	return result, nil
+// GrantingValue is a constant a residual condition compares an unknown document
+// against, taken from the structure of the condition rather than from its
+// meaning.
+type GrantingValue struct {
+	// Value is the constant as a Go value, ready to write back into the data:
+	// the string "editor", or a json.Number.
+	Value any
+
+	// Text is the constant as it reads, for a report and a finding: editor.
+	Text string
+
+	// Membership is true when the document is a collection the value is an
+	// element of ("editor" in roles), and false when the document is compared
+	// to the value directly (tier == "gold"). It is the difference between
+	// writing [value] and writing value, and it comes from which builtin the
+	// condition used, not from any reading of what it means.
+	Membership bool
+}
+
+// ValuesComparedWith partially evaluates a decision with one document left
+// unknown and collects the constants the residual conditions compare that
+// document against.
+//
+// It is the third signal of PTD-OPA-006: the values that, written into the
+// document, would make the decision grant. They are read off OPA's answer, so a
+// decision that grants on "editor" through a rule nobody would spot by eye still
+// yields "editor" here. The collection is structural, an operand of a builtin
+// call standing next to the document, and it interprets nothing about what the
+// condition means: a comparison against a value computed from other data leaves
+// nothing to collect, and that is a declared false negative rather than a guess.
+func ValuesComparedWith(ctx context.Context, bundle *Bundle, data *Data, ask Request, document string) ([]GrantingValue, error) {
+	docRef, err := ast.ParseRef(document)
+	if err != nil {
+		return nil, fmt.Errorf("opaengine: reading the path %s: %w", document, err)
+	}
+	if !slices.Contains(ask.Unknowns, document) {
+		ask.Unknowns = append(slices.Clone(ask.Unknowns), document)
+	}
+
+	queries, err := partial(ctx, bundle, data, ask)
+	if err != nil {
+		return nil, err
+	}
+
+	var values []GrantingValue
+	seen := map[string]bool{}
+	for _, body := range residualBodies(queries) {
+		collectConstants(body, docRef, &values, seen)
+	}
+	return values, nil
+}
+
+// residualBodies returns the rule bodies partial evaluation left, expanding a
+// support module one level the way conditionsOf does: a decision with a default
+// comes back as a query naming a generated rule, and the disjunction is in that
+// rule's bodies rather than in the query.
+func residualBodies(queries *rego.PartialQueries) []ast.Body {
+	var bodies []ast.Body
+	for _, query := range queries.Queries {
+		if len(query) == 0 {
+			// The decision holds on the data alone, so there is no condition and
+			// nothing compared against the document.
+			continue
+		}
+		if ref, ok := generatedRuleRef(query); ok {
+			for _, module := range queries.Support {
+				for _, rule := range module.Rules {
+					if !rule.Default && rulePath(rule).Equal(ref) {
+						bodies = append(bodies, rule.Body)
+					}
+				}
+			}
+			continue
+		}
+		bodies = append(bodies, query)
+	}
+	return bodies
+}
+
+// generatedRuleRef returns the ref a query points at when the query is nothing
+// but a reference to a rule partial evaluation generated.
+func generatedRuleRef(query ast.Body) (ast.Ref, bool) {
+	if len(query) != 1 {
+		return nil, false
+	}
+	term, isTerm := query[0].Terms.(*ast.Term)
+	if !isTerm {
+		return nil, false
+	}
+	ref, isRef := term.Value.(ast.Ref)
+	return ref, isRef
+}
+
+// collectConstants gathers the literal operands of every builtin call in a body
+// that also names the document, once each.
+func collectConstants(body ast.Body, document ast.Ref, values *[]GrantingValue, seen map[string]bool) {
+	for _, expr := range body {
+		if !expr.IsCall() {
+			continue
+		}
+		operands := expr.Operands()
+		if !operandsName(operands, document) {
+			continue
+		}
+		membership := isMembership(expr.Operator())
+		for _, operand := range operands {
+			native, ok := constantValue(operand.Value)
+			if !ok {
+				continue
+			}
+			key := operand.Value.String()
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			*values = append(*values, GrantingValue{Value: native, Text: constantText(operand.Value), Membership: membership})
+		}
+	}
+}
+
+// operandsName reports whether any operand is the document, or a path into it.
+func operandsName(operands []*ast.Term, document ast.Ref) bool {
+	for _, operand := range operands {
+		if ref, isRef := operand.Value.(ast.Ref); isRef {
+			if ref.Equal(document) || strictPrefix(document, ref) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isMembership reports whether a builtin is the membership operator, which is
+// what puts the document on the collection side of an "x in coll".
+func isMembership(operator ast.Ref) bool {
+	switch operator.String() {
+	case ast.Member.Name, ast.MemberWithKey.Name:
+		return true
+	default:
+		return false
+	}
+}
+
+// constantValue returns the Go value of a scalar term, and whether the term was
+// one. A reference, a variable or a call is not a constant to collect.
+func constantValue(value ast.Value) (any, bool) {
+	switch value.(type) {
+	case ast.String, ast.Number, ast.Boolean, ast.Null:
+		native, err := ast.JSON(value)
+		if err != nil {
+			return nil, false
+		}
+		return native, true
+	default:
+		return nil, false
+	}
+}
+
+// constantText is how a constant reads in a report: a string without its
+// quotes, anything else as it is written.
+func constantText(value ast.Value) string {
+	if s, isString := value.(ast.String); isString {
+		return string(s)
+	}
+	return value.String()
 }
 
 // bound cuts the conditions to what the caller is willing to look at, and says
@@ -682,15 +959,8 @@ func conditionsOf(queries *rego.PartialQueries) ([]Condition, string, bool) {
 // and getting that wrong silently is worse than a reader following one more
 // reference.
 func expandSupport(query ast.Body, support []*ast.Module) ([]Condition, string, bool) {
-	if len(query) != 1 {
-		return nil, "", false
-	}
-	term, isTerm := query[0].Terms.(*ast.Term)
-	if !isTerm {
-		return nil, "", false
-	}
-	ref, isRef := term.Value.(ast.Ref)
-	if !isRef {
+	ref, ok := generatedRuleRef(query)
+	if !ok {
 		return nil, "", false
 	}
 

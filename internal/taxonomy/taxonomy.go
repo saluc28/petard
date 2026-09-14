@@ -208,6 +208,12 @@ type Finding struct {
 	ViaWritePath string
 	Via          string
 	Note         string
+
+	// AuthorizedBy is the decision that lets the principal make the write, and
+	// Value is what the write puts in the field, for the split grant that rests
+	// on one decision governing what another decision reads.
+	AuthorizedBy string
+	Value        string
 }
 
 // String renders a finding as one line, for a report.

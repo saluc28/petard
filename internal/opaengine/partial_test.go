@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -681,6 +682,76 @@ func TestResidualsOnAQueryThatDoesNotParse(t *testing.T) {
 	_, err = Residuals(t.Context(), bundle, fixtureData(t), Request{Decision: "data.quill.authz.["}, Limits{})
 	if !errors.Is(err, ErrPartial) {
 		t.Errorf("Residuals() error = %v, want ErrPartial", err)
+	}
+}
+
+// The third signal of PTD-OPA-006, measured through the engine: the publishing
+// decision grants to holders of "editor" and holders of "admin", and those are
+// the two constants it compares carol's roles against. "publish" and "withdraw"
+// are compared against input.action, not the document, and must not be
+// collected: the pattern asks what would grant if the document changed, not
+// what the rest of the request has to be.
+func TestValuesComparedWithCollectsTheGrantingConstants(t *testing.T) {
+	bundle, err := Load([]string{fixtureDir(t, "policy-v1")}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	values, err := ValuesComparedWith(t.Context(), bundle, fixtureData(t), Request{
+		Decision: "data.quill.publish.allow",
+		Unknowns: []string{"input.action", "input.doc"},
+		Input:    map[string]any{"user": "carol"},
+	}, "data.users.carol.roles")
+	if err != nil {
+		t.Fatalf("ValuesComparedWith() error = %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, value := range values {
+		if !value.Membership {
+			t.Errorf("%q collected as an equality, want membership: the document is `value in roles`", value.Text)
+		}
+		got[value.Text] = true
+	}
+	if len(values) != 2 || !got["editor"] || !got["admin"] {
+		t.Errorf("values = %v, want editor and admin, and nothing compared against input", values)
+	}
+}
+
+// The document written for the counter case has to leave the original data
+// alone: the pattern evaluates the decision against the world as it stands and
+// against a world where the write happened, and the two must not be the same
+// map underneath.
+func TestDataWithSetsADocumentAndLeavesTheOriginal(t *testing.T) {
+	data := fixtureData(t)
+
+	written, err := data.With(t.Context(), "data.users.carol.roles", []any{"support", "editor"})
+	if err != nil {
+		t.Fatalf("With() error = %v", err)
+	}
+
+	before, found, err := data.Value(t.Context(), "data.users.carol.roles")
+	if err != nil || !found {
+		t.Fatalf("Value() on the original = %v, %t", err, found)
+	}
+	if !reflect.DeepEqual(before, []any{"support"}) {
+		t.Errorf("the original changed under us: carol holds %v, want [support]", before)
+	}
+
+	after, found, err := written.Value(t.Context(), "data.users.carol.roles")
+	if err != nil || !found {
+		t.Fatalf("Value() on the written data = %v, %t", err, found)
+	}
+	if !reflect.DeepEqual(after, []any{"support", "editor"}) {
+		t.Errorf("the write did not take: carol holds %v, want [support editor]", after)
+	}
+}
+
+// A path that names a collection rather than one document is not somewhere a
+// write can land, and saying so beats writing to a place that is not a record.
+func TestDataWithRefusesACollection(t *testing.T) {
+	if _, err := fixtureData(t).With(t.Context(), "data.users[_].roles", []any{"editor"}); err == nil {
+		t.Error("With() accepted a collection path, and a write lands on one record")
 	}
 }
 

@@ -187,6 +187,14 @@ const (
 	// rests on rather than asking to be trusted.
 	PropViaWritePath = "via_write_path"
 
+	// PropAuthorizedBy is the decision that governs a write another decision
+	// grants on, and PropValue is the value the write puts there. Together they
+	// are what makes a split grant an answer OPA gave rather than a guess: one
+	// decision was asked whether the value may be written, the other whether it
+	// then grants.
+	PropAuthorizedBy = "authorized_by"
+	PropValue        = "value"
+
 	// PropWriteConfidence is whether a write path was asserted by a person or
 	// discovered by a connector.
 	//
