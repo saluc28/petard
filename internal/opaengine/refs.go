@@ -217,12 +217,50 @@ type Closure struct {
 	Decisions []ReachedDecision
 }
 
+// Quantifier is one every expression the decisions reach, with what it iterates
+// and whether the body guards that domain against being empty.
+//
+// It is kept apart from Reads and Closures for the same reason those are kept
+// apart from each other: it names a construct, not a document. An every over an
+// empty domain is vacuously true, so on the side that grants it is a check that
+// stops applying when there is nothing to apply it to, which is what
+// PTD-OPA-007 looks for.
+type Quantifier struct {
+	// Rule is the rule the every sits in, File and Line where.
+	Rule string
+	File string
+	Line int
+
+	// Domain is the normalized path of the collection the every iterates, when
+	// it is a reference into input or data. It is empty when the domain is a
+	// literal or a computed value, which cannot be emptied by the request and so
+	// is not the pattern's concern.
+	Domain string
+
+	// Provenance says whether the domain is chosen by the request or by the
+	// data, the same scale a read carries.
+	Provenance Provenance
+
+	// Guarded is true when the body forces the domain non-empty before the
+	// every, which is the counter case: a guarded every cannot go vacuous.
+	Guarded bool
+
+	// Decisions are the entrypoints that depend on this every, sorted by name.
+	// The parity of the negation on the way down says whether a vacuous truth
+	// grants or denies, which is the whole difference between fail-open and
+	// fail-closed.
+	Decisions []ReachedDecision
+}
+
 // ReadSet is everything the decisions of a bundle read.
 type ReadSet struct {
 	Reads []Read
 
 	// Closures are the places the decisions follow a relation transitively.
 	Closures []Closure
+
+	// Quantifiers are the every expressions the decisions reach.
+	Quantifiers []Quantifier
 
 	// Taints are the values the decisions read that the policy did not
 	// compute, with the decisions each of them reaches.
@@ -312,6 +350,7 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 	taints, warnings := reader.taints(reach, limits)
 	result.Taints = taints
 	result.Closures = reader.closures(result.Reads, reach)
+	result.Quantifiers = reader.quantifiers(reach)
 	result.Warnings = sortedUnique(append(result.Warnings, warnings...))
 
 	for _, rule := range decisions {
@@ -358,6 +397,36 @@ func (r *refReader) closures(reads []Read, reach map[*ast.Rule]decisionPaths) []
 		closures = append(closures, closure)
 	}
 	return closures
+}
+
+// quantifiers names the every expressions the decisions reach, now that the
+// walk knows which decisions reach each rule and how.
+func (r *refReader) quantifiers(reach map[*ast.Rule]decisionPaths) []Quantifier {
+	quantifiers := make([]Quantifier, 0, len(r.foundEverys))
+	for _, found := range r.foundEverys {
+		quantifier := Quantifier{
+			Rule:      rulePath(found.rule).String(),
+			Guarded:   found.guarded,
+			Decisions: reachedDecisions(reach[found.rule]),
+		}
+
+		if resolved, ok := resolveDomain(found.domain, found.bindings); ok {
+			if isInputRooted(resolved) || isDataRooted(resolved) {
+				quantifier.Domain = normalize(resolved)
+				quantifier.Provenance = rootOfRef(resolved)
+			}
+		}
+
+		loc := found.location
+		if loc == nil {
+			loc = found.rule.Loc()
+		}
+		if loc != nil {
+			quantifier.File, quantifier.Line = loc.File, loc.Row
+		}
+		quantifiers = append(quantifiers, quantifier)
+	}
+	return quantifiers
 }
 
 // relationOf names the data a relation is built from.

@@ -60,6 +60,10 @@ type refReader struct {
 	// kept as they were met so that the relation can be named once the reads of
 	// every rule are known.
 	foundClosures []foundClosure
+
+	// foundEverys are the every expressions met while walking, kept so that the
+	// decisions that depend on each can be named once the walk is done.
+	foundEverys []foundEvery
 }
 
 // closureBuiltins are the constructs a policy has to use to follow a relation
@@ -85,6 +89,26 @@ type foundClosure struct {
 	// bindings are those in force where the call was found, needed to say what
 	// its arguments stand for.
 	bindings map[ast.Var]binding
+
+	location *ast.Location
+}
+
+// foundEvery is one every expression met while walking.
+type foundEvery struct {
+	rule *ast.Rule
+
+	// domain is the collection the every iterates, as written before
+	// substitution, so that its provenance can be judged with the bindings in
+	// force where it was met.
+	domain *ast.Term
+
+	// bindings are those in force where the every was found, needed to say what
+	// its domain stands for.
+	bindings map[ast.Var]binding
+
+	// guarded is true when the body holding the every also forces the domain
+	// non-empty, which is what tells the fail-open form from the safe one.
+	guarded bool
 
 	location *ast.Location
 }
@@ -175,8 +199,76 @@ func (r *refReader) walkBody(body ast.Body, outer scope, found *[]foundRef) {
 		negated:  outer.negated,
 	}
 	for _, expr := range body {
+		if expr.IsEvery() {
+			// Recorded from here rather than from walkExpr, because telling the
+			// fail-open form from the guarded one takes the whole body the every
+			// sits in, not the every alone.
+			r.markEvery(expr, body, inner)
+		}
 		r.walkExpr(expr, inner, found)
 	}
+}
+
+// markEvery records an every expression and whether its body guards the domain
+// against being empty.
+func (r *refReader) markEvery(expr *ast.Expr, body ast.Body, sc scope) {
+	every, ok := expr.Terms.(*ast.Every)
+	if !ok {
+		return
+	}
+	r.foundEverys = append(r.foundEverys, foundEvery{
+		rule:     r.current,
+		domain:   every.Domain,
+		bindings: sc.bindings,
+		guarded:  guardsDomain(body, every.Domain, sc.bindings),
+		location: expr.Loc(),
+	})
+}
+
+// guardsDomain reports whether a body forces a domain non-empty before it is
+// iterated, which is the counter case of PTD-OPA-007: an every over a domain a
+// guard keeps non-empty cannot go vacuous.
+//
+// It recognizes a count of the domain, which is how the fixture writes the
+// guard. A length check written another way is a declared false negative, since
+// matching it would mean evaluating the body rather than reading it.
+func guardsDomain(body ast.Body, domain *ast.Term, bindings map[ast.Var]binding) bool {
+	target, ok := resolveDomain(domain, bindings)
+	if !ok {
+		return false
+	}
+
+	guarded := false
+	ast.WalkExprs(body, func(expr *ast.Expr) bool {
+		if guarded || !expr.IsCall() || expr.Operator().String() != ast.Count.Name {
+			return guarded
+		}
+		operands := expr.Operands()
+		if len(operands) == 0 {
+			return false
+		}
+		if counted, ok := resolveDomain(operands[0], bindings); ok && counted.Equal(target) {
+			guarded = true
+		}
+		return guarded
+	})
+	return guarded
+}
+
+// resolveDomain follows a term back to the data or input reference it stands
+// for. The compiler lifts the domain of an `every` and the argument of a
+// builtin into local variables, so what looks like a plain reference in the
+// source arrives here as a variable that a binding ties to the reference.
+func resolveDomain(term *ast.Term, bindings map[ast.Var]binding) (ast.Ref, bool) {
+	switch value := term.Value.(type) {
+	case ast.Ref:
+		return substituteRef(value, bindings).ref, true
+	case ast.Var:
+		if resolved := resolveVar(value, bindings); resolved.status == resolvedTerm {
+			return resolveDomain(resolved.term, bindings)
+		}
+	}
+	return nil, false
 }
 
 // bindingsOf reads what a body says about its variables, and adds the two
