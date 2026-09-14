@@ -269,6 +269,7 @@ func reportFindings(out, stderr io.Writer, a taxonomy.Analysis, findings taxonom
 		{taxonomy.TransitiveGrantViaOwnership, findings.Transitive},
 		{taxonomy.ExternalSourceTaint, findings.Tainted},
 		{taxonomy.FailOpenOnSourceUnavailable, findings.Unavailable},
+		{taxonomy.EveryOverEmptyDomain, findings.EveryEmpty},
 		{taxonomy.WriteAllowedByAnotherDecision, findings.SplitGrant},
 	} {
 		// Printing nothing for a pattern that could not run would read as "the

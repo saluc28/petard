@@ -31,6 +31,10 @@ type Findings struct {
 	Tainted     []Finding
 	Unavailable []Finding
 
+	// EveryEmpty holds the checks written with `every` that stop applying when
+	// their domain is empty. Like the other fail-open patterns it needs no data.
+	EveryEmpty []Finding
+
 	// SplitGrant holds the escalations that come from one decision governing a
 	// write another decision grants on. Like the chain, each is a
 	// PTD_CanEscalateTo between two principals.
@@ -49,6 +53,7 @@ func (f Findings) All() []Finding {
 	all = append(all, f.Transitive...)
 	all = append(all, f.Tainted...)
 	all = append(all, f.Unavailable...)
+	all = append(all, f.EveryEmpty...)
 	all = append(all, f.SplitGrant...)
 	return all
 }
@@ -99,6 +104,7 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 
 	found.Tainted = TaintedByExternalSource(a.Reads)
 	found.Unavailable = GrantsWhenSourceFails(a.Reads)
+	found.EveryEmpty = FailOpenOnEmptyEvery(a.Reads)
 	return found, nil
 }
 

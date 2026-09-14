@@ -284,8 +284,8 @@ branch too. What separates the two is the value: the write is allowed for `edito
 ### PTD-OPA-007, a check that stops applying on the empty case
 
 `review.rego` approves a merge when every reviewer has approved. With no reviewers the `every` is
-vacuously true and the merge goes through, reviewed by nobody. The pattern is `draft`: the engine
-does not look for it yet, and this is what it has to produce once it does.
+vacuously true and the merge goes through, reviewed by nobody. The engine reports the case,
+`allow_unguarded`, and stays quiet about the counter case.
 
 | | where | expected |
 |---|---|---|
@@ -327,17 +327,13 @@ legitimate finding for another.
 | 10 | `withdraw` on `"admin" in ...roles` | 006 | support cannot assign `admin`, so no allowed write reaches the branch |
 | 11 | `allow_guarded` | 007 | `count(input.reviews) > 0` denies the empty case, so the every never goes vacuous |
 
-Expected precision: **two `PTD_CanEscalateTo`** (mallory and carol), **eight findings and one
+Expected precision: **two `PTD_CanEscalateTo`** (mallory and carol), **nine findings and one
 candidate**, and none of the rows above under the pattern they belong to.
 
-The eight: one from 001, one from 002, two from 004 (section 3), two from 005, mallory's
-escalation, which comes out under the id of 003 because that is where the registry says a
-candidate turns into a finding, and carol's escalation under 006. The two escalations are the two
-findings that are also `PTD_CanEscalateTo` edges.
-
-`PTD-OPA-007` is `draft`: the engine does not look for it yet, so it changes none of these counts.
-Once it is implemented the count grows by exactly one finding, on `allow_unguarded`, and the
-`allow_guarded` counter case above stays quiet.
+The nine: one from 001, one from 002, two from 004 (section 3), two from 005, one from 007 on
+`allow_unguarded`, mallory's escalation, which comes out under the id of 003 because that is where
+the registry says a candidate turns into a finding, and carol's escalation under 006. The two
+escalations are the two findings that are also `PTD_CanEscalateTo` edges.
 
 ---
 

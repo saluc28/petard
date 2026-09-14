@@ -4,7 +4,7 @@ id: PTD-OPA-007
 name: every-over-empty-domain
 title: A check written with every stops applying when its domain is empty
 engine: opa
-status: draft
+status: implemented
 
 category:
   id: FAIL-OPEN-ON-ABSENCE
@@ -186,13 +186,19 @@ verified:
   date: 2026-09-14
   tool_version: opa 1.20.2
   how: >
-    `every review in input.reviews { review.approved }` was run with opa 1.20.2: true on an empty
-    list, false on a list with one unapproved review, true when all approve. On the fixture,
-    `data.quill.verify.empty_every`: `allow_unguarded` is true for the empty list and false once a
-    reviewer rejects, while `allow_guarded` is false for the empty list. `regal` v0.42.0 reports
-    no violations on `policy-v1`, and its rule list at that tag holds nothing for this construct.
-    Nothing in the engine looks for the pattern yet, which is why the status is `draft`: it has a
-    case and a counter case in the fixture and no detector.
+    The engine finds the case and stays quiet about the counter case on the fixture. The walk
+    collects every `every` the decisions reach, resolving the domain through the locals the
+    compiler lifts it into; on `allow_unguarded` the domain is `input.reviews`, unguarded and on
+    the granting side, so the finding comes out, and on `allow_guarded` the same every is marked
+    guarded by `count(input.reviews) > 0`, so nothing does.
+    The numbers behind it, `data.quill.verify.empty_every`: `allow_unguarded` is true for the empty
+    list and false once a reviewer rejects, while `allow_guarded` is false for the empty list. The
+    quantifier itself was run with opa 1.20.2: `every` over an empty list is true.
+    `regal` v0.42.0 reports no violations on `policy-v1`, and its rule list at that tag holds
+    nothing for this construct.
+    The status is `implemented` rather than `verified`: the guard is recognized structurally as a
+    count of the domain, and a length check written another way is a declared false negative not
+    yet measured on generated policies.
 
 related:
   - id: PTD-OPA-002

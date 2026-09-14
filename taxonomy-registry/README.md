@@ -16,7 +16,7 @@ Two checks say what is not covered elsewhere.
 `imports`, `performance`, `style`, `testing`, confirmed at the source of v0.42.0 by listing the
 rule directories rather than reading them off a documentation page. The official linter of the
 OPA ecosystem, written by the maintainers, has no notion of "this Rego is dangerous". And
-`regal lint` on the fixture, which holds the case and the counter case of all six patterns,
+`regal lint` on the fixture, which holds the case and the counter case of all seven patterns,
 reports zero violations.
 
 **OPA's security documentation is about the server, not about the policy.** It covers TLS,
@@ -158,10 +158,10 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `implemented`, and the one that exercises taint |
 | `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `implemented`, with the lowest precondition: no attacker needed |
 | `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `implemented`, the second edge that means escalation, from a role's write rather than a position |
-| `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `draft`, the third instance of the category: an `every` over a domain the request can empty, case and counter case in the fixture, no detector yet |
+| `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `implemented`, the third instance of the category: an `every` over a domain the request can empty |
 
-Between them the six implemented exercise `binding-resolution`, `concrete-data`, `rule-graph` and
-`taint`; 007 adds no new capability, only a new construct within `rule-graph`.
+Between them the seven exercise `binding-resolution`, `concrete-data`, `rule-graph` and `taint`;
+007 adds no new capability, only a new construct within `rule-graph`.
 
 `partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
 the engine measures with, and in 002 it is how the fixture checks the **consequence** of a
@@ -258,8 +258,8 @@ None open. The two the registry used to list are both resolved.
 
 **`every` over an empty collection became `PTD-OPA-007`.** The signals do not overlap 002 or 005:
 the construct is `ast.Every` with an empty domain, an empty set rather than 002's missing key, and
-there is no network source, so 005's taint does not apply. It earned a file, drafted with a case
-and a counter case in the fixture and no detector yet.
+there is no network source, so 005's taint does not apply. It earned a file, now implemented with
+a case and a counter case in the fixture.
 
 **Role hierarchy expansion is not a pattern of its own.** It is `PTD-OPA-003`. The
 relation the transitive signals cut is named by what the rule building it reads, whatever that
