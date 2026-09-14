@@ -1,0 +1,216 @@
+schema_version: 1
+
+id: PTD-OPA-007
+name: every-over-empty-domain
+title: A check written with every stops applying when its domain is empty
+engine: opa
+status: draft
+
+category:
+  id: FAIL-OPEN-ON-ABSENCE
+  title: Fail-open on absence
+  summary: >
+    A security check stops applying, not because somebody switched it off, but because the data
+    it rests on is not there. The logic is right; its domain of application is smaller than it
+    looks, and the difference is invisible in the code.
+    Abstract category: it holds for any engine where the absence of a piece of data produces the
+    absence of a decision instead of an error.
+  category_note: >
+    The third OPA instance of this category, and the cause is disjoint from the other two.
+    `PTD-OPA-002` is a key missing from the data; `PTD-OPA-005` is an answer missing from the
+    network; here the collection is present and simply empty, and `every` over an empty collection
+    is true. The signals do not overlap: 002 finds a `data` reference that is undefined for some
+    keys, 005 finds a network builtin whose error is not consumed, and this finds the `every`
+    construct itself in a granting position over a domain that can be empty.
+
+summary: >
+  A decision approves when `every` element of a collection satisfies a condition. When the
+  collection is empty the quantifier is vacuously true, so the decision grants with nothing
+  checked. The check reads as strict, and it is, right up until there is nothing to be strict
+  about.
+  In the fixture, a merge is approved when every reviewer has approved. With no reviewers the
+  merge goes through, reviewed by nobody.
+
+preconditions:
+  - capability: The principal can bring the decision a request whose collection is empty
+    note: >
+      In the fixture, a merge request with no reviews attached. No privilege is needed: an empty
+      list is the natural state of a request nobody has acted on yet.
+
+mechanism:
+  description: >
+    `every x in xs { cond }` holds when no element of `xs` breaks `cond`, and an empty `xs` breaks
+    nothing, so the quantifier is true. Placed where its truth grants, the decision then grants on
+    the empty case. The defect is not in the condition, which is correct, but in the silent
+    assumption that the collection is never empty, and that assumption lives nowhere in the code.
+  example: |
+    package example
+
+    # the decision the PEP of POST /changes/{id}/merge consumes
+    default allow := false
+
+    allow if {
+        input.action == "merge"
+        every review in input.reviews {
+            review.approved
+        }
+    }
+  example_note: >
+    With `input.reviews` a list holding one unapproved review, `allow` is false; with the list
+    empty, `allow` is true. Verified with opa 1.20.2. The guarded form, with
+    `count(input.reviews) > 0` before the `every`, denies the empty case, and that is the counter
+    case: the same quantifier over the same domain, told apart only by the guard.
+
+detection:
+  ast_source: compiled
+  requires:
+    - rule-graph
+    - binding-resolution
+  requires_note: >
+    It does not require `concrete-data`, like `PTD-OPA-005` and unlike `PTD-OPA-002`. The defect
+    is structural: an `every` in a granting position over a domain that can be empty is fail-open
+    whatever the snapshot holds, because the request decides whether the domain is empty. Concrete
+    data is how the **consequence** would be shown, the way 002 uses partial evaluation, not how
+    the defect is found.
+  signals:
+    - order: 1
+      check: >
+        In the compiled body of a rule an entrypoint reaches there is an `every` expression,
+        which the AST carries as an `ast.Every` term rather than as an ordinary call.
+      rationale: >
+        The quantifier is the construct at fault, so it is what the walk looks for. It is a node
+        of its own in the compiled tree, which is why the pattern reads the compiled form.
+    - order: 2
+      check: >
+        The rule sits on the side that grants: reached from the entrypoint with a parity of
+        negations such that the body being true makes the decision hold. An `every` whose vacuous
+        truth denies is fail-closed and is not reported.
+      rationale: >
+        This is the parity signal of `PTD-OPA-002` put to the opposite question. There the
+        fail-open is missing data on the denying side; here it is a vacuous truth on the granting
+        side. It inherits the same weak point, that which side applies the check depends on the
+        PEP, and here the `entrypoint` annotations declare it.
+    - order: 3
+      check: >
+        The domain of the `every`, the collection it iterates, derives from `input` or `data`
+        through the local bindings, rather than being a literal that is never empty.
+      rationale: >
+        A quantifier over a literal non-empty collection cannot go vacuous, so it is not a defect.
+        The domain has to be something the request or the data can make empty, which is what makes
+        the emptiness reachable rather than hypothetical.
+    - order: 4
+      check: >
+        No expression in the same body forces the domain non-empty first: `count(domain) > 0`,
+        `domain[_]`, or a `some` that binds an element of it.
+      rationale: >
+        This is what separates the case from the counter case, and it is the whole reason the
+        pattern is not a lint on the presence of an `every`. A guard that requires at least one
+        element closes the hole, and the engine must not report the guarded form.
+  confidence: B
+  confidence_note: >
+    The construct and its domain are structural and would be worth more, but signal 2 rests on
+    knowing which side applies the check, which depends on the PEP, the same weak point as 002 and
+    005. The engine computes A on a bundle whose entrypoints are annotated or declared, because
+    the granting side is then a known edge of the descent rather than a guess. The file stays at B
+    because that is the level of the pattern when decisions have to be recognized, which is the
+    general case.
+  requires_write_model: false
+  requires_write_model_note: >
+    Not needed, for the same reason as 002 and 005: the defect is that a check does not apply, not
+    that somebody wrote a value. A write model would say who can keep the collection empty on
+    demand, which turns the finding into a route, but it is not needed for the finding itself.
+
+graph:
+  emits: finding
+  edge: PTD_Reads
+  edge_note: >
+    It does not emit `PTD_CanEscalateTo`: nobody reaches anybody, a check simply does not cover
+    the empty case, which is a missing coverage like `PTD-OPA-002` and not a route. When the
+    domain is a `data` path the finding marks the dependency between the decision and that
+    attribute; when the domain is part of the request, as in the fixture, the finding lives in the
+    report with no attribute to attach to, the way a decision that reads no `data` has none.
+  from: PTD_Rule
+  to: PTD_Attribute
+  traversable: false
+  traversable_note: >
+    False on purpose, as for 002: nothing is crossed, it is an observation that a check does not
+    apply to the empty case.
+  properties:
+    - decision: the decision that goes fail-open
+    - domain: the collection the every iterates, which the request can make empty
+    - guarded: whether a guard against the empty case was found, which is what a counter case has
+
+false_positives:
+  - condition: >
+      The domain cannot actually be empty in the deployment, because something upstream of OPA
+      always fills it.
+    discriminator: >
+      Outside the policy and the data, so the engine cannot see it. It is the same shape as an
+      intended absence in 002: declared in a note next to the decision, it stays in the report,
+      because a guarantee nobody enforces in the bundle is only a convention.
+  - condition: >
+      The `every` is a genuine business rule where the empty case is meant to pass, such as "no
+      objection was raised".
+    discriminator: >
+      Intent is in no dataset. The guard is the signal: a decision that means the empty case to
+      pass and a decision that forgot it look identical, and only a versioned list of accepted
+      empty-passes tells them apart, kept next to the bundle as for the other patterns.
+
+not_a_lint_rule: >
+  A linter sees the `every` in one file, but not whether it applies a check. Whether the rule
+  grants or denies depends on how the PEP consumes it and on the negations between the entrypoint
+  and the rule, which is the decision graph rather than one expression. `regal` v0.42.0 has no
+  rule for it, confirmed by listing its rules at the source: the closest, `constant-condition` and
+  `impossible-not`, are about expressions that are always true or always false in the file, not
+  about a quantifier that goes true only when the request empties its domain.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  case: >
+    `review.rego`, `allow_unguarded`: approve a merge when every reviewer approves. With no
+    reviewers the merge is approved.
+  counter_case: >
+    `review.rego`, `allow_guarded`: the same every behind `count(input.reviews) > 0`, which denies
+    the empty case.
+  expected: >
+    A finding on `data.quill.review.allow_unguarded`, and nothing on `allow_guarded`.
+
+references:
+  - title: regal, rule list at v0.42.0
+    note: >
+      StyraInc/regal at v0.42.0, the rule directories under bundle/regal/rules, checked on
+      2026-09-14: no rule about `every` over an empty domain, and none about vacuous quantifiers.
+
+verified:
+  date: 2026-09-14
+  tool_version: opa 1.20.2
+  how: >
+    `every review in input.reviews { review.approved }` was run with opa 1.20.2: true on an empty
+    list, false on a list with one unapproved review, true when all approve. On the fixture,
+    `data.quill.verify.empty_every`: `allow_unguarded` is true for the empty list and false once a
+    reviewer rejects, while `allow_guarded` is false for the empty list. `regal` v0.42.0 reports
+    no violations on `policy-v1`, and its rule list at that tag holds nothing for this construct.
+    Nothing in the engine looks for the pattern yet, which is why the status is `draft`: it has a
+    case and a counter case in the fixture and no detector.
+
+related:
+  - id: PTD-OPA-002
+    note: >
+      The same category, a disjoint cause. 002 is a key absent from the data; this is a collection
+      present and empty. The parity signal is shared and asked the opposite way: 002 on the denying
+      side, this on the granting side.
+  - id: PTD-OPA-005
+    note: >
+      The same category again, and the closest in shape: both are structural rather than needing
+      concrete data, and both rest on the enforcing side. 005 is an answer that never arrives from
+      the network; this is a domain that is simply empty.
+
+open_questions:
+  - question: >
+      Should the guard be recognized structurally or by evaluation?
+    note: >
+      Signal 4 lists the guards that close the hole, `count(domain) > 0` and the others. Whether a
+      guard the list does not name, such as a length check written another way, is caught depends
+      on whether it is matched structurally or the body is evaluated. The structural form is a
+      declared false negative until measured.

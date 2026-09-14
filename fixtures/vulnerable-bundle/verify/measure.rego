@@ -102,3 +102,27 @@ split_grant := {
 	withdraw_after := data.quill.publish.allow with input as carol_withdraws
 		with data.users.carol.roles as ["support", "editor"]
 }
+
+# --- PTD-OPA-007: a check written with every stops applying on the empty case -
+# The unguarded decision approves an empty review list, because `every` over an
+# empty collection is true; the guarded one denies it. Same every, same domain:
+# only the guard tells them apart.
+merge_empty := {"action": "merge", "reviews": []}
+
+merge_rejected := {"action": "merge", "reviews": [{"approved": false}]}
+
+merge_approved := {"action": "merge", "reviews": [{"approved": true}]}
+
+empty_every := {
+	"unguarded_empty": unguarded_empty,
+	"unguarded_rejected": unguarded_rejected,
+	"unguarded_approved": unguarded_approved,
+	"guarded_empty": guarded_empty,
+	"guarded_approved": guarded_approved,
+} if {
+	unguarded_empty := data.quill.review.allow_unguarded with input as merge_empty
+	unguarded_rejected := data.quill.review.allow_unguarded with input as merge_rejected
+	unguarded_approved := data.quill.review.allow_unguarded with input as merge_approved
+	guarded_empty := data.quill.review.allow_guarded with input as merge_empty
+	guarded_approved := data.quill.review.allow_guarded with input as merge_approved
+}

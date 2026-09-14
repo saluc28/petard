@@ -28,14 +28,14 @@ fixtures/vulnerable-bundle/
 
 ### The two variants are the same policy
 
-Checked on every rule value the two variants produce, against every input under `inputs/`, which
-is 91 values over 8 inputs: no divergence between `policy-v1` and `policy-v0`. The same pair of
-trees is also the test of dual parsing:
+Checked on every value the two variants produce under `data.quill`, against every input under
+`inputs/`, which is 120 values over 10 inputs: no divergence between `policy-v1` and `policy-v0`.
+The same pair of trees is also the test of dual parsing:
 
 | | v1 parser | v0 parser (`--v0-compatible`) |
 |---|---|---|
-| `policy-v1/` | passes | 15 errors |
-| `policy-v0/` | 24 errors, "`if` keyword is required before rule body" | passes |
+| `policy-v1/` | passes | 16 errors |
+| `policy-v0/` | 26 errors, "`if` keyword is required before rule body" | passes |
 
 ---
 
@@ -281,6 +281,30 @@ branch too. What separates the two is the value: the write is allowed for `edito
 `PTD-OPA-001` stays silent on the same field, and that is right: `roles` is written by a role,
 `role:support`, and not by the subject as such, which is the line between the two patterns.
 
+### PTD-OPA-007, a check that stops applying on the empty case
+
+`review.rego` approves a merge when every reviewer has approved. With no reviewers the `every` is
+vacuously true and the merge goes through, reviewed by nobody. The pattern is `draft`: the engine
+does not look for it yet, and this is what it has to produce once it does.
+
+| | where | expected |
+|---|---|---|
+| **case** | `review.rego`, `allow_unguarded` on `every review in input.reviews` | **finding**, the domain can be empty and nothing guards it |
+| **counter case** | `review.rego`, `allow_guarded`, the same every behind `count(input.reviews) > 0` | **nothing**, the guard denies the empty case |
+
+Measured with `data.quill.verify.empty_every`:
+
+```
+allow_unguarded, reviews []            allow = TRUE    ← fail-open, nobody reviewed
+allow_unguarded, reviews [rejected]    allow = false
+allow_unguarded, reviews [approved]    allow = true
+allow_guarded,   reviews []            allow = false   ← the guard denies
+allow_guarded,   reviews [approved]    allow = true
+```
+
+The counter case is what keeps the pattern from being a lint on the presence of an `every`: the
+same quantifier over the same domain, and only the guard tells the fail-open from the safe form.
+
 ---
 
 ## 4. What the engine must not report
@@ -301,6 +325,7 @@ legitimate finding for another.
 | 8 | `allow_positive_side` | 005 | fail-closed, this is availability. **For 004 it is a finding**, because the content of the answer grants |
 | 9 | `data.users.{owner}.profile.*` | 001 | writable, but no decision reads it |
 | 10 | `withdraw` on `"admin" in ...roles` | 006 | support cannot assign `admin`, so no allowed write reaches the branch |
+| 11 | `allow_guarded` | 007 | `count(input.reviews) > 0` denies the empty case, so the every never goes vacuous |
 
 Expected precision: **two `PTD_CanEscalateTo`** (mallory and carol), **eight findings and one
 candidate**, and none of the rows above under the pattern they belong to.
@@ -309,6 +334,10 @@ The eight: one from 001, one from 002, two from 004 (section 3), two from 005, m
 escalation, which comes out under the id of 003 because that is where the registry says a
 candidate turns into a finding, and carol's escalation under 006. The two escalations are the two
 findings that are also `PTD_CanEscalateTo` edges.
+
+`PTD-OPA-007` is `draft`: the engine does not look for it yet, so it changes none of these counts.
+Once it is implemented the count grows by exactly one finding, on `allow_unguarded`, and the
+`allow_guarded` counter case above stays quiet.
 
 ---
 
@@ -375,7 +404,7 @@ Run on 2026-09-14 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant he
 saying):
 
 ```
-regal lint fixtures/vulnerable-bundle/policy-v1   →  6 files linted. No violations found.
+regal lint fixtures/vulnerable-bundle/policy-v1   →  7 files linted. No violations found.
 ```
 
 The rule categories were confirmed **at the source**, by listing the directories in the pinned
@@ -415,8 +444,9 @@ Readable with `opa inspect -a`. They serve three purposes:
 There are no `schemas:`, and that is deliberate: they would raise the confidence of a finding
 artificially. The realistic case is that nobody writes them.
 
-**Nine decisions are annotated**, among them all four rules of `risk.rego` and the two halves of
-the split grant, `admin` and `publish`. A rule
+**Eleven decisions are annotated**, among them all four rules of `risk.rego`, the two halves of
+the split grant, `admin` and `publish`, and the guarded and unguarded merge decisions of
+`review`. A rule
 without the annotation is a rule the engine never looks at, and leaving the three counter cases
 of `risk.rego` unannotated would break the fixture in two directions at once: *"the engine must
 not report `allow_defensive`"* would be satisfied for the wrong reason, because that rule would

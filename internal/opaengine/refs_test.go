@@ -204,16 +204,18 @@ func TestReadsListsTheDecisions(t *testing.T) {
 		t.Fatalf("Reads() error = %v", err)
 	}
 
-	// Nine, not six: the three counter cases of PTD-OPA-005 are decisions
-	// the PEP consumes like the others. Leaving them unannotated made the
-	// engine ignore them, so "the engine must not flag allow_defensive" was
-	// satisfied for the wrong reason, and "it must flag allow_default_option"
-	// could not be satisfied at all.
+	// Eleven decisions: the three counter cases of PTD-OPA-005 are consumed by
+	// the PEP like the others, and PTD-OPA-006 and 007 add two each. Leaving
+	// any of them unannotated made the engine ignore them, so a counter case
+	// "the engine must not flag" was satisfied for the wrong reason and a case
+	// "it must flag" could not be satisfied at all.
 	expected := []string{
 		"data.quill.admin.allow",
 		"data.quill.authz.allow",
 		"data.quill.enrichment.allow",
 		"data.quill.publish.allow",
+		"data.quill.review.allow_guarded",
+		"data.quill.review.allow_unguarded",
 		"data.quill.risk.allow_default_option",
 		"data.quill.risk.allow_defensive",
 		"data.quill.risk.allow_positive_side",

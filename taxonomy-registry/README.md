@@ -158,8 +158,10 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `implemented`, and the one that exercises taint |
 | `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `implemented`, with the lowest precondition: no attacker needed |
 | `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `implemented`, the second edge that means escalation, from a role's write rather than a position |
+| `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `draft`, the third instance of the category: an `every` over a domain the request can empty, case and counter case in the fixture, no detector yet |
 
-Between them the six exercise `binding-resolution`, `concrete-data`, `rule-graph` and `taint`.
+Between them the six implemented exercise `binding-resolution`, `concrete-data`, `rule-graph` and
+`taint`; 007 adds no new capability, only a new construct within `rule-graph`.
 
 `partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
 the engine measures with, and in 002 it is how the fixture checks the **consequence** of a
@@ -247,19 +249,19 @@ that line, with a write model that says who writes what.
 ### The fixture
 
 `fixtures/vulnerable-bundle/` holds a case **and at least one counter case** for each of the
-six, in Rego v1 and v0, with the write model and an `EXPECTED.md` that declares in words what
+seven, in Rego v1 and v0, with the write model and an `EXPECTED.md` that declares in words what
 the engine has to find and what it must not. The numbers there are executed, not estimated.
 
 ### Candidates not yet written
 
-One, and the registry is the only place it is listed. A candidate nobody wrote down here is a
-candidate nobody finds again.
+None open. The two the registry used to list are both resolved.
 
-| Candidate | What is unresolved |
-|---|---|
-| `every` over an empty collection is true, so a check written with `every` stops applying exactly when there is nothing to apply it to | A third OPA instance of `FAIL-OPEN-ON-ABSENCE`. The signals do not overlap 002 or 005: the construct is `ast.Every` with an empty domain, an empty set rather than 002's missing key, and there is no network source, so 005's taint does not apply. What it still needs is a case and a counter case in the fixture before it can be written as a file |
+**`every` over an empty collection became `PTD-OPA-007`.** The signals do not overlap 002 or 005:
+the construct is `ast.Every` with an empty domain, an empty set rather than 002's missing key, and
+there is no network source, so 005's taint does not apply. It earned a file, drafted with a case
+and a counter case in the fixture and no detector yet.
 
-**Resolved: role hierarchy expansion is not a pattern of its own.** It is `PTD-OPA-003`. The
+**Role hierarchy expansion is not a pattern of its own.** It is `PTD-OPA-003`. The
 relation the transitive signals cut is named by what the rule building it reads, whatever that
 relation connects, and Rego forbids recursion between rules, so an unbounded role expansion runs
 through `graph.reachable` or `walk` like any other hierarchy. A role that reaches far only through

@@ -84,8 +84,9 @@ only generated ground truth makes that visible.
 
 ## The taxonomy
 
-Six patterns live in `taxonomy-registry/`, which is versioned data rather than code, and all of
-them are implemented against the fixture in `internal/taxonomy`. The registry is the source of truth;
+Seven patterns live in `taxonomy-registry/`, which is versioned data rather than code, and six of
+them are implemented against the fixture in `internal/taxonomy`; the seventh is drafted, with a
+case and a counter case in the fixture and no detector yet. The registry is the source of truth;
 these are one-line glosses.
 
 | ID | What it looks for |
@@ -96,6 +97,7 @@ these are one-line glosses.
 | `PTD-OPA-004` | a decision depends on an external source, so whoever controls it decides |
 | `PTD-OPA-005` | a check that needs an external source stops applying when it does not answer |
 | `PTD-OPA-006` | one decision lets a principal write the data another decision grants on |
+| `PTD-OPA-007` | a check written with `every` stops applying when its collection is empty; drafted, not implemented yet |
 
 Two of them end in the words privilege escalation, and each draws a `PTD_CanEscalateTo` between
 two principals. `PTD-OPA-001` and `PTD-OPA-003` chain into one, from a principal who can write a
