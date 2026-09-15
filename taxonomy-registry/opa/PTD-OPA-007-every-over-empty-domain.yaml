@@ -100,12 +100,15 @@ detection:
         the emptiness reachable rather than hypothetical.
     - order: 4
       check: >
-        No expression in the same body forces the domain non-empty first: `count(domain) > 0`,
-        `domain[_]`, or a `some` that binds an element of it.
+        No `count` of the domain in the same body forces it non-empty first, as in
+        `count(input.reviews) > 0`.
       rationale: >
-        This is what separates the case from the counter case, and it is the whole reason the
-        pattern is not a lint on the presence of an `every`. A guard that requires at least one
-        element closes the hole, and the engine must not report the guarded form.
+        A guard that requires at least one element closes the hole, so the guarded form is the
+        counter case and must not be reported. Only a `count` of the domain is recognized. A guard
+        written another way, an iteration of the domain or a `some` that binds one of its elements,
+        is not, and the every behind it is then reported as if unguarded: a false positive. The fix
+        is not a longer list of shapes to match but evaluating the decision with the domain empty,
+        which the open questions weigh.
   confidence: B
   confidence_note: >
     The construct and its domain are structural and would be worth more, but signal 2 rests on
@@ -155,6 +158,14 @@ false_positives:
       Intent is in no dataset. The guard is the signal: a decision that means the empty case to
       pass and a decision that forgot it look identical, and only a versioned list of accepted
       empty-passes tells them apart, kept next to the bundle as for the other patterns.
+  - condition: >
+      The `every` is guarded against the empty case by something other than a count of the domain,
+      an iteration of it or a `some` that binds an element.
+    discriminator: >
+      Not recognized: only a `count` of the domain is. Such an every is reported as if unguarded,
+      which is a false positive. Telling it apart for certain means evaluating the decision with
+      the domain empty rather than reading the body, the move 003 and 006 make with partial
+      evaluation, and it is the open question below.
 
 not_a_lint_rule: >
   A linter sees the `every` in one file, but not whether it applies a check. Whether the rule
@@ -216,7 +227,12 @@ open_questions:
   - question: >
       Should the guard be recognized structurally or by evaluation?
     note: >
-      Signal 4 lists the guards that close the hole, `count(domain) > 0` and the others. Whether a
-      guard the list does not name, such as a length check written another way, is caught depends
-      on whether it is matched structurally or the body is evaluated. The structural form is a
-      declared false negative until measured.
+      Signal 4 recognizes one guard, a `count` of the domain. A guard written another way, an
+      iteration of the domain or a `some` over it, is not recognized, so the every behind it is
+      reported as if unguarded, which is a false positive, not a false negative. Matching more
+      shapes stays fragile, because the `every` itself iterates the domain and an iteration guard
+      has to be told from that. The robust answer is to stop reading the body and evaluate the
+      decision with the domain empty: if it still grants, the every is fail-open; if it denies, a
+      guard closed it, whatever its shape. That is left undone because it would make the pattern
+      need the bundle and a data store, where today it is static, and that trade is not yet
+      settled.
