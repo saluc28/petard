@@ -163,3 +163,42 @@ func TestPrecisionHoldsAcrossSeeds(t *testing.T) {
 		})
 	}
 }
+
+// The split grant invents nothing on a world that plants none. The generator
+// gives every principal the viewer role, so nobody can write themselves editor,
+// and a pattern that reported one anyway would be inventing an escalation, which
+// is the one risk generated data is here to rule out. Recall for this pattern is
+// the hand written fixture's job; this is the precision half, across seeds.
+func TestSplitGrantInventsNothingOnGeneratedData(t *testing.T) {
+	for _, seed := range []uint64{1, 7, 4242} {
+		t.Run(fmt.Sprintf("seed %d", seed), func(t *testing.T) {
+			_, a := analyzeGenerated(t, fixture.Small(seed))
+
+			findings, err := SplitGrant(t.Context(), a)
+			if err != nil {
+				t.Fatalf("SplitGrant() error = %v", err)
+			}
+			if len(findings) != 0 {
+				t.Errorf("split grant invented %d escalations on data that plants none: %v", len(findings), findings)
+			}
+		})
+	}
+}
+
+// The every-over-empty pattern rests on the policy, not the data, so on every
+// generated world it reports the same one finding, the unguarded merge decision,
+// and never another. It is the same property `PTD-OPA-004` and `PTD-OPA-005`
+// have: a dataset does not move a defect that lives in the shape of the rule. A
+// second finding here would be the engine reading the data where it must not.
+func TestEveryEmptyRestsOnThePolicyNotTheData(t *testing.T) {
+	for _, seed := range []uint64{1, 7, 4242} {
+		t.Run(fmt.Sprintf("seed %d", seed), func(t *testing.T) {
+			_, a := analyzeGenerated(t, fixture.Small(seed))
+
+			findings := FailOpenOnEmptyEvery(a.Reads)
+			if len(findings) != 1 || findings[0].Decision != "data.quill.review.allow_unguarded" {
+				t.Errorf("every-empty on generated data = %v, want only the unguarded merge decision", findings)
+			}
+		})
+	}
+}

@@ -190,8 +190,12 @@ negatives, not false positives.
 its counter case. `verified` means the declared false positives have been **measured** as well.
 
 Generated worlds with a fixed seed answer part of that, and the part they answer is the worst
-risk: that the engine invents escalations. On worlds it has never seen, it does not. What
-generated data cannot settle is most of what these files actually declare:
+risk: that the engine invents escalations. On worlds it has never seen, it does not, and that now
+covers both escalations: the 001 to 003 chain, whose planted principals it finds and no others,
+and the split grant of 006, which it reports for nobody on data that gives everybody the viewer
+role. The every of 007 is measured there too, from the other side: it rests on the policy, so on
+every generated world it reports the same one decision and never a second, the way 004 and 005 do.
+What generated data still cannot settle is most of what these files actually declare:
 
 - **intent**, which no dataset contains. "The absence is deliberate", "the breadth is known and
   wanted", "the fail-open is a choice about availability": a generator can produce the case, not
