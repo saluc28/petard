@@ -205,7 +205,7 @@ generated data cannot settle is most of what these files actually declare:
 
 The engine has been run over `open-policy-agent/gatekeeper-library`, at commit
 `e4d3bd2448b20bc7910417f5b2cf18b63a0bd33c`: 51 units under `src/`, 142 Rego files, all of them
-written by other people. On that corpus the six find **zero**, and not because of a limit in
+written by other people. On that corpus the seven find **zero**, and not because of a limit in
 the engine:
 
 | Pattern | Why it is silent |
@@ -215,6 +215,7 @@ the engine:
 | `PTD-OPA-003` | no transitive construct anywhere in the corpus |
 | `PTD-OPA-004`, `PTD-OPA-005` | **zero** calls to nondeterministic builtins in the whole corpus |
 | `PTD-OPA-006` | needs a write model naming the decision behind a write, and the corpus ships none |
+| `PTD-OPA-007` | not one `every` in the corpus: the keyword does not appear in any of the 142 files |
 
 A zero against a real corpus is neither a confirmation nor a refutation of the declared false
 positives: it is a measurement of what that corpus holds. Kubernetes admission policies decide
@@ -238,9 +239,10 @@ configuration checks, libraries, test inputs and a bundle signing demo.
 | 7, an HTTP API, Kafka, Kong, PAM, a Kubernetes authorizer, Dart, Wasm | no `data` | nothing |
 
 No value from outside the policy reaches any of the 16 decisions, so `PTD-OPA-004` and
-`PTD-OPA-005` have nothing to look at. The two candidates of the AuthZEN policy stay candidates:
-whether a user can change their own `roles` depends on the application that stores them, and the
-write model is where that is declared.
+`PTD-OPA-005` have nothing to look at, and no policy in contrib uses `every` either, so
+`PTD-OPA-007` has nothing to find in its 49 files. The two candidates of the AuthZEN policy stay
+candidates: whether a user can change their own `roles` depends on the application that stores
+them, and the write model is where that is declared.
 
 `verified` needs a measurement of the **declared** false positives, which for 004 and 005 would
 mean generating policies rather than data, and for the others more than one policy that crosses
