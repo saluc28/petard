@@ -4,7 +4,7 @@ id: PTD-OPA-001
 name: attribute-self-write
 title: The subject writes an attribute the policy reads to decide about them
 engine: opa
-status: implemented
+status: verified
 
 category:
   id: ATTR-SELF-WRITE
@@ -109,8 +109,10 @@ graph:
   emits: finding
   emits_note: >
     `finding` **only** when the `WrittenBy` model is present and covers the field path. With no
-    model, or with a model whose granularity is the record rather than the field, the engine
-    emits `candidate` and says so.
+    model the engine emits `candidate` and says so. A model whose granularity is the record
+    covers every field of it, so the engine emits a `finding` on a field the subject cannot
+    really write: that is the first of the false positives below, and the model is where it is
+    fixed.
   edge: PTD_CanEscalateTo
   from: PTD_Principal
   to: PTD_Principal
@@ -128,6 +130,42 @@ false_positives:
     discriminator: >
       The `WrittenBy` model has to have **field granularity**, not record granularity. A model
       at collection level produces systematic false positives on every pattern in this family.
+    measurement: case
+    case:
+      policy: |
+        package tier_access
+
+        # METADATA
+        # scope: document
+        # title: Decision on the tier of the requester
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            data.users[input.user].tier == "gold"
+        }
+      write_model: |
+        schema_version: 1
+        model: write-paths
+        entries:
+          - path: data.users.{owner}.display_name
+            writable_by:
+              - principal: "{owner}"
+                via: "PATCH /api/v1/me"
+                confidence: asserted
+          - path: data.users.{owner}.tier
+            writable_by:
+              - principal: system:billing
+                via: "billing webhook"
+                confidence: asserted
+      reports: false
+      note: >
+        With the model at field granularity the engine is quiet: the subject writes
+        `display_name`, billing writes `tier`, and the decision reads `tier`. Run with opa 1.20.2,
+        a `tier` of `free` gives `false` and `gold` gives `true`, so the field decides. The same
+        policy against a model that declares `data.users.{owner}.*` writable by the subject gives
+        a finding on `tier`, which is the false positive this condition names.
   - condition: >
       The policy revalidates the value against an authoritative source in the same body, or
       compares it against data the subject cannot write.
@@ -135,6 +173,42 @@ false_positives:
       Look, in the same body, for another reference to `data.` that constrains the value and is
       not indexed by the subject. Detectable, but not specified yet: see the open question about
       revalidation.
+    measurement: case
+    case:
+      policy: |
+        package tier_revalidated
+
+        # METADATA
+        # scope: document
+        # title: Decision on a tier billing confirms
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            data.users[input.user].tier == "gold"
+            data.billing.accounts[input.user].plan == "gold"
+        }
+      write_model: |
+        schema_version: 1
+        model: write-paths
+        entries:
+          - path: data.users.{owner}.tier
+            writable_by:
+              - principal: "{owner}"
+                via: "PATCH /api/v1/me"
+                confidence: asserted
+          - path: data.billing.accounts.{account}.plan
+            writable_by:
+              - principal: system:billing
+                via: "billing webhook"
+                confidence: asserted
+      reports: true
+      note: >
+        Run with opa 1.20.2: a `tier` the subject sets to `gold` over a billing plan of `free`
+        gives `false`, and only both at `gold` give `true`, so writing the field alone grants
+        nothing. The engine reports `tier` anyway, because it does not look for the second read
+        that holds the value in check.
   - condition: >
       The field sits on the side that denies, and the subject can only write it in the direction
       that denies: a self-exclusion that only an administrator lifts.
@@ -144,12 +218,46 @@ false_positives:
       wrong for a one-way exclusion. Telling them apart takes a constraint on the values the
       subject may write, which the model carries for writes a decision authorizes
       (`authorized_by`, read by `PTD-OPA-006`) and not for the subject's own.
+    measurement: case
+    case:
+      policy: |
+        package self_exclusion
+
+        # METADATA
+        # scope: document
+        # title: Decision that honours a self-exclusion
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "bet"
+            not excluded
+        }
+
+        excluded if data.users[input.user].self_excluded == true
+      write_model: |
+        schema_version: 1
+        model: write-paths
+        entries:
+          - path: data.users.{owner}.self_excluded
+            writable_by:
+              - principal: "{owner}"
+                via: "POST /api/v1/me/self-exclusion"
+                note: The subject can set it and only support can clear it.
+                confidence: asserted
+      reports: true
+      note: >
+        Run with opa 1.20.2: with the exclusion set the decision gives `false`, and without it
+        `true`. The engine reports the field, as it does for a suspension the subject can clear,
+        and here that is a false positive: the note in the model says the write goes one way,
+        and the engine does not read notes.
   - condition: >
       The field is only writable through a flow that already requires more privilege than the
       escalation would grant.
     discriminator: >
       None automatic. It is a judgement about the system, and it belongs in the report as a
       note rather than being suppressed in silence.
+    measurement: out-of-band
 
 not_a_lint_rule: >
   A linter sees one policy file. Here the policy is correct and idiomatic: `regal` has nothing
@@ -187,7 +295,7 @@ references:
       `imports`, `performance`, `style`, `testing`. **No `security` category.**
 
 verified:
-  date: 2026-09-13
+  date: 2026-09-16
   tool_version: opa 1.20.2
   how: >
     Signals 1 and 2 are executable, not argued: the resolver rebuilds
@@ -213,13 +321,13 @@ verified:
     regal v0.42.0 (which embeds OPA 1.18.2) reports **no violations** on the fixture, which
     holds the case and the counter case of this pattern and of the others. The central
     claim of the registry is executed rather than argued.
-
-notes:
-  - note: >
-      The declared false positives are not measured yet, and that is what separates
-      `implemented` from `verified`. Two of the four are about intent rather than structure, so
-      no generated dataset settles them; what a generator does settle is that the engine does
-      not invent this finding on worlds it has never seen.
+    On generated worlds the chain this pattern starts reaches the planted principals and no
+    others, so the finding does not turn into escalations the data does not hold.
+    The four declared false positives are settled as the status requires. A field writable only
+    through a more privileged flow is `out-of-band`, a judgement about the system. The other
+    three carry a case that runs on every build: a field-granular model the engine follows and
+    stays quiet on, a value revalidated against billing that it still reports, and a one-way
+    self-exclusion that it reports as it would a suspension.
 
 related:
   - id: PTD-OPA-003
@@ -243,9 +351,10 @@ open_questions:
       How do you detect revalidation, the second entry of `false_positives`, without doing
       semantic analysis of the body?
     note: >
-      A heuristic along the lines of "there is another reference to `data.` in the same body
-      that is not indexed by the subject" is probably too coarse. To be studied with the fixture
-      in hand.
+      The case among the false positives measures where the engine stands today: a tier
+      revalidated against billing is still reported. A heuristic along the lines of "there is
+      another reference to `data.` in the same body that is not indexed by the subject" is
+      probably too coarse, and the case is what any answer will be measured against.
   - question: >
       Is confidence a property of the instance or of the policy?
     note: >
