@@ -220,7 +220,7 @@ references:
       2026-09-14: no rule about `every` over an empty domain, and none about vacuous quantifiers.
 
 verified:
-  date: 2026-09-14
+  date: 2026-09-16
   tool_version: opa 1.20.2
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture. The walk
