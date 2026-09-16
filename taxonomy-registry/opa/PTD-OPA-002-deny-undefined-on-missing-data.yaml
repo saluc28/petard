@@ -4,7 +4,7 @@ id: PTD-OPA-002
 name: deny-undefined-on-missing-data
 title: A deny rule is silent for part of the data, so the check does not apply there
 engine: opa
-status: implemented
+status: verified
 
 category:
   id: FAIL-OPEN-ON-ABSENCE
@@ -177,6 +177,7 @@ false_positives:
       None automatic: this is intent, not structure. The realistic mitigation is that the report
       lists the uncovered keys and the analyst classifies them once, with a versioned exception
       list kept next to the write model.
+    measurement: out-of-band
   - condition: >
       The path is absent in the snapshot being analyzed but present in production, for instance
       when the test bundle is partial.
@@ -184,16 +185,91 @@ false_positives:
       Always declare where the snapshot came from and when, in the report. A finding on
       unrepresentative data is noise, and without the provenance it is not even recognizable as
       such.
+    measurement: out-of-band
   - condition: >
-      Another check, somewhere else, covers the same case.
+      Another rule of the same decision denies when the path, or a prefix of it, is missing.
     discriminator: >
       Signal 4 looks at the **whole decision**, meaning any rule the decision negates that
       denies when the path is missing, prefixes included: whoever denies on the absence of
       `policy` covers `policy.require_mfa` as well. That is the normal way to write the defence,
       and reporting it would have been the easiest false positive to produce.
-      Two cases stay uncovered: a defence living in another decision, and a `default` that
-      denies on an intermediate rule of the path, because the signal reads the default of the
-      rule doing the read and not of the ones in between.
+    measurement: case
+    case:
+      policy: |
+        package tenant_guarded
+
+        # METADATA
+        # scope: document
+        # title: Decision with a tenant MFA requirement and a guard on its absence
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            not denied_mfa
+            not denied_unconfigured
+        }
+
+        denied_mfa if {
+            data.tenants[input.tenant].policy.require_mfa == true
+            not input.mfa
+        }
+
+        denied_unconfigured if not data.tenants[input.tenant].policy
+      data: |
+        {"tenants": {"berq": {"policy": {"require_mfa": true}}, "dolm": {}}}
+      reports: false
+      note: >
+        Run with opa 1.20.2: `dolm`, which has no `policy`, gives `false` without MFA, because the
+        guard on the prefix denies; `berq` with MFA gives `true`. The engine stays quiet, since the
+        guard on `policy` covers `policy.require_mfa`.
+  - condition: >
+      A `default` on a rule between the decision and the read denies when the path is missing.
+    discriminator: >
+      Not seen: signal 4 reads the default of the rule doing the read and not of the ones in
+      between, so a default one step up is invisible to it.
+    measurement: case
+    case:
+      policy: |
+        package tenant_intermediate
+
+        # METADATA
+        # scope: document
+        # title: Decision with a tenant MFA requirement that defaults to required
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            not denied_mfa
+        }
+
+        denied_mfa if {
+            mfa_required
+            not input.mfa
+        }
+
+        default mfa_required := true
+
+        mfa_required := configured_mfa
+
+        configured_mfa := required if {
+            required := data.tenants[input.tenant].policy.require_mfa
+        }
+      data: |
+        {"tenants": {"berq": {"policy": {"require_mfa": true}}, "dolm": {}}}
+      reports: true
+      note: >
+        Run with opa 1.20.2: `dolm` without MFA gives `false`, because `mfa_required` falls back
+        to `true` when `configured_mfa` is undefined, and with MFA it gives `true`. The check
+        applies to `dolm` after all. The engine reports `dolm` as uncovered anyway, because the
+        default sits on `mfa_required` and the read sits in `configured_mfa`.
+  - condition: >
+      A rule in another decision covers the same case.
+    discriminator: >
+      The signal sees one decision at a time, and whether a defence in another one applies
+      depends on the PEP querying both and combining them, which the bundle does not say.
+    measurement: out-of-band
   - condition: >
       The index of the path is not chosen by the requester but by other data, so not every key
       of the collection is reachable from a request, and the uncovered ones may not be.
@@ -203,6 +279,37 @@ false_positives:
       signal (see `detection.requires_note`). It does not come up on the fixture, where the read
       is indexed by `input.tenant`, and in general the report declares where the index comes
       from, so a reader can recognize the case.
+    measurement: case
+    case:
+      policy: |
+        package tenant_by_user
+
+        # METADATA
+        # scope: document
+        # title: Decision with the MFA requirement of the requester's tenant
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            not denied_mfa
+        }
+
+        denied_mfa if {
+            data.tenants[data.users[input.user].tenant].policy.require_mfa == true
+            not input.mfa
+        }
+      data: |
+        {
+          "users": {"alice": {"tenant": "berq"}},
+          "tenants": {"berq": {"policy": {"require_mfa": true}}, "orphan": {}}
+        }
+      reports: true
+      note: >
+        Run with opa 1.20.2: `alice`, whose tenant is `berq`, gives `false` without MFA and `true`
+        with it. No user belongs to `orphan`, so no request can reach the tenant that has no
+        `policy`. The engine reports `orphan` as uncovered anyway, because it counts the
+        collection and not the documents a request can pick.
 
 not_a_lint_rule: >
   A linter does not have the data. The defect is not in the shape of the policy, which is
@@ -237,7 +344,7 @@ references:
       rule for this case.
 
 verified:
-  date: 2026-09-13
+  date: 2026-09-16
   tool_version: opa 1.20.2
   how: >
     The mechanism was executed rather than argued. With
@@ -257,11 +364,14 @@ verified:
     exactly that reason worth saying: the policy is correct, `opa check` accepts it, and the
     linter has no reason to complain either. The defect is not in the file, it is in the meeting
     between that file and this `data`.
+    The six declared false positives are settled as the status requires. Three are
+    `out-of-band`: an absence that is meant, a snapshot that is not the production data, and a
+    defence in another decision, which depends on how the PEP combines the two. The other three
+    carry a case with its own data that runs on every build: a guard on a prefix in the same
+    decision, on which the engine stays quiet, and a default one rule up and an index picked by
+    other data, which it still reports.
 
 notes:
-  - note: >
-      The declared false positives are not measured, which is why the status is `implemented`
-      and not `verified`.
   - note: >
       The cost of signal 3 on real data is not measured either. The enumeration does one read
       per document of the collection and the number of keys has no bound, unlike the residual
