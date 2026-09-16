@@ -230,8 +230,10 @@ func (r *refReader) markEvery(expr *ast.Expr, body ast.Body, sc scope) {
 // guard keeps non-empty cannot go vacuous.
 //
 // It recognizes a count of the domain, which is how the fixture writes the
-// guard. A length check written another way is a declared false negative, since
-// matching it would mean evaluating the body rather than reading it.
+// guard. A guard written another way is not recognized, so the every behind it
+// is reported as if unguarded, which is a false positive: telling it apart for
+// certain means evaluating the decision with the domain empty rather than
+// reading the body.
 func guardsDomain(body ast.Body, domain *ast.Term, bindings map[ast.Var]binding) bool {
 	target, ok := resolveDomain(domain, bindings)
 	if !ok {

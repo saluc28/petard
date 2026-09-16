@@ -208,8 +208,8 @@ verified:
     `regal` v0.42.0 reports no violations on `policy-v1`, and its rule list at that tag holds
     nothing for this construct.
     The status is `implemented` rather than `verified`: the guard is recognized structurally as a
-    count of the domain, and a length check written another way is a declared false negative not
-    yet measured on generated policies.
+    count of the domain, and an every guarded another way is reported as if unguarded, a false
+    positive that is declared but not yet measured.
 
 related:
   - id: PTD-OPA-002
