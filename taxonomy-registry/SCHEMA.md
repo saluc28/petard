@@ -24,7 +24,7 @@
 | `mechanism` | object | `description` plus `example`, which is real Rego that compiles |
 | `detection` | object | **the field that makes the pattern executable.** See below |
 | `graph` | object | what it emits in the data model |
-| `false_positives` | list | conditions where the signal fires with no abuse behind it |
+| `false_positives` | list | conditions where the signal fires with no abuse behind it, and how each one is settled. See below |
 | `not_a_lint_rule` | string | why `regal` cannot find it. **If you cannot write this line, the pattern does not go in** |
 | `fixture` | object | the case in the vulnerable bundle |
 | `references` | list | sources, with the date each was consulted |
@@ -36,7 +36,7 @@
 |---|---|
 | `draft` | documented, not implemented |
 | `implemented` | the engine looks for it, and finds it in the fixture together with its counter case |
-| `verified` | the declared false positives have been measured as well |
+| `verified` | every declared false positive is settled as well: see `false_positives` |
 
 ### `preconditions`
 
@@ -80,6 +80,37 @@ what it takes to **find** a defect, not what it takes to show its effect.
 Every entry has a `condition`, which is when the signal fires for nothing, and a
 `discriminator`, which is what it would take to tell the two apart. An empty `discriminator` is
 an honest admission and is worth more than a condition left unsaid.
+
+A pattern that wants `status: verified` also says, per condition, **how that condition is
+settled**, in `measurement`:
+
+| Value | Means |
+|---|---|
+| `case` | a policy can be written that realizes the condition. The entry carries one in `case`, and the engine is run over it |
+| `out-of-band` | the discriminator is not in the policy and not in the data. There is no case to write, and saying so is the measurement |
+
+`out-of-band` is where intent lives, and with it every guarantee something upstream of the
+engine makes and nothing in the bundle enforces. It is not an excuse: it is what tells whoever
+reads a finding that this one needs a person, and which ones do not.
+
+A `case` holds:
+
+| Field | What |
+|---|---|
+| `policy` | a bundle of its own, holding the condition and nothing else, with its decision marked as an entrypoint. The fixture is a world and has to stay coherent; this is one question asked in isolation |
+| `reports` | what the engine does with it. `true` is the admission that the false positive still happens, written down and executed; `false` means the condition turned out to be told apart |
+| `note` | what the run showed |
+
+`reports: true` is not a defect to hide. A declared false positive that still happens is the
+honest outcome, and running it means that the day the engine starts telling the condition
+apart, the file stops being right about itself in the test suite rather than in somebody's
+report.
+
+This is how the linters of the field measure their own precision. Semgrep annotates the lines
+of a test file with `ruleid` where the rule has to fire and `ok` where it must not, plus
+`todoruleid` and `todook` for what fails today and is declared, and `regal` v0.42.0 ships a test
+next to every rule of its bundle, `impossible_not.rego` with `impossible_not_test.rego`. In both
+the measurement is a small case per condition, not a corpus.
 
 ### `verified`
 

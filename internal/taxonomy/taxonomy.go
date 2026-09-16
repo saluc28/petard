@@ -26,12 +26,37 @@ import (
 // SchemaVersion is the registry format this package reads.
 const SchemaVersion = 1
 
+// StatusVerified is the status a pattern reaches when its declared false
+// positives have been settled as well as found, which is what MeasurementCase
+// and MeasurementOutOfBand are for.
+const StatusVerified = "verified"
+
+// How a declared false positive is settled.
+const (
+	// MeasurementCase means a policy can be written that realizes the
+	// condition, so the registry carries one and the engine is run over it.
+	MeasurementCase = "case"
+
+	// MeasurementOutOfBand means the discriminator is not in the policy and not
+	// in the data. Intent lives there, and so does a guarantee something
+	// upstream of the engine makes and nothing in the bundle enforces. There is
+	// no case to write, and saying so is the measurement: it tells whoever
+	// reads a finding that this one needs a person.
+	MeasurementOutOfBand = "out-of-band"
+)
+
 // Pattern is what the engine needs of a registry entry.
 //
 // The file holds much more, and deliberately so: preconditions, mechanism,
-// false positives, references. Those are for the person reading the pattern,
-// and loading them here would only invite the code to start believing it
-// understands them.
+// references. Those are for the person reading the pattern, and loading them
+// here would only invite the code to start believing it understands them.
+//
+// The false positives are the exception, and only for what a pattern has to do
+// to call itself verified. The condition stays prose, for whoever reads it, and
+// the case that realizes it is a policy this package runs. A declared false
+// positive nobody executes drifts away from the engine one commit at a time,
+// and drifts in silence, because the engine that moved is also the only thing
+// that could have noticed.
 type Pattern struct {
 	SchemaVersion int    `yaml:"schema_version"`
 	ID            string `yaml:"id"`
@@ -53,6 +78,46 @@ type Pattern struct {
 		Emits string `yaml:"emits"`
 		Edge  string `yaml:"edge"`
 	} `yaml:"graph"`
+
+	FalsePositives []FalsePositive `yaml:"false_positives"`
+}
+
+// FalsePositive is one condition under which the pattern fires with no abuse
+// behind it, and how that condition is settled.
+type FalsePositive struct {
+	// Condition is when the signal fires for nothing, and Discriminator what it
+	// would take to tell the two apart. Both are for the reader.
+	Condition     string `yaml:"condition"`
+	Discriminator string `yaml:"discriminator"`
+
+	// Measurement is MeasurementCase or MeasurementOutOfBand, and is empty on a
+	// pattern that has not been through this yet.
+	Measurement string `yaml:"measurement"`
+
+	// Case is the condition made executable, and is present exactly when
+	// Measurement is MeasurementCase.
+	Case *FalsePositiveCase `yaml:"case"`
+}
+
+// FalsePositiveCase is one condition written as a policy, with what the engine
+// makes of it.
+type FalsePositiveCase struct {
+	// Policy is a bundle of its own, holding the condition and nothing else,
+	// marking its decision as an entrypoint the way the fixture marks its own.
+	//
+	// It is small on purpose. The fixture is a world, with a write model and a
+	// story that has to stay coherent; this is one question asked in isolation,
+	// and the two would spoil each other.
+	Policy string `yaml:"policy"`
+
+	// Reports is what the engine does with that policy: true when the pattern
+	// still fires on it, which for a declared false positive is the admission
+	// written down and checked, false when the condition turned out to be told
+	// apart after all.
+	Reports bool `yaml:"reports"`
+
+	// Note says what the run showed, in the words of whoever wrote the case.
+	Note string `yaml:"note"`
 }
 
 // LoadRegistry reads every pattern of one engine from the registry directory.
@@ -79,9 +144,43 @@ func LoadRegistry(dir string) ([]Pattern, error) {
 		if pattern.ID == "" {
 			return nil, fmt.Errorf("taxonomy: %s has no id, and the id is what the findings are filed under", file)
 		}
+		if err := checkFalsePositives(pattern); err != nil {
+			return nil, fmt.Errorf("taxonomy: %s: %w", file, err)
+		}
 		patterns = append(patterns, pattern)
 	}
 	return patterns, nil
+}
+
+// checkFalsePositives holds the registry to what a status claims about it.
+//
+// It is here rather than in a test because the registry is data the tool ships
+// and reads at run time: a file that says verified while leaving a condition
+// unsettled is a wrong answer to give a reader, not a broken build.
+func checkFalsePositives(pattern Pattern) error {
+	for _, fp := range pattern.FalsePositives {
+		condition := strings.TrimSpace(fp.Condition)
+		switch fp.Measurement {
+		case MeasurementCase:
+			if fp.Case == nil || fp.Case.Policy == "" {
+				return fmt.Errorf("%q is measured by a case and carries none", condition)
+			}
+		case MeasurementOutOfBand:
+			if fp.Case != nil {
+				return fmt.Errorf("%q is out of band and carries a case anyway", condition)
+			}
+		case "":
+			if fp.Case != nil {
+				return fmt.Errorf("%q carries a case and does not say it is measured by one", condition)
+			}
+			if pattern.Status == StatusVerified {
+				return fmt.Errorf("status is %s and %q says nothing about how it is settled", StatusVerified, condition)
+			}
+		default:
+			return fmt.Errorf("%q is measured %q, which is neither %q nor %q", condition, fp.Measurement, MeasurementCase, MeasurementOutOfBand)
+		}
+	}
+	return nil
 }
 
 // Find returns the pattern with the given id.
