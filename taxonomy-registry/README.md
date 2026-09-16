@@ -156,7 +156,7 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-002` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `implemented`, the one that emits findings on its own, with no write model |
 | `PTD-OPA-003` | TRANSITIVE-GRANT | opa | candidate | B | `implemented`, and it chains with 001, which is where a route comes from |
 | `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `verified`, and the one that exercises taint |
-| `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `implemented`, and it needs no attacker and nothing wrong beforehand: a slow endpoint is enough |
+| `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, and it needs no attacker and nothing wrong beforehand: a slow endpoint is enough |
 | `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `implemented`, the second edge that means escalation, from a role's write rather than a position |
 | `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, the third instance of the category: an `every` over a domain the request can empty |
 
@@ -207,11 +207,12 @@ of a test file with `ruleid` where the rule has to fire and `ok` where it must n
 beside every rule of its bundle, `impossible_not.rego` next to `impossible_not_test.rego`. In
 both, precision is a small case per condition rather than a corpus.
 
-`PTD-OPA-004` and `PTD-OPA-007` are there. In 007, two of the three conditions are intent and are
-declared as such. The third, an `every` guarded by iterating its domain instead of counting it,
-is a policy in the file that the engine runs on every build, and it reports: the false positive
-is measured rather than only admitted. In 004 a case also comes out quiet: an answer that can
-only narrow is one the engine already tells apart, and running it is what keeps that true.
+`PTD-OPA-004`, `PTD-OPA-005` and `PTD-OPA-007` are there. In 007, two of the three conditions are
+intent and are declared as such. The third, an `every` guarded by iterating its domain instead of
+counting it, is a policy in the file that the engine runs on every build, and it reports: the
+false positive is measured rather than only admitted. A case can also come out quiet, like the
+answer in 004 that can only narrow, or the fail-open in 005 that the rule writes down by reading
+`error`. Those are conditions the engine already tells apart, and running them keeps that true.
 
 ### What generated worlds answer instead
 

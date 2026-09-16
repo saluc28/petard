@@ -4,7 +4,7 @@ id: PTD-OPA-005
 name: fail-open-on-source-unavailable
 title: A check that needs an external source stops applying when it does not answer
 engine: opa
-status: implemented
+status: verified
 
 category:
   id: FAIL-OPEN-ON-ABSENCE
@@ -218,32 +218,134 @@ graph:
 
 false_positives:
   - condition: >
-      The fail-open is intentional and declared: the service accepts degrading permissively when
-      the enrichment is unavailable, so as not to block traffic.
+      The fail-open is intentional and written down: the rule reads `error` and lets the request
+      through when the source does not answer.
     discriminator: >
-      None automatic from the code: it is a choice of availability over security, and the two
-      forms are identical in the AST. The realistic distinction is that a conscious choice gets
-      written explicitly, as a branch that consumes `error` and decides, while here it is not
-      written at all. Signal 4 therefore separates the deliberate from the accidental to the
-      extent that the deliberate was written down. The report has to ask for confirmation rather
-      than assert that it is a defect.
+      Signal 4. A conscious choice gets written as a branch that consumes `error` and decides,
+      and the signal takes any read of `error` in the chain for that choice. It cannot tell a
+      deliberate `not risk.error` from one written by mistake, so it separates the deliberate
+      from the accidental only to the extent that the deliberate was written down.
+    measurement: case
+    case:
+      policy: |
+        package declared_fail_open
+
+        # METADATA
+        # scope: document
+        # title: Decision that degrades permissively, by choice
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            not denied
+        }
+
+        denied if {
+            risk := http.send({
+                "method": "GET",
+                "url": "https://risk.petard-case.invalid/score",
+                "raise_error": false,
+            })
+            not risk.error
+            risk.body.risk_score > 80
+        }
+      reports: false
+      note: >
+        Run with opa 1.20.2 against a local server: a score of 95 gives `false`, the source down
+        gives `true`. The decision fails open, on purpose and in writing, and the engine stays
+        quiet because the rule reads `error`. The same silence would cover a `not risk.error`
+        written by mistake, which is the limit the discriminator states.
+  - condition: >
+      The fail-open is intentional and written nowhere: the service accepts degrading
+      permissively when the enrichment is unavailable, so as not to block traffic, and the
+      policy does not say so.
+    discriminator: >
+      None from the code: a choice of availability over security that nobody wrote down is
+      identical to the defect in the AST. The report has to ask for confirmation rather than
+      assert that it is a defect.
+    measurement: out-of-band
   - condition: >
       The deny rule is redundant and another check, elsewhere, covers the same case.
     discriminator: >
-      The same limit as `PTD-OPA-002`: the signal sees one decision at a time. A defence in
-      another decision is not seen.
+      The signal looks at one read at a time and does not ask whether another check covers the
+      same principals, in the same decision or in another one. A defence in another decision
+      also depends on how the PEP composes the decisions it queries, which the bundle does not
+      say.
+    measurement: case
+    case:
+      policy: |
+        package redundant_check
+
+        blocked_here := {"mallory"}
+
+        # METADATA
+        # scope: document
+        # title: Decision with a remote and a local blocklist
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            not denied_remote
+            not denied_local
+        }
+
+        denied_remote if {
+            answer := http.send({
+                "method": "GET",
+                "url": "https://blocklist.petard-case.invalid/check",
+                "raise_error": false,
+            })
+            input.user in answer.body.blocked
+        }
+
+        denied_local if input.user in blocked_here
+      reports: true
+      note: >
+        Run with opa 1.20.2 with the source down: `mallory`, whom the local list names too, gives
+        `false`, and `alice` gives `true`. The remote check fails open, and for the principals the
+        local list repeats nothing is lost. The engine reports it anyway: that two lists name the
+        same principals is a fact about their contents, not about the shape of the rules.
   - condition: >
       The consumption sits on the granting side and the outcome is fail-closed.
     discriminator: >
       Signal 2, and it was checked to discriminate. This is not a false positive if the pattern
       is written properly: it is a case signal 2 has to exclude, and if it does not, the pattern
       reports unavailability and calls it escalation.
+    measurement: case
+    case:
+      policy: |
+        package granting_side
+
+        # METADATA
+        # scope: document
+        # title: Decision with an external answer on the granting side
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            risk := http.send({
+                "method": "GET",
+                "url": "https://risk.petard-case.invalid/score",
+                "raise_error": false,
+            })
+            risk.body.risk_score <= 80
+        }
+      reports: false
+      note: >
+        Run with opa 1.20.2 against a local server: a score of 10 gives `true`, the source down
+        gives `false`, which is fail-closed. The engine stays quiet, as signal 2 asks.
+        `PTD-OPA-004` reports the same rule, because whoever controls the source grants in place
+        of the policy.
   - condition: >
       The endpoint is in the same pod or the same process, and its unavailability implies the
       unavailability of the PEP anyway.
     discriminator: >
       None from the code. It has to be classified once together with the endpoints of 004, on
       the same versioned list.
+    measurement: out-of-band
 
 not_a_lint_rule: >
   This is the pattern where the question deserves the most severity, because a lint rule on
@@ -306,7 +408,7 @@ references:
       `not_a_lint_rule`.
 
 verified:
-  date: 2026-09-13
+  date: 2026-09-16
   tool_version: opa 1.20.2
   how: >
     Executed, not argued, and the matrix is the part worth reading: the option everybody blames
@@ -350,6 +452,11 @@ verified:
     counter cases of this pattern, the vulnerable form without `raise_error: false` included.
     That check counted most here, because this is the pattern a lint rule would be easiest to
     write for: regal does not have one, and if it did it would look for the wrong condition.
+    The five declared false positives are settled as the status requires. Two are `out-of-band`:
+    a fail-open chosen and written nowhere, and an endpoint whose failure takes the PEP down with
+    it. The other three carry a case that runs on every build: a fail-open written down by
+    reading `error` and a consumption on the granting side, on which the engine stays quiet, and
+    a remote blocklist a local one repeats, which it still reports.
 
 notes:
   - note: >
@@ -368,9 +475,6 @@ notes:
       builtins are **zero**. `open-policy-agent/contrib` at commit `90f7ca99ce60` does call the
       network, and none of those calls reaches one of its decisions, so it does not answer it
       either.
-  - note: >
-      The declared false positives are not measured, which is why the status is `implemented`
-      and not `verified`.
 
 related:
   - id: PTD-OPA-002
