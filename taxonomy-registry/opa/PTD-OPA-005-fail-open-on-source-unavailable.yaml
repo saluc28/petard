@@ -28,9 +28,9 @@ summary: >
   sits on the **denying side**: a `deny` rule, or a Gatekeeper `violation`. When the source does
   not answer, the expression that reads the response is undefined, the deny rule produces
   nothing, and access goes through.
-  No attacker is needed: a timeout is enough. That is why this pattern is probably the most
-  widespread of the five, since the other four require somebody to do something and this one
-  fires on its own the day the enrichment endpoint gets slow.
+  No attacker is needed: a timeout is enough. `PTD-OPA-002` shares that, but there the data has
+  to be incomplete to begin with; this one needs nothing to be wrong beforehand, and fires on
+  its own the day the enrichment endpoint gets slow.
   The finding is not "you use `raise_error: false`". Checked by running it: **the fail-open
   happens without that option too.** `raise_error: false` does not cause the defect, it switches
   off the only mitigation that would make it visible, and that is the thing to report.
@@ -38,7 +38,7 @@ summary: >
 preconditions:
   - capability: No attacker capability is required for the basic defect
     note: >
-      It is the lowest precondition in the registry, and its main characteristic. The check
+      Nothing has to be wrong beforehand either, and that is its main characteristic. The check
       switches itself off through unavailability: endpoint maintenance, saturation, an expired
       DNS record, an unrenewed certificate, latency past the timeout.
   - capability: To provoke it, making the source unreachable is enough
@@ -360,13 +360,14 @@ notes:
       A request built by an expression, for instance with `object.union`, stays undeterminable,
       and rightly so: there the option depends on values the analysis does not have.
   - note: >
-      How widespread this pattern really is has not been measured. "The most common of the five"
-      rests on an argument, that it is the only one requiring no attacker, and not on a number.
-      A corpus of Kubernetes admission policies does not answer it, because those policies read
-      `input` and never call the network: across the 142 Rego files of
+      How widespread this pattern really is has not been measured. That it needs nothing to be
+      wrong beforehand is an argument about its preconditions, not a number about how often it
+      occurs. A corpus of Kubernetes admission policies does not answer it, because those
+      policies read `input` and never call the network: across the 142 Rego files of
       `open-policy-agent/gatekeeper-library` at commit `e4d3bd2448b2`, calls to nondeterministic
-      builtins are **zero**. It takes a corpus that talks to the network, and until there is one
-      the claim stays what it is.
+      builtins are **zero**. `open-policy-agent/contrib` at commit `90f7ca99ce60` does call the
+      network, and none of those calls reaches one of its decisions, so it does not answer it
+      either.
   - note: >
       The declared false positives are not measured, which is why the status is `implemented`
       and not `verified`.
