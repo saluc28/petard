@@ -110,10 +110,17 @@ type FalsePositiveCase struct {
 	// and the two would spoil each other.
 	Policy string `yaml:"policy"`
 
-	// Reports is what the engine does with that policy: true when the pattern
-	// still fires on it, which for a declared false positive is the admission
-	// written down and checked, false when the condition turned out to be told
-	// apart after all.
+	// Data is a JSON document mounted at the root of data, and WriteModel a
+	// write model in the format writemodel.Load reads. They are the rest of an
+	// analysis, for the patterns that read the documents or ask who writes
+	// them, and each stays empty when the pattern needs neither.
+	Data       string `yaml:"data"`
+	WriteModel string `yaml:"write_model"`
+
+	// Reports is what the engine does with the case: true when the pattern
+	// files at least one result under its id, a candidate included, which for
+	// a declared false positive is the admission written down and checked;
+	// false when the condition turned out to be told apart after all.
 	Reports bool `yaml:"reports"`
 
 	// Note says what the run showed, in the words of whoever wrote the case.

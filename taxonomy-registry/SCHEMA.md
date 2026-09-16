@@ -98,8 +98,16 @@ A `case` holds:
 | Field | What |
 |---|---|
 | `policy` | a bundle of its own, holding the condition and nothing else, with its decision marked as an entrypoint. The fixture is a world and has to stay coherent; this is one question asked in isolation |
+| `data` | optional: a JSON document mounted at the root of `data`, for the patterns that read the documents |
+| `write_model` | optional: a write model in the format of `fixtures/vulnerable-bundle/write-model.yaml`, for the patterns that ask who writes a path |
 | `reports` | what the engine does with it. `true` is the admission that the false positive still happens, written down and executed; `false` means the condition turned out to be told apart |
 | `note` | what the run showed |
+
+The case runs the way an analysis does, every pattern over the same bundle, and `reports` is
+about the pattern of the file: `true` when it files at least one result under its id, a
+`candidate` included, because a candidate is the pattern speaking. A pattern the case gives too
+little to run, one that needs `data` and finds none, fails the run rather than counting as
+quiet.
 
 `reports: true` is not a defect to hide. A declared false positive that still happens is the
 honest outcome, and running it means that the day the engine starts telling the condition
