@@ -158,7 +158,7 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `implemented`, and the one that exercises taint |
 | `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `implemented`, with the lowest precondition: no attacker needed |
 | `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `implemented`, the second edge that means escalation, from a role's write rather than a position |
-| `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `implemented`, the third instance of the category: an `every` over a domain the request can empty |
+| `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, the third instance of the category: an `every` over a domain the request can empty |
 
 Between them the seven exercise `binding-resolution`, `concrete-data`, `rule-graph` and `taint`;
 007 adds no new capability, only a new construct within `rule-graph`.
@@ -184,26 +184,47 @@ stays quiet, 006 has no decision behind the write to ask, and everything else is
 That is the closed world rule applied where it matters most: an incomplete model costs false
 negatives, not false positives.
 
-### Why nothing is `verified`
+### What `verified` asks for
 
 `implemented` means the engine looks for the pattern and finds it in the fixture together with
-its counter case. `verified` means the declared false positives have been **measured** as well.
+its counter case. `verified` adds the other half: every condition the file declares it fires on
+for nothing is **settled**, and there are two ways to settle one.
 
-Generated worlds with a fixed seed answer part of that, and the part they answer is the worst
-risk: that the engine invents escalations. On worlds it has never seen, it does not, and that now
-covers both escalations: the 001 to 003 chain, whose planted principals it finds and no others,
-and the split grant of 006, which it reports for nobody on data that gives everybody the viewer
-role. The every of 007 is measured there too, from the other side: it rests on the policy, so on
-every generated world it reports the same one decision and never a second, the way 004 and 005 do.
-What generated data still cannot settle is most of what these files actually declare:
+Either the condition can be written as a policy, and then the file carries that policy and the
+engine is run over it on every build, or the thing that would tell it apart is not in the policy
+and not in the data, and then the file says exactly that. Intent is of the second kind. So is a
+guarantee something upstream of OPA makes and nothing in the bundle enforces. Naming those is
+not a way around measuring: it is what tells whoever reads a report which findings a person
+still has to judge, and which ones the engine has already been held to.
 
-- **intent**, which no dataset contains. "The absence is deliberate", "the breadth is known and
-  wanted", "the fail-open is a choice about availability": a generator can produce the case, not
-  the reason.
-- **the shape of the policy** rather than of the data. `PTD-OPA-004` and `PTD-OPA-005` read
-  builtin calls, and against any dataset they give the same four results. Measuring them would
-  mean generating **policies**, which is a second tool and not one more parameter of this one.
-- **the completeness of the write model**, which is declared by a human by definition.
+A case that still fires is the honest outcome and not a defect to hide. Running it is what keeps
+the admission true: the day the engine learns to tell that condition apart, the case goes quiet
+and the file is wrong about itself where the tests run instead of in somebody's assessment.
+
+The linters of this field measure their own precision the same way. Semgrep annotates the lines
+of a test file with `ruleid` where the rule has to fire and `ok` where it must not, and keeps
+`todoruleid` and `todook` for what fails today and is declared. `regal` v0.42.0 ships a test
+beside every rule of its bundle, `impossible_not.rego` next to `impossible_not_test.rego`. In
+both, precision is a small case per condition rather than a corpus.
+
+`PTD-OPA-007` is the first pattern here to get there. Two of its three conditions are intent and
+are declared as such. The third, an `every` guarded by iterating its domain instead of counting
+it, is a policy in the file that the engine runs on every build, and it reports: the false
+positive is measured rather than only admitted.
+
+### What generated worlds answer instead
+
+Generated worlds with a fixed seed answer a different question: whether the engine invents
+escalations. That is the worst thing it could do and the hardest to catch by reading the code
+that does it. On worlds it has never seen, it does not, and that covers both
+escalations, the 001 to 003 chain whose planted principals it finds and no others, and the split
+grant of 006, which it reports for nobody on data that gives everybody the viewer role. The
+every of 007 is measured there too, from the other side: it rests on the policy, so on every
+generated world it reports the same one decision and never a second, the way 004 and 005 do.
+
+The two measurements do not overlap. A dataset can produce the case and never the reason, so
+intent stays out of reach, and so does the completeness of the write model, which a person
+declares by definition. Those are the conditions a file marks `out-of-band`.
 
 ### What a real corpus said
 
@@ -248,9 +269,9 @@ No value from outside the policy reaches any of the 16 decisions, so `PTD-OPA-00
 candidates: whether a user can change their own `roles` depends on the application that stores
 them, and the write model is where that is declared.
 
-`verified` needs a measurement of the **declared** false positives, which for 004 and 005 would
-mean generating policies rather than data, and for the others more than one policy that crosses
-that line, with a write model that says who writes what.
+A corpus is not what `verified` waits for, and this is worth separating: a corpus says what other
+people write, which is why these two are here, while the conditions a pattern declares against
+itself are settled one case at a time, in the file that declares them.
 
 ### The fixture
 
@@ -264,8 +285,8 @@ None open. The two the registry used to list are both resolved.
 
 **`every` over an empty collection became `PTD-OPA-007`.** The signals do not overlap 002 or 005:
 the construct is `ast.Every` with an empty domain, an empty set rather than 002's missing key, and
-there is no network source, so 005's taint does not apply. It earned a file, now implemented with
-a case and a counter case in the fixture.
+there is no network source, so 005's taint does not apply. It earned a file, now `verified`: a
+case and a counter case in the fixture, and its three declared false positives settled.
 
 **Role hierarchy expansion is not a pattern of its own.** It is `PTD-OPA-003`. The
 relation the transitive signals cut is named by what the rule building it reads, whatever that

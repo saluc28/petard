@@ -85,8 +85,8 @@ only generated ground truth makes that visible.
 ## The taxonomy
 
 Seven patterns live in `taxonomy-registry/`, which is versioned data rather than code, and all of
-them are implemented against the fixture in `internal/taxonomy`. The registry is the source of truth;
-these are one-line glosses.
+them run against the fixture in `internal/taxonomy`. The registry is the source of truth, down to
+what each one has been held to; these are one-line glosses.
 
 | ID | What it looks for |
 |---|---|

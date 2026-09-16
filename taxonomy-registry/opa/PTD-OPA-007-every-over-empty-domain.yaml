@@ -4,7 +4,7 @@ id: PTD-OPA-007
 name: every-over-empty-domain
 title: A check written with every stops applying when its domain is empty
 engine: opa
-status: implemented
+status: verified
 
 category:
   id: FAIL-OPEN-ON-ABSENCE
@@ -151,6 +151,7 @@ false_positives:
       Outside the policy and the data, so the engine cannot see it. It is the same shape as an
       intended absence in 002: declared in a note next to the decision, it stays in the report,
       because a guarantee nobody enforces in the bundle is only a convention.
+    measurement: out-of-band
   - condition: >
       The `every` is a genuine business rule where the empty case is meant to pass, such as "no
       objection was raised".
@@ -158,6 +159,7 @@ false_positives:
       Intent is in no dataset. The guard is the signal: a decision that means the empty case to
       pass and a decision that forgot it look identical, and only a versioned list of accepted
       empty-passes tells them apart, kept next to the bundle as for the other patterns.
+    measurement: out-of-band
   - condition: >
       The `every` is guarded against the empty case by something other than a count of the domain,
       an iteration of it or a `some` that binds an element.
@@ -166,6 +168,30 @@ false_positives:
       which is a false positive. Telling it apart for certain means evaluating the decision with
       the domain empty rather than reading the body, the move 003 and 006 make with partial
       evaluation, and it is the open question below.
+    measurement: case
+    case:
+      policy: |
+        package guarded_by_iteration
+
+        # METADATA
+        # scope: document
+        # title: Merge approval, guarded by iterating the domain
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.reviews[_]
+            every review in input.reviews {
+                review.approved
+            }
+        }
+      reports: true
+      note: >
+        `input.reviews[_]` is undefined for an empty list, so this decision denies the empty case
+        exactly as the counter case in the fixture does, and the every behind it can never be
+        vacuous. Run with opa 1.20.2: empty list `false`, one approved review `true`, one rejected
+        `false`, no `reviews` key at all `false`. The engine reports it anyway, because signal 4
+        matches a `count` of the domain and nothing else.
 
 not_a_lint_rule: >
   A linter sees the `every` in one file, but not whether it applies a check. Whether the rule
@@ -207,9 +233,11 @@ verified:
     quantifier itself was run with opa 1.20.2: `every` over an empty list is true.
     `regal` v0.42.0 reports no violations on `policy-v1`, and its rule list at that tag holds
     nothing for this construct.
-    The status is `implemented` rather than `verified`: the guard is recognized structurally as a
-    count of the domain, and an every guarded another way is reported as if unguarded, a false
-    positive that is declared but not yet measured.
+    The three declared false positives are settled as the status requires. Two are `out-of-band`:
+    a domain something upstream always fills, and an empty case that is meant to pass, both of
+    them intent rather than policy. The third carries a case that runs on every build, an every
+    guarded by iterating its domain, and the engine reports it: the false positive is measured
+    where it used to be only declared.
 
 related:
   - id: PTD-OPA-002
@@ -235,4 +263,5 @@ open_questions:
       decision with the domain empty: if it still grants, the every is fail-open; if it denies, a
       guard closed it, whatever its shape. That is left undone because it would make the pattern
       need the bundle and a data store, where today it is static, and that trade is not yet
-      settled.
+      settled. What changed is the price of leaving it open: the false positive has a case that
+      runs, so the day the evaluation arrives, the case turns from reporting to quiet and says so.
