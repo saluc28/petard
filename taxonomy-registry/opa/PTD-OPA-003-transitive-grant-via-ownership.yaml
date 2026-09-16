@@ -4,7 +4,7 @@ id: PTD-OPA-003
 name: transitive-grant-via-ownership
 title: A position in a hierarchy grants everything below it, and nothing says so
 engine: opa
-status: implemented
+status: verified
 
 category:
   id: TRANSITIVE-GRANT
@@ -199,8 +199,8 @@ graph:
 
 false_positives:
   - condition: >
-      The principal exists in the data but no real request ever names them, or there is a
-      principal the engine does not see at all.
+      The principal exists in the data but no real request ever names them: the collection the
+      subject indexes also holds an entry that is not a person.
     discriminator: >
       The principals are the **keys of the collection the subject indexes**
       (`data.users[input.user]...` gives `data.users`), because a policy does not list who
@@ -209,6 +209,40 @@ false_positives:
       and a collection that also holds entries which are not principals counts them as
       principals. The discriminator would be a list of identities declared next to the write
       model, which does not exist today.
+    measurement: case
+    case:
+      policy: |
+        package project_access
+
+        # METADATA
+        # scope: document
+        # title: Document access through the project hierarchy
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            doc := data.documents[input.doc]
+            some ancestor in graph.reachable(parent_of, {doc.project})
+            data.users[input.user].team == data.projects[ancestor].team
+        }
+
+        parent_of[child] := parents if {
+            some child, project in data.projects
+            parents := [p | p := project.parent]
+        }
+      data: |
+        {
+          "projects": {"root": {"team": "platform"}, "app": {"parent": "root", "team": "apps"}},
+          "documents": {"d1": {"project": "app"}},
+          "users": {"erin": {"team": "apps"}, "defaults": {"team": "platform"}}
+        }
+      reports: true
+      note: >
+        `defaults` is the record new accounts copy their team from, and nobody signs in as it.
+        The engine takes the keys of `data.users` for people and reports `defaults` as reaching
+        `d1` through the hierarchy, 1 way with the relation and 0 without. `erin` is a member of
+        `app` itself and stays quiet. Run with opa 1.20.2, `erin` reads `d1`.
   - condition: >
       The decision grants to that principal anyway, whatever resource they ask for.
     discriminator: >
@@ -216,22 +250,99 @@ false_positives:
       number of routes to compare, and a decision that does not discriminate is a different fact
       from a position that is worth a lot. A declared false negative, which does not come up on
       the fixture and which deserves a pattern of its own.
+    measurement: case
+    case:
+      policy: |
+        package project_access_super
+
+        # METADATA
+        # scope: document
+        # title: Document access through the project hierarchy, with superusers
+        # entrypoint: true
+        default allow := false
+
+        allow if data.users[input.user].superuser
+
+        allow if {
+            input.action == "read"
+            doc := data.documents[input.doc]
+            some ancestor in graph.reachable(parent_of, {doc.project})
+            data.users[input.user].team == data.projects[ancestor].team
+        }
+
+        parent_of[child] := parents if {
+            some child, project in data.projects
+            parents := [p | p := project.parent]
+        }
+      data: |
+        {
+          "projects": {"root": {"team": "platform"}, "app": {"parent": "root", "team": "apps"}},
+          "documents": {"d1": {"project": "app"}},
+          "users": {"ops": {"team": "platform", "superuser": true}}
+        }
+      reports: false
+      note: >
+        Run with opa 1.20.2: `ops` is granted `d1`, and is granted with no document and no
+        action at all. The team of `ops` matches the root, so the hierarchy would grant `d1` too,
+        but the decision grants everything regardless, and the engine stays quiet as the
+        discriminator says.
   - condition: >
-      The breadth is intentional and known: a global administration role reaches everything by
-      definition.
+      A global administration role reaches everything by definition, and without the hierarchy.
+    discriminator: >
+      The differential measurement closes it on its own: an administrator who reaches everything
+      **without** the relation is not reported, because the cut takes nothing away from them. On
+      the fixture that is `bob`, deliberate noise, who stays silent with no list at all.
+    measurement: case
+    case:
+      policy: |
+        package project_access_admin
+
+        # METADATA
+        # scope: document
+        # title: Document access through the project hierarchy, with administrators
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            data.users[input.user].role == "admin"
+            data.documents[input.doc]
+        }
+
+        allow if {
+            input.action == "read"
+            doc := data.documents[input.doc]
+            some ancestor in graph.reachable(parent_of, {doc.project})
+            data.users[input.user].team == data.projects[ancestor].team
+        }
+
+        parent_of[child] := parents if {
+            some child, project in data.projects
+            parents := [p | p := project.parent]
+        }
+      data: |
+        {
+          "projects": {"root": {"team": "platform"}, "app": {"parent": "root", "team": "apps"}},
+          "documents": {"d1": {"project": "app"}, "d2": {"project": "root"}},
+          "users": {"bob": {"team": "platform", "role": "admin"}}
+        }
+      reports: false
+      note: >
+        Run with opa 1.20.2: `bob` reads `d1`. The team of `bob` would reach it through the root
+        as well, but the administrator branch grants every document without the relation, so the
+        cut takes nothing away and the engine stays quiet.
+  - condition: >
+      The breadth is intentional and known, and it does depend on the hierarchy: a role meant to
+      reach everything below its place in the tree.
     discriminator: >
       A list of positions known to be privileged, versioned next to the write model. They have
       to be **kept out of the noise but not out of the report**: that a position is legitimately
       enormous is a fact the analyst has to see, not suppress.
-      The differential measurement closes the most frequent case on its own: an administrator
-      who reaches everything **without** the relation is not reported, because the cut takes
-      nothing away from them. On the fixture that is `bob`, deliberate noise, who stays silent
-      with no list at all. What the list is still needed for is the residual case, a role whose
-      breadth really does depend on the hierarchy.
+    measurement: out-of-band
   - condition: >
       The hierarchy in the snapshot being analyzed is deeper or wider than in production.
     discriminator: >
       Where the snapshot came from and when, declared in the report, as for `PTD-OPA-002`.
+    measurement: out-of-band
   - condition: >
       The decision imposes other conditions that cut the real reach down: a tenant constraint, a
       classification, an action.
@@ -239,6 +350,40 @@ false_positives:
       The count in signal 3 has to evaluate the **whole decision**, not the transitive branch
       alone. Counting reachability in the graph while ignoring the rest of the body inflates the
       number, and the finding loses its credibility at the first check.
+    measurement: case
+    case:
+      policy: |
+        package project_access_tenant
+
+        # METADATA
+        # scope: document
+        # title: Document access through the project hierarchy, within the tenant
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            doc := data.documents[input.doc]
+            doc.tenant == data.users[input.user].tenant
+            some ancestor in graph.reachable(parent_of, {doc.project})
+            data.users[input.user].team == data.projects[ancestor].team
+        }
+
+        parent_of[child] := parents if {
+            some child, project in data.projects
+            parents := [p | p := project.parent]
+        }
+      data: |
+        {
+          "projects": {"root": {"team": "platform"}, "app": {"parent": "root", "team": "apps"}},
+          "documents": {"d1": {"project": "app", "tenant": "south"}},
+          "users": {"dave": {"team": "platform", "tenant": "north"}}
+        }
+      reports: false
+      note: >
+        The team of `dave` matches the root, so a count over the graph would say he reaches `d1`.
+        Run with opa 1.20.2 he does not, because `d1` belongs to another tenant, and the engine,
+        which evaluates the whole decision, stays quiet.
   - condition: >
       **The engine computes reachability with an implementation of its own instead of following
       the construct the policy actually uses.** It is the most insidious false positive of this
@@ -261,6 +406,40 @@ false_positives:
       with the hierarchy written properly and **0** with the naive one. The control is `alice`,
       a member of a leaf, who stays at **7** in both: if that count dropped too, the test would
       be measuring a broken policy instead of a missing root.
+    measurement: case
+    case:
+      policy: |
+        package project_access_naive
+
+        # METADATA
+        # scope: document
+        # title: Document access through the project hierarchy, root left out
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            doc := data.documents[input.doc]
+            some ancestor in graph.reachable(parent_of, {doc.project})
+            data.users[input.user].team == data.projects[ancestor].team
+        }
+
+        parent_of[child] := [parent] if {
+            some child, project in data.projects
+            parent := project.parent
+        }
+      data: |
+        {
+          "projects": {"root": {"team": "platform"}, "app": {"parent": "root", "team": "apps"}},
+          "documents": {"d1": {"project": "app"}},
+          "users": {"dave": {"team": "platform"}}
+        }
+      reports: false
+      note: >
+        `parent_of` gives no entry to `root`, so `graph.reachable` never returns it. Run with opa
+        1.20.2, `dave`, whose team matches the root, does not read `d1`, and with the comprehension
+        form of the first case he does. A walk over the graph would report him; the engine asks OPA
+        and stays quiet.
 
 not_a_lint_rule: >
   A linter sees `graph.reachable(parent_of, {proj})` and has nothing to say, correctly: it is
@@ -300,7 +479,7 @@ references:
     note: Checked on 2026-08-01 and again at the source of v0.42.0, no `security` category.
 
 verified:
-  date: 2026-09-13
+  date: 2026-09-16
   tool_version: opa 1.20.2
   how: >
     Executed, not argued. The recursion ban is confirmed by the compiler's message, and
@@ -343,11 +522,14 @@ verified:
     regal v0.42.0 reports **no violations** on the fixture. That counts here in particular:
     `graph.reachable` over a hierarchy is the **right** way to write transitivity in Rego, and
     the linter confirms it by having nothing to say.
+    The seven declared false positives are settled as the status requires. Two are
+    `out-of-band`: a breadth through the hierarchy that is meant, and a snapshot that is not the
+    production data. The other five carry a case with its own data that runs on every build: a
+    record in the users collection that is nobody, which the engine still reports, and four it
+    stays quiet on, a decision that grants a superuser everything, an administrator who needs no
+    hierarchy, a tenant that cuts the reach, and an adjacency list that leaves the root out.
 
 notes:
-  - note: >
-      The declared false positives are not measured, which is why the status is `implemented`
-      and not `verified`.
   - note: >
       The cost of signal 3 on deep hierarchies is not measured. It is **two partial evaluations
       per principal and per decision**, so it grows with the number of principals, which is the

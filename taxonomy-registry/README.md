@@ -179,7 +179,7 @@ find, the pattern is not verifiable and stays `status: draft`.
 |---|---|---|---|---|---|
 | `PTD-OPA-001` | ATTR-SELF-WRITE | opa | finding | C | `verified`, with the case and the counter case separated on the fixture |
 | `PTD-OPA-002` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, the one that emits findings on its own, with no write model |
-| `PTD-OPA-003` | TRANSITIVE-GRANT | opa | candidate | B | `implemented`, and it chains with 001, which is where a route comes from |
+| `PTD-OPA-003` | TRANSITIVE-GRANT | opa | candidate | B | `verified`, and it chains with 001, which is where a route comes from |
 | `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `verified`, and the one that exercises taint |
 | `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, and it needs no attacker and nothing wrong beforehand: a slow endpoint is enough |
 | `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `implemented`, the second edge that means escalation, from a role's write rather than a position |
