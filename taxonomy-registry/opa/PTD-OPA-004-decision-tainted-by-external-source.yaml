@@ -4,7 +4,7 @@ id: PTD-OPA-004
 name: decision-tainted-by-external-source
 title: A decision depends on an external source, so whoever controls it decides
 engine: opa
-status: implemented
+status: verified
 
 category:
   id: EXTERNAL-SOURCE-TAINT
@@ -154,15 +154,78 @@ false_positives:
       classified once, exactly as with the privileged positions of 003.
       **It still gets reported**: that a decision depends on a service, even a trusted one, is
       an architectural fact the analyst has to see.
+    measurement: out-of-band
   - condition: >
       The response is signed and the policy verifies the signature with `io.jwt.verify_*` or
       something like it.
     discriminator: >
       Look in the same body for a verification builtin applied to a term of the taint chain.
       Detectable, not specified yet.
+    measurement: case
+    case:
+      policy: |
+        package signed_enrichment
+
+        # METADATA
+        # scope: document
+        # title: Decision enriched from a signed external answer
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            enrichment := http.send({
+                "method": "GET",
+                "url": "https://idp.petard-case.invalid/attrs",
+                "raise_error": false,
+            })
+            token := enrichment.body.token
+            io.jwt.verify_rs256(token, data.keys.idp)
+            [_, claims, _] := io.jwt.decode(token)
+            claims.clearance == "high"
+        }
+      reports: true
+      note: >
+        Run with opa 1.20.2 against a local server: a token signed with the key in
+        `data.keys.idp` gives `true`, the same claims signed with another key give `false`, so
+        whoever answers in place of the endpoint cannot grant without that key. The engine
+        reports it anyway, because signal 2 follows the value from the call to the decision and
+        does not look for a verification on the way.
   - condition: >
       The tainted value feeds a branch that **narrows** instead of granting.
     discriminator: Same negation signal as 001, with the same limits on composite forms.
+    measurement: case
+    case:
+      policy: |
+        package blocklist_enrichment
+
+        # METADATA
+        # scope: document
+        # title: Decision with an external blocklist
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            not blocked
+        }
+
+        blocked if {
+            answer := http.send({
+                "method": "GET",
+                "url": "https://blocklist.petard-case.invalid/check",
+                "raise_error": false,
+            })
+            input.user in answer.body.blocked
+        }
+      reports: false
+      note: >
+        The engine stays quiet, as the claim of this pattern asks: an answer that can only deny
+        cannot grant beyond what the decision grants without it. Run with opa 1.20.2 against a
+        local server, for `mallory`: an answer listing her gives `false`, the same answer
+        emptied gives `true`. Whoever controls the source can lift the restriction for the
+        principals it names, which is a different claim from this one and is kept in the open
+        questions. `PTD-OPA-005` reports the same rule, for the source not answering.
 
 not_a_lint_rule: >
   A linter can say "this policy uses `http.send`", and that would be noise, because every policy
@@ -198,7 +261,7 @@ references:
       rule about `http.send`.
 
 verified:
-  date: 2026-09-13
+  date: 2026-09-16
   tool_version: opa 1.20.2
   how: >
     `opa check` accepts the example policy without any warning. The taint mechanism was checked
@@ -231,6 +294,11 @@ verified:
     places to look sit inside the finding. Two paths to the same host are the same party.
     regal v0.42.0 reports **no violations** on the fixture, which holds the case and the counter
     case of this pattern, and it has no rule about `http.send` at all.
+    The three declared false positives are settled as the status requires. A trusted internal
+    endpoint is `out-of-band`: the perimeter is not written in the policy, and the finding stays
+    in the report on purpose. The other two carry a case that runs on every build: a signed
+    answer the policy verifies, which the engine still reports, and an answer that can only
+    narrow, which it does not.
 
 notes:
   - note: >
@@ -242,11 +310,6 @@ notes:
       not. The list of builtins that carry data in from outside is closed at `http.send` and
       `net.lookup_ip_addr`: that is **narrower than nondeterminism**, on purpose, because
       `time.now_ns` and `rand.intn` are nondeterministic without having another end to them.
-  - note: >
-      The declared false positives are not measured, which is why the status is `implemented`
-      and not `verified`. They are about intent and about the shape of the policy rather than
-      about the data, so measuring them would mean generating **policies**, which is a second
-      tool and not one more parameter of this one.
 
 related:
   - id: PTD-OPA-001
@@ -283,3 +346,14 @@ open_questions:
       A host embedding OPA can register builtins of its own that read anything at all. They have
       to be declared in the analysis configuration. Without that, signal 1 sees only the
       standard builtins.
+  - question: >
+      Should a source that can only narrow be reported for what it can lift?
+    note: >
+      The engine is quiet on the narrowing side, and the claim of this pattern agrees: an answer
+      that can only deny cannot grant beyond what the decision grants without it. The case among
+      the false positives measures what that silence leaves out. With the answer listing
+      `mallory` the decision denies her; with the same answer emptied it lets her through, so
+      whoever controls a blocklist decides who is not on it. `PTD-OPA-005` reports that rule for
+      a source that does not answer, and no pattern reports it for a source that answers on
+      purpose. Covering it here would widen the claim from granting in place of the policy to
+      lifting what the policy delegated, and that choice is not made yet.
