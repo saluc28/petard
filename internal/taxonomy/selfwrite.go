@@ -11,19 +11,23 @@ const AttrSelfWrite = "PTD-OPA-001"
 // SelfWrite finds the reads where the subject of a decision picks the document
 // that decides about it, and can write that document.
 //
-// The four signals of the pattern, in order:
+// The three signals of the pattern, in order:
 //
 //  1. the read happens in a rule that contributes to a decision, which holds by
 //     construction because the walk starts at the declared entrypoints;
 //  2. the index of the read derives from input, and is the subject;
-//  3. the read is not under a negation, because writing a field that denies you
-//     access is not an escalation;
-//  4. the field, the whole path and not just the collection, is declared
+//  3. the field, the whole path and not just the collection, is declared
 //     writable by that same subject.
 //
-// The fourth is the one no policy can answer, and it is what separates a
+// The side of the decision the read sits on is not among them. The subject
+// picks the value they write, so a field that denies them is a field they can
+// clear: a suspension the subject writes is a suspension the subject lifts.
+// Where a value sits decides what its absence does, not what the one who
+// controls it can do.
+//
+// The third is the one no policy can answer, and it is what separates a
 // finding from a candidate. It is also what separates the two reads of the
-// fixture that look identical to the first three signals: the department of a
+// fixture that look identical to the first two signals: the department of a
 // profile and the roles of the same record are both picked by the subject, and
 // only the write model says that one is written by the user and the other by an
 // administrator.
@@ -82,11 +86,8 @@ func SelfWrite(reads *opaengine.ReadSet, shape opaengine.Shape, model *writemode
 	return findings, nil
 }
 
-// signalsHold checks the three signals that the policy alone can answer.
+// signalsHold checks the signals that the policy alone can answer.
 func signalsHold(read opaengine.Read, shape opaengine.Shape) bool {
-	if read.UnderNegation {
-		return false
-	}
 	if read.Provenance != opaengine.ProvenanceInput {
 		return false
 	}

@@ -1,5 +1,6 @@
 # Quill, a risk check delegated to an external service.
-# Holds: PTD-OPA-005 (the case and THREE counter cases).
+# Holds: PTD-OPA-005 (the case and THREE counter cases), and four cases of
+# PTD-OPA-004, one per decision: whoever answers decides on either side.
 #
 # Every case has a rule name of its own, so they do not add up by incremental
 # definition and each one can be observed on its own.

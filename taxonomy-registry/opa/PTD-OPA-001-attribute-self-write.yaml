@@ -83,18 +83,11 @@ detection:
         `data.users[input.user].profile.department`.
       rationale: >
         This is the signal that the subject **selects** the record being read. On its own it is
-        not a defect, it is a lookup. Signal 4 is what needs it.
+        not a defect, it is a lookup. Signal 3 is what needs it.
+        Which side of the decision the reference sits on is not a signal. The subject picks the
+        value they write, so a field read to deny is a field they can clear: a suspension the
+        subject writes is a suspension the subject lifts.
     - order: 3
-      check: >
-        The reference does not appear under a negation (`not`), nor in a context where its value
-        narrows instead of widening.
-      rationale: >
-        The first half is exact rather than heuristic: in the compiled form `Expr.Negated` is a
-        boolean field of the expression, so telling a reference under `not` apart is reading a
-        bool. The second half is not covered here: a reference inside a rule that is itself
-        negated somewhere else is not visible at this level. That is a property of the rule
-        graph rather than of the expression, and it is answered with `compiler.Graph`.
-    - order: 4
       check: >
         The **whole field path** of the resolved reference, not merely its collection prefix,
         appears in the `WrittenBy` model with the subject of the decision among those who can
@@ -143,9 +136,14 @@ false_positives:
       not indexed by the subject. Detectable, but not specified yet: see the open question about
       revalidation.
   - condition: >
-      The reference sits under `not`, or in a body that **denies** access. Writing that field
-      denies you access rather than granting it.
-    discriminator: Signal 3. It covers the simple case; composite forms it does not.
+      The field sits on the side that denies, and the subject can only write it in the direction
+      that denies: a self-exclusion that only an administrator lifts.
+    discriminator: >
+      The write model says who writes a field, not which values. The engine reports a field the
+      subject writes on either side, which is right for a suspension the subject can clear and
+      wrong for a one-way exclusion. Telling them apart takes a constraint on the values the
+      subject may write, which the model carries for writes a decision authorizes
+      (`authorized_by`, read by `PTD-OPA-006`) and not for the subject's own.
   - condition: >
       The field is only writable through a flow that already requires more privilege than the
       escalation would grant.
@@ -200,10 +198,12 @@ verified:
     works exactly as described, and that is the point: there is nothing broken to look at.
     On the fixture the engine emits one finding on `data.users[_].profile.department` and
     **stays silent on the counter case** `data.users[_].roles`. The counter case is the
-    measurement that counts: the first three signals fire on both, since both are read by a
-    decision and indexed by the subject, and only signal 4 against the field-granular model
-    separates them. A test checks that the first three signals really do hold on the counter
+    measurement that counts: the first two signals fire on both, since both are read by a
+    decision and indexed by the subject, and only signal 3 against the field-granular model
+    separates them. A test checks that the first two signals really do hold on the counter
     case, because otherwise the silence would only prove the read had been missed.
+    A field the subject writes and a decision reads under `not` is reported too, and a test
+    holds it: the side is not a signal.
     Signal 2 inside `is_member` works through the interprocedural walk in
     `internal/opaengine/calls.go`, and it is the second occurrence of the same finding: the
     provenance `input.user` comes from the call site in `allow`, not from the body of the
@@ -211,7 +211,7 @@ verified:
     places to look inside a single finding; counting them separately would double every
     precision number.
     regal v0.42.0 (which embeds OPA 1.18.2) reports **no violations** on the fixture, which
-    holds the case and the counter case of this pattern and of the other four. The central
+    holds the case and the counter case of this pattern and of the others. The central
     claim of the registry is executed rather than argued.
 
 notes:

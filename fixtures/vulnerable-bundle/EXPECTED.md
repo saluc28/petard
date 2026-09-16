@@ -211,8 +211,8 @@ differential measurement closes it without needing a list of privileged roles.
 |---|---|---|
 | **case** | `enrichment.rego`, `allow` on `enrichment.body.clearance` | **finding**, plus a `PTD_Principal` node for `idp.petard-fixture.invalid` |
 | **second case** | `risk.rego`, `allow_positive_side` on `enrichment.body.risk_score` | **finding**, plus a `PTD_Principal` node for `risk.petard-fixture.invalid` |
+| **denying cases** | `risk.rego`, `allow_vulnerable`, `allow_defensive` and `allow_default_option`, through their `denied_*` rules | **a finding each**, on the same host |
 | **counter case** | `enrichment.rego`, `audit_trace` | **nothing**, the result reaches no decision |
-| **counter case** | `risk.rego`, the three `denied_*` rules | **nothing**, the value reaches the decision only under a `not` |
 
 The counter case tells the taint apart from the mere presence of the builtin: both rules call
 `http.send`, and only one of them contributes to a decision.
@@ -222,10 +222,17 @@ controls that host grants access to anybody, which is 004 exactly. Section 4 lis
 among the ones not to report, but for the reason **005** gives, which is fail-closed with
 respect to the source being down, and that reason says nothing about the content of the answer.
 
-Worth keeping in mind when writing other fixtures: **every 005 case consumed on the granting
-side is by construction also a 004 case**, because both start from a call to an external source.
-It is not an overlap to be removed, it is the same rule seen through two different questions,
-and the registry has made a rule of it (`taxonomy-registry/README.md` section 3).
+The three denying decisions reach the answer only under a `not`, and they are findings all the
+same: whoever controls the host decides who the risk check stops, so the host decides in place of
+the policy on that side too. The side a value lands on matters when the value is missing, which
+is 005's question, and not when somebody picks it (`taxonomy-registry/README.md` section 3).
+`allow_defensive` reads the answer in three places, the error and the score in one branch and the
+error in the other, and it is one finding with three places to look.
+
+Worth keeping in mind when writing other fixtures: **every rule 005 looks at is also a 004
+case**, on either side, because both start from a call to an external source. It is not an
+overlap to be removed, it is the same rule seen through two different questions, and the
+registry has made a rule of it (`taxonomy-registry/README.md` section 3).
 
 For this pattern the runtime outcome is irrelevant, because the finding is static. The hosts sit
 under `.invalid` (RFC 2606) and never resolve, so the fixture is reproducible without a network
@@ -321,16 +328,16 @@ legitimate finding for another.
 | 4 | `alice`, `carol` in a leaf | 003 | amplification of 1 |
 | 5 | `bob` as `owner` | 003 | the policy does not decide on `owner` |
 | 6 | `audit_trace` | 004 | an `http.send` that reaches no decision |
-| 7 | `allow_defensive` | 004, 005 | for 005 the error is handled; for 004 the value reaches the decision only under a `not` |
+| 7 | `allow_defensive` | 005 | the error is handled. **For 004 it is a finding**, because whoever answers decides the denial |
 | 8 | `allow_positive_side` | 005 | fail-closed, this is availability. **For 004 it is a finding**, because the content of the answer grants |
 | 9 | `data.users.{owner}.profile.*` | 001 | writable, but no decision reads it |
 | 10 | `withdraw` on `"admin" in ...roles` | 006 | support cannot assign `admin`, so no allowed write reaches the branch |
 | 11 | `allow_guarded` | 007 | `count(input.reviews) > 0` denies the empty case, so the every never goes vacuous |
 
-Expected precision: **two `PTD_CanEscalateTo`** (mallory and carol), **nine findings and one
+Expected precision: **two `PTD_CanEscalateTo`** (mallory and carol), **twelve findings and one
 candidate**, and none of the rows above under the pattern they belong to.
 
-The nine: one from 001, one from 002, two from 004 (section 3), two from 005, one from 007 on
+The twelve: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
 `allow_unguarded`, mallory's escalation, which comes out under the id of 003 because that is where
 the registry says a candidate turns into a finding, and carol's escalation under 006. The two
 escalations are the two findings that are also `PTD_CanEscalateTo` edges.

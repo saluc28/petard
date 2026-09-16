@@ -1,33 +1,28 @@
 package taxonomy
 
 import (
-	"slices"
+	"maps"
 	"strings"
 	"testing"
 
 	"github.com/saluc28/petard/internal/opaengine"
 )
 
-// The case and the counter case of PTD-OPA-004 on the real fixture. Two rules
-// call the same builtin and only one contributes to a decision, which is the
-// difference between taint and the mere presence of http.send.
+// The cases and the counter case of PTD-OPA-004 on the real fixture. Two rules
+// of enrichment.rego call the same builtin and only one contributes to a
+// decision, which is the difference between taint and the mere presence of
+// http.send.
 //
-// Two findings, not one. The enrichment decision is the case EXPECTED.md
-// describes; allow_positive_side is the second, and it is a true positive of
-// this pattern for a reason that has nothing to do with PTD-OPA-005: that rule
-// grants access when a service answers a low number, so whoever controls the
-// service grants access. The two patterns say different things about the same
-// rule, one about the content of the answer and one about its absence, and
-// neither silences the other.
+// Five findings, one per decision and party. The enrichment decision grants on
+// the answer. The four decisions of risk.rego all consume the scoring service,
+// allow_positive_side to grant and the other three to deny, and each of them is
+// decided by whoever answers: PTD-OPA-005 says something else about the same
+// rules, about the answer not arriving, and neither silences the other.
 func TestTaintedByExternalSourceOnFixture(t *testing.T) {
 	reads, _, _ := analyzeFixture(t)
 
 	findings := TaintedByExternalSource(reads)
-	if len(findings) != 2 {
-		t.Fatalf("findings = %d, want 2:\n%v", len(findings), findings)
-	}
-
-	var decisions []string
+	places := map[string]int{}
 	for _, finding := range findings {
 		if finding.Verdict != VerdictFinding {
 			t.Errorf("%s is a %s: this pattern needs no write model", finding.Decision, finding.Verdict)
@@ -38,38 +33,33 @@ func TestTaintedByExternalSourceOnFixture(t *testing.T) {
 		if finding.Origin != "http.send" {
 			t.Errorf("origin = %q, want http.send", finding.Origin)
 		}
-		if len(finding.Reads) != 1 {
-			t.Errorf("%s has %d places to look, want 1", finding.Decision, len(finding.Reads))
-		}
-		decisions = append(decisions, finding.Decision+" -> "+finding.Source)
+		places[finding.Decision+" -> "+finding.Source] = len(finding.Reads)
 	}
-	slices.Sort(decisions)
 
-	expected := []string{
-		"data.quill.enrichment.allow -> idp.petard-fixture.invalid",
-		"data.quill.risk.allow_positive_side -> risk.petard-fixture.invalid",
+	// allow_defensive reads the answer in three places: the error and the
+	// score in the branch that denies on a high score, and the error again in
+	// the branch that denies when the service fails.
+	expected := map[string]int{
+		"data.quill.enrichment.allow -> idp.petard-fixture.invalid":           1,
+		"data.quill.risk.allow_positive_side -> risk.petard-fixture.invalid":  1,
+		"data.quill.risk.allow_vulnerable -> risk.petard-fixture.invalid":     1,
+		"data.quill.risk.allow_defensive -> risk.petard-fixture.invalid":      3,
+		"data.quill.risk.allow_default_option -> risk.petard-fixture.invalid": 1,
 	}
-	if !slices.Equal(decisions, expected) {
-		t.Errorf("findings = %v, want %v", decisions, expected)
+	if !maps.Equal(places, expected) {
+		t.Errorf("findings and their places to look = %v, want %v", places, expected)
 	}
 }
 
-// The five values that only reach a decision through a negation are left out,
-// and the engine did see all five: controlling a source that denies is a
-// different fact from controlling one that grants, and the second is what this
-// pattern reports.
-func TestTaintedByExternalSourceLeavesTheDenyingSideAlone(t *testing.T) {
+// A source consumed only to deny is reported like one consumed to grant. The
+// party that answers the blocklist decides who is not blocked, and the side the
+// answer lands on changes what its absence does, not what that party can do.
+//
+// The test checks the values really reach those decisions through a negation,
+// so that it proves the rule and not a flag the engine forgot to set.
+func TestTaintedByExternalSourceReportsTheDenyingSide(t *testing.T) {
 	reads, _, _ := analyzeFixture(t)
 
-	findings := TaintedByExternalSource(reads)
-	for _, finding := range findings {
-		if finding.Decision == "data.quill.risk.allow_vulnerable" || finding.Decision == "data.quill.risk.allow_defensive" {
-			t.Errorf("a value that only denies was reported: %s", finding)
-		}
-	}
-
-	// And the engine measured them, so the silence comes from the negation and
-	// not from having missed the calls.
 	var denying int
 	for _, taint := range reads.Taints {
 		for _, decision := range taint.Decisions {
@@ -79,7 +69,21 @@ func TestTaintedByExternalSourceLeavesTheDenyingSideAlone(t *testing.T) {
 		}
 	}
 	if denying != 5 {
-		t.Errorf("values reaching a decision only to deny = %d, want 5: this test would prove nothing otherwise", denying)
+		t.Fatalf("values reaching a decision only to deny = %d, want 5: this test would prove nothing otherwise", denying)
+	}
+
+	reported := map[string]bool{}
+	for _, finding := range TaintedByExternalSource(reads) {
+		reported[finding.Decision] = true
+	}
+	for _, decision := range []string{
+		"data.quill.risk.allow_vulnerable",
+		"data.quill.risk.allow_defensive",
+		"data.quill.risk.allow_default_option",
+	} {
+		if !reported[decision] {
+			t.Errorf("%s consumes the answer to deny and was not reported", decision)
+		}
 	}
 }
 

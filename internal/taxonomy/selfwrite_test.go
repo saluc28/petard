@@ -80,10 +80,10 @@ func TestSelfWriteOnFixture(t *testing.T) {
 	}
 }
 
-// data.users[_].roles is read by a decision, indexed by the subject, and not
-// negated: the first three signals hold exactly as they do for the case. It is
-// not a finding because roles are written by an administrator, and an
-// administrator who can elevate anybody is the expected behaviour.
+// data.users[_].roles is read by a decision and indexed by the subject: the
+// first two signals hold exactly as they do for the case. It is not a finding
+// because roles are written by an administrator, and an administrator who can
+// elevate anybody is the expected behaviour.
 func TestSelfWriteLeavesTheCounterCaseAlone(t *testing.T) {
 	reads, shape, model := analyzeFixture(t)
 
@@ -106,7 +106,51 @@ func TestSelfWriteLeavesTheCounterCaseAlone(t *testing.T) {
 		}
 	}
 	if !subjectIndexed {
-		t.Error("the counter case does not even reach signal 4, so this test proves nothing")
+		t.Error("the counter case does not even reach signal 3, so this test proves nothing")
+	}
+}
+
+// A field the subject writes decides about them on either side of the
+// decision. A suspension read under not is one the subject can clear, and it
+// is reported exactly like a department read to grant.
+func TestSelfWriteReportsAFieldReadUnderNot(t *testing.T) {
+	a := analysisOf(t, &FalsePositiveCase{
+		Policy: `package suspension
+
+# METADATA
+# scope: document
+# title: Decision that refuses suspended requesters
+# entrypoint: true
+default allow := false
+
+allow if {
+	input.action == "read"
+	not data.users[input.user].suspended
+}
+`,
+		WriteModel: `schema_version: 1
+model: write-paths
+entries:
+  - path: data.users.{owner}.suspended
+    writable_by:
+      - principal: "{owner}"
+        via: "PATCH /api/v1/me"
+`,
+	})
+
+	negated := slices.ContainsFunc(a.Reads.Reads, func(read opaengine.Read) bool {
+		return read.Path == "data.users[_].suspended" && read.UnderNegation
+	})
+	if !negated {
+		t.Fatal("the suspension is not read under a negation, so this test proves nothing")
+	}
+
+	findings, err := SelfWrite(a.Reads, a.Shape, a.Model)
+	if err != nil {
+		t.Fatalf("SelfWrite() error = %v", err)
+	}
+	if len(findings) != 1 || findings[0].Path != "data.users[_].suspended" || findings[0].Verdict != VerdictFinding {
+		t.Errorf("findings = %v, want one finding on data.users[_].suspended", findings)
 	}
 }
 
@@ -121,7 +165,7 @@ func TestSelfWriteWithoutAModelEmitsCandidates(t *testing.T) {
 		t.Fatalf("SelfWrite() error = %v", err)
 	}
 	if len(findings) == 0 {
-		t.Fatal("no candidates: the first three signals hold with or without a model")
+		t.Fatal("no candidates: the first two signals hold with or without a model")
 	}
 	for _, finding := range findings {
 		if finding.Verdict != VerdictCandidate {
@@ -181,7 +225,7 @@ func TestLoadRegistry(t *testing.T) {
 		t.Errorf("category = %q, want ATTR-SELF-WRITE", pattern.Category.ID)
 	}
 	if !pattern.Detection.RequiresWriteModel {
-		t.Error("the pattern does not declare requires_write_model, but the fourth signal is the write model")
+		t.Error("the pattern does not declare requires_write_model, but the third signal is the write model")
 	}
 	if pattern.Graph.Emits != "finding" {
 		t.Errorf("emits = %q, want finding", pattern.Graph.Emits)

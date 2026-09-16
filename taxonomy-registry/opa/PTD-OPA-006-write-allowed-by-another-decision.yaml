@@ -222,9 +222,9 @@ verified:
     The numbers behind it, measured with `data.quill.verify.split_grant`: carol does not publish as
     the data stands; the assignment decision allows her editor and not admin; with roles
     ["support", "editor"] she publishes and still cannot withdraw.
-    On the whole fixture the engine now reports eight findings, one candidate and two
-    `PTD_CanEscalateTo`, with the write model covering 4 of 9 paths. `PTD-OPA-001` reports nothing
-    on `roles`, which a role writes and the subject does not.
+    The fixture holds two `PTD_CanEscalateTo`, this one and the 001 to 003 chain, with the write
+    model covering 4 of 9 paths. `PTD-OPA-001` reports nothing on `roles`, which a role writes and
+    the subject does not.
     regal v0.42.0 reports no violations on `policy-v1`.
     The status is `implemented` rather than `verified` for the same reason as `PTD-OPA-003`: the
     generated worlds plant the 001 to 003 chain and not this one, so precision against generated
@@ -262,3 +262,9 @@ notes:
     both hold the capability can still assign each other, and that collusion of two is left
     unreported. It is a different shape, closer to a collusion pattern than to this one, and
     folding it in would lower the confidence of the single account finding that is the point here.
+  - >
+    Known false negative: a write that lifts a denial. The registry does not treat the side of a
+    decision as a reason to stay quiet about a value somebody controls, and this pattern stays on
+    the side that grants only because of how it measures: signal 3 writes the values a decision
+    compares with, and on the side that denies those are the values that deny. Lifting a denial
+    means writing some other value, which the pattern has no way to name.

@@ -441,8 +441,8 @@ verified:
     reported just like the other.
     The two remaining counter cases stay silent: `allow_defensive` because a branch of the same
     rule reads `enrichment.error`, and `allow_positive_side` because the value reaches the
-    decision in granting position, which leaves it a finding of **004**, saying something else
-    about the same rule.
+    decision in granting position, so its absence fails closed. Both are findings of **004**, like
+    every rule here, which says something else about the same rules.
     Signal 5 is exercised on all its outcomes: option absent, `false`, `true`, option computed
     (which gives undeterminable rather than the default), and the request **passed by name**,
     which is followed back to the object and read as if it were written inline. That last one is

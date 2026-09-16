@@ -106,6 +106,31 @@ would create a dependency between patterns, and from that moment the order in wh
 applies them would change the output. The relation between patterns is declared in `related`,
 where it serves whoever is reading, and it does not filter results.
 
+### The side of a decision matters for absence, not for control
+
+A value can reach a decision on the side that grants or on the side that denies. For some
+patterns that side is the finding, and for others it does not count.
+
+It is the finding when the value is **missing**, because then the outcome is fixed and only the
+side is left to decide it. An undefined read on the side that denies silences the check and the
+request goes through, which is what `PTD-OPA-002` and `PTD-OPA-005` report, while the same read
+on the side that grants fails closed. An empty collection makes an `every` true, which grants on
+the side that grants, and that is `PTD-OPA-007`.
+
+It does not count when somebody **controls** the value, because they pick it. A field read to
+deny is a field its writer can clear, and a source consulted to deny is a source that decides
+who is not denied. `PTD-OPA-001` and `PTD-OPA-004` report both sides for that reason: a
+suspension the subject writes is one the subject lifts, and a blocklist served from outside is
+decided by whoever serves it. `PTD-OPA-006` stays on the side that grants, and that is a limit of
+how it measures rather than an exception to the rule: it writes the values a decision compares
+with, and on the side that denies those are the values that deny, so its file declares the gap.
+
+It is how CWE-807, "Reliance on Untrusted Inputs in a Security Decision", reads: a protection
+an untrusted actor bypasses by changing an input, with no line drawn between inputs that grant
+and inputs that deny. CodeQL's `java/user-controlled-bypass`, tagged with it, reports a
+sensitive call that may not run depending on a user-controlled condition, which is the denying
+side exactly (checked at `codeql-cli/v2.27.0`).
+
 ---
 
 ## 4. Format
@@ -211,8 +236,8 @@ both, precision is a small case per condition rather than a corpus.
 intent and are declared as such. The third, an `every` guarded by iterating its domain instead of
 counting it, is a policy in the file that the engine runs on every build, and it reports: the
 false positive is measured rather than only admitted. A case can also come out quiet, like the
-answer in 004 that can only narrow, or the fail-open in 005 that the rule writes down by reading
-`error`. Those are conditions the engine already tells apart, and running them keeps that true.
+fail-open in 005 that the rule writes down by reading `error`: a condition the engine already
+tells apart, and running it keeps that true.
 
 ### What generated worlds answer instead
 

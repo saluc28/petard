@@ -163,7 +163,7 @@ func (p Path) Matches(other Path) bool {
 
 // CapturePosition returns where a named capture sits in the path.
 //
-// It is what makes the fourth signal of the self write pattern computable: the
+// It is what makes the third signal of the self write pattern computable: the
 // model says {owner} writes this field, the position says which segment of the
 // read that is, and the read says the term standing there.
 func (p Path) CapturePosition(name string) (int, bool) {

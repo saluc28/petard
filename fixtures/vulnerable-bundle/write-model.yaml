@@ -30,7 +30,7 @@ entries:
   # ---------------------------------------------------------------------
   # THE PTD-OPA-001 COUNTER CASE, and the write of the PTD-OPA-006 case.
   # Same record, a field a decision reads, but written by a role rather than
-  # by the subject as such. Signal 2 of 001 fires, signal 4 does not: no
+  # by the subject as such. Signal 2 of 001 fires, signal 3 does not: no
   # finding. An administrator who can elevate anybody is the expected
   # behaviour; support staff who can make themselves editor is 006.
   - path: data.users.{owner}.roles

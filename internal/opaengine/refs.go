@@ -123,9 +123,10 @@ type Read struct {
 	// expression.
 	//
 	// It is a plain bool in the AST, so this is exact rather than inferred,
-	// and the taxonomy needs it: a value read to deny is not a value read to
-	// grant. It says nothing about the way down from the decision to this rule,
-	// which is a property of the walk and is reported in Decisions.
+	// and the taxonomy needs it: when the value is missing, a read to deny and
+	// a read to grant fail in opposite directions. It says nothing about the
+	// way down from the decision to this rule, which is a property of the walk
+	// and is reported in Decisions.
 	UnderNegation bool
 
 	// Decisions are the entrypoints that depend on this read, sorted by name.
@@ -148,16 +149,16 @@ type Read struct {
 // The flag is about the way down: whether every path from the decision to the
 // rule holding the read goes through a negation. It is kept apart from the
 // negation of the expression, which Read reports on its own, because the two
-// combine differently depending on the question. A value that reaches a
-// decision only to deny is not a value that grants, which is one combination; a
-// check whose absence lets the request through is another, and there the two
-// negations cancel out.
+// combine differently depending on the question. A check whose absence lets the
+// request through is one combination, and there the two negations cancel out. A
+// value somebody controls is not asked the question at all: they pick the value,
+// so the side it lands on does not limit what they can do.
 type ReachedDecision struct {
 	// Name is the path of the decision rule.
 	Name string
 
 	// UnderNegation is true when every path from the decision down to the rule
-	// goes through a negation, so what the rule finds can only deny.
+	// goes through a negation, so the rule holding can only deny.
 	UnderNegation bool
 }
 

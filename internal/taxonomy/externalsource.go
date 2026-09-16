@@ -51,10 +51,11 @@ var externalSourceBuiltins = []string{"http.send", "net.lookup_ip_addr"}
 //  3. the destination is read from the call when the policy writes it as a
 //     constant.
 //
-// A value that only reaches a decision through a negation is left out, as the
-// pattern's own false positives say: controlling a source that denies is a
-// different fact from controlling one that grants, and this file reports the
-// second.
+// The side of the decision the value reaches is not among them. Whoever answers
+// picks the answer, so a source that decides a denial decides who is not
+// denied: a blocklist is written by whoever serves it. Where a value sits
+// decides what its absence does, which is PTD-OPA-005's question, and not what
+// the party behind it can do.
 //
 // One finding per fact, and the fact is that a named decision depends on a
 // named source. A source read in three rules that all feed the same decision
@@ -81,10 +82,6 @@ func TaintedByExternalSource(reads *opaengine.ReadSet) []Finding {
 		source := hostOf(taint.Endpoint)
 
 		for _, decision := range taint.Decisions {
-			if decision.UnderNegation {
-				continue
-			}
-
 			key := fact{decision: decision.Name, source: source, origin: taint.Origin}
 			if grouped, found := at[key]; found {
 				findings[grouped].Reads = append(findings[grouped].Reads, site)

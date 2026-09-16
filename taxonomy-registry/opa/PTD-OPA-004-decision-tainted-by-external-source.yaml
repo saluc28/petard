@@ -17,10 +17,11 @@ category:
     unsigned data.
 
 summary: >
-  The policy calls `http.send` during evaluation to enrich the decision, and uses a field of the
-  response to grant access. The trust perimeter quietly stretches to that endpoint: whoever
-  controls it, whoever can impersonate it, whoever can get in the middle of the connection, or
-  simply whoever can write its content, decides in place of the policy.
+  The policy calls `http.send` during evaluation to enrich the decision, and lets a field of the
+  response decide access, to grant it or to deny it. The trust perimeter quietly stretches to
+  that endpoint: whoever controls it, whoever can impersonate it, whoever can get in the middle
+  of the connection, or simply whoever can write its content, decides in place of the policy. A
+  blocklist served from outside is decided by whoever serves it, like a clearance is.
   The finding is not "it uses `http.send`", which anyone can see. It is **which decision**
   depends on **which endpoint**, and therefore who has to be added to the graph as a principal.
 
@@ -191,41 +192,6 @@ false_positives:
         whoever answers in place of the endpoint cannot grant without that key. The engine
         reports it anyway, because signal 2 follows the value from the call to the decision and
         does not look for a verification on the way.
-  - condition: >
-      The tainted value feeds a branch that **narrows** instead of granting.
-    discriminator: Same negation signal as 001, with the same limits on composite forms.
-    measurement: case
-    case:
-      policy: |
-        package blocklist_enrichment
-
-        # METADATA
-        # scope: document
-        # title: Decision with an external blocklist
-        # entrypoint: true
-        default allow := false
-
-        allow if {
-            input.action == "read"
-            not blocked
-        }
-
-        blocked if {
-            answer := http.send({
-                "method": "GET",
-                "url": "https://blocklist.petard-case.invalid/check",
-                "raise_error": false,
-            })
-            input.user in answer.body.blocked
-        }
-      reports: false
-      note: >
-        The engine stays quiet, as the claim of this pattern asks: an answer that can only deny
-        cannot grant beyond what the decision grants without it. Run with opa 1.20.2 against a
-        local server, for `mallory`: an answer listing her gives `false`, the same answer
-        emptied gives `true`. Whoever controls the source can lift the restriction for the
-        principals it names, which is a different claim from this one and is kept in the open
-        questions. `PTD-OPA-005` reports the same rule, for the source not answering.
 
 not_a_lint_rule: >
   A linter can say "this policy uses `http.send`", and that would be noise, because every policy
@@ -270,13 +236,13 @@ verified:
     `__local0__ = __local2__`. Real output. It was also checked that the raw AST does **not**
     see the nested call under a pass over the expressions, while the compiled form does.
     On the fixture, in Rego v1 and v0 with the same numbers, the engine measures **7 values read
-    from outside the policy**, all of them from `http.send`, and carries **2** of them all the
-    way to a decision in granting position: `quill.enrichment.allow` from
-    `idp.petard-fixture.invalid` and `quill.risk.allow_positive_side` from
-    `risk.petard-fixture.invalid`. The other 5 reach a decision only under `not`. Signal 2 is
-    what counts here: the propagation arrives at the decision across the rule graph, so the
-    pattern separates "the policy calls `http.send`" from "this decision depends on that
-    endpoint".
+    from outside the policy**, all of them from `http.send`, and all 7 reach a decision: 2 in
+    granting position, in `quill.enrichment.allow` from `idp.petard-fixture.invalid` and in
+    `quill.risk.allow_positive_side` from `risk.petard-fixture.invalid`, and 5 only under a
+    `not`, in the three denying decisions of `quill.risk`. They make **5 findings**, one per
+    decision and host. Signal 2 is what counts here: the propagation arrives at the decision
+    across the rule graph, so the pattern separates "the policy calls `http.send`" from "this
+    decision depends on that endpoint".
     **The counter case `audit_trace` stays silent, and for the right reason.** On the fixture
     alone that silence would prove nothing: the rule is not annotated and nobody calls it, so
     the walk never visits it, and "does not contribute to a decision" would be
@@ -287,18 +253,18 @@ verified:
     Signal 3 is closed for the constant case: the URL is read from the call and the finding
     carries the host, which is the identity of the answering party. A computed destination stays
     distinguishable, reported as such rather than as an unreadable host, with a test of its own.
-    Negation is computed **on the path** rather than on the expression: a rule reached only
-    through `not denied_x` carries the flag for that decision, and the same rule read positively
-    by another decision does not.
+    The side a value reaches is not a signal, because whoever answers picks the answer. A test
+    checks that the 5 values of `quill.risk` really arrive through a negation, computed on the
+    path from the decision rather than on the expression, and that their decisions are reported
+    all the same.
     One finding per fact: the fact is the pair of a decision and an external party, and the
     places to look sit inside the finding. Two paths to the same host are the same party.
     regal v0.42.0 reports **no violations** on the fixture, which holds the case and the counter
     case of this pattern, and it has no rule about `http.send` at all.
-    The three declared false positives are settled as the status requires. A trusted internal
+    The two declared false positives are settled as the status requires. A trusted internal
     endpoint is `out-of-band`: the perimeter is not written in the policy, and the finding stays
-    in the report on purpose. The other two carry a case that runs on every build: a signed
-    answer the policy verifies, which the engine still reports, and an answer that can only
-    narrow, which it does not.
+    in the report on purpose. A signed answer the policy verifies carries a case that runs on
+    every build, and the engine still reports it.
 
 notes:
   - note: >
@@ -324,13 +290,15 @@ related:
       that matters there is which side of the decision consumes the response.
       Operationally, signal 1 of this pattern and signal 1 of 005 are the same computation and
       are run once.
-      **The two overlap on `allow_positive_side`.** That rule grants access when the service
-      answers with a low score, so it is a case of 004: whoever controls the host grants access
-      to anybody. It is at the same time a correct counter case of 005, where the source being
-      unavailable makes it fail closed, because **005 is about the absence of the response and
-      004 about its content**. Both statements hold on the same rule and neither silences the
-      other. In general, every case of 005 consumed on the granting side is by construction also
-      a case of 004, because both start from a call to an external source.
+      **The two overlap on every rule of `quill.risk`.** `allow_positive_side` grants access when
+      the service answers with a low score, so it is a case of 004: whoever controls the host
+      grants access to anybody. It is at the same time a correct counter case of 005, where the
+      source being unavailable makes it fail closed, because **005 is about the absence of the
+      response and 004 about its content**. On the three denying rules the two agree for
+      different reasons: 005 reports what happens when the answer does not come, 004 what whoever
+      answers can decide. Both statements hold on the same rule and neither silences the other.
+      In general every rule 005 looks at is also a case of 004, whichever side it sits on,
+      because both start from a call to an external source and only 005 asks about the side.
       How two rules hitting the same site are usually treated, checked by running it: `regal`
       v0.42.0 on a line that violates two rules reports **two distinct violations**, one per
       rule (`use-in-operator` and `prefer-snake-case`, same line, different columns).
@@ -346,14 +314,3 @@ open_questions:
       A host embedding OPA can register builtins of its own that read anything at all. They have
       to be declared in the analysis configuration. Without that, signal 1 sees only the
       standard builtins.
-  - question: >
-      Should a source that can only narrow be reported for what it can lift?
-    note: >
-      The engine is quiet on the narrowing side, and the claim of this pattern agrees: an answer
-      that can only deny cannot grant beyond what the decision grants without it. The case among
-      the false positives measures what that silence leaves out. With the answer listing
-      `mallory` the decision denies her; with the same answer emptied it lets her through, so
-      whoever controls a blocklist decides who is not on it. `PTD-OPA-005` reports that rule for
-      a source that does not answer, and no pattern reports it for a source that answers on
-      purpose. Covering it here would widen the claim from granting in place of the policy to
-      lifting what the policy delegated, and that choice is not made yet.

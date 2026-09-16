@@ -134,6 +134,11 @@ func authorizedGrants(reads *opaengine.ReadSet, shape opaengine.Shape, model *wr
 				}
 				for _, decision := range read.Decisions {
 					if decision.UnderNegation {
+						// Not because the side makes the write harmless: the
+						// values collected later are the ones the decision
+						// compares with, and here those are the values that
+						// deny. Lifting the denial takes another value, which
+						// nothing names, so this is a declared false negative.
 						continue
 					}
 					key := decision.Name + "\x00" + read.Path + "\x00" + writer.AuthorizedBy.Decision + "\x00" + writer.AuthorizedBy.Value
