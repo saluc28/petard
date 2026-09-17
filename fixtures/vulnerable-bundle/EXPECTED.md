@@ -114,10 +114,19 @@ Without the second only recall gets measured, and precision matters as much.
 |---|---|---|
 | **case** | `authz.rego`, `allow` on `profile.department == "security"` | **finding**, the write model has the field as writable by the subject |
 | **counter case** | `authz.rego`, `allow` on `"admin" in ...roles` | **nothing**, same record, but `roles` is written by a role, `role:admin` or `role:support`, and not by the subject as such |
+| **counter case** | `authz.rego`, `is_member` on `user in ...members` | **nothing**, the requester is searched among the members, and the model says the project owner writes that list |
 
-The counter case is the most important one in the fixture: signal 2 fires on **both**, because
-in each of them the reference is indexed by the subject. Only signal 4, against a write model
-with field granularity, tells them apart. A model with record granularity would report both.
+The first counter case is the most important one in the fixture: signal 2 fires on **both**,
+because in each of them the reference is indexed by the subject. Only signal 3, against a write
+model with field granularity, tells them apart. A model with record granularity would report
+both.
+
+The second is the other half of signal 2. The membership check picks the projects that hold the
+requester instead of a record keyed on them, so the engine reports it under the lookups by value,
+and the write model decides: `owner_of:{project}` writes that list, and an entry naming the
+element instead, `data.projects.{project}.members.{member}` writable by `{member}`, would make it
+a finding, because then anybody could join. With no write model at all it is a candidate, like
+every other read the subject picks.
 
 Measured, `mallory` deciding on `d-t11-1`:
 
@@ -333,6 +342,7 @@ legitimate finding for another.
 | 9 | `data.users.{owner}.profile.*` | 001 | writable, but no decision reads it |
 | 10 | `withdraw` on `"admin" in ...roles` | 006 | support cannot assign `admin`, so no allowed write reaches the branch |
 | 11 | `allow_guarded` | 007 | `count(input.reviews) > 0` denies the empty case, so the every never goes vacuous |
+| 12 | `user in ...members` | 001 | the members are written by the project owner, and joining is not declared |
 
 Expected precision: **two `PTD_CanEscalateTo`** (mallory and carol), **twelve findings and one
 candidate**, and none of the rows above under the pattern they belong to.

@@ -1,6 +1,8 @@
 package taxonomy
 
 import (
+	"slices"
+
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/writemodel"
 )
@@ -15,9 +17,18 @@ const AttrSelfWrite = "PTD-OPA-001"
 //
 //  1. the read happens in a rule that contributes to a decision, which holds by
 //     construction because the walk starts at the declared entrypoints;
-//  2. the index of the read derives from input, and is the subject;
+//  2. the subject picks the document: the index of the read derives from
+//     input and is the subject, or the read is searched for the subject by
+//     value, as a list of members is;
 //  3. the field, the whole path and not just the collection, is declared
 //     writable by that same subject.
+//
+// A search by value moves the third signal onto the element. The members of a
+// team are written by whoever can add members, and joining is a write of one
+// element: data.teams.{team}.members.{member} writable by {member} says that a
+// principal can add themselves, which is what BloodHound draws as AddSelf next
+// to AddMember (packages/cue/bh/ad/ad.cue:1337 and 1427 at v9.7.0). An entry on
+// the list alone names no element, so it says nothing about joining.
 //
 // The side of the decision the read sits on is not among them. The subject
 // picks the value they write, so a field that denies them is a field they can
@@ -40,12 +51,11 @@ func SelfWrite(reads *opaengine.ReadSet, shape opaengine.Shape, model *writemode
 			continue
 		}
 
-		path, err := writemodel.ParsePath(read.Path)
+		places, err := subjectPlaces(read, shape)
 		if err != nil {
 			return nil, err
 		}
-
-		writer, entry, at, writes := subjectWrites(read, path, model)
+		writer, entry, place, writes := subjectWrites(places, model)
 		if model != nil && !writes {
 			// The model had its say: either it does not cover this path, and a
 			// closed world means nobody writes it, or it covers it and names
@@ -77,7 +87,15 @@ func SelfWrite(reads *opaengine.ReadSet, shape opaengine.Shape, model *writemode
 			finding.ViaWritePath = entry.RawPath
 			finding.Via = writer.Via
 			finding.Note = writer.Note
-			finding.SubjectPosition = at
+		} else {
+			place = firstByValue(places)
+		}
+		// An element that holds the subject is not a document of theirs, and
+		// the two positions stay apart so that nothing takes one for the other.
+		if place.byValue {
+			finding.SubjectElement = place.position
+		} else {
+			finding.SubjectPosition = place.position
 		}
 
 		byPath[read.Path] = len(findings)
@@ -88,56 +106,92 @@ func SelfWrite(reads *opaengine.ReadSet, shape opaengine.Shape, model *writemode
 
 // signalsHold checks the signals that the policy alone can answer.
 func signalsHold(read opaengine.Read, shape opaengine.Shape) bool {
-	if read.Provenance != opaengine.ProvenanceInput {
-		return false
+	if read.Provenance == opaengine.ProvenanceInput && shape.IndexedBySubject(read) {
+		return true
 	}
-	return shape.IndexedBySubject(read)
+	_, matched := shape.MatchedBySubject(read)
+	return matched
+}
+
+// subjectPlace is where the subject stands in a read: at a segment the read is
+// indexed by, or in the element a search by value finds it in.
+type subjectPlace struct {
+	// path is the path the write model is asked about. For a search with in it
+	// is the read with the element added, since the read names the collection
+	// and the write is to one element of it.
+	path     writemodel.Path
+	position int
+	byValue  bool
+}
+
+// subjectPlaces lists where the subject stands in a read.
+func subjectPlaces(read opaengine.Read, shape opaengine.Shape) ([]subjectPlace, error) {
+	path, err := writemodel.ParsePath(read.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	var places []subjectPlace
+	for _, index := range read.Indexes {
+		if shape.IsSubject(index.Term) {
+			places = append(places, subjectPlace{path: path, position: index.Position})
+		}
+	}
+	for _, match := range read.Matches {
+		if !shape.IsSubject(match.Term) {
+			continue
+		}
+		place := subjectPlace{path: path, position: match.Position, byValue: true}
+		if match.Member {
+			place.path = writemodel.Path{Segments: append(slices.Clone(path.Segments), writemodel.Segment{Kind: writemodel.SegmentCapture})}
+		}
+		places = append(places, place)
+	}
+	return places, nil
+}
+
+// firstByValue returns the first place a search by value finds the subject in,
+// so that a candidate says how it was found even when no model confirms it.
+func firstByValue(places []subjectPlace) subjectPlace {
+	for _, place := range places {
+		if place.byValue {
+			return place
+		}
+	}
+	return subjectPlace{}
 }
 
 // subjectWrites reports whether the model says the subject of the decision can
-// write this path.
+// write where they stand.
 //
 // The link is the capture. A model entry writes data.users.{owner}.profile.
 // department and names {owner} among the writers, which says "whoever this
 // segment identifies writes this field". If the read has the subject standing
 // at that same segment, then the one who writes is the one being decided about.
-// It also reports where in the path the subject stands, because that is what
-// turns the path into one person's document later on.
-func subjectWrites(read opaengine.Read, path writemodel.Path, model *writemodel.Model) (writemodel.Writer, writemodel.Entry, int, bool) {
+// It also reports the place, because where the subject stands is what turns the
+// path into one person's document later on.
+func subjectWrites(places []subjectPlace, model *writemodel.Model) (writemodel.Writer, writemodel.Entry, subjectPlace, bool) {
 	if model == nil {
-		return writemodel.Writer{}, writemodel.Entry{}, 0, false
+		return writemodel.Writer{}, writemodel.Entry{}, subjectPlace{}, false
 	}
 
-	for _, entry := range model.Covering(path) {
-		for _, writer := range entry.WritableBy {
-			name, isCapture := writer.IsCapture()
-			if !isCapture {
-				// A role, a system, a concrete principal: somebody who is not
-				// the subject. An administrator who can elevate anybody is the
-				// expected behaviour, not a defect.
-				continue
-			}
-			position, found := entry.Path.CapturePosition(name)
-			if !found {
-				continue
-			}
-			if subjectStandsAt(read, position) {
-				return writer, entry, position, true
+	for _, place := range places {
+		for _, entry := range model.Covering(place.path) {
+			for _, writer := range entry.WritableBy {
+				name, isCapture := writer.IsCapture()
+				if !isCapture {
+					// A role, a system, a concrete principal: somebody who is not
+					// the subject. An administrator who can elevate anybody is the
+					// expected behaviour, not a defect.
+					continue
+				}
+				if position, found := entry.Path.CapturePosition(name); found && position == place.position {
+					return writer, entry, place, true
+				}
 			}
 		}
 	}
-	return writemodel.Writer{}, writemodel.Entry{}, 0, false
-}
-
-// subjectStandsAt reports whether the subject of the request is the index at a
-// given position of the read.
-func subjectStandsAt(read opaengine.Read, position int) bool {
-	for _, index := range read.Indexes {
-		if index.Position == position {
-			return index.Term != ""
-		}
-	}
-	return false
+	return writemodel.Writer{}, writemodel.Entry{}, subjectPlace{}, false
 }
 
 // Coverage is how much of what the decisions read the write model speaks about.

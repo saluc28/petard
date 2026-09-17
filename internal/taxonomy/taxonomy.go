@@ -288,6 +288,13 @@ type Finding struct {
 	// segment the writer is.
 	SubjectPosition int
 
+	// SubjectElement is set instead when the subject is not the key of a
+	// document but a value the read is searched for: the segment of the element
+	// that holds them, and one past the end of Path when Path is a collection
+	// searched with in. There is no document of the subject's own to name
+	// there, so a pattern that needs one leaves the finding alone.
+	SubjectElement int
+
 	// ReachTransitive and ReachDirect are how much a decision grants that
 	// principal with the relation in place and with it cut, and Relation is
 	// what was cut. It is the fourth shape of a fact, and the only one that is

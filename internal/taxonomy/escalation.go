@@ -70,8 +70,8 @@ func Escalations(ctx context.Context, a Analysis, selfWrite, positions []Finding
 		return nil, nil
 	}
 
-	unknowns := unknownsBesides(a.Shape.Subject, a.Reads.InputPaths)
-	fields, named := subjectFields(a.Shape.Subject)
+	unknowns := unknownsBesides(a.Shape, a.Reads.InputPaths)
+	fields, named := subjectFieldsOf(a.Shape)
 	if len(unknowns) == 0 || !named {
 		return nil, nil
 	}
@@ -187,6 +187,11 @@ func escalationBy(ctx context.Context, a Analysis, cut *opaengine.Data, position
 // can write the field", and the chain is about somebody doing exactly that:
 // building a path on top of a maybe would put the whole claim on a declaration
 // nobody made.
+//
+// A finding on an element found by value is left out too. The chain leaves the
+// written document unknown and lets partial evaluation say what would grant,
+// and joining a list is not a document of one's own with a value to find: it is
+// one more element, which the chain does not know how to write yet.
 func writablePaths(selfWrite []Finding) []Finding {
 	var writable []Finding
 	for _, finding := range selfWrite {

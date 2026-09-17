@@ -154,6 +154,207 @@ entries:
 	}
 }
 
+// joinPolicy grants to the members of a team, which the policy finds by
+// searching the members for whoever is asking.
+const joinPolicy = `package membership
+
+# METADATA
+# scope: document
+# title: Decision on the members of a team
+# entrypoint: true
+default allow := false
+
+allow if {
+	input.action == "read"
+	input.user in data.teams[input.team].members
+}
+`
+
+// Joining a list the policy searches is the self write of a lookup by value:
+// the model says each member writes their own element, so anybody can add
+// themselves. An entry that only names the list, written by an administrator,
+// says nothing about joining and leaves the pattern quiet.
+func TestSelfWriteFindsAJoin(t *testing.T) {
+	tests := []struct {
+		name       string
+		writeModel string
+		reports    bool
+	}{
+		{
+			name: "each member writes their own element",
+			writeModel: `schema_version: 1
+model: write-paths
+entries:
+  - path: data.teams.{team}.members.{member}
+    writable_by:
+      - principal: "{member}"
+        via: "POST /api/v1/teams/{team}/join"
+`,
+			reports: true,
+		},
+		{
+			name: "an administrator writes the list",
+			writeModel: `schema_version: 1
+model: write-paths
+entries:
+  - path: data.teams.{team}.members
+    writable_by:
+      - principal: role:team-admin
+        via: "PUT /api/v1/teams/{team}/members"
+`,
+			reports: false,
+		},
+		{
+			// The capture names an element, but the element is the team.
+			name: "a capture on another segment",
+			writeModel: `schema_version: 1
+model: write-paths
+entries:
+  - path: data.teams.{team}.members.{member}
+    writable_by:
+      - principal: "{team}"
+        via: "a team service account"
+`,
+			reports: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := analysisOf(t, &FalsePositiveCase{Policy: joinPolicy, WriteModel: tt.writeModel})
+
+			findings, err := SelfWrite(a.Reads, a.Shape, a.Model)
+			if err != nil {
+				t.Fatalf("SelfWrite() error = %v", err)
+			}
+			if !tt.reports {
+				if len(findings) != 0 {
+					t.Errorf("findings = %v, want none", findings)
+				}
+				return
+			}
+			if len(findings) != 1 {
+				t.Fatalf("findings = %v, want one on the members", findings)
+			}
+			finding := findings[0]
+			if finding.Verdict != VerdictFinding || finding.Path != "data.teams[_].members" {
+				t.Errorf("finding = %s on %s, want a finding on data.teams[_].members", finding.Verdict, finding.Path)
+			}
+			if finding.SubjectElement != 4 || finding.SubjectPosition != 0 {
+				t.Errorf("element = %d and position = %d, want 4 and 0: the subject is an element, not a key",
+					finding.SubjectElement, finding.SubjectPosition)
+			}
+			if finding.ViaWritePath != "data.teams.{team}.members.{member}" {
+				t.Errorf("via write path = %q", finding.ViaWritePath)
+			}
+		})
+	}
+}
+
+// Chef Automate asks about a list of subjects, compares each with every member
+// of every policy inside a function, and keeps no collection of users at all.
+func TestSelfWriteOnAListOfSubjects(t *testing.T) {
+	a := analysisOf(t, &FalsePositiveCase{
+		Policy: `package authz
+
+# METADATA
+# scope: document
+# title: Projects the subjects are authorized on
+# entrypoint: true
+authorized_project contains project if {
+	has_member[policy]
+	some project in data.policies[policy].projects
+}
+
+has_member contains policy if {
+	member := data.policies[policy].members[_]
+	subject := input.subjects[_]
+	subject_matches(subject, member)
+}
+
+subject_matches(value, stored) if value == stored
+`,
+		WriteModel: `schema_version: 1
+model: write-paths
+entries:
+  - path: data.policies.{policy}.members.{member}
+    writable_by:
+      - principal: "{member}"
+        via: "POST /apis/iam/v2/policies/{id}/members:add"
+`,
+	})
+
+	if a.Shape.Subject != "input.subjects[_]" {
+		t.Fatalf("subject = %q, want input.subjects[_]", a.Shape.Subject)
+	}
+	findings, err := SelfWrite(a.Reads, a.Shape, a.Model)
+	if err != nil {
+		t.Fatalf("SelfWrite() error = %v", err)
+	}
+	if len(findings) != 1 || findings[0].Path != "data.policies[_].members[_]" || findings[0].Verdict != VerdictFinding {
+		t.Fatalf("findings = %v, want one finding on data.policies[_].members[_]", findings)
+	}
+	if findings[0].SubjectElement != 4 {
+		t.Errorf("element = %d, want 4", findings[0].SubjectElement)
+	}
+}
+
+// A capture stands for the subject only where the subject stands. A read
+// indexed by the requester and by the document they ask for has two captures,
+// and the model naming the second one says the document writes it.
+func TestSelfWriteHoldsTheCaptureToTheSubject(t *testing.T) {
+	policy := `package pins
+
+# METADATA
+# scope: document
+# title: Decision on pinned documents
+# entrypoint: true
+default allow := false
+
+allow if data.workspaces[input.user].documents[input.doc].pinned == true
+`
+	for _, tt := range []struct {
+		capture string
+		reports bool
+	}{
+		{capture: "{owner}", reports: true},
+		{capture: "{document}", reports: false},
+	} {
+		t.Run(tt.capture, func(t *testing.T) {
+			a := analysisOf(t, &FalsePositiveCase{
+				Policy: policy,
+				WriteModel: `schema_version: 1
+model: write-paths
+entries:
+  - path: data.workspaces.{owner}.documents.{document}.pinned
+    writable_by:
+      - principal: "` + tt.capture + `"
+        via: "PATCH /api/v1/documents/{document}"
+`,
+			})
+			findings, err := SelfWrite(a.Reads, a.Shape, a.Model)
+			if err != nil {
+				t.Fatalf("SelfWrite() error = %v", err)
+			}
+			if reported := len(findings) > 0; reported != tt.reports {
+				t.Errorf("findings = %v, want reported %v", findings, tt.reports)
+			}
+		})
+	}
+}
+
+// The chain writes a document of the subject's own, and a list the subject
+// joins is not one: the finding stays out of it rather than being turned into
+// a path the data never had.
+func TestTheChainLeavesAJoinAlone(t *testing.T) {
+	joined := Finding{PatternID: AttrSelfWrite, Verdict: VerdictFinding, Path: "data.teams[_].members", SubjectElement: 4}
+	owned := Finding{PatternID: AttrSelfWrite, Verdict: VerdictFinding, Path: "data.users[_].tier", SubjectPosition: 2}
+
+	writable := writablePaths([]Finding{joined, owned})
+	if len(writable) != 1 || writable[0].Path != owned.Path {
+		t.Errorf("writablePaths() = %v, want only %s", writable, owned.Path)
+	}
+}
+
 // Without a write model the policy side still holds, and saying "finding"
 // would be claiming something nobody declared. A candidate is a question with
 // a place to look for the answer.
@@ -164,10 +365,21 @@ func TestSelfWriteWithoutAModelEmitsCandidates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SelfWrite() error = %v", err)
 	}
-	if len(findings) == 0 {
-		t.Fatal("no candidates: the first two signals hold with or without a model")
+	var paths []string
+	for _, finding := range findings {
+		paths = append(paths, finding.Path)
+	}
+	slices.Sort(paths)
+	// The members of a project are a candidate too: the policy searches them
+	// for the requester, and who can add a member is what the model would say.
+	expected := []string{"data.projects[_].members", "data.users[_].profile.department", "data.users[_].roles"}
+	if !slices.Equal(paths, expected) {
+		t.Fatalf("candidates = %v, want %v", paths, expected)
 	}
 	for _, finding := range findings {
+		if element := finding.SubjectElement; (finding.Path == "data.projects[_].members") != (element == 4) {
+			t.Errorf("%s has the subject as element %d", finding.Path, element)
+		}
 		if finding.Verdict != VerdictCandidate {
 			t.Errorf("%s is a %s, want a candidate", finding.Path, finding.Verdict)
 		}

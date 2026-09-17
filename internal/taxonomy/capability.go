@@ -122,11 +122,11 @@ func AddCapabilities(ctx context.Context, g *graph.Graph, a Analysis) (int, erro
 		return 0, fmt.Errorf("%w: a capability is measured against documents", ErrNeedsData)
 	}
 
-	fields, named := subjectFields(a.Shape.Subject)
+	fields, named := subjectFieldsOf(a.Shape)
 	if !named {
 		return 0, nil
 	}
-	unknowns := unknownsBesides(a.Shape.Subject, a.Reads.InputPaths)
+	unknowns := unknownsBesides(a.Shape, a.Reads.InputPaths)
 	if len(unknowns) == 0 {
 		return 0, nil
 	}

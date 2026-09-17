@@ -131,6 +131,46 @@ and inputs that deny. CodeQL's `java/user-controlled-bypass`, tagged with it, re
 sensitive call that may not run depending on a user-controlled condition, which is the denying
 side exactly (checked at `codeql-cli/v2.27.0`).
 
+### A request carries identities, and a document can be picked by value
+
+Two assumptions are easy to make about a request and wrong about most of them.
+
+**The first is that a request names one principal.** Chef Automate sends the user and every team
+the user is in, in one list, and the policy ranges over it
+(`input.subjects`, built at `components/authz-service/engine/opa/opa.go:252` at `61ca031`).
+Kubernetes does the same without calling it a list: a role binding applies when one of its
+subjects equals the name **or one of the groups** of whoever is asking
+(`appliesTo` and `appliesToUser`, `pkg/registry/rbac/validation/rule.go:263` at `v1.37.0`).
+
+So a subject the decisions range over is read as one element of the list, `input.subjects[_]`,
+and a request that names one principal carries a list holding that principal alone, which is how
+Chef's own tests ask (`with input.subjects as ["z"]` in `authz_test.rego`). What somebody holds
+together with the teams an authenticator would add is the union of those measurements, and which
+teams go with which user is not in the policy.
+
+**The second is that a document is picked by its key.** `data.users[input.user].tier` is one way,
+and searching a collection for a value is the other. OPA compiles the second into a database
+query and ships an example that does exactly that: `post.author == input.subject.user` over
+`data.posts` becomes a `WHERE` clause (`data_filter_example` in `open-policy-agent/contrib` at
+`90f7ca9`). A value compared with the request selects documents, the same way an index does.
+
+The engine therefore records, on each read, the parts of the request it is compared with, and
+counts it as a lookup **only when the segment holding the value ranges over its collection**.
+`data.documents[input.doc].owner == input.user` is not one: that document is the one the request
+asks about, and checking its owner is a check on a resource, not a search for the requester.
+
+For `PTD-OPA-001` the write model is then asked about the **element**:
+`data.teams.{team}.members.{member}` writable by `{member}` says anybody can add themselves,
+while an entry on the list alone says who writes the list and nothing about who may join it.
+BloodHound keeps the two apart for the same reason, `AddSelf` next to `AddMember`
+(`packages/cue/bh/ad/ad.cue:1337` and `1427` at `v9.7.0`).
+
+Three limits come with it, and each is a false negative rather than noise: a lookup marks the
+read that holds the value and not the other fields of the same document, so a role read next to
+a matched member is not reported; the chain of `PTD-OPA-001` into `PTD-OPA-003` and `PTD-OPA-006`
+both write a document of the subject's own and leave a join alone; and a match on a prefix, as
+Chef's `team:*` members are, is not a lookup by value.
+
 ---
 
 ## 4. Format
@@ -287,8 +327,14 @@ configuration checks, libraries, test inputs and a bundle signing demo.
 |---|---|---|
 | 1, the AuthZEN interop policy | `data.users[input.subject.id].roles` and `.email` | `PTD-OPA-001`: two candidates, confidence B |
 | 2, Puppet and a Kubernetes node selector | a document the request picks, with no recognizable subject | nothing |
-| 6, data filtering over SQL, Elasticsearch, MongoDB and Azure, and an image policy | documents that other data picks | nothing |
+| 6, data filtering over SQL, Elasticsearch, MongoDB and Azure, and an image policy | documents that other data picks, and in two of them a record the requester is searched for | `PTD-OPA-001`: three candidates over those two |
 | 7, an HTTP API, Kafka, Kong, PAM, a Kubernetes authorizer, Dart, Wasm | no `data` | nothing |
+
+The three candidates are what a lookup by value finds. The Elasticsearch example keeps the posts
+whose `author` is the requester, and the MongoDB one the employees whose `name` is, plus the ones
+whose `manager` is. None of the three is indexed by anybody: they are rows kept by a comparison,
+which is what data filtering is for. Whoever can write those fields decides who reads what, and
+the write model is where that gets declared.
 
 No value from outside the policy reaches any of the 16 decisions, so `PTD-OPA-004` and
 `PTD-OPA-005` have nothing to look at, and no policy in contrib uses `every` either, so

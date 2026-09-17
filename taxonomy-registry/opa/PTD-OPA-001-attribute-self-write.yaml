@@ -46,6 +46,11 @@ mechanism:
     derives from `input`. That is the normal and correct shape of a lookup: the subject selects
     their own record, as they should. The defect is not in the policy, it is in that record
     being writable by them.
+    The other shape is a search: `data.<collection>[_].<field> == <subject>`, or the subject
+    looked for among the members of a collection with `in`. The record is selected by holding
+    the subject rather than by being keyed on them, and what the subject writes there is their
+    own membership: joining a team the decision grants to is the same defect reached the other
+    way.
     This is why the pattern is **not detectable by looking at the policy alone**, and it is the
     reason `requires_write_model` exists.
   example: |
@@ -76,14 +81,21 @@ detection:
     - order: 2
       check: >
         In the body of the rule there is a reference rooted at `data.` which, once the local
-        bindings are resolved, holds a term derived from `input` in **index position**.
+        bindings are resolved, holds a term derived from `input` in **index position**, or is
+        compared with one: an equality against the value it reads, or a search for that value
+        among its elements, in either case on a segment that ranges over its collection.
       example: >
         The compiled form shows `data.users[__local4__].profile.department` and, in the same
         body, `__local4__ = input.user`. After substitution the resolved reference is
         `data.users[input.user].profile.department`.
+        The search reads `data.policies[pol_id].members[_]` with `input.subjects[_]` on the
+        other side of the comparison, which in Chef Automate sits two calls away, inside
+        `common.subject_matches`.
       rationale: >
-        This is the signal that the subject **selects** the record being read. On its own it is
-        not a defect, it is a lookup. Signal 3 is what needs it.
+        This is the signal that the subject **selects** the record being read, by naming it or
+        by being in it. On its own it is not a defect, it is a lookup. Signal 3 is what needs it.
+        A comparison on a segment something else names is left out: the owner of the document
+        the request asks about is a check on that document, not a search for the requester.
         Which side of the decision the reference sits on is not a signal. The subject picks the
         value they write, so a field read to deny is a field they can clear: a suspension the
         subject writes is a suspension the subject lifts.
@@ -91,7 +103,9 @@ detection:
       check: >
         The **whole field path** of the resolved reference, not merely its collection prefix,
         appears in the `WrittenBy` model with the subject of the decision among those who can
-        write it.
+        write it. Where signal 2 held by a search, the path asked about is the **element**:
+        `data.teams.{team}.members.{member}` writable by `{member}` is a principal who can add
+        themselves, and an entry on the list alone says who writes the list, not who may join it.
       rationale: >
         This is the step that turns a candidate into a finding, and the only one that cannot be
         automated from the policy alone.
@@ -295,7 +309,7 @@ references:
       `imports`, `performance`, `style`, `testing`. **No `security` category.**
 
 verified:
-  date: 2026-09-16
+  date: 2026-09-17
   tool_version: opa 1.20.2
   how: >
     Signals 1 and 2 are executable, not argued: the resolver rebuilds
@@ -312,6 +326,13 @@ verified:
     case, because otherwise the silence would only prove the read had been missed.
     A field the subject writes and a decision reads under `not` is reported too, and a test
     holds it: the side is not a signal.
+    The search form of signal 2 is measured on the fixture from the quiet side: `is_member`
+    looks for the requester among `data.projects[_].members`, the engine sees the search and
+    the write model names the project owner as the one who writes that list, so nothing is
+    reported. With no model at all it comes out as a candidate, which is the honest reading of
+    a list somebody unnamed can add members to. Two tests carry the loud side, one where the
+    model gives each member their own element and one where the request is a list of subjects
+    compared inside a function, which is the shape of Chef Automate.
     Signal 2 inside `is_member` works through the interprocedural walk in
     `internal/opaengine/calls.go`, and it is the second occurrence of the same finding: the
     provenance `input.user` comes from the call site in `allow`, not from the body of the

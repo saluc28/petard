@@ -56,11 +56,11 @@ func SplitGrant(ctx context.Context, a Analysis) ([]Finding, error) {
 		return nil, nil
 	}
 
-	fields, named := subjectFields(a.Shape.Subject)
+	fields, named := subjectFieldsOf(a.Shape)
 	if !named {
 		return nil, nil
 	}
-	unknowns := unknownsBesides(a.Shape.Subject, a.Reads.InputPaths)
+	unknowns := unknownsBesides(a.Shape, a.Reads.InputPaths)
 	if len(unknowns) == 0 {
 		return nil, nil
 	}
@@ -109,10 +109,12 @@ func authorizedGrants(reads *opaengine.ReadSet, shape opaengine.Shape, model *wr
 		}
 		position, located := subjectPosition(read, shape)
 		if !located {
-			// The subject indexes this read through a function parameter, so
-			// which segment is its own document is not on this reference. The
-			// pattern needs that segment to name the document, and leaves the
-			// read to a later refinement rather than guessing it.
+			// Either the subject indexes this read through a function parameter,
+			// so which segment is its own document is not on this reference, or
+			// the read finds the subject by value, and then the write that
+			// grants adds the subject rather than a value to a document of
+			// theirs. The pattern names a document and writes a value into it,
+			// so it leaves both to a later refinement rather than guessing.
 			continue
 		}
 		path, err := writemodel.ParsePath(read.Path)
@@ -165,7 +167,7 @@ func authorizedGrants(reads *opaengine.ReadSet, shape opaengine.Shape, model *wr
 
 // splitGrantsOf measures one start against every principal, and returns the
 // escalations it opens.
-func splitGrantsOf(ctx context.Context, a Analysis, grant authorizedGrant, principals, fields, unknowns []string) ([]Finding, error) {
+func splitGrantsOf(ctx context.Context, a Analysis, grant authorizedGrant, principals []string, fields subjectFields, unknowns []string) ([]Finding, error) {
 	// Who the decision grants as the data stands. The subject has to gain, so it
 	// must get nothing now; the target has to hold the position, so it must get
 	// something now. Both readings come from the same measurement.
@@ -227,7 +229,7 @@ func splitGrantsOf(ctx context.Context, a Analysis, grant authorizedGrant, princ
 
 // valueOpensTheGrant answers signals 4 and 5 for one value: the first decision
 // allows the subject to write it, and writing it turns the grant on.
-func valueOpensTheGrant(ctx context.Context, a Analysis, grant authorizedGrant, fields, unknowns []string,
+func valueOpensTheGrant(ctx context.Context, a Analysis, grant authorizedGrant, fields subjectFields, unknowns []string,
 	subject, document string, value opaengine.GrantingValue) (bool, error) {
 
 	// Signal 4: does the first decision allow this principal to write this
@@ -239,7 +241,7 @@ func valueOpensTheGrant(ctx context.Context, a Analysis, grant authorizedGrant, 
 	if grant.Auth.Target != "" {
 		setInput(request, grant.Auth.Target, subject)
 	}
-	authUnknowns := unknownsExcept(a.Reads.InputPaths, a.Shape.Subject, grant.Auth.Value, grant.Auth.Target)
+	authUnknowns := unknownsExcept(a.Reads.InputPaths, subjectRoot(a.Shape), grant.Auth.Value, grant.Auth.Target)
 
 	allowed, err := reachOf(ctx, a.Bundle, a.Data, grant.Auth.Decision, request, authUnknowns, a.Limits)
 	if err != nil {
@@ -331,7 +333,7 @@ func splitGrantFinding(a Analysis, grant authorizedGrant, subject, target string
 // stands there directly rather than through a function parameter.
 func subjectPosition(read opaengine.Read, shape opaengine.Shape) (int, bool) {
 	for _, index := range read.Indexes {
-		if index.Term == shape.Subject {
+		if shape.IsSubject(index.Term) {
 			return index.Position, true
 		}
 	}

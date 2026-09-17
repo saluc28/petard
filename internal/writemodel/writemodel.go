@@ -53,6 +53,12 @@ type Writer struct {
 	// Principal is a capture of the path ({owner}), a role (role:admin), a
 	// system (system:billing), a derived relation (owner_of:{project}), or a
 	// concrete name.
+	//
+	// A capture says "whoever this segment identifies writes here". On the
+	// element of a collection that is the principal the element holds, so
+	// data.teams.{team}.members.{member} writable by {member} declares a list
+	// anybody can add themselves to, which is not what an entry on the list
+	// itself declares.
 	Principal string `yaml:"principal"`
 
 	// Via is how the write happens: an endpoint, a form, a job. The engine

@@ -54,6 +54,10 @@ entries:
   # Explicit project membership: written by the project owner, not by the
   # subject of the decision. It is the LEGITIMATE route to the same position
   # the 001 -> 003 chain reaches by writing a profile field.
+  #
+  # is_member searches this list for the requester, so the entry is also what
+  # keeps that search quiet: declaring the element instead, members.{member}
+  # writable by {member}, would say anybody can join, and 001 would report it.
   - path: data.projects.{project}.members
     writable_by:
       - principal: "owner_of:{project}"

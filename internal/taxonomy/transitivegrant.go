@@ -64,7 +64,7 @@ func TransitiveGrant(ctx context.Context, bundle *opaengine.Bundle, reads *opaen
 	// The rest of the request stays unknown, so that the count is what the
 	// principal can get out of the decision however they ask, and not what one
 	// hand written request happens to return.
-	unknowns := unknownsBesides(shape.Subject, reads.InputPaths)
+	unknowns := unknownsBesides(shape, reads.InputPaths)
 	if len(unknowns) == 0 {
 		return nil, nil
 	}
@@ -72,7 +72,7 @@ func TransitiveGrant(ctx context.Context, bundle *opaengine.Bundle, reads *opaen
 	// Whether a principal can be named at all is a property of the subject, so
 	// it is settled once here rather than per principal inside the loop, where
 	// failing would throw away the findings already made.
-	fields, named := subjectFields(shape.Subject)
+	fields, named := subjectFieldsOf(shape)
 	if !named {
 		return nil, nil
 	}
@@ -186,11 +186,14 @@ func closureSites(reads *opaengine.ReadSet) map[string][]ReadSite {
 }
 
 // principalsOf names the principals the policy knows about, by reading the
-// collection the subject of the request picks documents from.
+// collection the subject of the request picks documents from, and the values
+// it looks the subject up among.
 //
 // A policy does not list who exists, so this is the closest thing to a list
 // there is, and it is worth stating what it costs: a principal nobody is
 // decided about, because no rule ever reads their record, is invisible here.
+// Only the values that are strings count, since a request names a principal
+// with one.
 func principalsOf(ctx context.Context, shape opaengine.Shape, reads *opaengine.ReadSet, data *opaengine.Data) ([]string, error) {
 	var principals []string
 	for _, collection := range opaengine.SubjectCollections(shape, reads) {
@@ -199,6 +202,17 @@ func principalsOf(ctx context.Context, shape opaengine.Shape, reads *opaengine.R
 			return nil, err
 		}
 		principals = append(principals, presence.Present...)
+	}
+	for _, path := range opaengine.SubjectValues(shape, reads) {
+		values, err := data.Values(ctx, path)
+		if err != nil {
+			return nil, err
+		}
+		for _, value := range values {
+			if name, isString := value.(string); isString {
+				principals = append(principals, name)
+			}
+		}
 	}
 	return sortedUnique(principals), nil
 }
@@ -237,54 +251,73 @@ func reachOf(ctx context.Context, bundle *opaengine.Bundle, data *opaengine.Data
 	return reach{ways: len(residuals.Conditions), always: residuals.Always}, nil
 }
 
-// subjectFields breaks the path of the subject into the fields of a request,
+// subjectFields is where a request names a principal: the fields that lead
+// there, and whether the last of them holds a list of principals.
+type subjectFields struct {
+	path []string
+	list bool
+}
+
+// subjectFieldsOf breaks the path of the subject into the fields of a request,
 // and reports whether a request can name a principal that way at all.
 //
-// It refuses anything that is not a plain path: an index or a call standing
-// where a field name should be cannot be written into a request, and a request
-// that quietly named nobody would measure every principal as reaching whatever
-// an anonymous caller reaches.
-func subjectFields(subject string) ([]string, bool) {
+// It refuses anything that is not a plain path, a list of principals aside: an
+// index or a call standing where a field name should be cannot be written into
+// a request, and a request that quietly named nobody would measure every
+// principal as reaching whatever an anonymous caller reaches.
+func subjectFieldsOf(shape opaengine.Shape) (subjectFields, bool) {
 	const root = "input."
+	subject, list := shape.SubjectList()
 	if !strings.HasPrefix(subject, root) {
-		return nil, false
+		return subjectFields{}, false
 	}
 
-	fields := strings.Split(strings.TrimPrefix(subject, root), ".")
-	for _, field := range fields {
+	path := strings.Split(strings.TrimPrefix(subject, root), ".")
+	for _, field := range path {
 		if field == "" || strings.ContainsAny(field, "[]()\"") {
-			return nil, false
+			return subjectFields{}, false
 		}
 	}
-	return fields, true
+	return subjectFields{path: path, list: list}, true
 }
 
 // requestNaming builds a request that names one principal, however deep in the
 // request the subject was found.
-func requestNaming(fields []string, principal string) map[string]any {
+//
+// A list names the principal as its only element. That is a request from one
+// identity and nothing else, the way Chef Automate's own tests ask about a
+// member (input.subjects as ["z"] in authz_test.rego at 61ca031): what the
+// principal holds together with the teams an authenticator would add is a
+// union of these, and which teams go together is not in the policy.
+func requestNaming(fields subjectFields, principal string) map[string]any {
 	request := map[string]any{}
 
 	at := request
-	for _, field := range fields[:len(fields)-1] {
+	for _, field := range fields.path[:len(fields.path)-1] {
 		next := map[string]any{}
 		at[field] = next
 		at = next
 	}
-	at[fields[len(fields)-1]] = principal
+	var named any = principal
+	if fields.list {
+		named = []any{principal}
+	}
+	at[fields.path[len(fields.path)-1]] = named
 	return request
 }
 
 // unknownsBesides returns the parts of the request to leave open: everything
-// the decisions read except the subject, which is the part being fixed.
-func unknownsBesides(subject string, paths []string) []string {
-	var unknowns []string
-	for _, path := range paths {
-		if path == subject || strings.HasPrefix(path, subject+".") || strings.HasPrefix(path, subject+"[") {
-			continue
-		}
-		unknowns = append(unknowns, path)
-	}
-	return unknowns
+// the decisions read except the subject, which is the part being fixed. For a
+// list that is the whole list, since the request fixes all of it.
+func unknownsBesides(shape opaengine.Shape, paths []string) []string {
+	return unknownsExcept(paths, subjectRoot(shape))
+}
+
+// subjectRoot is the part of the request that naming one principal fixes: the
+// subject, or the whole list when the subject is one of several identities.
+func subjectRoot(shape opaengine.Shape) string {
+	root, _ := shape.SubjectList()
+	return root
 }
 
 // confidenceOf is what a claim about a principal is worth, which is what the

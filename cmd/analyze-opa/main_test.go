@@ -35,6 +35,36 @@ func TestRunReportsTheMeasures(t *testing.T) {
 	}
 }
 
+// The members of a project are searched for the requester rather than indexed
+// by them, and the report says so apart from the indexed reads. Without the
+// write model the search is a candidate, and the report says where the subject
+// stands in it.
+func TestRunReportsTheLookupsByValue(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	if code := run([]string{fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+
+	out := stdout.String()
+	_, lookups, found := strings.Cut(out, "reads that look the subject (input.user) up by value:\n")
+	if !found {
+		t.Fatalf("the report has no section for the lookups by value:\n%s", out)
+	}
+	section, _, _ := strings.Cut(lookups, "\n\n")
+	if !strings.Contains(section, "data.projects[_].members") || strings.Contains(section, "data.documents") {
+		t.Errorf("the lookups are not the members of a project alone:\n%s", section)
+	}
+	for _, expected := range []string{
+		"PTD-OPA-001 candidate: data.projects[_].members",
+		"the subject is found in it by value, at segment 4",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the report does not contain %q:\n%s", expected, out)
+		}
+	}
+}
+
 // Every kind the model declares has to have something in it, or it is a hole
 // rather than a decision. This is the run that says so, and the numbers move
 // with the fixture on purpose: what is asserted is that no kind is empty.

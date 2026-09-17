@@ -351,6 +351,9 @@ func reportPattern(out io.Writer, patterns []taxonomy.Pattern, id string, findin
 		for _, site := range finding.Reads {
 			fmt.Fprintf(out, "    %s at %s:%d in %s\n", site.Ref, site.File, site.Line, site.Rule)
 		}
+		if finding.SubjectElement > 0 {
+			fmt.Fprintf(out, "    the subject is found in it by value, at segment %d\n", finding.SubjectElement)
+		}
 		if finding.ViaWritePath != "" {
 			fmt.Fprintf(out, "    declared writable at %s\n", finding.ViaWritePath)
 		}
@@ -480,6 +483,17 @@ func report(out io.Writer, bundle *opaengine.Bundle, reads *opaengine.ReadSet) {
 		subjectTable.Flush()
 		fmt.Fprintln(out, "  whether any of these is a finding depends on who can write them,")
 		fmt.Fprintln(out, "  which is not in the policy and has to be declared.")
+	}
+
+	if matched := opaengine.SubjectMatchedReads(shape, reads); len(matched) > 0 {
+		fmt.Fprintf(out, "\nreads that look the subject (%s) up by value:\n", shape.Subject)
+		matchedTable := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+		for _, read := range matched {
+			fmt.Fprintf(matchedTable, "  %s\t%s:%d\n", read.Path, read.File, read.Line)
+		}
+		matchedTable.Flush()
+		fmt.Fprintln(out, "  whether any of these is a finding depends on who can add the subject to them,")
+		fmt.Fprintln(out, "  which is not in the policy either.")
 	}
 
 	if len(reads.SkippedUnderWith) > 0 {
