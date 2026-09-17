@@ -119,6 +119,12 @@ type Read struct {
 	// against the term that actually stands there.
 	Indexes []Index
 
+	// Matches are the parts of the request the read is searched for by value,
+	// the other way a request picks a document. They leave Provenance alone:
+	// that answers who names the key, and in data.policies[p].members[_] the
+	// keys still come from the data, whatever the members are compared with.
+	Matches []Match
+
 	// UnderNegation is true when the reference is read inside a negated
 	// expression.
 	//
@@ -340,6 +346,7 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 		underWith: make(map[string]bool),
 		callSites: make(map[*ast.Rule][]callSite),
 		edges:     make(map[*ast.Rule][]callEdge),
+		summaries: make(map[string][]paramComparison),
 	}
 	// Two passes, and the order matters: the call sites of a rule are only
 	// trustworthy once the walk knows which rules are part of the decisions at

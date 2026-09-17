@@ -79,6 +79,29 @@ type Shape struct {
 	Recognizer string
 }
 
+// listSuffix is how a subject that holds several principals is written: the
+// list, followed by the index that ranges over it, the way Rego writes any
+// element of a collection.
+const listSuffix = "[_]"
+
+// SubjectList returns the path of the list when the subject is a list of
+// principals rather than one, as input.subjects is in Chef Automate, where a
+// request carries the user and every team the user is in.
+//
+// A subject that is not a list comes back unchanged, so the first value is
+// always the part of the request that naming one principal fixes.
+func (s Shape) SubjectList() (string, bool) {
+	return strings.CutSuffix(s.Subject, listSuffix)
+}
+
+// IsSubject reports whether a term of the request is the subject.
+//
+// The term is compared in the form a path is reported in, so that
+// input.subjects[i] and input.subjects[_] are the same element of the list.
+func (s Shape) IsSubject(term string) bool {
+	return s.Subject != "" && term != "" && normalizeTerm(term) == s.Subject
+}
+
 // IndexedBySubject reports whether a read picks its document by the subject of
 // the request.
 //
@@ -89,12 +112,32 @@ func (s Shape) IndexedBySubject(read Read) bool {
 	if s.Subject == "" {
 		return false
 	}
-	if read.Trace != nil && read.Trace.Term == s.Subject {
+	if read.Trace != nil && s.IsSubject(read.Trace.Term) {
 		return true
+	}
+	for _, index := range read.Indexes {
+		if s.IsSubject(index.Term) {
+			return true
+		}
 	}
 	// The index sits inside the reference as it stands in the rule, between
 	// the brackets: data.users[input.user].profile.department.
 	return strings.Contains(read.Ref, "["+s.Subject+"]")
+}
+
+// MatchedBySubject returns the match through which a read finds the subject
+// by value, and reports whether there is one.
+//
+// It is the same question IndexedBySubject asks, reached the other way: not
+// the profile of whoever is asking, but the policies whose members include
+// whoever is asking.
+func (s Shape) MatchedBySubject(read Read) (Match, bool) {
+	for _, match := range read.Matches {
+		if s.IsSubject(match.Term) {
+			return match, true
+		}
+	}
+	return Match{}, false
 }
 
 // RecognizeShape asks each recognizer in turn, best evidence first, and
@@ -110,10 +153,25 @@ func RecognizeShape(reads *ReadSet) Shape {
 		recognizeByName,
 	} {
 		if shape, ok := recognize(reads.InputPaths); ok {
+			shape.Subject = asList(shape.Subject, reads.InputPaths)
 			return shape
 		}
 	}
 	return Shape{Confidence: ConfidenceNone, Recognizer: "none"}
+}
+
+// asList writes the subject as a list when the decisions range over it.
+//
+// Which of the two it is decides how a request naming one principal is built,
+// a string or a list holding one, and the recognizers that found the field
+// cannot tell: a name like subjects is a hint, and ranging over it is the fact.
+// A list the policy only hands whole to a function that ranges over it is not
+// seen here, and is taken for one principal.
+func asList(subject string, paths []string) string {
+	if element, ranged := underPrefix(paths, subject+listSuffix); ranged {
+		return element
+	}
+	return subject
 }
 
 // recognizeAuthZEN recognizes the shape the AuthZEN Authorization API fixes:
@@ -193,7 +251,7 @@ func recognizeAdmissionReview(paths []string) (Shape, bool) {
 // Field names that a request commonly uses for each role. Recognizing them is
 // a guess, and the level it produces says as much.
 var (
-	subjectNames  = []string{"subject", "user", "principal", "sub", "actor", "caller", "identity", "username", "user_id"}
+	subjectNames  = []string{"subject", "subjects", "user", "principal", "sub", "actor", "caller", "identity", "username", "user_id"}
 	actionNames   = []string{"action", "verb", "operation", "method", "op"}
 	resourceNames = []string{"resource", "object", "target", "document", "doc", "asset", "path"}
 )
@@ -260,12 +318,36 @@ func SubjectCollections(shape Shape, reads *ReadSet) []string {
 			continue
 		}
 		for _, index := range read.Indexes {
-			if index.Term == shape.Subject && index.Position < len(ref) {
+			if shape.IsSubject(index.Term) && index.Position < len(ref) {
 				collections = append(collections, ref[:index.Position+1].String())
 			}
 		}
 	}
 	return sortedUnique(collections)
+}
+
+// SubjectValues returns the paths whose values are compared with the subject of
+// the request: the read itself for an equality, and its elements for a search
+// with in.
+//
+// It is SubjectCollections for a policy that looks its requesters up instead of
+// indexing by them. Chef Automate keeps no collection of users at all, only
+// policies with members, and the members are who the policy knows about.
+func SubjectValues(shape Shape, reads *ReadSet) []string {
+	var paths []string
+	for _, read := range reads.Reads {
+		for _, match := range read.Matches {
+			if !shape.IsSubject(match.Term) {
+				continue
+			}
+			if match.Member {
+				paths = append(paths, read.Path+listSuffix)
+				continue
+			}
+			paths = append(paths, read.Path)
+		}
+	}
+	return sortedUnique(paths)
 }
 
 // SubjectIndexedReads returns the reads that pick their document by the
@@ -278,4 +360,16 @@ func SubjectIndexedReads(shape Shape, reads *ReadSet) []Read {
 		}
 	}
 	return slices.Clip(indexed)
+}
+
+// SubjectMatchedReads returns the reads that find the subject of the request
+// by value.
+func SubjectMatchedReads(shape Shape, reads *ReadSet) []Read {
+	var matched []Read
+	for _, read := range reads.Reads {
+		if _, found := shape.MatchedBySubject(read); found {
+			matched = append(matched, read)
+		}
+	}
+	return slices.Clip(matched)
 }

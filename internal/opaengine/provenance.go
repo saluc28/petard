@@ -14,6 +14,10 @@ import (
 // the indexes no body could answer for.
 func (r *refReader) resolve(limits Limits, reach map[*ast.Rule]decisionPaths) *ReadSet {
 	result := &ReadSet{}
+
+	matches, warnings := r.matches(limits)
+	result.Warnings = append(result.Warnings, warnings...)
+
 	for _, entry := range r.found {
 		for _, candidate := range dropPrefixes(entry.refs) {
 			if candidate.resolved.root != nil {
@@ -25,6 +29,7 @@ func (r *refReader) resolve(limits Limits, reach map[*ast.Rule]decisionPaths) *R
 			budget := &callBudget{limits: limits}
 			read := r.readOf(entry.rule, candidate, budget)
 			read.Decisions = reachedDecisions(reach[entry.rule])
+			read.Matches = matchesFor(matches[entry.rule], candidate.resolved.ref)
 			result.Reads = append(result.Reads, read)
 			result.Warnings = append(result.Warnings, budget.warnings...)
 		}

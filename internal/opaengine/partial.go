@@ -376,6 +376,32 @@ func (d *Data) Value(ctx context.Context, path string) (any, bool, error) {
 	return value, true, nil
 }
 
+// Values returns what a path holds wherever it resolves, in the order the walk
+// meets the documents: data.policies[_].members[_] comes back as every member
+// of every policy.
+func (d *Data) Values(ctx context.Context, path string) ([]any, error) {
+	walk, err := d.walk(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+
+	txn, err := d.store.NewTransaction(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("opaengine: opening a read of the data: %w", err)
+	}
+	defer d.store.Abort(ctx, txn)
+
+	values := make([]any, 0, len(walk.resolved))
+	for _, at := range walk.resolved {
+		value, err := d.store.Read(ctx, txn, at)
+		if err != nil {
+			return nil, fmt.Errorf("opaengine: reading data.%s: %w", strings.Join(at, "."), err)
+		}
+		values = append(values, value)
+	}
+	return values, nil
+}
+
 // concretePath turns a data rooted reference with no dynamic segment into the
 // store path of the one document it names.
 func concretePath(ref ast.Ref) (storage.Path, error) {

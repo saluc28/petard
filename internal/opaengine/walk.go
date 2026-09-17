@@ -64,6 +64,12 @@ type refReader struct {
 	// foundEverys are the every expressions met while walking, kept so that the
 	// decisions that depend on each can be named once the walk is done.
 	foundEverys []foundEvery
+
+	// foundComparisons are the equalities and searches met while walking, and
+	// summaries what each function compares, by the path of the function. See
+	// matches.go.
+	foundComparisons []foundComparison
+	summaries        map[string][]paramComparison
 }
 
 // closureBuiltins are the constructs a policy has to use to follow a relation
@@ -387,6 +393,7 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 		if operator := expr.Operator(); operator != nil {
 			r.followCall(operator, expr.Operands(), sc)
 			r.markClosure(operator, expr, sc)
+			r.markComparisons(expr, sc)
 		}
 		for _, operand := range expr.Operands() {
 			r.walkTerm(operand, sc, found)
