@@ -161,6 +161,46 @@ func (p Path) Matches(other Path) bool {
 	return len(p.Segments) == len(other.Segments)
 }
 
+// Fill replaces every capture named in a template with the segment one
+// document holds there, and is how a request the endpoint fills in itself
+// turns into the request it sends for one document.
+//
+// The segments are counted from the data root, the way a capture position is:
+// data.policies.{policy}.members against the segments of
+// data.policies.readers.members puts readers where {policy} stands.
+func (p Path) Fill(template string, segments []string) (string, error) {
+	filled := template
+	for _, capture := range capturesIn(template) {
+		position, found := p.CapturePosition(capture)
+		if !found {
+			return "", fmt.Errorf("writemodel: %q names {%s}, and the path has no such capture", template, capture)
+		}
+		if position >= len(segments) {
+			return "", fmt.Errorf("writemodel: {%s} sits at segment %d, past the end of the document", capture, position)
+		}
+		filled = strings.ReplaceAll(filled, "{"+capture+"}", segments[position])
+	}
+	return filled, nil
+}
+
+// capturesIn returns the captures a template names, in the order they appear.
+func capturesIn(template string) []string {
+	var captures []string
+	rest := template
+	for {
+		_, after, found := strings.Cut(rest, "{")
+		if !found {
+			return captures
+		}
+		name, remainder, closed := strings.Cut(after, "}")
+		if !closed {
+			return captures
+		}
+		captures = append(captures, name)
+		rest = remainder
+	}
+}
+
 // CapturePosition returns where a named capture sits in the path.
 //
 // It is what makes the third signal of the self write pattern computable: the

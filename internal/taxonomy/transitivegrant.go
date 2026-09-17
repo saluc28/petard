@@ -237,6 +237,23 @@ func (r reach) nothing() bool {
 	return !r.always && r.ways == 0
 }
 
+// beyond reports whether one reach grants more than another.
+//
+// A decision that already holds whatever it is asked cannot grant more, and one
+// that comes to hold that way grants more than any number of conditions: the
+// absence of a question is not a large count, so the two are compared before the
+// counts are.
+func (r reach) beyond(other reach) bool {
+	switch {
+	case other.always:
+		return false
+	case r.always:
+		return true
+	default:
+		return r.ways > other.ways
+	}
+}
+
 // reachOf asks how much of a decision one principal can get, with the rest of
 // the request left open.
 func reachOf(ctx context.Context, bundle *opaengine.Bundle, data *opaengine.Data, decision string, request map[string]any, unknowns []string, limits opaengine.Limits) (reach, error) {

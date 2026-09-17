@@ -165,11 +165,16 @@ while an entry on the list alone says who writes the list and nothing about who 
 BloodHound keeps the two apart for the same reason, `AddSelf` next to `AddMember`
 (`packages/cue/bh/ad/ad.cue:1337` and `1427` at `v9.7.0`).
 
-Three limits come with it, and each is a false negative rather than noise: a lookup marks the
-read that holds the value and not the other fields of the same document, so a role read next to
-a matched member is not reported; the chain of `PTD-OPA-001` into `PTD-OPA-003` and `PTD-OPA-006`
-both write a document of the subject's own and leave a join alone; and a match on a prefix, as
-Chef's `team:*` members are, is not a lookup by value.
+`PTD-OPA-006` reads the same search from the other side: there the writer is not the subject but
+an endpoint with a decision behind it, and joining is what that decision authorizes. What varies
+is then the collection rather than the value, since the value added is the subject.
+
+Two limits come with all this, and each is a false negative rather than noise: a lookup marks the
+read that holds the value and not the other fields of the same document, so a role read next to a
+matched member is not reported; and a match on a prefix, as Chef's `team:*` members are, is not a
+lookup by value. The chain of `PTD-OPA-001` into `PTD-OPA-003` leaves a join alone as well: it
+writes a document of the subject's own and lets partial evaluation find the value, and an element
+added to a list is neither.
 
 ---
 
@@ -222,7 +227,7 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-003` | TRANSITIVE-GRANT | opa | candidate | B | `verified`, and it chains with 001, which is where a route comes from |
 | `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `verified`, and the one that exercises taint |
 | `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, and it needs no attacker and nothing wrong beforehand: a slow endpoint is enough |
-| `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `verified`, the second edge that means escalation, from a role's write rather than a position |
+| `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `verified`, the second edge that means escalation, from a write a decision authorizes rather than a position: a value in the subject's record, or the subject added to a collection |
 | `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, the third instance of the category: an `every` over a domain the request can empty |
 
 Between them the seven exercise `binding-resolution`, `concrete-data`, `rule-graph` and `taint`;

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/saluc28/petard/internal/writemodel"
@@ -111,6 +113,164 @@ func TestSplitGrantNeedsData(t *testing.T) {
 
 	if _, err := SplitGrant(t.Context(), a); !errors.Is(err, ErrNeedsData) {
 		t.Errorf("SplitGrant() error = %v, want ErrNeedsData", err)
+	}
+}
+
+// joinPolicyBundle is the shape of Chef Automate cut down to what the pattern
+// needs: the request carries a list of subjects, a policy applies to whoever it
+// holds among its members, and the same decision is what the API asks before it
+// adds a member.
+const joinPolicyBundle = `package authz
+
+# METADATA
+# scope: document
+# title: Projects the subjects of the request are authorized on
+# entrypoint: true
+authorized_project contains project if {
+	has_member[policy]
+	statement := data.policies[policy].statements[_]
+	action_matches(input.action, statement.actions[_])
+	resource_matches(input.resource, statement.resources[_])
+	project := statement.projects[_]
+	project == input.projects[_]
+}
+
+has_member contains policy if {
+	member := data.policies[policy].members[_]
+	subject := input.subjects[_]
+	subject_matches(subject, member)
+}
+
+subject_matches(value, stored) if value == stored
+
+action_matches(asked, stored) if asked == stored
+
+action_matches(asked, stored) if {
+	endswith(stored, "*")
+	startswith(asked, trim_right(stored, "*"))
+}
+
+resource_matches(asked, stored) if asked == stored
+
+resource_matches(asked, stored) if {
+	endswith(stored, "*")
+	startswith(asked, trim_right(stored, "*"))
+}
+`
+
+// joinData holds three policies: one that grants everything, one that grants
+// managing the members of any policy, and one that grants reading.
+const joinData = `{
+  "policies": {
+    "administrator-access": {
+      "members": ["team:admins"],
+      "statements": {"s": {"actions": ["*"], "resources": ["*"], "projects": ["project-a", "project-b"]}}
+    },
+    "member-editors": {
+      "members": ["user:bob"],
+      "statements": {"s": {"actions": ["iam:policyMembers:*"], "resources": ["iam:policies:*"], "projects": ["project-a"]}}
+    },
+    "viewers": {
+      "members": ["user:alice"],
+      "statements": {"s": {"actions": ["infra:nodes:get"], "resources": ["*"], "projects": ["project-a"]}}
+    }
+  }
+}`
+
+const joinModel = `schema_version: 1
+model: write-paths
+entries:
+  - path: data.policies.{policy}.members.{member}
+    writable_by:
+      - principal: role:policy-member-editor
+        via: "POST /apis/iam/v2/policies/{policy}/members:add"
+        authorized_by:
+          decision: data.authz.authorized_project
+          request:
+            input.action: "iam:policyMembers:create"
+            input.resource: "iam:policies:{policy}:members"
+`
+
+// The escalation an IAM API of this shape carries: whoever may manage the
+// members of a policy may add themselves to it, and the policy that grants
+// everything is one of them.
+func TestSplitGrantFindsAJoin(t *testing.T) {
+	a := analysisOf(t, &FalsePositiveCase{Policy: joinPolicyBundle, Data: joinData, WriteModel: joinModel})
+
+	findings, err := SplitGrant(t.Context(), a)
+	if err != nil {
+		t.Fatalf("SplitGrant() error = %v", err)
+	}
+
+	var bobToAdmins *Finding
+	for i, f := range findings {
+		if f.Principal == "user:bob" && f.Target == "team:admins" {
+			bobToAdmins = &findings[i]
+		}
+		if f.Principal == "user:alice" {
+			t.Errorf("alice was reported, and no policy of hers allows managing members: %s", f)
+		}
+	}
+	if bobToAdmins == nil {
+		t.Fatalf("the join from bob to the administrators is missing:\n%v", findings)
+	}
+
+	f := *bobToAdmins
+	if f.Verdict != VerdictFinding || f.PatternID != WriteAllowedByAnotherDecision {
+		t.Errorf("finding = %s under %s, want a finding of %s", f.Verdict, f.PatternID, WriteAllowedByAnotherDecision)
+	}
+	if f.Decision != "data.authz.authorized_project" || f.AuthorizedBy != "data.authz.authorized_project" {
+		t.Errorf("decision = %q authorized by %q, want the same decision on both sides", f.Decision, f.AuthorizedBy)
+	}
+	if f.Value != "user:bob" {
+		t.Errorf("value = %q, want the principal added, which is the subject", f.Value)
+	}
+	if f.ViaWritePath != "data.policies.{policy}.members.{member}" || f.Via != "POST /apis/iam/v2/policies/{policy}/members:add" {
+		t.Errorf("written at %q via %q", f.ViaWritePath, f.Via)
+	}
+	if f.Subject != "input.subjects[_]" {
+		t.Errorf("subject = %q, want the element of the list", f.Subject)
+	}
+	if len(f.Reads) == 0 {
+		t.Error("the finding points at no line of policy to check it against")
+	}
+}
+
+// A principal already in the collection has no join to make, and the pattern
+// does not report one.
+func TestSplitGrantLeavesAMemberAlone(t *testing.T) {
+	a := analysisOf(t, &FalsePositiveCase{Policy: joinPolicyBundle, Data: joinData, WriteModel: joinModel})
+
+	findings, err := SplitGrant(t.Context(), a)
+	if err != nil {
+		t.Fatalf("SplitGrant() error = %v", err)
+	}
+	for _, f := range findings {
+		if f.Principal == "team:admins" && f.Target == "team:admins" {
+			t.Errorf("a principal was reported joining what they are already in: %s", f)
+		}
+	}
+}
+
+// What the endpoint fills in itself is what keeps the question about a write.
+// Without it the pattern asks whether the principal can make some request about
+// that resource, and a reader answers yes: alice, who may only read, comes out
+// as somebody who can add members.
+func TestSplitGrantNarrowsTheJoinToTheRequestTheEndpointSends(t *testing.T) {
+	model := strings.ReplaceAll(joinModel, `          request:
+            input.action: "iam:policyMembers:create"
+            input.resource: "iam:policies:{policy}:members"
+`, "")
+	a := analysisOf(t, &FalsePositiveCase{Policy: joinPolicyBundle, Data: joinData, WriteModel: model})
+
+	findings, err := SplitGrant(t.Context(), a)
+	if err != nil {
+		t.Fatalf("SplitGrant() error = %v", err)
+	}
+
+	widened := slices.ContainsFunc(findings, func(f Finding) bool { return f.Principal == "user:alice" })
+	if !widened {
+		t.Error("alice is not reported even with the request left open, so this test proves nothing about why it is fixed")
 	}
 }
 

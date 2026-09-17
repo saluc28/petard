@@ -107,6 +107,11 @@ type Authorization struct {
 
 	// Value is the part of the request that carries the value written, as a
 	// path into input: input.role.
+	//
+	// It is empty where the decision does not read what is written, which is
+	// the ordinary shape of an endpoint that adds a member: what it decides is
+	// who may touch the collection, and the member added is not in the request
+	// at all.
 	Value string `yaml:"value"`
 
 	// Target is the part of the request that names the record the write lands
@@ -114,6 +119,19 @@ type Authorization struct {
 	// the write is aimed at needs no target, and the write to one's own record
 	// is the shape the pattern starts from.
 	Target string `yaml:"target"`
+
+	// Request are the parts of the request the endpoint fills in itself, as
+	// paths into input mapped to what it sends. A value may name a capture of
+	// the path, and that is how an endpoint says which document it writes.
+	//
+	// It is how the endpoints of the world are declared, rather than a notation
+	// invented here: Chef Automate annotates AddPolicyMembers with the action
+	// iam:policyMembers:create and the resource iam:policies:{id}:members
+	// (api/external/iam/v2/policy.proto:373 at 61ca031), and its gateway sends
+	// exactly those two to the decision. Without them the analysis would ask
+	// whether the principal may make some request about that resource, which a
+	// reader with the right to look at it would answer yes to.
+	Request map[string]string `yaml:"request"`
 }
 
 // IsCapture reports whether this writer is one of the path's own captures,
@@ -174,7 +192,7 @@ func (e *Entry) parse() error {
 				return fmt.Errorf("%w: %s: writer {%s} names a capture the path does not have", ErrInvalid, e.RawPath, name)
 			}
 		}
-		if err := writer.AuthorizedBy.validate(e.RawPath, writer.Principal); err != nil {
+		if err := writer.AuthorizedBy.validate(e.RawPath, writer.Principal, path); err != nil {
 			return err
 		}
 	}
@@ -182,21 +200,30 @@ func (e *Entry) parse() error {
 }
 
 // validate checks an authorized_by block, when there is one. A block that names
-// no decision, or no value, cannot be asked the question the pattern rests on,
-// and accepting it in silence would declare an authorization the engine can
-// never use.
-func (a *Authorization) validate(rawPath, principal string) error {
+// no decision cannot be asked the question the pattern rests on, and accepting
+// it in silence would declare an authorization the engine can never use.
+func (a *Authorization) validate(rawPath, principal string, path Path) error {
 	if a == nil {
 		return nil
 	}
 	if !strings.HasPrefix(a.Decision, "data.") {
 		return fmt.Errorf("%w: %s: writer %s is authorized_by %q, and a decision is named by its data path", ErrInvalid, rawPath, principal, a.Decision)
 	}
-	if !strings.HasPrefix(a.Value, "input.") {
-		return fmt.Errorf("%w: %s: writer %s is authorized_by a decision with value %q, and the value is a path into input", ErrInvalid, rawPath, principal, a.Value)
+	for field, part := range map[string]string{"value": a.Value, "target": a.Target} {
+		if part != "" && !strings.HasPrefix(part, "input.") {
+			return fmt.Errorf("%w: %s: writer %s is authorized_by a decision with %s %q, and that is a path into input", ErrInvalid, rawPath, principal, field, part)
+		}
 	}
-	if a.Target != "" && !strings.HasPrefix(a.Target, "input.") {
-		return fmt.Errorf("%w: %s: writer %s is authorized_by a decision with target %q, and the target is a path into input", ErrInvalid, rawPath, principal, a.Target)
+
+	for field, sent := range a.Request {
+		if !strings.HasPrefix(field, "input.") {
+			return fmt.Errorf("%w: %s: writer %s sends %q to a decision, and a request is filled in at a path into input", ErrInvalid, rawPath, principal, field)
+		}
+		for _, capture := range capturesIn(sent) {
+			if _, found := path.CapturePosition(capture); !found {
+				return fmt.Errorf("%w: %s: writer %s sends {%s}, and the path has no such capture", ErrInvalid, rawPath, principal, capture)
+			}
+		}
 	}
 	return nil
 }

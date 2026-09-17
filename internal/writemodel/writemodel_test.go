@@ -168,6 +168,47 @@ func TestParsePathRefusesAConcreteIndex(t *testing.T) {
 	}
 }
 
+// An endpoint that adds a member sends the collection it writes and not the
+// member, so the decision behind it reads no value, and the parts the endpoint
+// fills in itself carry the captures of the path.
+func TestLoadReadsAnAuthorizationWithNoValue(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "write-model.yaml")
+	content := `schema_version: 1
+model: write-paths
+entries:
+  - path: data.policies.{policy}.members.{member}
+    writable_by:
+      - principal: role:policy-member-editor
+        via: "POST /apis/iam/v2/policies/{policy}/members:add"
+        authorized_by:
+          decision: data.authz.authorized_project
+          request:
+            input.action: "iam:policyMembers:create"
+            input.resource: "iam:policies:{policy}:members"
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing the file: %v", err)
+	}
+
+	model, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	entry := model.Entries[0]
+	auth := entry.WritableBy[0].AuthorizedBy
+	if auth == nil || auth.Value != "" {
+		t.Fatalf("authorized_by = %+v, want one that reads no value", auth)
+	}
+
+	filled, err := entry.Path.Fill(auth.Request["input.resource"], []string{"data", "policies", "administrator-access", "members"})
+	if err != nil {
+		t.Fatalf("Fill() error = %v", err)
+	}
+	if filled != "iam:policies:administrator-access:members" {
+		t.Errorf("Fill() = %q, want the resource of that one policy", filled)
+	}
+}
+
 func TestLoadRejects(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -202,10 +243,20 @@ func TestLoadRejects(t *testing.T) {
 			expectedErr: nil, // parse error, not one of the sentinels
 		},
 		{
-			name: "an authorized_by that names no value",
-			// The decision is there, but nothing says which part of the request
-			// carries the value, so the pattern could not ask what may be written.
-			content:     "schema_version: 1\nmodel: write-paths\nentries:\n  - path: data.users.{owner}.roles\n    writable_by:\n      - principal: role:support\n        via: PUT /roles\n        authorized_by:\n          decision: data.quill.admin.allow\n",
+			name: "an authorized_by whose value is not a path into input",
+			// The decision reads what is written from its request, so naming a
+			// data path there could never be asked of it.
+			content:     "schema_version: 1\nmodel: write-paths\nentries:\n  - path: data.users.{owner}.roles\n    writable_by:\n      - principal: role:support\n        via: PUT /roles\n        authorized_by:\n          decision: data.quill.admin.allow\n          value: data.roles\n",
+			expectedErr: ErrInvalid,
+		},
+		{
+			name:        "a request filled in somewhere other than input",
+			content:     "schema_version: 1\nmodel: write-paths\nentries:\n  - path: data.policies.{policy}.members.{member}\n    writable_by:\n      - principal: role:editor\n        via: POST /members\n        authorized_by:\n          decision: data.authz.authorized_project\n          request:\n            action: write\n",
+			expectedErr: ErrInvalid,
+		},
+		{
+			name:        "a request naming a capture the path has not got",
+			content:     "schema_version: 1\nmodel: write-paths\nentries:\n  - path: data.policies.{policy}.members.{member}\n    writable_by:\n      - principal: role:editor\n        via: POST /members\n        authorized_by:\n          decision: data.authz.authorized_project\n          request:\n            input.resource: \"iam:policies:{id}:members\"\n",
 			expectedErr: ErrInvalid,
 		},
 		{

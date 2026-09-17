@@ -82,10 +82,15 @@ detection:
       check: >
         A decision reads a path in `data` whose index derives from the subject, in granting
         position: the first two signals of `PTD-OPA-001`, with the side added, for the reason the
-        notes give.
+        notes give. A decision that searches a collection for the subject by value counts too,
+        and then the collection is what a write adds to.
       rationale: >
         The read is where the grant depends on a document, and it is the same read 001 starts
         from. What differs is who the write model says writes it.
+        The two forms are the same fact reached from different ends. A field of the subject's own
+        record is written by putting a value in it, and a membership is written by adding the
+        subject to a list, so the search form fixes the value and varies the document while the
+        other fixes the document and varies the value.
     - order: 2
       check: >
         The write model covers that path with a writer that is not a capture of the path, and
@@ -101,7 +106,8 @@ detection:
       check: >
         Partially evaluate the granting decision for each principal with that principal's
         document left unknown, and collect the constant values the residual conditions compare
-        the document against.
+        the document against. In the search form there is nothing to collect: the value added is
+        the subject, and the documents of the collection are what the principal is asked about.
       rationale: >
         These are the values that would grant, taken from OPA's answer rather than from reading
         the policy: on the fixture, "editor" for publish and "admin" for withdraw. Collecting the
@@ -109,19 +115,27 @@ detection:
     - order: 4
       check: >
         Ask the first decision, for the same principal, whether writing each of those values into
-        their document is allowed.
+        their document is allowed, or, in the search form, whether adding an element to that
+        collection is. The request carries the parts the writing endpoint fills in itself, which
+        the write model declares.
       rationale: >
         This is what separates the case from the counter case: support may write editor and may
         not write admin, so the withdraw branch is never reached. Without this signal the pattern
         would report every branch that reads a field somebody can write.
+        The parts the endpoint fills in are what keeps the question about a write. Asked without
+        them, it becomes "may this principal make some request about that resource", and anybody
+        allowed to read it answers yes.
     - order: 5
       check: >
-        Evaluate the granting decision again with the document holding an allowed value, and
-        report the principals it grants now and did not grant before.
+        Evaluate the granting decision again with the document holding an allowed value, or with
+        the principal among the elements of the collection, and report the principals it grants
+        more to than it did before.
       rationale: >
         The whole decision is evaluated, not the branch, so any other condition the decision
-        imposes still applies. A principal who already held the grant is not reported: for them
-        the write changes nothing.
+        imposes still applies. On the value side a principal who already held the grant is not
+        reported, since for them the write changes nothing; on the search side what is compared
+        is how many ways the decision has of granting, before and after, and a principal already
+        in the collection is left alone because there is no join to make.
   confidence: C
   confidence_note: >
     As for `PTD-OPA-001`, the claim rests on the recognition of the subject, which on the fixture
@@ -293,6 +307,74 @@ false_positives:
         still does not, because she is not in the press office. The engine writes the value,
         evaluates the whole decision, and stays quiet. Without the department condition the same
         case reports carol reaching the position of alice.
+  - condition: >
+      In the search form, the principal already holds everything the collection grants, so
+      joining it adds a way of granting and no access. An administrator who may add anybody to
+      any policy is reported for every policy they are not in.
+    discriminator: >
+      What signal 5 compares is how many ways the decision has of granting that principal, and a
+      redundant way counts like any other. Telling one apart means deciding whether a residual
+      condition the principal already satisfies implies the new one, which is a question for a
+      solver rather than for an evaluator: OPA answers what holds, not what one condition entails
+      about another.
+    measurement: case
+    case:
+      policy: |
+        package authz
+
+        # METADATA
+        # scope: document
+        # title: Projects the subjects of the request are authorized on
+        # entrypoint: true
+        authorized_project contains project if {
+            has_member[policy]
+            project := data.policies[policy].projects[_]
+            project == input.projects[_]
+        }
+
+        # METADATA
+        # scope: document
+        # title: Decision the endpoint that adds a member consumes
+        # entrypoint: true
+        default allow_write := false
+
+        allow_write if {
+            input.action == "iam:policyMembers:create"
+            has_member["administrators"]
+        }
+
+        has_member contains policy if {
+            member := data.policies[policy].members[_]
+            subject := input.subjects[_]
+            subject == member
+        }
+      data: |
+        {
+          "policies": {
+            "administrators": {"members": ["user:root"], "projects": ["project-a", "project-b"]},
+            "readers": {"members": ["user:alice"], "projects": ["project-a"]}
+          }
+        }
+      write_model: |
+        schema_version: 1
+        model: write-paths
+        entries:
+          - path: data.policies.{policy}.members.{member}
+            writable_by:
+              - principal: role:member-editor
+                via: "POST /apis/iam/v2/policies/{policy}/members:add"
+                authorized_by:
+                  decision: data.authz.allow_write
+                  request:
+                    input.action: "iam:policyMembers:create"
+      reports: true
+      note: >
+        Run with opa 1.20.2. Only the administrators may add members, and `user:root` is the only
+        one of them, so the engine asks about that one principal and reports the join to
+        `readers`: two ways of granting before, three after. The access does not change, since
+        `project-a` is already theirs through `administrators`, and the count is what the engine
+        can see. `user:alice` is reported for nothing, which is the other half of the case: the
+        decision behind the endpoint refuses her the write.
 
 not_a_lint_rule: >
   Each file is correct and idiomatic on its own, and a linter reads one file at a time. The defect
@@ -323,7 +405,7 @@ references:
     note: Checked on 2026-08-01 and again at the source of v0.42.0, no `security` category.
 
 verified:
-  date: 2026-09-16
+  date: 2026-09-17
   tool_version: opa 1.20.2
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture. It leaves
@@ -343,11 +425,20 @@ verified:
     regal v0.42.0 reports no violations on `policy-v1`.
     On generated worlds, which give everybody the viewer role, the engine reports no split grant
     for anybody.
-    The five declared false positives are settled as the status requires. Three are
+    The search form is measured on a bundle shaped like Chef Automate, where the request carries a
+    list of subjects and a policy applies to whoever it holds among its members. The principal who
+    may manage the members of a policy adds themselves to the one that grants everything, and the
+    engine reports it; the principal who may only read is asked the same question and comes out
+    with nothing, because the decision behind the endpoint refuses them the write. Taking the
+    parts the endpoint fills in out of the write model reports that reader as a writer, which is
+    what those parts are for, and a test holds that too.
+    The six declared false positives are settled as the status requires. Three are
     `out-of-band`: an approval outside OPA, a refusal of self-assignment that only the endpoint
-    makes, and a combination that is meant. The other two carry a case with its own data and
-    write model that runs on every build, and the engine stays quiet on both: a decision that
-    refuses self-assignment, and a granting decision with a condition the write does not meet.
+    makes, and a combination that is meant. The other three carry a case with its own data and
+    write model that runs on every build. The engine stays quiet on two of them, a decision that
+    refuses self-assignment and a granting decision with a condition the write does not meet, and
+    reports the third, an administrator joining a policy that grants them nothing they did not
+    already have.
 
 related:
   - id: PTD-OPA-001
@@ -370,6 +461,24 @@ notes:
     written value and the target from, since a decision speaks of input while the write model
     speaks of data paths. The target is optional, since a decision that never reads who a write is
     aimed at needs none, and it is set to the subject for a write to one's own record.
+    The value is optional for the same kind of reason, and an endpoint that adds a member shows
+    why: what it asks about is the collection, and who is being added is not in the request at
+    all. What such an endpoint does send is declared in `request`, a map from the input path to
+    what it fills in, with the captures of the path available to it. That is how the endpoints of
+    the world describe themselves: Chef Automate annotates AddPolicyMembers with the action
+    `iam:policyMembers:create` and the resource `iam:policies:{id}:members`
+    (api/external/iam/v2/policy.proto:373 at 61ca031), and its gateway sends those two to the
+    decision.
+  - >
+    A decision that collects is asked for what it holds. `data.authz.authorized_project` builds a
+    set of projects, and an empty set is a defined value, so in Rego the query naming it holds
+    while the decision grants nothing: asked that way, a principal authorized on no project at
+    all would read as one the decision cannot refuse. Which it is comes from the rule, since a
+    rule with a key in its head builds a set or an object, and the elements are then what the
+    question asks for, exactly as Chef Automate's own enforcement point does
+    (data.authz.authorized_project[project], components/authz-service/engine/opa/opa.go:36 at
+    61ca031). A complete rule whose value happens to be a set is asked as a value, and an empty
+    answer from it still reads as a grant; that is a false positive nothing here tells apart.
   - >
     Known false negative: the constants of signal 3 are the values that grant only for a
     comparison with a literal. A decision that grants on a value computed from other data leaves

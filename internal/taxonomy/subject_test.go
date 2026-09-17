@@ -54,12 +54,17 @@ func TestSubjectFieldsRefuseWhatARequestCannotName(t *testing.T) {
 }
 
 // A request naming one principal fixes the whole list, so none of it is left
-// open, whatever part of it the policy reads.
+// open, whatever part of it the policy reads. What is left open is a document:
+// a policy that only ever reads the elements of a list would otherwise leave
+// the list itself known, and known means absent.
 func TestUnknownsBesidesAList(t *testing.T) {
-	paths := []string{"input.action", "input.subjects", "input.subjects[_]", "input.subjects[_].id", "input.subjectsx"}
+	paths := []string{
+		"input.action", "input.projects[_]", "input.reviews[_].approved",
+		"input.subjects", "input.subjects[_]", "input.subjects[_].id", "input.subjectsx",
+	}
 	got := unknownsBesides(opaengine.Shape{Subject: "input.subjects[_]"}, paths)
 
-	expected := []string{"input.action", "input.subjectsx"}
+	expected := []string{"input.action", "input.projects", "input.reviews", "input.subjectsx"}
 	if !slices.Equal(got, expected) {
 		t.Errorf("unknownsBesides() = %v, want %v", got, expected)
 	}

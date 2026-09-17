@@ -297,6 +297,12 @@ branch too. What separates the two is the value: the write is allowed for `edito
 `PTD-OPA-001` stays silent on the same field, and that is right: `roles` is written by a role,
 `role:support`, and not by the subject as such, which is the line between the two patterns.
 
+The membership the fixture also holds, `is_member` searching `data.projects[_].members` for the
+requester, is a second counter case here: the pattern reads a search as a join, and a join it can
+measure needs a writer with a decision behind them. That list is written by `owner_of:{project}`,
+a way of finding somebody rather than an endpoint with a rule of the bundle governing it, so
+there is nothing to ask and nothing is reported.
+
 ### PTD-OPA-007, a check that stops applying on the empty case
 
 `review.rego` approves a merge when every reviewer has approved. With no reviewers the `every` is

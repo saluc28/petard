@@ -41,10 +41,19 @@ const WriteAllowedByAnotherDecision = "PTD-OPA-006"
 // branch on admin included, and the finding would claim a grant the first
 // decision never allows.
 //
+// A decision that finds the subject by value is measured the other way round,
+// and the same five signals read like this: the value written is the subject
+// themselves, so what varies is which collection they are added to. The
+// principals who are not in a collection are asked, document by document,
+// whether the authorizing decision lets them add an element there, and the
+// granting decision is evaluated again with them in it. The parts of the
+// request the endpoint fills in itself are what keeps that question about a
+// write rather than about a read.
+//
 // It emits a finding and a PTD_CanEscalateTo, the same edge the 001 to 003
-// chain emits, because it is the same claim: a principal who holds nothing can
-// write their way to where another principal stands. What differs is the route,
-// a value one decision authorizes rather than a position in a hierarchy.
+// chain emits, because it is the same claim: a principal can write their way to
+// where another principal stands. What differs is the route, a value or a
+// membership one decision authorizes rather than a position in a hierarchy.
 func SplitGrant(ctx context.Context, a Analysis) ([]Finding, error) {
 	if a.Data == nil {
 		return nil, fmt.Errorf("%w: %s", ErrNeedsData, WriteAllowedByAnotherDecision)
@@ -70,11 +79,16 @@ func SplitGrant(ctx context.Context, a Analysis) ([]Finding, error) {
 		return nil, err
 	}
 
-	grants := authorizedGrants(a.Reads, a.Shape, a.Model)
-
 	var findings []Finding
-	for _, grant := range grants {
+	for _, grant := range authorizedGrants(a.Reads, a.Shape, a.Model) {
 		made, err := splitGrantsOf(ctx, a, grant, principals, fields, unknowns)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, made...)
+	}
+	for _, join := range authorizedJoins(a.Reads, a.Shape, a.Model) {
+		made, err := joinsOpenedBy(ctx, a, join, principals, fields, unknowns)
 		if err != nil {
 			return nil, err
 		}
@@ -329,6 +343,235 @@ func splitGrantFinding(a Analysis, grant authorizedGrant, subject, target string
 	}
 }
 
+// authorizedJoin is the other place the pattern can start: a decision that
+// finds the subject among the elements of a collection, and a write model
+// writer who is not the subject and adds an element with a decision of the
+// bundle behind them.
+type authorizedJoin struct {
+	Decision string
+
+	// Path is the read, and List the collection an element is added to. For a
+	// search with in the two are the same path.
+	Path string
+	List string
+
+	Entry  writemodel.Entry
+	Writer writemodel.Writer
+	Auth   writemodel.Authorization
+	Sites  []ReadSite
+}
+
+// authorizedJoins collects the starts where the decision finds the subject by
+// value, one per decision and collection.
+func authorizedJoins(reads *opaengine.ReadSet, shape opaengine.Shape, model *writemodel.Model) []authorizedJoin {
+	byKey := map[string]int{}
+	var joins []authorizedJoin
+
+	for _, read := range reads.Reads {
+		match, matched := shape.MatchedBySubject(read)
+		if !matched {
+			continue
+		}
+		list, err := opaengine.CollectionPath(read, match)
+		if err != nil {
+			continue
+		}
+		element, err := writemodel.ParsePath(opaengine.ElementPath(read, match))
+		if err != nil {
+			continue
+		}
+		site := ReadSite{Ref: read.Ref, Rule: read.Rule, File: read.File, Line: read.Line}
+
+		for _, entry := range model.Covering(element) {
+			for _, writer := range entry.WritableBy {
+				if writer.AuthorizedBy == nil {
+					continue
+				}
+				if _, isCapture := writer.IsCapture(); isCapture {
+					// A capture is the subject adding themselves with nothing
+					// to ask, which is the join PTD-OPA-001 reports. Here the
+					// write goes through a decision of the bundle, and that
+					// decision is what says who may make it.
+					continue
+				}
+				for _, decision := range read.Decisions {
+					if decision.UnderNegation {
+						// The membership only ever denies there, so adding an
+						// element takes access away rather than granting it.
+						continue
+					}
+					key := decision.Name + "\x00" + list + "\x00" + writer.AuthorizedBy.Decision
+					if at, seen := byKey[key]; seen {
+						joins[at].Sites = append(joins[at].Sites, site)
+						continue
+					}
+					byKey[key] = len(joins)
+					joins = append(joins, authorizedJoin{
+						Decision: decision.Name,
+						Path:     read.Path,
+						List:     list,
+						Entry:    entry,
+						Writer:   writer,
+						Auth:     *writer.AuthorizedBy,
+						Sites:    []ReadSite{site},
+					})
+				}
+			}
+		}
+	}
+	return joins
+}
+
+// joinsOpenedBy measures one start against every document of the collection and
+// every principal, and returns the escalations joining opens.
+//
+// The question is not the one the value side asks. There the subject has a
+// document of their own and the pattern looks for a value to put in it; here
+// the subject is an element, so what varies is which collection they add
+// themselves to, and the value is always themselves.
+func joinsOpenedBy(ctx context.Context, a Analysis, join authorizedJoin, principals []string, fields subjectFields, unknowns []string) ([]Finding, error) {
+	documents, err := a.Data.Documents(ctx, join.List)
+	if err != nil {
+		return nil, err
+	}
+
+	// What the decision grants each principal as the data stands, measured once:
+	// a join is worth reporting when it grants more than that.
+	now := make(map[string]reach, len(principals))
+	for _, principal := range principals {
+		if now[principal], err = reachOf(ctx, a.Bundle, a.Data, join.Decision, requestNaming(fields, principal), unknowns, a.Limits); err != nil {
+			return nil, err
+		}
+	}
+
+	var findings []Finding
+	for _, document := range documents {
+		members, err := elementsOf(ctx, a.Data, document)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, subject := range principals {
+			opened, err := joinOpens(ctx, a, join, document, members, fields, unknowns, subject, now[subject])
+			if err != nil {
+				return nil, err
+			}
+			if !opened {
+				continue
+			}
+			for _, target := range members {
+				if name, isName := target.(string); isName && name != subject {
+					findings = append(findings, joinFinding(a, join, document, subject, name))
+				}
+			}
+		}
+	}
+	return findings, nil
+}
+
+// joinOpens answers the two signals a join turns on: the decision behind the
+// endpoint lets this principal add an element to this document, and the
+// granting decision gives them more once they are in it.
+func joinOpens(ctx context.Context, a Analysis, join authorizedJoin, document string, members []any,
+	fields subjectFields, unknowns []string, subject string, now reach) (bool, error) {
+
+	if slices.Contains(members, any(subject)) {
+		// Already an element: there is no join to make, and what it grants
+		// they hold already.
+		return false, nil
+	}
+
+	allowed, err := writeAllowed(ctx, a, join, document, fields, subject)
+	if err != nil || !allowed {
+		return false, err
+	}
+
+	written, err := a.Data.With(ctx, document, append(slices.Clone(members), subject))
+	if err != nil {
+		return false, err
+	}
+	opened, err := reachOf(ctx, a.Bundle, written, join.Decision, requestNaming(fields, subject), unknowns, a.Limits)
+	if err != nil {
+		return false, err
+	}
+	return opened.beyond(now), nil
+}
+
+// writeAllowed asks the decision the endpoint consumes whether one principal
+// may add an element to one document.
+//
+// The parts of the request the endpoint fills in itself are what keeps the
+// question narrow. Without them the answer would be "this principal can make
+// some request about that resource", which anybody allowed to read it answers
+// yes to, and the finding would claim a write on the strength of a read.
+func writeAllowed(ctx context.Context, a Analysis, join authorizedJoin, document string, fields subjectFields, subject string) (bool, error) {
+	segments, err := opaengine.Segments(document)
+	if err != nil {
+		return false, err
+	}
+
+	request := requestNaming(fields, subject)
+	fixed := []string{subjectRoot(a.Shape)}
+	for field, sent := range join.Auth.Request {
+		filled, err := join.Entry.Path.Fill(sent, segments)
+		if err != nil {
+			return false, err
+		}
+		setInput(request, field, filled)
+		fixed = append(fixed, field)
+	}
+	if join.Auth.Value != "" {
+		// A decision that reads what is written reads who is being added, and
+		// that is the subject.
+		setInput(request, join.Auth.Value, subject)
+		fixed = append(fixed, join.Auth.Value)
+	}
+
+	allowed, err := reachOf(ctx, a.Bundle, a.Data, join.Auth.Decision, request,
+		unknownsExcept(a.Reads.InputPaths, fixed...), a.Limits)
+	if err != nil {
+		return false, err
+	}
+	return !allowed.nothing(), nil
+}
+
+// elementsOf returns what a collection holds, and nothing when it holds no
+// collection: a document that is not there is one an endpoint creates with the
+// first element.
+func elementsOf(ctx context.Context, data *opaengine.Data, document string) ([]any, error) {
+	current, found, err := data.Value(ctx, document)
+	if err != nil || !found {
+		return nil, err
+	}
+	if list, isList := current.([]any); isList {
+		return list, nil
+	}
+	return nil, nil
+}
+
+// joinFinding says what was measured: who can add themselves where, the
+// decision that allows it, the decision that grants on the membership, and the
+// principal whose position that reaches.
+func joinFinding(a Analysis, join authorizedJoin, document, subject, target string) Finding {
+	return Finding{
+		PatternID: WriteAllowedByAnotherDecision,
+		Verdict:   VerdictFinding,
+		Summary: fmt.Sprintf("%s can add themselves to %s, which %s allows, and %s then grants the position %s holds",
+			subject, document, join.Auth.Decision, join.Decision, target),
+		Principal:    subject,
+		Target:       target,
+		Decision:     join.Decision,
+		Path:         join.Path,
+		ViaWritePath: join.Entry.RawPath,
+		Via:          join.Writer.Via,
+		AuthorizedBy: join.Auth.Decision,
+		Value:        subject,
+		Reads:        slices.Clone(join.Sites),
+		Subject:      a.Shape.Subject,
+		Confidence:   a.Shape.Confidence.String(),
+	}
+}
+
 // subjectPosition returns the segment of a read the subject stands at, when it
 // stands there directly rather than through a function parameter.
 func subjectPosition(read opaengine.Read, shape opaengine.Shape) (int, bool) {
@@ -359,14 +602,28 @@ func setInput(request map[string]any, path string, value any) {
 // unknownsExcept returns the request paths to leave open, dropping the ones the
 // question fixes: the subject and, for the authorizing decision, the value and
 // the target it is asked about.
+//
+// What is left open is a document: a request is unknown by the part of it that
+// is not there, and input.projects[_] is that list left open, not an element of
+// it on its own. A policy that only ever reads the elements would otherwise
+// leave the list itself known, and known means absent, so every condition on it
+// would fail and the decision would grant nobody anything.
 func unknownsExcept(paths []string, fixed ...string) []string {
 	var unknowns []string
 	for _, path := range paths {
 		if !underAny(path, fixed) {
-			unknowns = append(unknowns, path)
+			unknowns = append(unknowns, documentOf(path))
 		}
 	}
-	return unknowns
+	return sortedUnique(unknowns)
+}
+
+// documentOf cuts a path at the first segment it ranges over.
+func documentOf(path string) string {
+	if at := strings.Index(path, "["); at >= 0 {
+		return path[:at]
+	}
+	return path
 }
 
 // underAny reports whether a path is one of the prefixes or sits under it.
