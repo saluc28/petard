@@ -1,6 +1,7 @@
 package opaengine
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -236,6 +237,29 @@ func (c paramComparison) equal(other paramComparison) bool {
 
 func (s paramSide) equal(other paramSide) bool {
 	return s.param == other.param && s.request.Equal(other.request)
+}
+
+// ElementPath is the path of the value a match compares: the read itself, and
+// the elements of the read when the read is the collection being searched.
+func ElementPath(read Read, match Match) string {
+	if match.Member {
+		return read.Path + listSuffix
+	}
+	return read.Path
+}
+
+// CollectionPath is the path of the collection the matched value is an element
+// of, which is what a write adding one lands on.
+func CollectionPath(read Read, match Match) (string, error) {
+	ref, err := ast.ParseRef(read.Path)
+	if err != nil {
+		return "", fmt.Errorf("opaengine: reading the path %s: %w", read.Path, err)
+	}
+	if match.Position >= len(ref) {
+		// The element is one past the end, so the read is the collection.
+		return read.Path, nil
+	}
+	return ref[:match.Position].String(), nil
 }
 
 // refMatch is a match found for one data reference of a rule, waiting for the

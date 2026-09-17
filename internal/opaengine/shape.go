@@ -337,14 +337,9 @@ func SubjectValues(shape Shape, reads *ReadSet) []string {
 	var paths []string
 	for _, read := range reads.Reads {
 		for _, match := range read.Matches {
-			if !shape.IsSubject(match.Term) {
-				continue
+			if shape.IsSubject(match.Term) {
+				paths = append(paths, ElementPath(read, match))
 			}
-			if match.Member {
-				paths = append(paths, read.Path+listSuffix)
-				continue
-			}
-			paths = append(paths, read.Path)
 		}
 	}
 	return sortedUnique(paths)

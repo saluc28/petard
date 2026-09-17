@@ -277,6 +277,45 @@ allow if data.settings.open == true
 	}
 }
 
+// A decision that collects grants what it holds, and an empty answer grants
+// nothing. In Rego only false and undefined are not true, so an empty set is a
+// value the query naming it holds on, and a principal authorized on nothing
+// would otherwise read as one the decision cannot refuse.
+func TestResidualsAskACollectedDecisionForWhatItHolds(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"policy.rego": `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+authorized contains project if {
+	some project in data.projects
+	data.members[project][_] == input.user
+}
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	data := writeData(t, `{"projects": ["one"], "members": {"one": ["alice"]}}`)
+
+	for user, granted := range map[string]bool{"alice": true, "bob": false} {
+		residuals, err := Residuals(t.Context(), bundle, data, Request{
+			Decision: "data.t.authorized",
+			Unknowns: []string{"input.nothing"},
+			Input:    map[string]any{"user": user},
+		}, Limits{})
+		if err != nil {
+			t.Fatalf("Residuals() error = %v", err)
+		}
+		if got := residuals.Always || len(residuals.Conditions) > 0; got != granted {
+			t.Errorf("%s is granted %v, want %v (always = %v, conditions = %v)",
+				user, got, granted, residuals.Always, residuals.Conditions)
+		}
+	}
+}
+
 // The claim this package makes about scale, measured instead of asserted: the
 // number of residual conditions follows the cardinality of the data and not the
 // size of the policy.

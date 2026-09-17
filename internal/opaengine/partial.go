@@ -402,6 +402,51 @@ func (d *Data) Values(ctx context.Context, path string) ([]any, error) {
 	return values, nil
 }
 
+// Documents returns the documents a path resolves to, written out one by one:
+// data.policies[_].members over two policies comes back as the two paths that
+// really hold members.
+//
+// It is what turns a path a pattern reasons about into the documents a write
+// could land on. Presence answers the neighbouring question, which keys a path
+// reaches and which it does not, and counts rather than names them.
+func (d *Data) Documents(ctx context.Context, path string) ([]string, error) {
+	walk, err := d.walk(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+
+	documents := make([]string, 0, len(walk.resolved))
+	for _, at := range walk.resolved {
+		documents = append(documents, refOf(at).String())
+	}
+	return documents, nil
+}
+
+// Segments returns the keys a path written out passes through, the data root
+// first, so that a position counted from the root indexes them directly.
+func Segments(path string) ([]string, error) {
+	ref, err := ast.ParseRef(path)
+	if err != nil {
+		return nil, fmt.Errorf("opaengine: reading the path %s: %w", path, err)
+	}
+	at, err := concretePath(ref)
+	if err != nil {
+		return nil, err
+	}
+	return append([]string{ast.DefaultRootDocument.String()}, at...), nil
+}
+
+// refOf writes a store path as a reference, quoting whatever is not a bare
+// name, so that what comes out parses back into the same path.
+func refOf(at storage.Path) ast.Ref {
+	ref := make(ast.Ref, 0, len(at)+1)
+	ref = append(ref, ast.DefaultRootDocument)
+	for _, segment := range at {
+		ref = append(ref, ast.StringTerm(segment))
+	}
+	return ref
+}
+
 // concretePath turns a data rooted reference with no dynamic segment into the
 // store path of the one document it names.
 func concretePath(ref ast.Ref) (storage.Path, error) {
@@ -735,7 +780,7 @@ func partial(ctx context.Context, bundle *Bundle, data *Data, ask Request) (*reg
 	}
 
 	options := []func(*rego.Rego){
-		rego.Query(ask.Decision),
+		rego.Query(queryFor(bundle.Compiler, ask.Decision)),
 		rego.Compiler(bundle.Compiler),
 		rego.Store(data.store),
 		rego.Unknowns(unknowns),
@@ -749,6 +794,29 @@ func partial(ctx context.Context, bundle *Bundle, data *Data, ask Request) (*reg
 		return nil, fmt.Errorf("%w: %s: %w", ErrPartial, ask.Decision, err)
 	}
 	return queries, nil
+}
+
+// queryFor writes the query that asks whether a decision grants anything.
+//
+// For a rule that answers with a value the decision is the query: it holds, or
+// it is false, or it is undefined. A rule that builds a set or an object
+// answers with what it collected, and there an empty answer is a defined value
+// that grants nothing, while the query "data.authz.authorized_project" holds on
+// it, because in Rego only false and undefined are not. So a collected decision
+// is asked for its elements, which is the question its own enforcement point
+// asks: Chef Automate queries data.authz.authorized_project[project] and reads
+// the bindings (components/authz-service/engine/opa/opa.go:36 at 61ca031).
+func queryFor(compiler *ast.Compiler, decision string) string {
+	ref, err := ast.ParseRef(decision)
+	if err != nil {
+		return decision
+	}
+	for _, rule := range compiler.GetRulesExact(ref) {
+		if rule.Head.Key != nil {
+			return decision + "[_]"
+		}
+	}
+	return decision
 }
 
 // GrantingValue is a constant a residual condition compares an unknown document
