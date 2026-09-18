@@ -60,7 +60,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	regoV0 := flags.Bool("rego-v0", false, "parse as Rego v0, like opa --v0-compatible")
 	regoV1 := flags.Bool("rego-v1", false, "parse as Rego v1 and do not fall back to v0")
 	var entrypoints repeatedString
-	flags.Var(&entrypoints, "entrypoint", "a rule the PEP queries, as data.authz.allow or authz/allow; repeat for more")
+	flags.Var(&entrypoints, "entrypoint", "a rule the PEP queries, or a field of what it returns, as data.authz.allow or authz/allow; repeat for more")
 	maxCallDepth := flags.Int("max-call-depth", 0, "how many calls deep to follow an argument (0 for the default)")
 	maxCallPaths := flags.Int("max-call-paths", 0, "how many call paths to explore per reference (0 for the default)")
 	maxResiduals := flags.Int("max-residuals", 0, "how many residual conditions to report per decision (0 for the default)")

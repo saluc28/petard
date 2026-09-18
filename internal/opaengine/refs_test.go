@@ -502,6 +502,53 @@ allow["decision"] if "admin" in data.users[input.subject.id].roles
 	}
 }
 
+// A decision can be a field of what a rule returns, when the rule answers with
+// an object and the enforcement point reads one field of it, the way AWX reads
+// allowed. The walk starts from the rule, and the decision keeps the name it is
+// asked at.
+func TestReadsFromADeclaredFieldOfWhatARuleReturns(t *testing.T) {
+	tests := []struct {
+		name     string
+		declared string
+	}{
+		{name: "spelled the way a report prints it", declared: "data.t.decision.allowed"},
+		{name: "spelled the way opa build takes it", declared: "t/decision/allowed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := writeSources(t, map[string]string{
+				"policy.rego": `package t
+
+violations contains "the gate is shut" if not data.settings.open
+
+decision := {"allowed": count(violations) == 0, "violations": [v | some v in violations]}
+`,
+			})
+			bundle, err := Load([]string{dir}, ParseModeAuto)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			bundle.Entrypoints = []string{tt.declared}
+
+			reads, err := Reads(bundle, Limits{})
+			if err != nil {
+				t.Fatalf("Reads() error = %v", err)
+			}
+			if !slices.Equal(reads.Decisions, []string{"data.t.decision.allowed"}) {
+				t.Errorf("Decisions = %v, want the field", reads.Decisions)
+			}
+			if len(reads.Reads) != 1 || reads.Reads[0].Path != "data.settings.open" {
+				t.Fatalf("Reads = %+v, want the one read of the rule the field comes from", reads.Reads)
+			}
+			reached := reads.Reads[0].Decisions
+			if len(reached) != 1 || reached[0].Name != "data.t.decision.allowed" {
+				t.Errorf("the read reaches %+v, want the field", reached)
+			}
+		})
+	}
+}
+
 // A declaration that matches nothing is a typo, and taking it as zero decisions
 // would report a policy nobody looked at as a policy that reads nothing.
 func TestReadsRefusesEntrypointsItCannotUse(t *testing.T) {

@@ -42,7 +42,10 @@ the caller declares. Whole families of Rego annotate nothing, and that same corp
 `# METADATA` block at all across its 142 files. The alternative to declaring the decision is
 guessing which rule a policy engine happens to query, so Petard stops instead of guessing. A
 declared decision can also be the document that rules with a reference in their head build
-together, such as `authzen/allow` for rules written `allow["decision"]`.
+together, such as `authzen/allow` for rules written `allow["decision"]`, or one field of what a
+rule returns. A rule that answers `{"allowed": ..., "violations": [...]}` is defined whatever it
+says, and AWX reads `allowed` out of it, so the decision to declare there is
+`aac/aap/policy/owner_scope/allowed`.
 
 From the decisions it walks the rules they depend on, following calls into functions and
 leaving alone the expressions that mock the world with a `with` modifier, and reports:

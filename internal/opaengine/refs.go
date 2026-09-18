@@ -25,8 +25,8 @@ import (
 var ErrNoDecisions = errors.New("opaengine: no rule is annotated as an entrypoint, and none was declared")
 
 // ErrNoSuchEntrypoint is returned when a declared entrypoint names neither a
-// rule of the bundle nor a document that rules with a reference in their head
-// build.
+// rule of the bundle, nor a document that rules with a reference in their head
+// build, nor a part of the value a rule returns.
 //
 // A declaration that matches nothing is a mistake worth stopping for: taking it
 // as zero decisions would report a policy nobody looked at as a policy that
@@ -160,7 +160,8 @@ type Read struct {
 // value somebody controls is not asked the question at all: they pick the value,
 // so the side it lands on does not limit what they can do.
 type ReachedDecision struct {
-	// Name is the path of the decision rule.
+	// Name is the path the decision is asked at: the rule, or the field of what
+	// the rule returns when that is what was declared.
 	Name string
 
 	// UnderNegation is true when every path from the decision down to the rule
@@ -339,10 +340,14 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 		return nil, ErrNoDecisions
 	}
 
+	pending := make([]*ast.Rule, 0, len(decisions))
+	for _, decision := range decisions {
+		pending = append(pending, decision.rule)
+	}
 	reader := &refReader{
 		compiler:  bundle.Compiler,
 		visited:   make(map[*ast.Rule]bool),
-		pending:   decisions,
+		pending:   pending,
 		underWith: make(map[string]bool),
 		callSites: make(map[*ast.Rule][]callSite),
 		edges:     make(map[*ast.Rule][]callEdge),
@@ -361,8 +366,8 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 	result.Quantifiers = reader.quantifiers(reach)
 	result.Warnings = sortedUnique(append(result.Warnings, warnings...))
 
-	for _, rule := range decisions {
-		result.Decisions = append(result.Decisions, rulePath(rule).String())
+	for _, decision := range decisions {
+		result.Decisions = append(result.Decisions, decision.name)
 	}
 	result.Decisions = sortedUnique(result.Decisions)
 	result.SkippedUnderWith = reader.skipped()
@@ -478,6 +483,13 @@ func sortedUnique(values []string) []string {
 	return slices.Compact(values)
 }
 
+// decisionRoot is one decision the walk starts from: the name it is asked at,
+// and one of the rules that build it.
+type decisionRoot struct {
+	name string
+	rule *ast.Rule
+}
+
 // entrypointRules returns the decisions of a bundle: the rules the policy
 // annotates as entrypoints, and the ones the caller declared.
 //
@@ -485,16 +497,35 @@ func sortedUnique(values []string) []string {
 // what OPA itself does with an entrypoint given on the command line next to an
 // annotated one (v1/compile/compile.go:383 at v1.19.0 dedups the two lists
 // instead of preferring either).
-func entrypointRules(bundle *Bundle) ([]*ast.Rule, error) {
+//
+// A declared entrypoint may also reach into the value a rule returns. A rule
+// that answers {"allowed": ..., "violations": [...]} is always defined, so
+// asked as a whole it holds whatever it says, and the enforcement point does
+// not ask it that way: AWX reads allowed out of the object
+// (awx/main/tasks/policy.py:263 and :443 at bbda905), and the Envoy plugin
+// does the same when a decision is an object (envoyauth/response.go:124 at
+// v1.20.2-envoy). OPA takes such a path as an entrypoint, since opa build
+// checks it with GetRules (v1/compile/compile.go:705 at v1.20.2), and
+// evaluates it by carrying the rest of the reference into the value
+// (v1/topdown/eval.go:4038). Here the decision keeps the declared name, so
+// that residuals and dependence are asked of the field, while the walk starts
+// from the rule, all of it: which parts of a body feed which field is not
+// something the walk tells apart, and a read that feeds only another field
+// counts for this decision too.
+func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 	compiler := bundle.Compiler
 
-	var rules []*ast.Rule
-	seen := make(map[*ast.Rule]bool)
-	keep := func(found []*ast.Rule) {
+	var roots []decisionRoot
+	seen := make(map[decisionRoot]bool)
+	keep := func(name string, found []*ast.Rule) {
 		for _, rule := range found {
-			if !seen[rule] {
-				seen[rule] = true
-				rules = append(rules, rule)
+			root := decisionRoot{name: name, rule: rule}
+			if root.name == "" {
+				root.name = rulePath(rule).String()
+			}
+			if !seen[root] {
+				seen[root] = true
+				roots = append(roots, root)
 			}
 		}
 	}
@@ -503,7 +534,7 @@ func entrypointRules(bundle *Bundle) ([]*ast.Rule, error) {
 		if ref.Annotations == nil || !ref.Annotations.Entrypoint {
 			continue
 		}
-		keep(compiler.GetRulesExact(ref.Path))
+		keep("", compiler.GetRulesExact(ref.Path))
 	}
 
 	for _, declared := range bundle.Entrypoints {
@@ -515,12 +546,20 @@ func entrypointRules(bundle *Bundle) ([]*ast.Rule, error) {
 		if len(found) == 0 {
 			found = documentRules(compiler, ref)
 		}
+		if len(found) > 0 {
+			keep("", found)
+			continue
+		}
+
+		// Past every rule, into the value one of them returns: the decision is
+		// that field, and it keeps the name it was declared with.
+		found = compiler.GetRulesForVirtualDocument(ref)
 		if len(found) == 0 {
 			return nil, fmt.Errorf("%w: %s", ErrNoSuchEntrypoint, declared)
 		}
-		keep(found)
+		keep(ref.String(), found)
 	}
-	return rules, nil
+	return roots, nil
 }
 
 // documentRules returns the rules that build the document ref names when no

@@ -91,7 +91,9 @@ type Bundle struct {
 	// Entrypoints are the rules the caller declares that the PEP queries, on
 	// top of the ones the policy annotates itself. Each is spelled either the
 	// way a report prints a decision, data.authz.allow, or the way opa build
-	// takes one, authz/allow.
+	// takes one, authz/allow. An entrypoint can also be a field of what a rule
+	// returns, authz/decision/allowed, for a PEP that reads one field of an
+	// object: the decision is then asked at that field.
 	//
 	// It is a field of the bundle and not an argument of the analysis because
 	// which rules are decisions is a fact about the deployment rather than about

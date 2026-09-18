@@ -277,6 +277,59 @@ allow if data.settings.open == true
 	}
 }
 
+// A rule that answers with an object is defined whatever it says, so the
+// question has to be asked of the field the enforcement point reads. Asked as a
+// whole it holds on the data alone, and the document behind the answer drops
+// out of it.
+func TestResidualsAskAFieldOfWhatADecisionReturns(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"policy.rego": `package t
+
+violations contains "the gate is shut" if {
+	not data.settings.open
+	input.user != "admin"
+}
+
+decision := {"allowed": count(violations) == 0, "violations": [v | some v in violations]}
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	shut := writeData(t, `{"settings": {"open": false}}`)
+	stranger := Request{Unknowns: []string{"input.nothing"}, Input: map[string]any{"user": "nobody"}}
+
+	whole := stranger
+	whole.Decision = "data.t.decision"
+	residuals, err := Residuals(t.Context(), bundle, shut, whole, Limits{})
+	if err != nil {
+		t.Fatalf("Residuals() error = %v", err)
+	}
+	if !residuals.Always {
+		t.Errorf("the whole answer: Always = false, want true, it is an object whatever it says (%v)",
+			residuals.Conditions)
+	}
+
+	field := stranger
+	field.Decision = "data.t.decision.allowed"
+	residuals, err = Residuals(t.Context(), bundle, shut, field, Limits{})
+	if err != nil {
+		t.Fatalf("Residuals() error = %v", err)
+	}
+	if !residuals.Never() {
+		t.Errorf("the field: Never() = false, want true, the gate is shut (%v)", residuals.Conditions)
+	}
+
+	depends, err := DependsOn(t.Context(), bundle, shut, field, "data.settings.open")
+	if err != nil {
+		t.Fatalf("DependsOn() error = %v", err)
+	}
+	if !depends {
+		t.Error("DependsOn() = false, want true: the setting decides the field for whoever asks")
+	}
+}
+
 // A decision that collects grants what it holds, and an empty answer grants
 // nothing. In Rego only false and undefined are not true, so an empty set is a
 // value the query naming it holds on, and a principal authorized on nothing

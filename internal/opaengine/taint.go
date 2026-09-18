@@ -223,7 +223,7 @@ func reachedDecisions(reached decisionPaths) []ReachedDecision {
 // answer wins. Cycles cannot happen, since OPA refuses to compile a policy
 // whose rules depend on each other in a loop, but the visited set makes the
 // walk terminate regardless of that guarantee.
-func (r *refReader) decisionReach(decisions []*ast.Rule) map[*ast.Rule]decisionPaths {
+func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisionPaths {
 	type state struct {
 		rule  *ast.Rule
 		clean bool
@@ -231,10 +231,10 @@ func (r *refReader) decisionReach(decisions []*ast.Rule) map[*ast.Rule]decisionP
 
 	reached := make(map[*ast.Rule]decisionPaths)
 	for _, decision := range decisions {
-		name := rulePath(decision).String()
+		name := decision.name
 
 		seen := make(map[state]bool)
-		queue := []state{{rule: decision, clean: true}}
+		queue := []state{{rule: decision.rule, clean: true}}
 		for len(queue) > 0 {
 			at := queue[0]
 			queue = queue[1:]
