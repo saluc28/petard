@@ -91,7 +91,9 @@ detection:
       check: >
         Partially evaluate the decision for a principal no document names, `petard:nobody`, with
         the rest of the request unknown and the document left unknown too. The decision depends on
-        the document when something partial evaluation leaves mentions it.
+        the document when something partial evaluation leaves mentions it, or names a rule of the
+        policy that reads it: OPA does not evaluate a rule with an else once it depends on
+        something unknown, and hands the rule back whole (`v1/topdown/eval.go:2967` at v1.20.2).
       rationale: >
         This is what separates a switch over anybody from configuration read next to somebody's
         record. The console setting of the fixture is read after the requester's roles, so for
@@ -117,7 +119,8 @@ detection:
     As for `PTD-OPA-001`, the claim rests on the recognition of the subject, since "somebody no
     document names" can only be asked where a request can name somebody. On the fixture the
     engine computes D, a guess on field names. Where nothing is recognized the question is asked
-    of any request and the engine reports E.
+    of any request and the engine reports E. A subject declared from outside, with `-subject`,
+    is A, as on the AAP policies in the references.
   requires_write_model: true
   requires_write_model_note: >
     For the finding. Without the model the first two signals still hold and the pattern emits a
@@ -237,6 +240,48 @@ false_positives:
         Run with opa 1.20.2: somebody named reads, somebody with an empty name is refused, and the
         address changes neither. The engine asks about `petard:nobody`, for whom the refusal never
         fires, and stays quiet.
+  - condition: >
+      The setting is read next to the requester's own record, as the console of the fixture is,
+      but by a rule with an else. Partial evaluation hands such a rule back whole once it depends
+      on something unknown, so the dependence is taken from everything the rule reads and not from
+      the branch a stranger would take.
+    discriminator: >
+      Telling the branches apart would mean evaluating the bodies of the rule one at a time and in
+      order, which is what OPA declines to do partially. The engine reports the setting like a
+      switch.
+    measurement: case
+    case:
+      policy: |
+        package console_gate
+
+        # METADATA
+        # scope: document
+        # title: Administration console decision
+        # entrypoint: true
+        default allow := false
+
+        allow if console_open
+
+        console_open := true if {
+            "admin" in data.users[input.user].roles
+            data.settings.console.enabled == true
+        } else := false
+      data: |
+        {"users": {"bob": {"roles": ["admin"]}}, "settings": {"console": {"enabled": true}}}
+      write_model: |
+        schema_version: 1
+        model: write-paths
+        entries:
+          - path: data.settings.*
+            writable_by:
+              - principal: system:config-sync
+                via: "configuration repository, synced on merge"
+      reports: true
+      note: >
+        Run with opa 1.20.2: `bob` opens the console while it is enabled and not once it is
+        switched off, and `petard:nobody` never does, whatever the setting says. What partial
+        evaluation leaves for the stranger is `console_open`, whole, and the engine reads the
+        setting in it.
 
 not_a_lint_rule: >
   A linter sees a path with no dynamic segment, and a constant path is the ordinary way to read
@@ -274,6 +319,12 @@ references:
       SpecterOps/BloodHound at v9.7.0, `packages/cue/bh/ad/ad.cue:1352` and the help text of the
       edge: a linked GPO applies its settings to objects in the linked container. One object that
       applies to many, and whoever controls it controls all of them, is the same shape.
+  - title: AWX, the enforcement point of those policies
+    note: >
+      ansible/awx at commit bbda905e0069dde6abe625e005dd79a058a76fdb, `awx/main/tasks/policy.py`:
+      the job goes to OPA with the launching user under `created_by`, as `username`,
+      `is_superuser` and `teams` (lines 49 and 194), and the answer has to be an object whose
+      `allowed` field decides (lines 263 and 443).
   - title: ynotbhatc/rego_policy_libraries, the AAP enforcement policies
     note: >
       At commit e1eb90b5a73f8d90362833228837dded51547c87, `enforcement/aap/`: eleven decisions,
@@ -281,9 +332,14 @@ references:
       provenance. In `owner_scope.rego` a launcher with no binding may launch anything while
       `unbound_users_allowed` holds, which it does by default (line 29) and does not in the
       example configuration (`data/aap_policy_config.example.json:30`); the configuration is
-      merged over the defaults with `object.union` (lines 34 to 37). Signal 2 cannot be measured
-      there yet: every decision answers with an object that is always defined, and the launcher
-      is `input.created_by.username`, which no recognizer names.
+      merged over the defaults by a rule with an else (lines 34 to 37).
+      Measured with each decision declared at its `allowed` field, the launcher declared as
+      `input.created_by.username`, and the example configuration as the data: every one of the
+      eleven depends on its own configuration document for `petard:nobody`, and with no write
+      model all eleven come out as candidates at confidence A. Among them are settings that turn a
+      check on and off, `unbound_users_allowed`, `superuser.deny` and `deny_all.active`, next to
+      bounds like the naming pattern and the allowed repositories, which the declared false
+      positive of a bound covers.
 
 verified:
   date: 2026-09-18
@@ -303,10 +359,11 @@ verified:
     `regal` v0.42.0 reports no violations on `policy-v1`.
     On generated worlds the pattern reports the reading room and nothing else, the way 007 does:
     the switch is in the policy, and a dataset does not move it.
-    The three declared false positives are settled as the status requires. One is `out-of-band`,
-    a switch the right people hold. The other two carry a case that runs on every build: a bound
-    rather than a switch, which the engine reports, and a document that only phrases a refusal,
-    on which it stays quiet.
+    The four declared false positives are settled as the status requires. One is `out-of-band`,
+    a switch the right people hold. The other three carry a case that runs on every build: a
+    bound rather than a switch, which the engine reports, a document that only phrases a refusal,
+    on which it stays quiet, and a setting read next to a record by a rule with an else, which it
+    reports.
 
 related:
   - id: PTD-OPA-001
@@ -332,11 +389,13 @@ notes:
     the fixture, and the line is drawn there on purpose: "everybody" has to include the requester
     the data knows nothing about, or it is a claim about a group.
   - >
-    Known false negative: a decision that answers with an object. Partial evaluation asks whether
-    the decision holds, an object always does, and the dependence on the document disappears
-    inside it. The AAP policies of rego_policy_libraries are written that way, with an `allowed`
-    field and a list of violations, and so are many enforcement points that read a result object
-    rather than a boolean.
+    Known false negative: a decision that answers with an object, taken as a whole. Partial
+    evaluation asks whether the decision holds, an object always does, and the dependence on the
+    document disappears inside it. The AAP policies of rego_policy_libraries answer that way, with
+    an `allowed` field and a list of violations, and AWX reads the field. Declared at the field,
+    `-entrypoint aac/aap/policy/owner_scope/allowed`, the decision is asked what its enforcement
+    point asks and the switch is found; an entrypoint annotation names a rule and cannot name its
+    field, so an object decision found by annotation stays unmeasured.
   - >
     Known false negative: a policy that refuses a requester whose name is not in the expected
     form, `startswith(input.user, "user:")` for instance, refuses `petard:nobody` before the

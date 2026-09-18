@@ -112,9 +112,10 @@ detection:
   confidence: C
   confidence_note: >
     The level depends on how it was established that `input.user` **is** the subject: with a
-    `# METADATA schemas` block it rises to A, with an AuthZEN shaped request to B, with a domain
-    recognizer to C, with a heuristic on field names to D. The value here is the cautious
-    default, and the engine has to write it per instance rather than inherit it from the file.
+    `# METADATA schemas` block, or declared from outside with `-subject`, it rises to A, with an
+    AuthZEN shaped request to B, with a domain recognizer to C, with a heuristic on field names
+    to D. The value here is the cautious default, and the engine has to write it per instance
+    rather than inherit it from the file.
     On the fixture the engine computes `D`, because the subject is recognized from the names of
     the fields and not declared.
   requires_write_model: true

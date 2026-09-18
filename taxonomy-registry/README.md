@@ -177,6 +177,21 @@ lookup by value. The chain of `PTD-OPA-001` into `PTD-OPA-003` leaves a join alo
 writes a document of the subject's own and lets partial evaluation find the value, and an element
 added to a list is neither.
 
+### A declared subject is level A, whoever declares it
+
+The `confidence` of a finding says how the subject was found, and a declaration is worth more
+than any way of recognizing one. The author of a policy can declare the shape of the request with
+a `METADATA` schemas annotation. Whoever deploys the policy can declare the subject with
+`-subject`, because which field names the requester is decided where the request is built, and
+the policy only reads it.
+AWX sends the user who launched a job under `created_by`, next to the teams and the superuser
+flag (`awx/main/tasks/policy.py:49` and `194` at `bbda905`), where no recognizer looks.
+
+Both declarations are level A. OPA takes a declaration of its input from either place too: it
+checks the input against a schema given in an annotation or on the command line
+(`opa eval --schema`, `cmd/eval.go:289` at `v1.20.2`). A declared subject that no decision reads
+is refused, the way an entrypoint that names no rule is.
+
 ---
 
 ## 4. Format

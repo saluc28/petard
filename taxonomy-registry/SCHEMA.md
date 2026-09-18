@@ -55,7 +55,7 @@ around OPA rather than in the terms of Rego.
 | `ast_source` | `compiled` \| `raw`. In practice **always `compiled`**: on the raw AST a nested builtin call is not an expression of its own, so a pass over the expressions never sees it |
 | `requires` | which engine capabilities are needed: `binding-resolution`, `rule-graph`, `concrete-data`, `taint` |
 | `signals` | an ordered list of checks. Each one has to be computable rather than interpretable |
-| `confidence` | `A` to `E`, on how the shape of the request was recognized: A is a declared `METADATA` schema, B an AuthZEN shaped request, C a domain convention, D a heuristic on field names, E syntax alone |
+| `confidence` | `A` to `E`, on how the shape of the request was recognized: A is a declaration, a `METADATA` schema or a subject declared with `-subject`, B an AuthZEN shaped request, C a domain convention, D a heuristic on field names, E syntax alone |
 | `requires_write_model` | bool. If `true`, without the `WrittenBy` model the pattern **cannot** emit `PTD_CanEscalateTo` |
 
 > A `signals` entry written as *"the policy trusts its input"* is not a signal, it is an opinion.
