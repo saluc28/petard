@@ -73,6 +73,8 @@ func TestAddWritePathsOnlyNamesRealEntities(t *testing.T) {
 	slices.Sort(written)
 
 	expected := []string{
+		"data.settings.console.enabled -> system:config-sync",
+		"data.settings.reading_room.open -> system:config-sync",
 		"data.tenants[_].policy.require_mfa -> system:provisioning",
 		"data.users[_].roles -> role:admin",
 		"data.users[_].roles -> role:support",

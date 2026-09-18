@@ -185,6 +185,26 @@ func TestSplitGrantInventsNothingOnGeneratedData(t *testing.T) {
 	}
 }
 
+// The global switch rests on the policy too: whether a setting decides for
+// somebody no document names depends on what the decision reads before it, and
+// the generated worlds change the records, not the rules. On every one of them
+// the reading room comes out and the console does not.
+func TestGlobalSwitchRestsOnThePolicyNotTheData(t *testing.T) {
+	for _, seed := range []uint64{1, 7, 4242} {
+		t.Run(fmt.Sprintf("seed %d", seed), func(t *testing.T) {
+			_, a := analyzeGenerated(t, fixture.Small(seed))
+
+			findings, err := GlobalSwitch(t.Context(), a)
+			if err != nil {
+				t.Fatalf("GlobalSwitch() error = %v", err)
+			}
+			if len(findings) != 1 || findings[0].Path != "data.settings.reading_room.open" {
+				t.Errorf("global switch on generated data = %v, want only the reading room", findings)
+			}
+		})
+	}
+}
+
 // The every-over-empty pattern rests on the policy, not the data, so on every
 // generated world it reports the same one finding, the unguarded merge decision,
 // and never another. It is the same property `PTD-OPA-004` and `PTD-OPA-005`

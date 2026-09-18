@@ -16,7 +16,7 @@ Two checks say what is not covered elsewhere.
 `imports`, `performance`, `style`, `testing`, confirmed at the source of v0.42.0 by listing the
 rule directories rather than reading them off a documentation page. The official linter of the
 OPA ecosystem, written by the maintainers, has no notion of "this Rego is dangerous". And
-`regal lint` on the fixture, which holds the case and the counter case of all seven patterns,
+`regal lint` on the fixture, which holds the case and the counter case of all eight patterns,
 reports zero violations.
 
 **OPA's security documentation is about the server, not about the policy.** It covers TLS,
@@ -119,9 +119,10 @@ the side that grants, and that is `PTD-OPA-007`.
 
 It does not count when somebody **controls** the value, because they pick it. A field read to
 deny is a field its writer can clear, and a source consulted to deny is a source that decides
-who is not denied. `PTD-OPA-001` and `PTD-OPA-004` report both sides for that reason: a
-suspension the subject writes is one the subject lifts, and a blocklist served from outside is
-decided by whoever serves it. `PTD-OPA-006` stays on the side that grants, and that is a limit of
+who is not denied. `PTD-OPA-001`, `PTD-OPA-004` and `PTD-OPA-008` report both sides for that
+reason: a suspension the subject writes is one the subject lifts, a blocklist served from outside
+is decided by whoever serves it, and a setting that shuts a door on everybody is one its writer
+opens for everybody. `PTD-OPA-006` stays on the side that grants, and that is a limit of
 how it measures rather than an exception to the rule: it writes the values a decision compares
 with, and on the side that denies those are the values that deny, so its file declares the gap.
 
@@ -229,9 +230,11 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, and it needs no attacker and nothing wrong beforehand: a slow endpoint is enough |
 | `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `verified`, the second edge that means escalation, from a write a decision authorizes rather than a position: a value in the subject's record, or the subject added to a collection |
 | `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, the third instance of the category: an `every` over a domain the request can empty |
+| `PTD-OPA-008` | GLOBAL-SWITCH | opa | finding | C | `verified`, a document every request shares, and the question asked about somebody no document names |
 
-Between them the seven exercise `binding-resolution`, `concrete-data`, `rule-graph` and `taint`;
-007 adds no new capability, only a new construct within `rule-graph`.
+Between them the eight exercise `binding-resolution`, `concrete-data`, `rule-graph` and `taint`;
+007 adds no new capability, only a new construct within `rule-graph`, and 008 asks a new question
+of `concrete-data`: what a decision gives a principal the data knows nothing about.
 
 `partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
 the engine measures with, and in 002 it is how the fixture checks the **consequence** of a
@@ -302,7 +305,7 @@ declares by definition. Those are the conditions a file marks `out-of-band`.
 
 The engine has been run over `open-policy-agent/gatekeeper-library`, at commit
 `e4d3bd2448b20bc7910417f5b2cf18b63a0bd33c`: 51 units under `src/`, 142 Rego files, all of them
-written by other people. On that corpus the seven find **zero**, and not because of a limit in
+written by other people. On that corpus the patterns find **zero**, and not because of a limit in
 the engine:
 
 | Pattern | Why it is silent |
@@ -313,6 +316,7 @@ the engine:
 | `PTD-OPA-004`, `PTD-OPA-005` | **zero** calls to nondeterministic builtins in the whole corpus |
 | `PTD-OPA-006` | needs a write model naming the decision behind a write, and the corpus ships none |
 | `PTD-OPA-007` | not one `every` in the corpus: the keyword does not appear in any of the 142 files |
+| `PTD-OPA-008` | it measures against concrete data, and the corpus ships none. One read in the whole corpus names a document every request shares, the storage classes Gatekeeper replicates into its inventory |
 
 A zero against a real corpus is neither a confirmation nor a refutation of the declared false
 positives: it is a measurement of what that corpus holds. Kubernetes admission policies decide
@@ -343,7 +347,8 @@ the write model is where that gets declared.
 
 No value from outside the policy reaches any of the 16 decisions, so `PTD-OPA-004` and
 `PTD-OPA-005` have nothing to look at, and no policy in contrib uses `every` either, so
-`PTD-OPA-007` has nothing to find in its 49 files. The two candidates of the AuthZEN policy stay
+`PTD-OPA-007` has nothing to find in its 49 files. No decision reads a document every request
+shares, so `PTD-OPA-008` has nowhere to start. The two candidates of the AuthZEN policy stay
 candidates: whether a user can change their own `roles` depends on the application that stores
 them, and the write model is where that is declared.
 
@@ -354,7 +359,7 @@ itself are settled one case at a time, in the file that declares them.
 ### The fixture
 
 `fixtures/vulnerable-bundle/` holds a case **and at least one counter case** for each of the
-seven, in Rego v1 and v0, with the write model and an `EXPECTED.md` that declares in words what
+eight, in Rego v1 and v0, with the write model and an `EXPECTED.md` that declares in words what
 the engine has to find and what it must not. The numbers there are executed, not estimated.
 
 ### Candidates not yet written

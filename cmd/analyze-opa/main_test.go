@@ -21,8 +21,8 @@ func TestRunReportsTheMeasures(t *testing.T) {
 	out := stdout.String()
 	for _, expected := range []string{
 		"parsed as rego v1",
-		"data paths read by the decisions: 9",
-		"reads:                            14",
+		"data paths read by the decisions: 11",
+		"reads:                            17",
 		"data.users[_].profile.department",
 		// The level travels with the shape: a guess about field names must not
 		// read like a declaration.
@@ -216,7 +216,7 @@ func TestRunPartiallyEvaluatesAgainstTheData(t *testing.T) {
 
 	out := stdout.String()
 	for _, expected := range []string{
-		"against 4 data documents, with the request unknown:",
+		"against 5 data documents, with the request unknown:",
 		"data.quill.tenant_policy.allow",
 	} {
 		if !strings.Contains(out, expected) {
@@ -409,6 +409,37 @@ func TestRunReportsTheSplitGrant(t *testing.T) {
 	}
 }
 
+// The reading room setting decides for somebody no document names, and the
+// report says who writes it. The console setting next to it does not come out:
+// it only decides for somebody with a record.
+func TestRunReportsTheGlobalSwitch(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
+		"-write-model", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
+		"-data", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data"),
+		fixture("policy-v1"),
+	}
+
+	if code := run(args, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+
+	out := stdout.String()
+	for _, expected := range []string{
+		"PTD-OPA-008, A document every request shares decides for anybody who asks",
+		"PTD-OPA-008 finding: data.settings.reading_room.open decides data.quill.platform.allow_reading_room",
+		"and system:config-sync writes it",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the report does not contain %q:\n%s", expected, out)
+		}
+	}
+	if strings.Contains(out, "PTD-OPA-008 finding: data.settings.console.enabled") {
+		t.Errorf("the console setting was reported, and it only decides for somebody with a record:\n%s", out)
+	}
+}
+
 // Without the declaration of who writes what, the same run still measures
 // everything else and claims no escalation: the chain rests on the one fact no
 // policy can supply.
@@ -468,7 +499,7 @@ func TestRunReportsWriteModelCoverage(t *testing.T) {
 	if code := run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
-	if out := stdout.String(); !strings.Contains(out, "write model: 4 of 9 paths covered (44%)") {
+	if out := stdout.String(); !strings.Contains(out, "write model: 6 of 11 paths covered (54%)") {
 		t.Errorf("the coverage number is missing or wrong:\n%s", out)
 	}
 }

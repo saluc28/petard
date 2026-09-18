@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// The nine paths below are copied from fixtures/vulnerable-bundle/EXPECTED.md
+// The eleven paths below are copied from fixtures/vulnerable-bundle/EXPECTED.md
 // section 6, word for word, captures included. The fixture declared them
 // before this code existed, which is what makes them a criterion rather than a
 // description of whatever the engine happens to produce.
@@ -21,6 +21,8 @@ var expectedFixturePaths = []string{
 	"data.documents.{d}.project",
 	"data.projects.{p}.department",
 	"data.projects.{p}.parent",
+	"data.settings.reading_room.open",
+	"data.settings.console.enabled",
 }
 
 // asEnginePaths rewrites the captures of EXPECTED.md into the placeholder the
@@ -48,7 +50,7 @@ func asEnginePaths(declared []string) []string {
 }
 
 // TestReadsFindsExactlyTheDeclaredPaths is the criterion of this vertical
-// slice. Not "find nine paths", but "find these nine".
+// slice. Not "find eleven paths", but "find these eleven".
 func TestReadsFindsExactlyTheDeclaredPaths(t *testing.T) {
 	for _, version := range []string{"policy-v1", "policy-v0"} {
 		t.Run(version, func(t *testing.T) {
@@ -72,12 +74,14 @@ func TestReadsFindsExactlyTheDeclaredPaths(t *testing.T) {
 
 // The second measure, kept apart from the first on purpose.
 //
-// Eleven of the fourteen reads name a document the caller of the decision
-// chooses. The other three are chosen by the data: two index data.projects with
-// a project that comes out of ancestors_of, which walks the hierarchy stored in
-// data, and one iterates over data.projects in the head of parent_of.
+// Twelve of the seventeen reads name a document the caller of the decision
+// chooses. Three are chosen by the data: two index data.projects with a project
+// that comes out of ancestors_of, which walks the hierarchy stored in data, and
+// one iterates over data.projects in the head of parent_of. The last two name a
+// document nobody chooses, the platform settings, which are the same whatever
+// the request.
 //
-// None of the three is unresolved, and that matters as much as the eleven.
+// None of them is unresolved, and that matters as much as the twelve.
 // "The data picks it" is an answer, and it excludes those reads from the self
 // write family with a reason; "I do not know" would leave them as maybes
 // forever.
@@ -93,11 +97,11 @@ func TestReadsSeparatesProvenanceFromDiscovery(t *testing.T) {
 	}
 
 	counts := map[Provenance]int{
-		ProvenanceInput:      11,
+		ProvenanceInput:      12,
 		ProvenanceData:       3,
 		ProvenanceUnresolved: 0,
 		ProvenanceBuiltin:    0,
-		ProvenanceStatic:     0,
+		ProvenanceStatic:     2,
 	}
 	total := 0
 	for provenance, expected := range counts {
@@ -110,8 +114,8 @@ func TestReadsSeparatesProvenanceFromDiscovery(t *testing.T) {
 	if len(reads.Reads) != total {
 		t.Errorf("reads = %d, but the provenances add up to %d", len(reads.Reads), total)
 	}
-	if len(reads.Reads) != 14 {
-		t.Errorf("reads = %d, want 14: nine distinct paths, roles read five times and the department twice", len(reads.Reads))
+	if len(reads.Reads) != 17 {
+		t.Errorf("reads = %d, want 17: eleven distinct paths, roles read six times and the department twice", len(reads.Reads))
 	}
 }
 
@@ -204,8 +208,8 @@ func TestReadsListsTheDecisions(t *testing.T) {
 		t.Fatalf("Reads() error = %v", err)
 	}
 
-	// Eleven decisions: the three counter cases of PTD-OPA-005 are consumed by
-	// the PEP like the others, and PTD-OPA-006 and 007 add two each. Leaving
+	// Thirteen decisions: the three counter cases of PTD-OPA-005 are consumed by
+	// the PEP like the others, and PTD-OPA-006, 007 and 008 add two each. Leaving
 	// any of them unannotated made the engine ignore them, so a counter case
 	// "the engine must not flag" was satisfied for the wrong reason and a case
 	// "it must flag" could not be satisfied at all.
@@ -213,6 +217,8 @@ func TestReadsListsTheDecisions(t *testing.T) {
 		"data.quill.admin.allow",
 		"data.quill.authz.allow",
 		"data.quill.enrichment.allow",
+		"data.quill.platform.allow_console",
+		"data.quill.platform.allow_reading_room",
 		"data.quill.publish.allow",
 		"data.quill.review.allow_guarded",
 		"data.quill.review.allow_unguarded",

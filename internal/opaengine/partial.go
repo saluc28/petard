@@ -871,6 +871,42 @@ func ValuesComparedWith(ctx context.Context, bundle *Bundle, data *Data, ask Req
 	return values, nil
 }
 
+// DependsOn reports whether a decision still depends on a document once the
+// data is concrete and the part of the request the question fixes is known.
+//
+// The document is left unknown, and the decision depends on it when anything
+// partial evaluation leaves mentions it: a residual condition, or a rule it
+// generated to hold one. Nothing is interpreted, and in particular the side is
+// not: a document that only ever denies is one its writer can clear, and the
+// question is the same either way.
+func DependsOn(ctx context.Context, bundle *Bundle, data *Data, ask Request, document string) (bool, error) {
+	docRef, err := ast.ParseRef(document)
+	if err != nil {
+		return false, fmt.Errorf("opaengine: reading the path %s: %w", document, err)
+	}
+	if !slices.Contains(ask.Unknowns, document) {
+		ask.Unknowns = append(slices.Clone(ask.Unknowns), document)
+	}
+
+	queries, err := partial(ctx, bundle, data, ask)
+	if err != nil {
+		return false, err
+	}
+
+	mentioned := false
+	visit := func(ref ast.Ref) bool {
+		mentioned = mentioned || ref.HasPrefix(docRef)
+		return mentioned
+	}
+	for _, query := range queries.Queries {
+		ast.WalkRefs(query, visit)
+	}
+	for _, module := range queries.Support {
+		ast.WalkRefs(module, visit)
+	}
+	return mentioned, nil
+}
+
 // residualBodies returns the rule bodies partial evaluation left, expanding a
 // support module one level the way conditionsOf does: a decision with a default
 // comes back as a query naming a generated rule, and the disjunction is in that

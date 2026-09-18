@@ -1,0 +1,6 @@
+{
+  "settings": {
+    "reading_room": {"open": false},
+    "console": {"enabled": true}
+  }
+}

@@ -390,7 +390,7 @@ func TestSelfWriteWithoutAModelEmitsCandidates(t *testing.T) {
 }
 
 // The numbers EXPECTED.md declares for the fixture, measured rather than
-// stated: nine paths read, four covered, five not. The design keeps it low on
+// stated: eleven paths read, six covered, five not. The design keeps it low on
 // purpose, because a fixture that declares full coverage would teach the engine
 // to run only on complete models, which do not exist in practice.
 func TestCoverageOnFixture(t *testing.T) {
@@ -401,16 +401,18 @@ func TestCoverageOnFixture(t *testing.T) {
 		t.Fatalf("CoverageOf() error = %v", err)
 	}
 
-	if len(coverage.Read) != 9 || len(coverage.Covered) != 4 || len(coverage.Uncovered) != 5 {
-		t.Fatalf("coverage = %d read, %d covered, %d uncovered, want 9, 4, 5",
+	if len(coverage.Read) != 11 || len(coverage.Covered) != 6 || len(coverage.Uncovered) != 5 {
+		t.Fatalf("coverage = %d read, %d covered, %d uncovered, want 11, 6, 5",
 			len(coverage.Read), len(coverage.Covered), len(coverage.Uncovered))
 	}
-	if coverage.Percent() != 44 {
-		t.Errorf("percent = %d, want 44", coverage.Percent())
+	if coverage.Percent() != 54 {
+		t.Errorf("percent = %d, want 54", coverage.Percent())
 	}
 
 	expectedCovered := []string{
 		"data.projects[_].members",
+		"data.settings.console.enabled",
+		"data.settings.reading_room.open",
 		"data.tenants[_].policy.require_mfa",
 		"data.users[_].profile.department",
 		"data.users[_].roles",
@@ -425,8 +427,8 @@ func TestLoadRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadRegistry() error = %v", err)
 	}
-	if len(patterns) != 7 {
-		t.Errorf("patterns = %d, want the seven of the registry", len(patterns))
+	if len(patterns) != 8 {
+		t.Errorf("patterns = %d, want the eight of the registry", len(patterns))
 	}
 
 	pattern, ok := Find(patterns, AttrSelfWrite)

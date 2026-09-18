@@ -1,0 +1,343 @@
+schema_version: 1
+
+id: PTD-OPA-008
+name: global-document-decides-for-anybody
+title: A document every request shares decides for anybody who asks
+engine: opa
+status: verified
+
+category:
+  id: GLOBAL-SWITCH
+  title: Global switch
+  summary: >
+    One write changes an authorization decision for every principal at once, those the data has
+    never heard of included. Nobody's own record is involved: whoever holds the write holds the
+    decision for all of them.
+    Abstract category: it holds for any engine that keeps the policy apart from the data it
+    consumes, and lets a single piece of that data govern requests that do not choose it.
+  category_note: >
+    This instance is the plainest cause, a document the path to which has no part the request
+    picks. The same category has other causes that are not this pattern: a value inside a
+    collection that matches anybody, like a member written as "*" in Chef Automate's policies
+    (`subject_matches(_, "*") = true` in `common.rego` at 61ca031), and a flag on a resource the
+    request names that opens it to everybody. They would be instances of their own, since the
+    signal that finds each is different.
+
+summary: >
+  A decision reads a document through a path with nothing in it the request picks, so every
+  request reads the same document, and the decision depends on it for somebody no document names.
+  Whoever writes that document therefore decides for anybody who can send a request, in one
+  write.
+  In the fixture, a reading room is open to whoever asks while `data.settings.reading_room.open`
+  says so, and the settings come from a configuration repository: whatever gets merged there
+  opens or shuts the room for everybody.
+
+preconditions:
+  - capability: Somebody can change the document
+    note: >
+      Through an endpoint, a configuration repository synced into OPA, an import, a job. Who that
+      is, is what the write model declares; the pattern names them and does not judge them.
+  - capability: The decision reaches the document for a requester it knows nothing about
+    note: >
+      This is what makes it global rather than a switch over a group. A setting read only after
+      the requester's own record decides for the principals who have one.
+
+mechanism:
+  description: >
+    A path like `data.settings.reading_room.open` names one document and always the same one, so
+    it is the same fact for every request the decision answers. That is the normal way to read
+    configuration, and it is correct. What it means is that the document is not about anybody:
+    a change to it lands on everybody at once, and if the decision consults it for a requester it
+    has no record of, it decides for requesters in general.
+    The defect, when there is one, is who can change it. That is not in the policy, which is why
+    the write model says it.
+  example: |
+    package example
+
+    # the decision the PEP of GET /reading-room consumes
+    default allow := false
+
+    allow if {
+        input.action == "read"
+        data.settings.reading_room.open == true
+    }
+  example_note: >
+    It compiles, it lints clean, and it does what it says. Measured on the fixture with opa 1.20.2:
+    for a principal no document names, `allow` is false with the room closed and true with it
+    open, and nothing about who asks changes that.
+
+detection:
+  ast_source: compiled
+  requires:
+    - binding-resolution
+    - rule-graph
+    - concrete-data
+  requires_note: >
+    `concrete-data` for signal 2: whether the decision depends on the document for somebody no
+    document names is a question partial evaluation answers against the data as it stands, since
+    what else the decision reads decides whether that somebody ever gets as far as the document.
+  signals:
+    - order: 1
+      check: >
+        A rule that contributes to a decision reads `data` through a path with no dynamic segment,
+        or with dynamic segments that resolve to constants: the engine reports it as static
+        provenance, the same document whatever the request.
+      rationale: >
+        This is the document no request picks. Reading it is ordinary, and on its own it is not a
+        finding; it is where the question starts.
+        Both sides of the decision count. A document read to deny is one its writer clears for
+        everybody at once, which is the registry's reason for letting control decide, not the side.
+    - order: 2
+      check: >
+        Partially evaluate the decision for a principal no document names, `petard:nobody`, with
+        the rest of the request unknown and the document left unknown too. The decision depends on
+        the document when something partial evaluation leaves mentions it.
+      rationale: >
+        This is what separates a switch over anybody from configuration read next to somebody's
+        record. The console setting of the fixture is read after the requester's roles, so for
+        somebody with no record the decision fails before the setting matters, and it is left
+        alone; the reading room setting is reached whoever asks.
+        Asking about somebody nobody named is how Kubernetes treats a caller nobody authenticated:
+        the anonymous authenticator gives it the identity `system:anonymous` in the group
+        `system:unauthenticated`, and the authorizer answers for that identity like for anybody
+        else (`staging/src/k8s.io/apiserver/pkg/authentication/request/anonymous/anonymous.go:44`
+        at v1.37.0).
+        Without a recognized subject nobody can be named in a request, and the question falls
+        back to any request at all, with the confidence of a shape that recognized nothing.
+    - order: 3
+      check: >
+        The write model covers the path, and names who writes it.
+      rationale: >
+        With the writers the observation becomes a finding: this principal, this role or this
+        system holds the decision for everybody. A path the model does not cover is one nobody
+        writes, in a closed world, and nothing is reported; with no model at all the observation
+        stays a candidate.
+  confidence: C
+  confidence_note: >
+    As for `PTD-OPA-001`, the claim rests on the recognition of the subject, since "somebody no
+    document names" can only be asked where a request can name somebody. On the fixture the
+    engine computes D, a guess on field names. Where nothing is recognized the question is asked
+    of any request and the engine reports E.
+  requires_write_model: true
+  requires_write_model_note: >
+    For the finding. Without the model the first two signals still hold and the pattern emits a
+    candidate, which already says that the document decides for anybody.
+
+graph:
+  emits: finding
+  edge: PTD_Reads
+  edge_note: >
+    It does not emit `PTD_CanEscalateTo`: the writer does not become another principal, they
+    decide for all of them, and an edge from the writer to every principal would claim a set of
+    routes where there is one switch. The finding marks the dependency between the decision and
+    the document, and the writers are already in the graph as `PTD_WrittenBy`.
+  from: PTD_Rule
+  to: PTD_Attribute
+  traversable: false
+  traversable_note: >
+    False on purpose, as for 002 and 007: the finding is an observation about who holds the
+    decision, and nothing in it is crossed.
+  properties:
+    - decision: the decision the document decides
+    - attribute_path: the document, as read
+    - today: what the decision gives somebody no document names as the data stands
+    - writers: who the write model says writes the document
+  properties_note: >
+    As with the other patterns, these live in the finding and in the report, not in the exported
+    edge, whose properties are a closed list.
+
+false_positives:
+  - condition: >
+      The document is meant to decide for everybody, and the writers the model names are the ones
+      who administer the decision anyway. A document shipped inside the policy bundle is the
+      common case: whoever writes it writes the policy too.
+    discriminator: >
+      Who counts as administering a decision is in neither the policy nor the data. The finding
+      stays, naming the writers, because a switch over everybody is worth knowing about even when
+      the right people hold it, and it is the list to check when they change.
+    measurement: out-of-band
+  - condition: >
+      The document bounds what anybody may do rather than whether they may do it: a size limit, a
+      rate, a list of accepted formats. Its writer can move the bound, not open a door.
+    discriminator: >
+      Any wider bound admits requests a narrower one refuses, so a bound and a switch are the same
+      thing to an evaluator, and the difference is how much the change is worth, which is a
+      judgement about the system. The engine reports the bound like a switch.
+    measurement: case
+    case:
+      policy: |
+        package upload_limit
+
+        # METADATA
+        # scope: document
+        # title: Upload decision
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "upload"
+            input.user != ""
+            input.size_mb <= data.settings.uploads.max_mb
+        }
+      data: |
+        {"settings": {"uploads": {"max_mb": 25}}}
+      write_model: |
+        schema_version: 1
+        model: write-paths
+        entries:
+          - path: data.settings.*
+            writable_by:
+              - principal: system:config-sync
+                via: "configuration repository, synced on merge"
+      reports: true
+      note: >
+        Run with opa 1.20.2: an upload of 20 MB is allowed for anybody and one of 30 MB is refused,
+        and raising `max_mb` to 50 allows the second. The engine reports `max_mb` as deciding for
+        somebody no document names, which it does; that the most its writer can do is let bigger
+        files in is not something it can see.
+  - condition: >
+      The document only phrases the answer and never takes it: an address to write to, quoted in
+      the reason a request is refused.
+    discriminator: >
+      Signal 2 asks whether the decision depends on the document, not whether a rule the decision
+      reaches reads it, and a string quoted in a refusal nobody triggers for a stranger changes
+      nothing about whether they get in.
+    measurement: case
+    case:
+      policy: |
+        package refusal_reasons
+
+        # METADATA
+        # scope: document
+        # title: Decision that says why it refuses
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            input.action == "read"
+            count(reasons) == 0
+        }
+
+        reasons contains msg if {
+            input.user == ""
+            msg := sprintf("sign in first, or write to %s", [data.settings.support.address])
+        }
+      data: |
+        {"settings": {"support": {"address": "help@example.org"}}}
+      write_model: |
+        schema_version: 1
+        model: write-paths
+        entries:
+          - path: data.settings.*
+            writable_by:
+              - principal: system:config-sync
+                via: "configuration repository, synced on merge"
+      reports: false
+      note: >
+        Run with opa 1.20.2: somebody named reads, somebody with an empty name is refused, and the
+        address changes neither. The engine asks about `petard:nobody`, for whom the refusal never
+        fires, and stays quiet.
+
+not_a_lint_rule: >
+  A linter sees a path with no dynamic segment, and a constant path is the ordinary way to read
+  configuration: the console setting in the fixture is written exactly like the reading room one.
+  What tells them apart is that one decides for somebody no document names and the other wants
+  their record first, which takes evaluating the decision against the data, and who writes the
+  document, which is in no file of the bundle.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  case: >
+    `platform.rego`, `allow_reading_room`: the reading room is open to whoever asks while
+    `data.settings.reading_room.open` is true, and the settings are synced from a configuration
+    repository.
+  counter_case: >
+    `platform.rego`, `allow_console`: `data.settings.console.enabled` is just as global, but it is
+    read after `"admin" in data.users[input.user].roles`, so it decides for the administrators and
+    not for anybody.
+  expected: >
+    A finding on `data.settings.reading_room.open` for `data.quill.platform.allow_reading_room`,
+    written by `system:config-sync`, and nothing on `allow_console`.
+
+references:
+  - title: Kubernetes, the anonymous identity
+    note: >
+      kubernetes/kubernetes at v1.37.0: `system:anonymous`, `system:unauthenticated` and
+      `system:authenticated` are declared in
+      `staging/src/k8s.io/apiserver/pkg/authentication/user/user.go:74`, and the anonymous
+      authenticator hands the first two to a request nobody authenticated
+      (`request/anonymous/anonymous.go:44`). The pattern asks its question about a principal of
+      that kind.
+  - title: BloodHound CE, GPLink
+    note: >
+      SpecterOps/BloodHound at v9.7.0, `packages/cue/bh/ad/ad.cue:1352` and the help text of the
+      edge: a linked GPO applies its settings to objects in the linked container. One object that
+      applies to many, and whoever controls it controls all of them, is the same shape.
+  - title: ynotbhatc/rego_policy_libraries, the AAP enforcement policies
+    note: >
+      At commit e1eb90b5a73f8d90362833228837dded51547c87, `enforcement/aap/`: eleven decisions,
+      each reading only documents under `data.aac.aap.config`, which the engine reports as static
+      provenance. In `owner_scope.rego` a launcher with no binding may launch anything while
+      `unbound_users_allowed` holds, which it does by default (line 29) and does not in the
+      example configuration (`data/aap_policy_config.example.json:30`); the configuration is
+      merged over the defaults with `object.union` (lines 34 to 37). Signal 2 cannot be measured
+      there yet: every decision answers with an object that is always defined, and the launcher
+      is `input.created_by.username`, which no recognizer names.
+
+verified:
+  date: 2026-09-18
+  tool_version: opa 1.20.2
+  how: >
+    The engine finds the case and stays quiet about the counter case on the fixture. The walk
+    reports `data.settings.reading_room.open` and `data.settings.console.enabled` as static reads.
+    For `petard:nobody`, with the rest of the request and the setting unknown, what is left of
+    `allow_reading_room` mentions the setting, and what is left of `allow_console` does not,
+    because `data.users["petard:nobody"]` is not there and the body fails first. The write model
+    covers `data.settings.*` with `system:config-sync`, so the reading room comes out as a finding
+    naming that writer, and it says what the decision gives the stranger today: nothing, with the
+    room closed.
+    The numbers behind it, `data.quill.verify.global_switch`: the reading room is false for
+    `petard:nobody` as the data stands and true with the room open; the console is false for them
+    either way, and true for `bob`, who is an administrator, until it is switched off.
+    `regal` v0.42.0 reports no violations on `policy-v1`.
+    On generated worlds the pattern reports the reading room and nothing else, the way 007 does:
+    the switch is in the policy, and a dataset does not move it.
+    The three declared false positives are settled as the status requires. One is `out-of-band`,
+    a switch the right people hold. The other two carry a case that runs on every build: a bound
+    rather than a switch, which the engine reports, and a document that only phrases a refusal,
+    on which it stays quiet.
+
+related:
+  - id: PTD-OPA-001
+    note: >
+      The other end of the same axis. 001 is a document picked by the subject and written by them,
+      so it decides about one person; this is a document nobody picks, so whoever writes it
+      decides about everybody.
+  - id: PTD-OPA-004
+    note: >
+      The same claim about a different source: there whoever answers a call decides, here whoever
+      writes a document. A configuration served over HTTP would be both.
+  - id: PTD-OPA-006
+    note: >
+      When the write to the document goes through an endpoint with a decision of the bundle
+      behind it, the question 006 asks would apply to it: who that decision lets write which
+      value. 006 starts from documents the subject picks and does not ask it here yet.
+
+notes:
+  - >
+    Known false negative: a switch over a group. A setting read after the requester's own record
+    decides for every principal who has one, which can be most of them, and the pattern does not
+    report it because somebody no document names never reaches it. That is the counter case of
+    the fixture, and the line is drawn there on purpose: "everybody" has to include the requester
+    the data knows nothing about, or it is a claim about a group.
+  - >
+    Known false negative: a decision that answers with an object. Partial evaluation asks whether
+    the decision holds, an object always does, and the dependence on the document disappears
+    inside it. The AAP policies of rego_policy_libraries are written that way, with an `allowed`
+    field and a list of violations, and so are many enforcement points that read a result object
+    rather than a boolean.
+  - >
+    Known false negative: a policy that refuses a requester whose name is not in the expected
+    form, `startswith(input.user, "user:")` for instance, refuses `petard:nobody` before the
+    document is reached, and a switch behind that check goes unreported.

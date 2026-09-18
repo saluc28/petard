@@ -126,3 +126,32 @@ empty_every := {
 	guarded_empty := data.quill.review.allow_guarded with input as merge_empty
 	guarded_approved := data.quill.review.allow_guarded with input as merge_approved
 }
+
+# --- PTD-OPA-008: a document every request shares decides for anybody ---------
+# Somebody no document names asks. The reading room decides for them on the
+# setting alone; the console gives them nothing whatever its setting says,
+# because it wants their record first, and decides for bob, who has one.
+stranger_reads := {"user": "petard:nobody", "action": "read"}
+
+stranger_asks := {"user": "petard:nobody", "action": "console"}
+
+bob_asks := {"user": "bob", "action": "console"}
+
+global_switch := {
+	"reading_room_as_it_stands": reading_room_now,
+	"reading_room_opened": reading_room_opened,
+	"console_for_nobody": console_nobody,
+	"console_for_nobody_switched_off": console_nobody_off,
+	"console_for_bob": console_bob,
+	"console_for_bob_switched_off": console_bob_off,
+} if {
+	reading_room_now := data.quill.platform.allow_reading_room with input as stranger_reads
+	reading_room_opened := data.quill.platform.allow_reading_room with input as stranger_reads
+		with data.settings.reading_room.open as true
+	console_nobody := data.quill.platform.allow_console with input as stranger_asks
+	console_nobody_off := data.quill.platform.allow_console with input as stranger_asks
+		with data.settings.console.enabled as false
+	console_bob := data.quill.platform.allow_console with input as bob_asks
+	console_bob_off := data.quill.platform.allow_console with input as bob_asks
+		with data.settings.console.enabled as false
+}

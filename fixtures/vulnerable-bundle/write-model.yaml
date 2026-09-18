@@ -80,6 +80,18 @@ entries:
           policy.
         confidence: asserted
 
+  # ---------------------------------------------------------------------
+  # THE PTD-OPA-008 CASE, and its counter case. The platform settings are one
+  # document every request shares, synced from a configuration repository:
+  # whoever gets a change merged there writes both switches. Only the reading
+  # room decides for somebody the data does not know, and that is the finding.
+  - path: data.settings.*
+    writable_by:
+      - principal: system:config-sync
+        via: "configuration repository, synced on merge"
+        note: Whatever is merged into the configuration repository.
+        confidence: asserted
+
 # ---------------------------------------------------------------------------
 # Paths deliberately NOT declared, to keep the world closed.
 # What is not declared is not writable, so an incomplete model produces false

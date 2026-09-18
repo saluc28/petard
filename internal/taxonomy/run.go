@@ -40,6 +40,10 @@ type Findings struct {
 	// PTD_CanEscalateTo between two principals.
 	SplitGrant []Finding
 
+	// GlobalSwitch holds the documents every request shares that decide for a
+	// principal nobody named, which is to say for anybody.
+	GlobalSwitch []Finding
+
 	// Skipped names the patterns that could not run, and what it would have
 	// taken. A pattern left out in silence reads as a pattern that found
 	// nothing, which is the one thing these patterns exist to disprove.
@@ -55,6 +59,7 @@ func (f Findings) All() []Finding {
 	all = append(all, f.Unavailable...)
 	all = append(all, f.EveryEmpty...)
 	all = append(all, f.SplitGrant...)
+	all = append(all, f.GlobalSwitch...)
 	return all
 }
 
@@ -82,6 +87,7 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		found.Skipped[DenyUndefinedOnMissingData] = needsData
 		found.Skipped[TransitiveGrantViaOwnership] = needsData
 		found.Skipped[WriteAllowedByAnotherDecision] = needsData
+		found.Skipped[GlobalDocumentDecides] = needsData
 	} else {
 		if found.MissingData, err = FailOpenOnMissingData(ctx, a.Reads, a.Data); err != nil {
 			return Findings{}, err
@@ -98,6 +104,9 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		found.Transitive = append(escalations, positions...)
 
 		if found.SplitGrant, err = SplitGrant(ctx, a); err != nil {
+			return Findings{}, err
+		}
+		if found.GlobalSwitch, err = GlobalSwitch(ctx, a); err != nil {
 			return Findings{}, err
 		}
 	}

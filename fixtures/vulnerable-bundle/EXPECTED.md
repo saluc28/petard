@@ -13,7 +13,7 @@ to regenerate them.
 
 ```
 fixtures/vulnerable-bundle/
-├── data/                 tenants, users, projects, documents: the concrete data
+├── data/                 tenants, users, projects, documents, settings: the concrete data
 ├── policy-v1/            the policy in Rego v1
 ├── policy-v0/            the same policy in Rego v0, identical semantics
 ├── inputs/               sample inputs, kept OUT of the -d directories
@@ -28,14 +28,15 @@ fixtures/vulnerable-bundle/
 
 ### The two variants are the same policy
 
-Checked on every value the two variants produce under `data.quill`, against every input under
-`inputs/`, which is 120 values over 10 inputs: no divergence between `policy-v1` and `policy-v0`.
+Checked on the value of every rule the two variants produce under `data.quill`, against every
+input under `inputs/`, which is 153 values over 10 inputs: no divergence between `policy-v1` and
+`policy-v0`.
 The same pair of trees is also the test of dual parsing:
 
 | | v1 parser | v0 parser (`--v0-compatible`) |
 |---|---|---|
-| `policy-v1/` | passes | 16 errors |
-| `policy-v0/` | 26 errors, "`if` keyword is required before rule body" | passes |
+| `policy-v1/` | passes | 17 errors |
+| `policy-v0/` | 28 errors, "`if` keyword is required before rule body" | passes |
 
 ---
 
@@ -327,6 +328,35 @@ allow_guarded,   reviews [approved]    allow = true
 The counter case is what keeps the pattern from being a lint on the presence of an `every`: the
 same quantifier over the same domain, and only the guard tells the fail-open from the safe form.
 
+### PTD-OPA-008, a document every request shares decides for anybody
+
+`platform.rego` opens a reading room to whoever asks while `data.settings.reading_room.open` says
+so. That document is the same whatever the request, so whoever writes it decides for everybody at
+once, and the write model says that is whatever gets merged into the configuration repository.
+The console setting next to it is just as global and is the counter case.
+
+| | where | expected |
+|---|---|---|
+| **case** | `platform.rego`, `allow_reading_room` on `data.settings.reading_room.open` | **finding**, the setting decides for somebody no document names, and `system:config-sync` writes it |
+| **counter case** | `platform.rego`, `allow_console` on `data.settings.console.enabled`, next to `"admin" in ...roles` | **nothing**, somebody with no record gets nothing whatever the setting says |
+
+Measured with `data.quill.verify.global_switch`, where `petard:nobody` is a principal no document
+names:
+
+```
+reading room, petard:nobody, as it stands     allow = false
+reading room, petard:nobody, room opened      allow = TRUE   ← one write, anybody
+console,      petard:nobody, as it stands     allow = false
+console,      petard:nobody, switched off     allow = false  ← the setting does not reach them
+console,      bob,           as it stands     allow = true
+console,      bob,           switched off     allow = false  ← it decides for the admins
+```
+
+The counter case is what keeps the pattern from being a lint on constant paths. Both decisions
+read a document every request shares, and a linter sees the same thing in both. Only the second
+wants the requester's own record before the setting matters, and that is what measuring for
+somebody no document names finds.
+
 ---
 
 ## 4. What the engine must not report
@@ -349,14 +379,16 @@ legitimate finding for another.
 | 10 | `withdraw` on `"admin" in ...roles` | 006 | support cannot assign `admin`, so no allowed write reaches the branch |
 | 11 | `allow_guarded` | 007 | `count(input.reviews) > 0` denies the empty case, so the every never goes vacuous |
 | 12 | `user in ...members` | 001 | the members are written by the project owner, and joining is not declared |
+| 13 | `allow_console` | 008 | the setting is just as global, but it only decides for somebody with a record |
 
-Expected precision: **two `PTD_CanEscalateTo`** (mallory and carol), **twelve findings and one
+Expected precision: **two `PTD_CanEscalateTo`** (mallory and carol), **thirteen findings and one
 candidate**, and none of the rows above under the pattern they belong to.
 
-The twelve: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
+The thirteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
 `allow_unguarded`, mallory's escalation, which comes out under the id of 003 because that is where
-the registry says a candidate turns into a finding, and carol's escalation under 006. The two
-escalations are the two findings that are also `PTD_CanEscalateTo` edges.
+the registry says a candidate turns into a finding, carol's escalation under 006, and the reading
+room under 008. The two escalations are the two findings that are also `PTD_CanEscalateTo`
+edges.
 
 ---
 
@@ -423,7 +455,7 @@ Run on 2026-09-14 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant he
 saying):
 
 ```
-regal lint fixtures/vulnerable-bundle/policy-v1   →  7 files linted. No violations found.
+regal lint fixtures/vulnerable-bundle/policy-v1   →  8 files linted. No violations found.
 ```
 
 The rule categories were confirmed **at the source**, by listing the directories in the pinned
@@ -463,9 +495,9 @@ Readable with `opa inspect -a`. They serve three purposes:
 There are no `schemas:`, and that is deliberate: they would raise the confidence of a finding
 artificially. The realistic case is that nobody writes them.
 
-**Eleven decisions are annotated**, among them all four rules of `risk.rego`, the two halves of
-the split grant, `admin` and `publish`, and the guarded and unguarded merge decisions of
-`review`. A rule
+**Thirteen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
+of the split grant, `admin` and `publish`, the guarded and unguarded merge decisions of `review`,
+and the reading room and the console of `platform`. A rule
 without the annotation is a rule the engine never looks at, and leaving the three counter cases
 of `risk.rego` unannotated would break the fixture in two directions at once: *"the engine must
 not report `allow_defensive`"* would be satisfied for the wrong reason, because that rule would
@@ -518,14 +550,16 @@ path with the index as a capture.
 | `data.documents.{d}.project` | ❌ |
 | `data.projects.{p}.department` | ❌ |
 | `data.projects.{p}.parent` | ❌ |
+| `data.settings.reading_room.open` | ✅ written by `system:config-sync` |
+| `data.settings.console.enabled` | ✅ written by `system:config-sync` |
 
 ```
-data.* paths read by the decisions:   9
-covered by the write model:           4  (44%)
+data.* paths read by the decisions:  11
+covered by the write model:           6  (54%)
 not covered:                          5
 ```
 
-A low number, and it is left low: **44% is realistic**, and a fixture that declared 100% would
+A low number, and it is left low: **54% is realistic**, and a fixture that declared 100% would
 teach the engine to run only against complete models, which do not exist in practice.
 
 Two of the uncovered paths are deliberate rather than forgotten:
@@ -566,6 +600,10 @@ opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy
 
 ```bash
 opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.split_grant'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.global_switch'
 ```
 
 Dual parsing, where the first has to pass and the second has to fail:
