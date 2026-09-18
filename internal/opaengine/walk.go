@@ -395,8 +395,21 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 			r.markClosure(operator, expr, sc)
 			r.markComparisons(expr, sc)
 		}
-		if field, ok := inputFieldGot(expr, sc.bindings); ok {
-			r.inputPaths[r.current] = append(r.inputPaths[r.current], normalize(field))
+		if path, ok := objectGetPath(expr, sc.bindings); ok {
+			switch {
+			case isInputRooted(path):
+				r.inputPaths[r.current] = append(r.inputPaths[r.current], normalize(path))
+			case isDataRooted(path) && !r.namesRule(path):
+				// The document the call lands on is the read, and the one it is
+				// handed is only the way there, which dropPrefixes then leaves
+				// out, the same as for data.users[input.user] written in full.
+				*found = append(*found, foundRef{
+					resolved: substituteRef(path, sc.bindings),
+					bindings: sc.bindings,
+					negated:  sc.negated,
+					location: expr.Loc(),
+				})
+			}
 		}
 		for _, operand := range expr.Operands() {
 			r.walkTerm(operand, sc, found)
@@ -487,47 +500,42 @@ func (r *refReader) walkTerm(term *ast.Term, sc scope, found *[]foundRef) {
 	}
 }
 
-// inputFieldGot returns the part of the request an object.get call reads, when
-// it is called on input.
+// objectGetPath returns the path an object.get call reads, when what it is
+// handed is a reference into input or data.
 //
 // object.get(input, ["created_by", "username"], "") is input.created_by.username
-// with a default: an array key is a path that the builtin walks one element at a
-// time (v1/topdown/object.go:152 at v1.20.2), and any other key is one field.
-// It is how a policy reads a request it does not trust to be complete, and it
-// is only followed on input: the same call on a document under data is still a
-// read of the whole document.
+// with a default, and object.get(data.users, input.user, {}) is
+// data.users[input.user]: an array key is a path that the builtin walks one
+// element at a time (v1/topdown/object.go:152 at v1.20.2), and any other key
+// is one field. It is how a policy reads a request or a document it does not
+// trust to be complete.
 //
-// A key the policy computes could name any field, the subject included, and
-// comes back as any field of what it is looked up in, input[_]. That is the
-// whole request again for every question that leaves it unknown.
-func inputFieldGot(expr *ast.Expr, bindings map[ast.Var]binding) (ast.Ref, bool) {
+// A key the policy computes stays in the path as it is, so that the index can
+// be judged like any other: data.users[input.user] is picked by the request,
+// and in the request itself it reads as input[_], any field, the subject
+// included, which leaves the whole request unknown to every question that
+// leaves it unknown. A key that is itself a computed path cannot be told from
+// one field, and is taken as one. What a call returned is not followed further:
+// object.get(object.get(data.users, input.user, {}), "roles", []) reads
+// data.users[input.user], not its roles.
+func objectGetPath(expr *ast.Expr, bindings map[ast.Var]binding) (ast.Ref, bool) {
 	operator, operands := expr.Operator(), expr.Operands()
 	if operator == nil || operator.String() != ast.ObjectGet.Name || len(operands) < 3 {
 		return nil, false
 	}
 	base, ok := resolveDomain(operands[0], bindings)
-	if !ok || !isInputRooted(base) {
+	if !ok || (!isInputRooted(base) && !isDataRooted(base)) {
 		return nil, false
 	}
 
-	var keys []*ast.Term
-	if path, isArray := operands[1].Value.(*ast.Array); isArray {
-		for i := range path.Len() {
-			keys = append(keys, path.Elem(i))
+	path := slices.Clone(base)
+	if keys, isArray := operands[1].Value.(*ast.Array); isArray {
+		for i := range keys.Len() {
+			path = append(path, keys.Elem(i))
 		}
-	} else {
-		keys = []*ast.Term{operands[1]}
+		return path, true
 	}
-	field := slices.Clone(base)
-	for _, key := range keys {
-		switch key.Value.(type) {
-		case ast.String, ast.Number:
-			field = append(field, key)
-		default:
-			return append(field, ast.VarTerm("_")), true
-		}
-	}
-	return field, true
+	return append(path, operands[1]), true
 }
 
 // follow queues the rules a reference points at, and reports whether it points

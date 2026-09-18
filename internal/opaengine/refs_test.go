@@ -2,6 +2,7 @@ package opaengine
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -546,6 +547,52 @@ decision := {"allowed": count(violations) == 0, "violations": [v | some v in vio
 				t.Errorf("the read reaches %+v, want the field", reached)
 			}
 		})
+	}
+}
+
+// object.get reads the document it lands on, the same as the path written out:
+// a lookup keyed by the subject is picked by the subject, and a setting read
+// with a default is that setting and not the whole of the settings. What a call
+// returned is not followed into a second call.
+func TestReadsFollowObjectGetIntoData(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"policy.rego": `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+allow if {
+	"admin" in object.get(data.users, [input.user, "roles"], [])
+	object.get(data.settings, ["console", "enabled"], false)
+	count(object.get(object.get(data.teams, input.team, {}), "members", [])) > 0
+}
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	reads, err := Reads(bundle, Limits{})
+	if err != nil {
+		t.Fatalf("Reads() error = %v", err)
+	}
+
+	provenance := map[string]Provenance{}
+	for _, read := range reads.Reads {
+		provenance[read.Path] = read.Provenance
+	}
+	expected := map[string]Provenance{
+		"data.settings.console.enabled": ProvenanceStatic,
+		"data.teams[_]":                 ProvenanceInput,
+		"data.users[_].roles":           ProvenanceInput,
+	}
+	if !maps.Equal(provenance, expected) {
+		t.Errorf("reads = %v, want %v", provenance, expected)
+	}
+
+	indexed := SubjectIndexedReads(RecognizeShape(reads), reads)
+	if len(indexed) != 1 || indexed[0].Path != "data.users[_].roles" {
+		t.Errorf("indexed by the subject = %v, want the roles of whoever asks", indexed)
 	}
 }
 
