@@ -92,8 +92,11 @@ detection:
         Partially evaluate the decision for a principal no document names, `petard:nobody`, with
         the rest of the request unknown and the document left unknown too. The decision depends on
         the document when something partial evaluation leaves mentions it, or names a rule of the
-        policy that reads it: OPA does not evaluate a rule with an else once it depends on
-        something unknown, and hands the rule back whole (`v1/topdown/eval.go:2967` at v1.20.2).
+        policy that reads it: a comprehension over something unknown and a call to a function with
+        an else come back as they are written (`v1/topdown/eval.go:1243` and `2223` at v1.20.2).
+        A rule with an else would too (`eval.go:2967`), and the engine rewrites its branches into
+        rules that exclude each other before it asks, so the branch the stranger takes is the one
+        measured.
       rationale: >
         This is what separates a switch over anybody from configuration read next to somebody's
         record. The console setting of the fixture is read after the requester's roles, so for
@@ -359,9 +362,8 @@ verified:
     the switch is in the policy, and a dataset does not move it.
     The four declared false positives are settled as the status requires. One is `out-of-band`,
     a switch the right people hold. The other three carry a case that runs on every build: a
-    bound rather than a switch, which the engine reports, a document that only phrases a refusal,
-    on which it stays quiet, and a setting read next to a record by a rule with an else, which it
-    reports.
+    bound rather than a switch, which the engine reports, and a document that only phrases a
+    refusal and a setting read next to a record by a rule with an else, on which it stays quiet.
 
 related:
   - id: PTD-OPA-001
