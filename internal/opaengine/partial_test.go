@@ -330,12 +330,55 @@ decision := {"allowed": count(violations) == 0, "violations": [v | some v in vio
 	}
 }
 
-// A setting merged over its defaults by a rule with an else comes back from
-// partial evaluation as the rule rather than the document, since OPA does not
-// evaluate such a rule once it depends on something unknown. The decision still
-// depends on the document, through the rule, and a decision next to it that
-// never reads the setting does not.
-func TestDependsOnFollowsARuleLeftForEvaluationTime(t *testing.T) {
+// A rule with an else is rewritten before partial evaluation, so a role checked
+// in one is measured for whoever asks: the principal who holds it is left with
+// the rest of the request to meet, and the one who does not gets nothing.
+// Handed back whole, the rule read the same for both.
+func TestResidualsGoThroughARuleWithAnElse(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"policy.rego": `package t
+
+default publish := false
+
+publish if may_publish
+
+may_publish := true if {
+	input.action == "publish"
+	"editor" in data.users[input.user].roles
+} else := false
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	data := writeData(t, `{"users": {"alice": {"roles": ["editor"]}, "carol": {"roles": ["support"]}}}`)
+
+	for user, expected := range map[string][]string{"alice": {`input.action = "publish"`}, "carol": nil} {
+		residuals, err := Residuals(t.Context(), bundle, data, Request{
+			Decision: "data.t.publish",
+			Unknowns: []string{"input.action"},
+			Input:    map[string]any{"user": user},
+		}, Limits{})
+		if err != nil {
+			t.Fatalf("Residuals() error = %v", err)
+		}
+		var got []string
+		for _, condition := range residuals.Conditions {
+			got = append(got, condition.Query)
+		}
+		if residuals.Always || !slices.Equal(got, expected) {
+			t.Errorf("%s: always = %v, conditions = %v, want %v", user, residuals.Always, got, expected)
+		}
+	}
+}
+
+// A setting merged over its defaults decides the decisions that read it, and
+// the one next to them that never does is left alone. In a rule with an else
+// the merge is rewritten and partial evaluation names the document itself. In
+// a function with an else, called with part of the request, it is not: the
+// call comes back as it is written, and the document is found in the function.
+func TestDependsOnFindsTheDocumentBehindAnElse(t *testing.T) {
 	dir := writeSources(t, map[string]string{
 		"policy.rego": `package t
 
@@ -350,6 +393,16 @@ allow if {
 	input.action == "read"
 }
 
+gate(kind) := object.union(_defaults, data.settings.gate) if {
+	kind == "reading"
+	is_object(data.settings.gate)
+} else := _defaults
+
+allow_by_kind if {
+	gate(input.kind).open
+	input.action == "read"
+}
+
 audit if input.action == "read"
 `,
 	})
@@ -359,10 +412,10 @@ audit if input.action == "read"
 	}
 	data := writeData(t, `{"settings": {"gate": {"open": true}}}`)
 
-	for decision, expected := range map[string]bool{"data.t.allow": true, "data.t.audit": false} {
+	for decision, expected := range map[string]bool{"data.t.allow": true, "data.t.allow_by_kind": true, "data.t.audit": false} {
 		depends, err := DependsOn(t.Context(), bundle, data, Request{
 			Decision: decision,
-			Unknowns: []string{"input.action"},
+			Unknowns: []string{"input.action", "input.kind"},
 		}, "data.settings.gate")
 		if err != nil {
 			t.Fatalf("DependsOn(%s) error = %v", decision, err)

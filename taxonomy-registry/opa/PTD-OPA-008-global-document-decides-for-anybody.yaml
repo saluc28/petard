@@ -242,13 +242,11 @@ false_positives:
         fires, and stays quiet.
   - condition: >
       The setting is read next to the requester's own record, as the console of the fixture is,
-      but by a rule with an else. Partial evaluation hands such a rule back whole once it depends
-      on something unknown, so the dependence is taken from everything the rule reads and not from
-      the branch a stranger would take.
+      but by a rule with an else, which partial evaluation does not go through.
     discriminator: >
-      Telling the branches apart would mean evaluating the bodies of the rule one at a time and in
-      order, which is what OPA declines to do partially. The engine reports the setting like a
-      switch.
+      The engine rewrites the branches of the rule into rules that exclude each other before it
+      asks, so the branch a stranger takes is the one measured, and a setting behind a record they
+      do not have drops out of it.
     measurement: case
     case:
       policy: |
@@ -276,12 +274,12 @@ false_positives:
             writable_by:
               - principal: system:config-sync
                 via: "configuration repository, synced on merge"
-      reports: true
+      reports: false
       note: >
         Run with opa 1.20.2: `bob` opens the console while it is enabled and not once it is
-        switched off, and `petard:nobody` never does, whatever the setting says. What partial
-        evaluation leaves for the stranger is `console_open`, whole, and the engine reads the
-        setting in it.
+        switched off, and `petard:nobody` never does, whatever the setting says. With the branches
+        rewritten, nothing partial evaluation leaves for the stranger mentions the setting, and the
+        engine stays quiet.
 
 not_a_lint_rule: >
   A linter sees a path with no dynamic segment, and a constant path is the ordinary way to read

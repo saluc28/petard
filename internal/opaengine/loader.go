@@ -72,10 +72,11 @@ func (m ParseMode) String() string {
 // Bundle is a set of Rego modules parsed and compiled together.
 type Bundle struct {
 	// Compiler holds the compiled modules, and is the single source of truth
-	// for everything downstream. The parsed AST is not kept: the compiler
-	// resolves imports, desugars the syntax and rewrites the bodies into
-	// explicit dataflow, and rebuilding any of that by hand would mean
-	// rewriting parts of OPA.
+	// for everything downstream but partial evaluation, which runs against the
+	// same policy with its rules that carry an else rewritten. The parsed AST is
+	// not kept: the compiler resolves imports, desugars the syntax and rewrites
+	// the bodies into explicit dataflow, and rebuilding any of that by hand
+	// would mean rewriting parts of OPA.
 	Compiler *ast.Compiler
 
 	// RegoVersion is the syntax the modules were parsed as. Under
@@ -103,6 +104,19 @@ type Bundle struct {
 	// templates among them, and without this the only alternative to guessing
 	// would be refusing to analyze them at all.
 	Entrypoints []string
+
+	// partialCompiler holds the same policy with every rule that carries an else
+	// rewritten into rules partial evaluation can go through, and is nil when
+	// the policy has none. See exclusiveElse.
+	partialCompiler *ast.Compiler
+}
+
+// forPartial returns the compiler partial evaluation runs against.
+func (b *Bundle) forPartial() *ast.Compiler {
+	if b.partialCompiler != nil {
+		return b.partialCompiler
+	}
+	return b.Compiler
 }
 
 // Load reads every .rego file under paths, parses them together and compiles
@@ -146,8 +160,19 @@ func Load(paths []string, mode ParseMode) (*Bundle, error) {
 	for _, src := range sources {
 		loaded = append(loaded, src.name)
 	}
+	bundle := &Bundle{Compiler: compiler, RegoVersion: version, Files: loaded}
 
-	return &Bundle{Compiler: compiler, RegoVersion: version, Files: loaded}, nil
+	// The compiler worked on copies, so the parsed modules are still the policy
+	// as written and can be rewritten for the second one.
+	if exclusiveElse(modules) {
+		partial := ast.NewCompiler()
+		partial.Compile(modules)
+		if partial.Failed() {
+			return nil, fmt.Errorf("%w, with the rules that carry an else rewritten: %w", ErrCompile, partial.Errors)
+		}
+		bundle.partialCompiler = partial
+	}
+	return bundle, nil
 }
 
 // source is one file, read once so that the second parsing attempt does not go
