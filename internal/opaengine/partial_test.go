@@ -330,6 +330,49 @@ decision := {"allowed": count(violations) == 0, "violations": [v | some v in vio
 	}
 }
 
+// A setting merged over its defaults by a rule with an else comes back from
+// partial evaluation as the rule rather than the document, since OPA does not
+// evaluate such a rule once it depends on something unknown. The decision still
+// depends on the document, through the rule, and a decision next to it that
+// never reads the setting does not.
+func TestDependsOnFollowsARuleLeftForEvaluationTime(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"policy.rego": `package t
+
+_defaults := {"open": false}
+
+_gate := object.union(_defaults, data.settings.gate) if {
+	is_object(data.settings.gate)
+} else := _defaults
+
+allow if {
+	_gate.open
+	input.action == "read"
+}
+
+audit if input.action == "read"
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	data := writeData(t, `{"settings": {"gate": {"open": true}}}`)
+
+	for decision, expected := range map[string]bool{"data.t.allow": true, "data.t.audit": false} {
+		depends, err := DependsOn(t.Context(), bundle, data, Request{
+			Decision: decision,
+			Unknowns: []string{"input.action"},
+		}, "data.settings.gate")
+		if err != nil {
+			t.Fatalf("DependsOn(%s) error = %v", decision, err)
+		}
+		if depends != expected {
+			t.Errorf("DependsOn(%s) = %v, want %v", decision, depends, expected)
+		}
+	}
+}
+
 // A decision that collects grants what it holds, and an empty answer grants
 // nothing. In Rego only false and undefined are not true, so an empty set is a
 // value the query naming it holds on, and a principal authorized on nothing

@@ -875,10 +875,17 @@ func ValuesComparedWith(ctx context.Context, bundle *Bundle, data *Data, ask Req
 // data is concrete and the part of the request the question fixes is known.
 //
 // The document is left unknown, and the decision depends on it when anything
-// partial evaluation leaves mentions it: a residual condition, or a rule it
-// generated to hold one. Nothing is interpreted, and in particular the side is
-// not: a document that only ever denies is one its writer can clear, and the
-// question is the same either way.
+// partial evaluation leaves mentions it: a residual condition, a rule it
+// generated to hold one, or a rule of the policy it left for evaluation time.
+// That last one is how a rule with an else comes back: partial evaluation does
+// not evaluate one once it depends on something unknown, and keeps the
+// reference to it instead (v1/topdown/eval.go:2967 at v1.20.2), so a setting
+// merged over its defaults that way is named by the rule that merges it and
+// not by the document.
+//
+// Nothing is interpreted, and in particular the side is not: a document that
+// only ever denies is one its writer can clear, and the question is the same
+// either way.
 func DependsOn(ctx context.Context, bundle *Bundle, data *Data, ask Request, document string) (bool, error) {
 	docRef, err := ast.ParseRef(document)
 	if err != nil {
@@ -894,8 +901,16 @@ func DependsOn(ctx context.Context, bundle *Bundle, data *Data, ask Request, doc
 	}
 
 	mentioned := false
-	visit := func(ref ast.Ref) bool {
+	followed := map[*ast.Rule]bool{}
+	var visit func(ref ast.Ref) bool
+	visit = func(ref ast.Ref) bool {
 		mentioned = mentioned || ref.HasPrefix(docRef)
+		for _, rule := range bundle.Compiler.GetRulesForVirtualDocument(ref) {
+			if !mentioned && !followed[rule] {
+				followed[rule] = true
+				ast.WalkRefs(rule, visit)
+			}
+		}
 		return mentioned
 	}
 	for _, query := range queries.Queries {
