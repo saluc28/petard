@@ -123,8 +123,8 @@ func TransitiveGrant(ctx context.Context, bundle *opaengine.Bundle, reads *opaen
 			findings = append(findings, Finding{
 				PatternID: TransitiveGrantViaOwnership,
 				Verdict:   VerdictCandidate,
-				Summary: fmt.Sprintf("%s reaches %s in %d ways through %s, and in %d without it",
-					principal, decision, granted.ways, strings.Join(relation, ", "), own.ways),
+				Summary: fmt.Sprintf("%s reaches %s in %s through %s, and in %d without it",
+					principal, decision, waysOf(granted.ways), strings.Join(relation, ", "), own.ways),
 				Decision:        decision,
 				Principal:       principal,
 				ReachTransitive: granted.ways,
@@ -230,6 +230,15 @@ type reach struct {
 	// turns out to be. It is not a large number of ways, it is the absence of a
 	// question, and the two must not be added together.
 	always bool
+}
+
+// waysOf writes a number of ways the way a sentence says it, so that one way
+// does not read as several.
+func waysOf(n int) string {
+	if n == 1 {
+		return "1 way"
+	}
+	return fmt.Sprintf("%d ways", n)
 }
 
 // nothing reports whether the decision grants that principal nothing.

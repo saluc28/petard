@@ -161,7 +161,7 @@ func describeToday(granted reach) string {
 	case granted.nothing():
 		return "today it grants them nothing"
 	default:
-		return fmt.Sprintf("today it grants them %d ways", granted.ways)
+		return "today it grants them in " + waysOf(granted.ways)
 	}
 }
 

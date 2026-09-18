@@ -166,3 +166,17 @@ func TestGlobalSwitchNeedsData(t *testing.T) {
 		t.Errorf("GlobalSwitch() error = %v, want ErrNeedsData", err)
 	}
 }
+
+// The sentence a finding carries is read by a person, and one way is one way.
+func TestDescribeTodayCountsTheWays(t *testing.T) {
+	for granted, expected := range map[reach]string{
+		{}:             "today it grants them nothing",
+		{ways: 1}:      "today it grants them in 1 way",
+		{ways: 3}:      "today it grants them in 3 ways",
+		{always: true}: "today it grants them whatever they ask",
+	} {
+		if got := describeToday(granted); got != expected {
+			t.Errorf("describeToday(%+v) = %q, want %q", granted, got, expected)
+		}
+	}
+}

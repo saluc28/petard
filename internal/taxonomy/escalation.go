@@ -164,8 +164,8 @@ func escalationBy(ctx context.Context, a Analysis, cut *opaengine.Data, position
 	return &Finding{
 		PatternID: TransitiveGrantViaOwnership,
 		Verdict:   VerdictFinding,
-		Summary: fmt.Sprintf("%s can reach what the position of %s reaches in %s, by writing %s: nothing today, %d ways after, %d of them through %s",
-			principal, position.Principal, position.Decision, document, opened.ways, through, strings.Join(position.Relation, ", ")),
+		Summary: fmt.Sprintf("%s can reach what the position of %s reaches in %s, by writing %s: nothing today, %s after, %d of them through %s",
+			principal, position.Principal, position.Decision, document, waysOf(opened.ways), through, strings.Join(position.Relation, ", ")),
 		Principal:       principal,
 		Target:          position.Principal,
 		Decision:        position.Decision,
