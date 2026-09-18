@@ -241,6 +241,81 @@ func TestConfidenceLevels(t *testing.T) {
 	}
 }
 
+// A request read through object.get is read at the field the call names. The
+// compiler hands the call a variable bound to input, and that binding is the
+// way to the field rather than a read of the whole request.
+func TestInputPathsFollowObjectGet(t *testing.T) {
+	tests := []struct {
+		name     string
+		policy   string
+		expected []string
+	}{
+		{
+			name: "a path and a field",
+			policy: `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+allow if {
+	lower(object.get(input, ["created_by", "username"], "")) == "alice"
+	count(object.get(input, "labels", [])) > 0
+}
+`,
+			expected: []string{"input.created_by.username", "input.labels"},
+		},
+		{
+			// A key the policy computes could be any field, and one field read
+			// next to it does not narrow that down.
+			name: "a computed key",
+			policy: `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+allow if {
+	object.get(input, data.settings.field, "") == "alice"
+	object.get(input, "name", "") != ""
+}
+`,
+			expected: []string{"input.name", "input[_]"},
+		},
+		{
+			// A rule that takes the request whole takes all of it, whatever the
+			// other rules read.
+			name: "a rule that takes the request whole",
+			policy: `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+allow if object.get(input, "name", "") != ""
+
+# METADATA
+# scope: document
+# entrypoint: true
+audited if count(input) > 0
+`,
+			expected: []string{"input", "input.name"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bundle, err := Load([]string{writeSources(t, map[string]string{"policy.rego": tt.policy})}, ParseModeAuto)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			reads, err := Reads(bundle, Limits{})
+			if err != nil {
+				t.Fatalf("Reads() error = %v", err)
+			}
+			if !slices.Equal(reads.InputPaths, tt.expected) {
+				t.Errorf("InputPaths = %v, want %v", reads.InputPaths, tt.expected)
+			}
+		})
+	}
+}
+
 // The fixture writes its request the way most policies do, so it lands on
 // level D. That is the honest answer, and it is also the realistic one: the
 // design says the common case is that nobody declares anything.

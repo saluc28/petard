@@ -345,13 +345,14 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 		pending = append(pending, decision.rule)
 	}
 	reader := &refReader{
-		compiler:  bundle.Compiler,
-		visited:   make(map[*ast.Rule]bool),
-		pending:   pending,
-		underWith: make(map[string]bool),
-		callSites: make(map[*ast.Rule][]callSite),
-		edges:     make(map[*ast.Rule][]callEdge),
-		summaries: make(map[string][]paramComparison),
+		compiler:   bundle.Compiler,
+		visited:    make(map[*ast.Rule]bool),
+		pending:    pending,
+		inputPaths: make(map[*ast.Rule][]string),
+		underWith:  make(map[string]bool),
+		callSites:  make(map[*ast.Rule][]callSite),
+		edges:      make(map[*ast.Rule][]callEdge),
+		summaries:  make(map[string][]paramComparison),
 	}
 	// Two passes, and the order matters: the call sites of a rule are only
 	// trustworthy once the walk knows which rules are part of the decisions at

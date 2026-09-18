@@ -47,9 +47,9 @@ type refReader struct {
 	// that source.
 	edges map[*ast.Rule][]callEdge
 
-	// inputPaths are the paths of input the decisions touch, normalized like
-	// the data ones.
-	inputPaths []string
+	// inputPaths are the paths of input each rule touches, normalized like the
+	// data ones.
+	inputPaths map[*ast.Rule][]string
 
 	// underWith holds the rules some expression reaches through a with
 	// modifier. Being in here is not enough to be skipped: a rule reached both
@@ -395,6 +395,9 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 			r.markClosure(operator, expr, sc)
 			r.markComparisons(expr, sc)
 		}
+		if field, ok := inputFieldGot(expr, sc.bindings); ok {
+			r.inputPaths[r.current] = append(r.inputPaths[r.current], normalize(field))
+		}
 		for _, operand := range expr.Operands() {
 			r.walkTerm(operand, sc, found)
 		}
@@ -427,7 +430,7 @@ func (r *refReader) walkTerm(term *ast.Term, sc scope, found *[]foundRef) {
 			// What the decisions touch of input is not a read of data, but it
 			// is what tells subject from resource later on, and it is free to
 			// collect while the body is already being walked.
-			r.inputPaths = append(r.inputPaths, normalize(resolved.ref))
+			r.inputPaths[r.current] = append(r.inputPaths[r.current], normalize(resolved.ref))
 		}
 		// A reference rooted in what a call returned is kept too, and it is the
 		// only way a value from outside the policy is ever seen: it reads no
@@ -482,6 +485,49 @@ func (r *refReader) walkTerm(term *ast.Term, sc scope, found *[]foundRef) {
 			r.walkTerm(val, sc, found)
 		})
 	}
+}
+
+// inputFieldGot returns the part of the request an object.get call reads, when
+// it is called on input.
+//
+// object.get(input, ["created_by", "username"], "") is input.created_by.username
+// with a default: an array key is a path that the builtin walks one element at a
+// time (v1/topdown/object.go:152 at v1.20.2), and any other key is one field.
+// It is how a policy reads a request it does not trust to be complete, and it
+// is only followed on input: the same call on a document under data is still a
+// read of the whole document.
+//
+// A key the policy computes could name any field, the subject included, and
+// comes back as any field of what it is looked up in, input[_]. That is the
+// whole request again for every question that leaves it unknown.
+func inputFieldGot(expr *ast.Expr, bindings map[ast.Var]binding) (ast.Ref, bool) {
+	operator, operands := expr.Operator(), expr.Operands()
+	if operator == nil || operator.String() != ast.ObjectGet.Name || len(operands) < 3 {
+		return nil, false
+	}
+	base, ok := resolveDomain(operands[0], bindings)
+	if !ok || !isInputRooted(base) {
+		return nil, false
+	}
+
+	var keys []*ast.Term
+	if path, isArray := operands[1].Value.(*ast.Array); isArray {
+		for i := range path.Len() {
+			keys = append(keys, path.Elem(i))
+		}
+	} else {
+		keys = []*ast.Term{operands[1]}
+	}
+	field := slices.Clone(base)
+	for _, key := range keys {
+		switch key.Value.(type) {
+		case ast.String, ast.Number:
+			field = append(field, key)
+		default:
+			return append(field, ast.VarTerm("_")), true
+		}
+	}
+	return field, true
 }
 
 // follow queues the rules a reference points at, and reports whether it points

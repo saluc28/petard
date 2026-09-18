@@ -2,6 +2,7 @@ package opaengine
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast"
 )
@@ -35,8 +36,31 @@ func (r *refReader) resolve(limits Limits, reach map[*ast.Rule]decisionPaths) *R
 		}
 	}
 
-	result.InputPaths = sortedUnique(slices.Clone(r.inputPaths))
+	for _, paths := range r.inputPaths {
+		result.InputPaths = append(result.InputPaths, dropPrefixPaths(paths)...)
+	}
+	result.InputPaths = sortedUnique(result.InputPaths)
 	return result
+}
+
+// dropPrefixPaths removes the paths of input that are a strict prefix of
+// another path the same rule touches.
+//
+// It is dropPrefixes for the request, and for the same reason: the compiler
+// hands object.get(input, ["created_by", "username"], "") a variable it first
+// binds to input, and touching input to reach one field of it is touching that
+// field. Kept, the whole request would stay unknown to every question that
+// fixes the subject, and the subject would not be fixed.
+func dropPrefixPaths(paths []string) []string {
+	kept := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if !slices.ContainsFunc(paths, func(other string) bool {
+			return strings.HasPrefix(other, path+".") || strings.HasPrefix(other, path+"[")
+		}) {
+			kept = append(kept, path)
+		}
+	}
+	return kept
 }
 
 // readOf turns one reference into a read, asking the callers about the index
