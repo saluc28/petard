@@ -57,7 +57,8 @@ leaving alone the expressions that mock the world with a `with` modifier, and re
 - the values a decision depends on that the policy did not compute, such as the body of an
   HTTP response, and which decisions each of them reaches
 - the shape of the request, with the level of confidence it was recognized at, which runs from
-  a declared standard down to a guess about field names and travels with the answer
+  a declaration down to a guess about field names and travels with the answer. Which field names
+  the requester is decided where the request is built, so it can be declared too
 
 Given concrete data it also evaluates every decision partially, and reports what is left of
 each one once the documents are known. It is also how a position in a hierarchy gets a number:
@@ -134,6 +135,13 @@ A bundle that annotates no entrypoint, with the decision declared the way `opa b
 
 ```
 go run ./cmd/analyze-opa -entrypoint k8sallowedrepos/violation path/to/policy
+```
+
+A decision whose enforcement point reads one field of the object it returns, with the requester
+declared where the request carries it:
+
+```
+go run ./cmd/analyze-opa -entrypoint aac/aap/policy/owner_scope/allowed -subject input.created_by.username -data path/to/config path/to/policy
 ```
 
 The engine against a body of Rego written by other people, which does not live in this

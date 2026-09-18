@@ -187,6 +187,10 @@ type Inputs struct {
 	// author annotated none.
 	Entrypoints []string
 
+	// Subject is the part of the request that names who is asking, declared
+	// from outside, and empty to have it recognized. See opaengine.ShapeOf.
+	Subject string
+
 	// DataPath is the concrete data, and empty when there is none. Without it
 	// the patterns that measure against documents cannot run, and say so.
 	DataPath string
@@ -210,11 +214,15 @@ func Load(inputs Inputs) (Analysis, error) {
 	if err != nil {
 		return Analysis{}, err
 	}
+	shape, err := opaengine.ShapeOf(reads, inputs.Subject)
+	if err != nil {
+		return Analysis{}, err
+	}
 
 	analysis := Analysis{
 		Bundle: bundle,
 		Reads:  reads,
-		Shape:  opaengine.RecognizeShape(reads),
+		Shape:  shape,
 		Limits: inputs.Limits,
 	}
 

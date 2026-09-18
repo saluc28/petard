@@ -1,6 +1,8 @@
 package opaengine
 
 import (
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -40,10 +42,26 @@ const (
 	// Authorization API standardizes, subject, action, resource and context.
 	ConfidenceAuthZEN
 
-	// ConfidenceDeclared is level A: the policy author declared the types with
-	// a METADATA schemas annotation.
+	// ConfidenceDeclared is level A: the request is declared rather than
+	// recognized, by the policy author with a METADATA schemas annotation or by
+	// whoever deploys the policy, who builds the request and knows which part of
+	// it names the requester. OPA takes a declaration of the input from either
+	// place, an annotation or the command line (opa eval --schema,
+	// cmd/eval.go:289 at v1.20.2).
 	ConfidenceDeclared
 )
+
+// ErrBadSubject is returned when a declared subject is not a path into the
+// request.
+var ErrBadSubject = errors.New("opaengine: the subject is not a path into input")
+
+// ErrSubjectNotRead is returned when no decision reads the declared subject.
+//
+// A declaration that matches nothing is a typo worth stopping for, the same way
+// an entrypoint that names no rule is: a request that fixes a field nobody reads
+// asks every question about nobody in particular, and would report the answer
+// as one about a principal.
+var ErrSubjectNotRead = errors.New("opaengine: no decision reads the declared subject")
 
 // String returns the level as A to E, because that is what ends up in a report
 // and in the graph.
@@ -158,6 +176,53 @@ func RecognizeShape(reads *ReadSet) Shape {
 		}
 	}
 	return Shape{Confidence: ConfidenceNone, Recognizer: "none"}
+}
+
+// ShapeOf returns the shape of the request: the subject declared from outside
+// when there is one, and what the recognizers make of the request otherwise.
+//
+// A declaration replaces recognition rather than joining it, since it is the
+// better evidence of the two: which part of the request names who is asking is
+// decided where the request is built, and the policy only reads it. AWX builds
+// the request of a job with the launching user under created_by, next to the
+// teams and the superuser flag (awx/main/tasks/policy.py:49 and :194 at
+// bbda905), a place none of the recognizers here looks.
+//
+// The subject is written the way a report prints one, input.created_by.username,
+// and a list of principals the decisions range over comes back as one, the way
+// a recognized subject does.
+func ShapeOf(reads *ReadSet, subject string) (Shape, error) {
+	if subject == "" {
+		return RecognizeShape(reads), nil
+	}
+
+	ref, err := ast.ParseRef(subject)
+	if err != nil || !isInputRooted(ref) {
+		return Shape{}, fmt.Errorf("%w: %s", ErrBadSubject, subject)
+	}
+	path := normalize(ref)
+	if !touched(reads.InputPaths, path) {
+		return Shape{}, fmt.Errorf("%w: %s", ErrSubjectNotRead, subject)
+	}
+	return Shape{
+		Subject:    asList(path, reads.InputPaths),
+		Confidence: ConfidenceDeclared,
+		Recognizer: "declared",
+	}, nil
+}
+
+// touched reports whether the decisions read a path, a part of it, or
+// something that holds it.
+func touched(paths []string, path string) bool {
+	if _, below := underPrefix(paths, path); below {
+		return true
+	}
+	for _, read := range paths {
+		if strings.HasPrefix(path, read+".") || strings.HasPrefix(path, read+"[") {
+			return true
+		}
+	}
+	return false
 }
 
 // asList writes the subject as a list when the decisions range over it.

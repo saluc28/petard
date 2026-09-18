@@ -1,6 +1,7 @@
 package opaengine
 
 import (
+	"errors"
 	"slices"
 	"testing"
 )
@@ -311,6 +312,74 @@ audited if count(input) > 0
 			}
 			if !slices.Equal(reads.InputPaths, tt.expected) {
 				t.Errorf("InputPaths = %v, want %v", reads.InputPaths, tt.expected)
+			}
+		})
+	}
+}
+
+// A subject declared from outside replaces recognition, and a declaration
+// nothing reads is refused the way an entrypoint that names no rule is.
+func TestShapeOf(t *testing.T) {
+	aap := []string{"input.created_by.is_superuser", "input.created_by.teams", "input.created_by.username", "input.user"}
+
+	tests := []struct {
+		name       string
+		inputPaths []string
+		subject    string
+		expected   Shape
+		err        error
+	}{
+		{
+			name:       "declared",
+			inputPaths: aap,
+			subject:    "input.created_by.username",
+			expected: Shape{
+				Subject:    "input.created_by.username",
+				Confidence: ConfidenceDeclared,
+				Recognizer: "declared",
+			},
+		},
+		{
+			name:       "declared inside a field the decisions read whole",
+			inputPaths: []string{"input.created_by"},
+			subject:    "input.created_by.username",
+			expected: Shape{
+				Subject:    "input.created_by.username",
+				Confidence: ConfidenceDeclared,
+				Recognizer: "declared",
+			},
+		},
+		{
+			name:       "declared as a list the decisions range over",
+			inputPaths: []string{"input.subjects[_]"},
+			subject:    "input.subjects",
+			expected: Shape{
+				Subject:    "input.subjects[_]",
+				Confidence: ConfidenceDeclared,
+				Recognizer: "declared",
+			},
+		},
+		{
+			name:       "not declared",
+			inputPaths: aap,
+			expected: Shape{
+				Subject:    "input.user",
+				Confidence: ConfidenceNames,
+				Recognizer: "field names",
+			},
+		},
+		{name: "read by no decision", inputPaths: aap, subject: "input.launched_by.name", err: ErrSubjectNotRead},
+		{name: "not in the request", inputPaths: aap, subject: "data.users", err: ErrBadSubject},
+		{name: "not a path at all", inputPaths: aap, subject: "input.", err: ErrBadSubject},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ShapeOf(&ReadSet{InputPaths: tt.inputPaths}, tt.subject)
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("ShapeOf() error = %v, want %v", err, tt.err)
+			}
+			if got != tt.expected {
+				t.Errorf("shape = %+v, want %+v", got, tt.expected)
 			}
 		})
 	}

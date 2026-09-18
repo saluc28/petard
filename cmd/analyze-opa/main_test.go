@@ -504,6 +504,28 @@ func TestRunReportsWriteModelCoverage(t *testing.T) {
 	}
 }
 
+// A subject declared from outside replaces the guess about field names, and the
+// report says it was declared. A declaration nothing reads is refused.
+func TestRunTakesADeclaredSubject(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	if code := run([]string{"-subject", "input.user", fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	if out := stdout.String(); !strings.Contains(out, "request shape:  subject=input.user (level A, declared)") {
+		t.Errorf("the report does not say the subject was declared:\n%s", out)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"-subject", "input.requester", fixture("policy-v1")}, &stdout, &stderr); code != exitFailure {
+		t.Errorf("exit code = %d, want %d", code, exitFailure)
+	}
+	if !strings.Contains(stderr.String(), "no decision reads the declared subject: input.requester") {
+		t.Errorf("stderr does not say the subject is read by nothing: %s", stderr.String())
+	}
+}
+
 func TestRunUsageErrors(t *testing.T) {
 	tests := []struct {
 		name string

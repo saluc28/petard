@@ -400,3 +400,20 @@ func TestRunRefusesInvocationsThatAskForNothing(t *testing.T) {
 		})
 	}
 }
+
+// The subject declared on the command line reaches the analysis, and one no
+// decision reads is refused before anything is written.
+func TestRunRefusesASubjectNothingReads(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "petard.json")
+
+	var stdout, stderr bytes.Buffer
+	if code := run(analysisArgs("-out", path, "-subject", "input.requester"), &stdout, &stderr); code != exitFailure {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFailure, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "no decision reads the declared subject: input.requester") {
+		t.Errorf("stderr does not say the subject is read by nothing: %s", stderr.String())
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("a payload was written for an analysis that was refused (stat: %v)", err)
+	}
+}
