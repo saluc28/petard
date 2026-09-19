@@ -194,15 +194,16 @@ func TestPanelsRenderForEveryEntityOfTheFixture(t *testing.T) {
 		check(what, render(t, edgeSections[edge.Kind.Name], edge))
 	}
 
-	for what, expected := range map[string]string{
-		"PTD_CanEscalateTo carol -> alice": "**carol** can take the position **alice** holds",
-		"PTD_Reads data.quill.tenant_policy.denied_mfa -> data.tenants[_].policy.require_mfa": "**Absent for** dolm, out of 2 documents tried.",
-		"data.quill.review.allow_unguarded":                                                   "`input.reviews`",
-	} {
+	says := func(what, expected string) {
+		t.Helper()
 		if text, found := rendered[what]; !found || !strings.Contains(text, expected) {
 			t.Errorf("%s does not say %q:\n%s", what, expected, text)
 		}
 	}
+	says("PTD_CanEscalateTo carol -> alice", "**carol** can take the position **alice** holds")
+	says("PTD_Reads data.quill.tenant_policy.denied_mfa -> data.tenants[_].policy.require_mfa",
+		"**Absent for** dolm, out of 2 documents tried.")
+	says("data.quill.review.allow_unguarded", "`input.reviews`")
 	for what, text := range rendered {
 		if strings.HasPrefix(what, "PTD_CanEscalateTo carol") && !strings.Contains(text, "PTD-OPA-006") {
 			t.Errorf("%s does not name the pattern that drew it:\n%s", what, text)
