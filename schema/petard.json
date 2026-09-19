@@ -2,7 +2,7 @@
   "schema": {
     "name": "petard",
     "display_name": "Petard",
-    "version": "v0.1.0",
+    "version": "v0.2.0",
     "namespace": "PTD"
   },
   "node_kinds": [
@@ -12,7 +12,23 @@
       "description": "Anything that can hold privilege: a user, a role, a service account, or an external system that decides on their behalf.",
       "is_display_kind": true,
       "icon": "user",
-      "color": "#4d7ea8"
+      "color": "#4d7ea8",
+      "info": {
+        "details": {
+          "title": "What Petard found",
+          "position": 2,
+          "markdown": {
+            "content": "{{ with .Properties.patterns }}\n**Found by**\n{{ range . }}{{ if eq . \"PTD-OPA-001\" }}\n- [PTD-OPA-001](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml): The subject writes an attribute the policy reads to decide about them. A field the subject cannot write, assigned by a role through an administration API, is the counter case.{{ end }}{{ if eq . \"PTD-OPA-002\" }}\n- [PTD-OPA-002](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml): A deny rule is silent for part of the data, so the check does not apply there. A default that denies on the rule that reads, or a second rule of the decision that denies when the path is missing, closes it.{{ end }}{{ if eq . \"PTD-OPA-003\" }}\n- [PTD-OPA-003](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml): A position in a hierarchy grants everything below it, and nothing says so. A position is a target rather than a defect: what matters is who can take it.{{ end }}{{ if eq . \"PTD-OPA-004\" }}\n- [PTD-OPA-004](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml): A decision depends on an external source, so whoever controls it decides. Whoever controls the endpoint, or can steer where the call goes, decides in the policy's place.{{ end }}{{ if eq . \"PTD-OPA-005\" }}\n- [PTD-OPA-005](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml): A check that needs an external source stops applying when it does not answer. Consuming the error closes it, by denying when the source does not answer.{{ end }}{{ if eq . \"PTD-OPA-006\" }}\n- [PTD-OPA-006](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml): One decision lets a principal write the data another decision grants on. The decision that allows the write refusing the value the other one grants on closes it.{{ end }}{{ if eq . \"PTD-OPA-007\" }}\n- [PTD-OPA-007](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml): A check written with every stops applying when its domain is empty. Requiring at least one element before the every closes it.{{ end }}{{ if eq . \"PTD-OPA-008\" }}\n- [PTD-OPA-008](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml): A document every request shares decides for anybody who asks. Reading the document next to the requester's own record closes it: somebody with no record gets nothing.{{ end }}{{ end }}\n{{ end }}\n{{ with .Properties.candidate_patterns }}\n**Candidate of, until a write model settles it**\n{{ range . }}{{ if eq . \"PTD-OPA-001\" }}\n- [PTD-OPA-001](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml): The subject writes an attribute the policy reads to decide about them. A field the subject cannot write, assigned by a role through an administration API, is the counter case.{{ end }}{{ if eq . \"PTD-OPA-002\" }}\n- [PTD-OPA-002](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml): A deny rule is silent for part of the data, so the check does not apply there. A default that denies on the rule that reads, or a second rule of the decision that denies when the path is missing, closes it.{{ end }}{{ if eq . \"PTD-OPA-003\" }}\n- [PTD-OPA-003](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml): A position in a hierarchy grants everything below it, and nothing says so. A position is a target rather than a defect: what matters is who can take it.{{ end }}{{ if eq . \"PTD-OPA-004\" }}\n- [PTD-OPA-004](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml): A decision depends on an external source, so whoever controls it decides. Whoever controls the endpoint, or can steer where the call goes, decides in the policy's place.{{ end }}{{ if eq . \"PTD-OPA-005\" }}\n- [PTD-OPA-005](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml): A check that needs an external source stops applying when it does not answer. Consuming the error closes it, by denying when the source does not answer.{{ end }}{{ if eq . \"PTD-OPA-006\" }}\n- [PTD-OPA-006](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml): One decision lets a principal write the data another decision grants on. The decision that allows the write refusing the value the other one grants on closes it.{{ end }}{{ if eq . \"PTD-OPA-007\" }}\n- [PTD-OPA-007](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml): A check written with every stops applying when its domain is empty. Requiring at least one element before the every closes it.{{ end }}{{ if eq . \"PTD-OPA-008\" }}\n- [PTD-OPA-008](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml): A document every request shares decides for anybody who asks. Reading the document next to the requester's own record closes it: somebody with no record gets nothing.{{ end }}{{ end }}\n{{ end }}\n\n{{ with .Properties.positions }}**Positions worth taking**\n{{ range . }}\n- {{ . }}{{ end }}\n{{ end }}"
+          }
+        },
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "Anything that can hold privilege in the system around the policy: a user or a team the data names, somebody the write model says can write a document, or an external system whose answers a decision believes.\n\n`PTD_CanPerform` says what the principal can get out of a decision given the data as it stands, and `PTD_CanEscalateTo` whose position it can take by writing something it is allowed to write."
+          }
+        }
+      }
     },
     {
       "name": "PTD_Action",
@@ -20,7 +36,16 @@
       "description": "An operation a principal may be allowed to perform, as the policy names it.",
       "is_display_kind": false,
       "icon": "bolt",
-      "color": "#e0a458"
+      "color": "#e0a458",
+      "info": {
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "An operation the policy names, such as read or merge. A capability points here when the condition that grants it fixes the action and names no resource."
+          }
+        }
+      }
     },
     {
       "name": "PTD_Resource",
@@ -28,7 +53,16 @@
       "description": "What an action is performed on, named by the document a decision turned out to allow.",
       "is_display_kind": true,
       "icon": "file",
-      "color": "#6a994e"
+      "color": "#6a994e",
+      "info": {
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "A document a decision can grant, named by the value the residual condition fixes for it. Capabilities point here."
+          }
+        }
+      }
     },
     {
       "name": "PTD_Attribute",
@@ -36,7 +70,16 @@
       "description": "A field a decision depends on, whether it was read from data or believed from an external answer. It is what an escalation aims at.",
       "is_display_kind": false,
       "icon": "tag",
-      "color": "#9b5de5"
+      "color": "#9b5de5",
+      "info": {
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "A field a decision depends on: a document under `data`, which the rules that read it point to with `PTD_Reads`, or a value an external source answered with, joined to that source by `PTD_TaintedBy`.\n\nWhoever the write model says can write it is at the end of `PTD_WrittenBy`, and that is where an escalation aims."
+          }
+        }
+      }
     },
     {
       "name": "PTD_Rule",
@@ -44,34 +87,130 @@
       "description": "A rule of the analyzed policy. Whether the PEP asks for it directly is the is_decision property.",
       "is_display_kind": false,
       "icon": "gavel",
-      "color": "#bc4749"
+      "color": "#bc4749",
+      "info": {
+        "details": {
+          "title": "What Petard found",
+          "position": 2,
+          "markdown": {
+            "content": "{{ if .Properties.is_decision }}The enforcement point asks for this rule directly.{{ else }}A decision reaches this rule through the rules that call it.{{ end }}\n\n{{ with .Properties.patterns }}\n**Found by**\n{{ range . }}{{ if eq . \"PTD-OPA-001\" }}\n- [PTD-OPA-001](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml): The subject writes an attribute the policy reads to decide about them. A field the subject cannot write, assigned by a role through an administration API, is the counter case.{{ end }}{{ if eq . \"PTD-OPA-002\" }}\n- [PTD-OPA-002](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml): A deny rule is silent for part of the data, so the check does not apply there. A default that denies on the rule that reads, or a second rule of the decision that denies when the path is missing, closes it.{{ end }}{{ if eq . \"PTD-OPA-003\" }}\n- [PTD-OPA-003](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml): A position in a hierarchy grants everything below it, and nothing says so. A position is a target rather than a defect: what matters is who can take it.{{ end }}{{ if eq . \"PTD-OPA-004\" }}\n- [PTD-OPA-004](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml): A decision depends on an external source, so whoever controls it decides. Whoever controls the endpoint, or can steer where the call goes, decides in the policy's place.{{ end }}{{ if eq . \"PTD-OPA-005\" }}\n- [PTD-OPA-005](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml): A check that needs an external source stops applying when it does not answer. Consuming the error closes it, by denying when the source does not answer.{{ end }}{{ if eq . \"PTD-OPA-006\" }}\n- [PTD-OPA-006](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml): One decision lets a principal write the data another decision grants on. The decision that allows the write refusing the value the other one grants on closes it.{{ end }}{{ if eq . \"PTD-OPA-007\" }}\n- [PTD-OPA-007](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml): A check written with every stops applying when its domain is empty. Requiring at least one element before the every closes it.{{ end }}{{ if eq . \"PTD-OPA-008\" }}\n- [PTD-OPA-008](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml): A document every request shares decides for anybody who asks. Reading the document next to the requester's own record closes it: somebody with no record gets nothing.{{ end }}{{ end }}\n{{ end }}\n{{ with .Properties.candidate_patterns }}\n**Candidate of, until a write model settles it**\n{{ range . }}{{ if eq . \"PTD-OPA-001\" }}\n- [PTD-OPA-001](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml): The subject writes an attribute the policy reads to decide about them. A field the subject cannot write, assigned by a role through an administration API, is the counter case.{{ end }}{{ if eq . \"PTD-OPA-002\" }}\n- [PTD-OPA-002](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml): A deny rule is silent for part of the data, so the check does not apply there. A default that denies on the rule that reads, or a second rule of the decision that denies when the path is missing, closes it.{{ end }}{{ if eq . \"PTD-OPA-003\" }}\n- [PTD-OPA-003](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml): A position in a hierarchy grants everything below it, and nothing says so. A position is a target rather than a defect: what matters is who can take it.{{ end }}{{ if eq . \"PTD-OPA-004\" }}\n- [PTD-OPA-004](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml): A decision depends on an external source, so whoever controls it decides. Whoever controls the endpoint, or can steer where the call goes, decides in the policy's place.{{ end }}{{ if eq . \"PTD-OPA-005\" }}\n- [PTD-OPA-005](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml): A check that needs an external source stops applying when it does not answer. Consuming the error closes it, by denying when the source does not answer.{{ end }}{{ if eq . \"PTD-OPA-006\" }}\n- [PTD-OPA-006](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml): One decision lets a principal write the data another decision grants on. The decision that allows the write refusing the value the other one grants on closes it.{{ end }}{{ if eq . \"PTD-OPA-007\" }}\n- [PTD-OPA-007](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml): A check written with every stops applying when its domain is empty. Requiring at least one element before the every closes it.{{ end }}{{ if eq . \"PTD-OPA-008\" }}\n- [PTD-OPA-008](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml): A document every request shares decides for anybody who asks. Reading the document next to the requester's own record closes it: somebody with no record gets nothing.{{ end }}{{ end }}\n{{ end }}\n\n{{ with .Properties.empty_domains }}**Collections that pass when empty**\n{{ range . }}\n- `{{ . }}`{{ end }}\n{{ end }}"
+          }
+        },
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "A rule of the analyzed policy. Its `PTD_Reads` edges are what it depends on, and `is_decision` says whether the enforcement point asks for it directly."
+          }
+        }
+      }
     }
   ],
   "relationship_kinds": [
     {
       "name": "PTD_CanPerform",
       "description": "The principal can get this out of a decision, given the data as it stands. The condition property is what still has to hold.",
-      "is_traversable": true
+      "is_traversable": true,
+      "info": {
+        "details": {
+          "title": "What Petard found",
+          "position": 2,
+          "markdown": {
+            "content": "{{ with .Properties.decision }}**Decision** `{{ . }}`{{ end }}\n\n{{ with .Properties.condition }}**What still has to hold**, as partial evaluation left it:\n\n```\n{{ . }}\n```{{ end }}\n\n{{ with .Properties.action }}**Action** {{ . }}{{ end }}\n\n{{ with .Properties.confidence }}The request was recognized at level {{ . }} on the A to E scale.{{ end }}"
+          }
+        },
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "The principal can get this out of the decision, given the data as it stands. It is a measurement: the same policy against other documents gives other edges."
+          }
+        }
+      }
     },
     {
       "name": "PTD_Reads",
       "description": "The rule depends on this attribute. A dependency, not a capability, which is why it is not traversable.",
-      "is_traversable": false
+      "is_traversable": false,
+      "info": {
+        "details": {
+          "title": "What Petard found",
+          "position": 2,
+          "markdown": {
+            "content": "{{ with .Properties.ref }}Read as `{{ . }}`{{ end }}{{ with .Properties.source_file }} at `{{ . }}:{{ $.Properties.source_line }}`{{ end }}.\n\n{{ with .Properties.provenance }}The document is chosen by `{{ . }}`.{{ end }}\n\n{{ with .Properties.patterns }}\n**Found by**\n{{ range . }}{{ if eq . \"PTD-OPA-001\" }}\n- [PTD-OPA-001](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml): The subject writes an attribute the policy reads to decide about them. A field the subject cannot write, assigned by a role through an administration API, is the counter case.{{ end }}{{ if eq . \"PTD-OPA-002\" }}\n- [PTD-OPA-002](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml): A deny rule is silent for part of the data, so the check does not apply there. A default that denies on the rule that reads, or a second rule of the decision that denies when the path is missing, closes it.{{ end }}{{ if eq . \"PTD-OPA-003\" }}\n- [PTD-OPA-003](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml): A position in a hierarchy grants everything below it, and nothing says so. A position is a target rather than a defect: what matters is who can take it.{{ end }}{{ if eq . \"PTD-OPA-004\" }}\n- [PTD-OPA-004](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml): A decision depends on an external source, so whoever controls it decides. Whoever controls the endpoint, or can steer where the call goes, decides in the policy's place.{{ end }}{{ if eq . \"PTD-OPA-005\" }}\n- [PTD-OPA-005](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml): A check that needs an external source stops applying when it does not answer. Consuming the error closes it, by denying when the source does not answer.{{ end }}{{ if eq . \"PTD-OPA-006\" }}\n- [PTD-OPA-006](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml): One decision lets a principal write the data another decision grants on. The decision that allows the write refusing the value the other one grants on closes it.{{ end }}{{ if eq . \"PTD-OPA-007\" }}\n- [PTD-OPA-007](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml): A check written with every stops applying when its domain is empty. Requiring at least one element before the every closes it.{{ end }}{{ if eq . \"PTD-OPA-008\" }}\n- [PTD-OPA-008](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml): A document every request shares decides for anybody who asks. Reading the document next to the requester's own record closes it: somebody with no record gets nothing.{{ end }}{{ end }}\n{{ end }}\n{{ with .Properties.candidate_patterns }}\n**Candidate of, until a write model settles it**\n{{ range . }}{{ if eq . \"PTD-OPA-001\" }}\n- [PTD-OPA-001](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml): The subject writes an attribute the policy reads to decide about them. A field the subject cannot write, assigned by a role through an administration API, is the counter case.{{ end }}{{ if eq . \"PTD-OPA-002\" }}\n- [PTD-OPA-002](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml): A deny rule is silent for part of the data, so the check does not apply there. A default that denies on the rule that reads, or a second rule of the decision that denies when the path is missing, closes it.{{ end }}{{ if eq . \"PTD-OPA-003\" }}\n- [PTD-OPA-003](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml): A position in a hierarchy grants everything below it, and nothing says so. A position is a target rather than a defect: what matters is who can take it.{{ end }}{{ if eq . \"PTD-OPA-004\" }}\n- [PTD-OPA-004](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml): A decision depends on an external source, so whoever controls it decides. Whoever controls the endpoint, or can steer where the call goes, decides in the policy's place.{{ end }}{{ if eq . \"PTD-OPA-005\" }}\n- [PTD-OPA-005](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml): A check that needs an external source stops applying when it does not answer. Consuming the error closes it, by denying when the source does not answer.{{ end }}{{ if eq . \"PTD-OPA-006\" }}\n- [PTD-OPA-006](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml): One decision lets a principal write the data another decision grants on. The decision that allows the write refusing the value the other one grants on closes it.{{ end }}{{ if eq . \"PTD-OPA-007\" }}\n- [PTD-OPA-007](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml): A check written with every stops applying when its domain is empty. Requiring at least one element before the every closes it.{{ end }}{{ if eq . \"PTD-OPA-008\" }}\n- [PTD-OPA-008](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml): A document every request shares decides for anybody who asks. Reading the document next to the requester's own record closes it: somebody with no record gets nothing.{{ end }}{{ end }}\n{{ end }}\n\n{{ with .Properties.uncovered_keys }}**Absent for** {{ . }}, out of {{ $.Properties.keys_checked }} documents tried.{{ end }}\n\n{{ with .Properties.mitigation }}**When the source does not answer**, {{ . }}.{{ end }}"
+          }
+        },
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "The rule depends on this attribute. A dependency, not a capability, which is why pathfinding does not walk it: what a finding says about a read is on the edge instead."
+          }
+        }
+      }
     },
     {
       "name": "PTD_WrittenBy",
       "description": "The attribute can be written by this principal. It describes the system around OPA and is declared rather than derived from any policy.",
-      "is_traversable": true
+      "is_traversable": true,
+      "info": {
+        "details": {
+          "title": "What Petard found",
+          "position": 2,
+          "markdown": {
+            "content": "{{ with .Properties.via }}Written through `{{ . }}`{{ end }}{{ with .Properties.via_write_path }}, declared as `{{ . }}`{{ end }}.\n\n{{ with .Properties.write_confidence }}The write model says it was {{ . }}.{{ end }}"
+          }
+        },
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "The attribute can be written by this principal. It describes the system around OPA and is declared in the write model rather than derived from any policy."
+          }
+        }
+      }
     },
     {
       "name": "PTD_CanEscalateTo",
       "description": "The principal can reach the position the other one holds, by writing something they are allowed to write. The only edge that means privilege escalation.",
-      "is_traversable": true
+      "is_traversable": true,
+      "info": {
+        "details": {
+          "title": "What Petard found",
+          "position": 2,
+          "markdown": {
+            "content": "**{{ .Source.Properties.name }}** can take the position **{{ .Target.Properties.name }}** holds{{ with .Properties.decision }} in `{{ . }}`{{ end }}{{ with .Properties.via_write_path }}, by writing `{{ . }}`{{ end }}{{ with .Properties.via }} through `{{ . }}`{{ end }}.\n\n{{ with .Properties.value }}The value written is `{{ . }}`{{ with $.Properties.authorized_by }}, which `{{ . }}` allows{{ end }}.{{ end }}\n\n{{ with .Properties.relation }}Through `{{ . }}`: {{ $.Properties.reach_transitive }} ways in with it, {{ $.Properties.reach_direct }} without it.{{ end }}\n\n{{ with .Properties.patterns }}\n**Found by**\n{{ range . }}{{ if eq . \"PTD-OPA-001\" }}\n- [PTD-OPA-001](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml): The subject writes an attribute the policy reads to decide about them. A field the subject cannot write, assigned by a role through an administration API, is the counter case.{{ end }}{{ if eq . \"PTD-OPA-002\" }}\n- [PTD-OPA-002](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml): A deny rule is silent for part of the data, so the check does not apply there. A default that denies on the rule that reads, or a second rule of the decision that denies when the path is missing, closes it.{{ end }}{{ if eq . \"PTD-OPA-003\" }}\n- [PTD-OPA-003](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml): A position in a hierarchy grants everything below it, and nothing says so. A position is a target rather than a defect: what matters is who can take it.{{ end }}{{ if eq . \"PTD-OPA-004\" }}\n- [PTD-OPA-004](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml): A decision depends on an external source, so whoever controls it decides. Whoever controls the endpoint, or can steer where the call goes, decides in the policy's place.{{ end }}{{ if eq . \"PTD-OPA-005\" }}\n- [PTD-OPA-005](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml): A check that needs an external source stops applying when it does not answer. Consuming the error closes it, by denying when the source does not answer.{{ end }}{{ if eq . \"PTD-OPA-006\" }}\n- [PTD-OPA-006](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml): One decision lets a principal write the data another decision grants on. The decision that allows the write refusing the value the other one grants on closes it.{{ end }}{{ if eq . \"PTD-OPA-007\" }}\n- [PTD-OPA-007](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml): A check written with every stops applying when its domain is empty. Requiring at least one element before the every closes it.{{ end }}{{ if eq . \"PTD-OPA-008\" }}\n- [PTD-OPA-008](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml): A document every request shares decides for anybody who asks. Reading the document next to the requester's own record closes it: somebody with no record gets nothing.{{ end }}{{ end }}\n{{ end }}\n{{ with .Properties.candidate_patterns }}\n**Candidate of, until a write model settles it**\n{{ range . }}{{ if eq . \"PTD-OPA-001\" }}\n- [PTD-OPA-001](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml): The subject writes an attribute the policy reads to decide about them. A field the subject cannot write, assigned by a role through an administration API, is the counter case.{{ end }}{{ if eq . \"PTD-OPA-002\" }}\n- [PTD-OPA-002](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml): A deny rule is silent for part of the data, so the check does not apply there. A default that denies on the rule that reads, or a second rule of the decision that denies when the path is missing, closes it.{{ end }}{{ if eq . \"PTD-OPA-003\" }}\n- [PTD-OPA-003](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml): A position in a hierarchy grants everything below it, and nothing says so. A position is a target rather than a defect: what matters is who can take it.{{ end }}{{ if eq . \"PTD-OPA-004\" }}\n- [PTD-OPA-004](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml): A decision depends on an external source, so whoever controls it decides. Whoever controls the endpoint, or can steer where the call goes, decides in the policy's place.{{ end }}{{ if eq . \"PTD-OPA-005\" }}\n- [PTD-OPA-005](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml): A check that needs an external source stops applying when it does not answer. Consuming the error closes it, by denying when the source does not answer.{{ end }}{{ if eq . \"PTD-OPA-006\" }}\n- [PTD-OPA-006](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml): One decision lets a principal write the data another decision grants on. The decision that allows the write refusing the value the other one grants on closes it.{{ end }}{{ if eq . \"PTD-OPA-007\" }}\n- [PTD-OPA-007](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml): A check written with every stops applying when its domain is empty. Requiring at least one element before the every closes it.{{ end }}{{ if eq . \"PTD-OPA-008\" }}\n- [PTD-OPA-008](https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml): A document every request shares decides for anybody who asks. Reading the document next to the requester's own record closes it: somebody with no record gets nothing.{{ end }}{{ end }}\n{{ end }}"
+          }
+        },
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "The principal can reach the position the other one holds, by writing something it is allowed to write. The only edge that means privilege escalation."
+          }
+        }
+      }
     },
     {
       "name": "PTD_TaintedBy",
       "description": "The value comes from this external source rather than from the policy. A dependency, not a capability.",
-      "is_traversable": false
+      "is_traversable": false,
+      "info": {
+        "details": {
+          "title": "What Petard found",
+          "position": 2,
+          "markdown": {
+            "content": "{{ with .Properties.provenance_origin }}Answered to a call to `{{ . }}`{{ end }}{{ with .Properties.source_file }} at `{{ . }}:{{ $.Properties.source_line }}`{{ end }}."
+          }
+        },
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "The value comes from this external source rather than from the policy. A dependency, not a capability: whoever answers decides what the value is."
+          }
+        }
+      }
     }
   ],
   "environments": [],

@@ -25,7 +25,7 @@ import (
 // Version is the version of the schema Petard installs, which changes whenever
 // a kind or a property does. BloodHound keys an extension by its name, so this
 // is what tells one installation from the next.
-const Version = "v0.1.0"
+const Version = "v0.2.0"
 
 // namespace is what the extension declares, and it is PTD and not PTD_.
 //
@@ -127,6 +127,7 @@ func Schema() bhgraph.Extension {
 			IsDisplayKind: drawn.primary,
 			Icon:          drawn.icon,
 			Color:         drawn.color,
+			Info:          nodeInfo(kind),
 		})
 	}
 
@@ -135,6 +136,7 @@ func Schema() bhgraph.Extension {
 			Name:          string(kind),
 			Description:   descriptions[kind],
 			IsTraversable: kind.IsTraversable(),
+			Info:          edgeInfo(kind),
 		})
 	}
 	return extension

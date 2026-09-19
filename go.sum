@@ -74,8 +74,8 @@ github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9 h1:bsUq1dX0N8A
 github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
 github.com/rogpeppe/go-internal v1.16.0 h1:O9DK+vNMDVGLr2BeZqmpLeMjiMNkuXfcqntWbZV6S5g=
 github.com/rogpeppe/go-internal v1.16.0/go.mod h1:DrUVZyrJU+txYW5/1kwtXQSMFio52ZOxX7yM1VHvnxs=
-github.com/saluc28/bhgraph v0.2.2 h1:KKWkTX5C+Fqx/VBzI5YKhAH6oV4gJW1TpMAeRG+pEK8=
-github.com/saluc28/bhgraph v0.2.2/go.mod h1:zWOsOuq9pYeZloHSP5tmWhaIWEO2OL+MGfjNg5OVWpQ=
+github.com/saluc28/bhgraph v0.3.0 h1:bLHglkex/wXtybTxFYGOkirCLUXZDRFvCs01l23J6Kk=
+github.com/saluc28/bhgraph v0.3.0/go.mod h1:zWOsOuq9pYeZloHSP5tmWhaIWEO2OL+MGfjNg5OVWpQ=
 github.com/segmentio/asm v1.2.1 h1:DTNbBqs57ioxAD4PrArqftgypG4/qNpXoJx8TVXxPR0=
 github.com/segmentio/asm v1.2.1/go.mod h1:BqMnlJP91P8d+4ibuonYZw9mfnzI9HfxselHZr5aAcs=
 github.com/sirupsen/logrus v1.10.2 h1:G2SED73/qrAu6YwbdxOD6peLkCBI3z7L+ykJFTXJBBo=
