@@ -325,3 +325,68 @@ func TestAddCoverageGapsEnrichesTheRead(t *testing.T) {
 		t.Error("no read carries the gap the pattern found")
 	}
 }
+
+// The case of the fixture written the way a decision that answers with its
+// violations writes it: a violation for a tenant that requires MFA, and an
+// answer that is allowed when there are none. The violation is on the side that
+// denies even though no not is written anywhere, and for the tenant with no
+// policy it never fires.
+func TestFailOpenOnMissingDataThroughCountedViolations(t *testing.T) {
+	const policy = `package t
+
+violations contains "multi-factor authentication is required" if {
+	data.tenants[input.tenant].policy.require_mfa == true
+	not input.mfa
+}
+
+decision := {"allowed": count(violations) == 0, "violations": [v | some v in violations]}
+`
+	const documents = `{"tenants": {"berq": {"policy": {"require_mfa": true}}, "dolm": {"status": "active"}}}`
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "policy.rego"), []byte(policy), 0o600); err != nil {
+		t.Fatalf("writing the policy: %v", err)
+	}
+	bundle, err := opaengine.Load([]string{dir}, opaengine.ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	bundle.Entrypoints = []string{"t/decision/allowed"}
+	reads, err := opaengine.Reads(bundle, opaengine.Limits{})
+	if err != nil {
+		t.Fatalf("Reads() error = %v", err)
+	}
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, "data.json"), []byte(documents), 0o600); err != nil {
+		t.Fatalf("writing the data: %v", err)
+	}
+	data, err := opaengine.LoadData([]string{dataDir})
+	if err != nil {
+		t.Fatalf("LoadData() error = %v", err)
+	}
+
+	findings, err := FailOpenOnMissingData(t.Context(), reads, data)
+	if err != nil {
+		t.Fatalf("FailOpenOnMissingData() error = %v", err)
+	}
+	if len(findings) != 1 || findings[0].Decision != "data.t.decision.allowed" ||
+		!slices.Equal(findings[0].UncoveredKeys, []string{"dolm"}) {
+		t.Fatalf("findings = %v, want the check that does not reach dolm", findings)
+	}
+
+	// What that means for the answer: without MFA, berq is refused and dolm is
+	// allowed.
+	for tenant, always := range map[string]bool{"berq": false, "dolm": true} {
+		residuals, err := opaengine.Residuals(t.Context(), bundle, data, opaengine.Request{
+			Decision: "data.t.decision.allowed",
+			Unknowns: []string{"input.mfa"},
+			Input:    map[string]any{"tenant": tenant},
+		}, opaengine.Limits{})
+		if err != nil {
+			t.Fatalf("Residuals() error = %v", err)
+		}
+		if residuals.Always != always {
+			t.Errorf("%s is allowed whatever the MFA: %v, want %v (%v)", tenant, residuals.Always, always, residuals.Conditions)
+		}
+	}
+}

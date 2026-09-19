@@ -39,7 +39,7 @@ import (
 // exclude each other would change what it answers. Partial evaluation still
 // hands back a call to one of them whole.
 func exclusiveElse(modules map[string]*ast.Module) bool {
-	helpers := helperNames(modules)
+	helpers := helperNames(modules, "_petard_else_")
 
 	rewrote := false
 	for _, name := range slices.Sorted(maps.Keys(modules)) {
@@ -106,8 +106,9 @@ func exclusiveBranches(root *ast.Rule, helpers func() ast.Var) []*ast.Rule {
 	return rules
 }
 
-// helperNames returns a source of rule names no rule of the bundle has.
-func helperNames(modules map[string]*ast.Module) func() ast.Var {
+// helperNames returns a source of rule names no rule of the bundle has, each the
+// prefix followed by a number.
+func helperNames(modules map[string]*ast.Module, prefix string) func() ast.Var {
 	taken := map[string]bool{}
 	for _, module := range modules {
 		for _, rule := range module.Rules {
@@ -117,7 +118,7 @@ func helperNames(modules map[string]*ast.Module) func() ast.Var {
 	next := 0
 	return func() ast.Var {
 		for {
-			name := fmt.Sprintf("_petard_else_%d", next)
+			name := fmt.Sprintf("%s%d", prefix, next)
 			next++
 			if !taken[name] {
 				taken[name] = true

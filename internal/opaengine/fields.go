@@ -1,6 +1,8 @@
 package opaengine
 
 import (
+	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -255,4 +257,114 @@ func (r *refReader) decisionsAt(rule *ast.Rule, top int, reach map[*ast.Rule]dec
 		kept, sliced := fields[decision.Name]
 		return sliced && !kept[top]
 	})
+}
+
+// fieldRules adds, for every rule whose answer is an object written out, one
+// rule for each field that computes that field alone, and returns the rule each
+// field is asked at, by the path of the field.
+//
+// Asked for one field, OPA still builds the whole object, and partial evaluation
+// saves a comprehension that depends on something unknown as it is written
+// (v1/topdown/eval.go:1243 at v1.20.2). The list of violations next to the
+// verdict then stays in every residual of the verdict, and a decision that
+// grants whatever is asked reads as granting under a condition. The rule added
+// for a field keeps the body of the rule it comes from, and the other fields
+// that can fail as conditions of it, so it holds exactly when the object does;
+// a comprehension and a constant cannot fail, and are left out.
+//
+// A field is written this way only when every definition of the rule, the
+// default included, answers with an object that has it: anything else is asked
+// at the field as it is.
+func fieldRules(modules map[string]*ast.Module) map[string]string {
+	names := helperNames(modules, "_petard_field_")
+
+	byPath := map[string][]*ast.Rule{}
+	var paths []string
+	for _, name := range slices.Sorted(maps.Keys(modules)) {
+		for _, rule := range modules[name].Rules {
+			if len(rule.Head.Args) > 0 || rule.Head.RuleKind() != ast.SingleValue || !rule.Head.Ref().IsGround() {
+				continue
+			}
+			path := rulePath(rule).String()
+			if byPath[path] == nil {
+				paths = append(paths, path)
+			}
+			byPath[path] = append(byPath[path], rule)
+		}
+	}
+
+	queries := map[string]string{}
+	for _, path := range paths {
+		rules := byPath[path]
+		for _, key := range sharedKeys(rules) {
+			name := names()
+			for _, rule := range rules {
+				if field, written := fieldRule(rule, key, name); written {
+					rule.Module.Rules = append(rule.Module.Rules, field)
+				}
+			}
+			field := rulePath(rules[0]).Append(ast.StringTerm(key)).String()
+			queries[field] = rules[0].Module.Package.Path.Append(ast.StringTerm(string(name))).String()
+		}
+	}
+	return queries
+}
+
+// sharedKeys returns the keys every one of the rules answers with, sorted, when
+// each answers with an object written out whose keys are all strings.
+func sharedKeys(rules []*ast.Rule) []string {
+	var shared []string
+	for i, rule := range rules {
+		object, isObject := rule.Head.Value.Value.(ast.Object)
+		if !isObject {
+			return nil
+		}
+		var keys []string
+		for _, key := range object.Keys() {
+			name, isString := key.Value.(ast.String)
+			if !isString {
+				return nil
+			}
+			keys = append(keys, string(name))
+		}
+		if i == 0 {
+			shared = keys
+			continue
+		}
+		shared = slices.DeleteFunc(shared, func(key string) bool { return !slices.Contains(keys, key) })
+	}
+	slices.Sort(shared)
+	return shared
+}
+
+// fieldRule is the rule that computes one field of what a rule answers, under
+// the same body, with every other field that can fail kept as a condition, and
+// reports whether the rule answers with an object at all.
+func fieldRule(rule *ast.Rule, key string, name ast.Var) (*ast.Rule, bool) {
+	object, isObject := rule.Head.Value.Value.(ast.Object)
+	if !isObject {
+		return nil, false
+	}
+	body := rule.Body.Copy()
+	held := 0
+	object.Foreach(func(k, v *ast.Term) {
+		if k.Value.Compare(ast.String(key)) == 0 || ast.IsConstant(v.Value) || ast.IsComprehension(v.Value) {
+			return
+		}
+		// A wildcard, which the compiler renames, so that nothing in the body
+		// can be bound by it.
+		wildcard := ast.VarTerm(fmt.Sprintf("%spetard%d", ast.WildcardPrefix, held))
+		held++
+		body.Append(ast.Equality.Expr(wildcard, v.Copy()))
+	})
+
+	head := ast.NewHead(name, nil, object.Get(ast.StringTerm(key)).Copy())
+	head.Location = rule.Head.Location
+	return &ast.Rule{
+		Head:     head,
+		Body:     body,
+		Default:  rule.Default,
+		Module:   rule.Module,
+		Location: rule.Location,
+	}, true
 }

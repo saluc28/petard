@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/open-policy-agent/opa/v1/ast"
 )
@@ -105,18 +106,59 @@ type Bundle struct {
 	// would be refusing to analyze them at all.
 	Entrypoints []string
 
+	// parsed are the modules as written, kept until partial evaluation first
+	// asks for the policy it runs against, which is built from them.
+	parsed map[string]*ast.Module
+
 	// partialCompiler holds the same policy with every rule that carries an else
-	// rewritten into rules partial evaluation can go through, and is nil when
-	// the policy has none. See exclusiveElse.
+	// rewritten into rules partial evaluation can go through, and a rule of its
+	// own for every field of an answer written out as an object. It is nil when
+	// the policy has neither. See exclusiveElse and fieldRules.
 	partialCompiler *ast.Compiler
+
+	// fieldQueries are the rules of partialCompiler that compute one field
+	// each, by the path of the field.
+	fieldQueries map[string]string
+
+	partialOnce sync.Once
+	partialErr  error
 }
 
-// forPartial returns the compiler partial evaluation runs against.
-func (b *Bundle) forPartial() *ast.Compiler {
-	if b.partialCompiler != nil {
-		return b.partialCompiler
+// forPartial returns the compiler partial evaluation runs against, and builds
+// it the first time.
+//
+// It is built on demand because only partial evaluation needs it, and it costs
+// a second compilation: measured on a corpus of policies that answer with
+// objects, it doubled the time of a run that never evaluates anything.
+func (b *Bundle) forPartial() (*ast.Compiler, error) {
+	b.partialOnce.Do(func() {
+		modules := b.parsed
+		b.parsed = nil
+		if modules == nil {
+			return
+		}
+		// The else goes first, so that the branches it becomes get fields of
+		// their own too.
+		rewrote := exclusiveElse(modules)
+		b.fieldQueries = fieldRules(modules)
+		if !rewrote && len(b.fieldQueries) == 0 {
+			return
+		}
+		compiler := ast.NewCompiler()
+		compiler.Compile(modules)
+		if compiler.Failed() {
+			b.partialErr = fmt.Errorf("%w, rewritten for partial evaluation: %w", ErrCompile, compiler.Errors)
+			return
+		}
+		b.partialCompiler = compiler
+	})
+	if b.partialErr != nil {
+		return nil, b.partialErr
 	}
-	return b.Compiler
+	if b.partialCompiler != nil {
+		return b.partialCompiler, nil
+	}
+	return b.Compiler, nil
 }
 
 // Load reads every .rego file under paths, parses them together and compiles
@@ -160,19 +202,9 @@ func Load(paths []string, mode ParseMode) (*Bundle, error) {
 	for _, src := range sources {
 		loaded = append(loaded, src.name)
 	}
-	bundle := &Bundle{Compiler: compiler, RegoVersion: version, Files: loaded}
-
 	// The compiler worked on copies, so the parsed modules are still the policy
-	// as written and can be rewritten for the second one.
-	if exclusiveElse(modules) {
-		partial := ast.NewCompiler()
-		partial.Compile(modules)
-		if partial.Failed() {
-			return nil, fmt.Errorf("%w, with the rules that carry an else rewritten: %w", ErrCompile, partial.Errors)
-		}
-		bundle.partialCompiler = partial
-	}
-	return bundle, nil
+	// as written, and partial evaluation builds its own from them.
+	return &Bundle{Compiler: compiler, RegoVersion: version, Files: loaded, parsed: modules}, nil
 }
 
 // source is one file, read once so that the second parsing attempt does not go

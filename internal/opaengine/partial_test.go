@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/open-policy-agent/opa/v1/ast"
+
 	"github.com/saluc28/petard/internal/fixture"
 )
 
@@ -952,4 +954,30 @@ func writeData(t *testing.T, content string) *Data {
 		t.Fatalf("LoadData() error = %v", err)
 	}
 	return data
+}
+
+// A condition on constants is decided, and one that names anything left open,
+// or calls something that answers differently each time, is left as it is: a
+// call to http.send is never made.
+func TestDecidedConditions(t *testing.T) {
+	tests := []struct {
+		condition string
+		holds     bool
+		closed    bool
+	}{
+		{condition: "count(set()) == 0", holds: true, closed: true},
+		{condition: `count({"x"}) == 0`, holds: false, closed: true},
+		{condition: "input.mfa == true", closed: false},
+		{condition: "x := 1; x == 1", closed: false},
+		{condition: "time.now_ns() > 0", closed: false},
+		{condition: `is_object(http.send({"method": "get", "url": "https://petard-fixture.invalid"}))`, closed: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.condition, func(t *testing.T) {
+			holds, closed := decided(t.Context(), ast.MustParseBody(tt.condition))
+			if closed != tt.closed || holds != tt.holds {
+				t.Errorf("decided() = %v, %v, want %v, %v", holds, closed, tt.holds, tt.closed)
+			}
+		})
+	}
 }

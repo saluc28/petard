@@ -760,7 +760,7 @@ func Residuals(ctx context.Context, bundle *Bundle, data *Data, ask Request, lim
 		unknowns = []string{ast.InputRootDocument.String()}
 	}
 	result := &ResidualSet{Decision: ask.Decision, Unknowns: slices.Clone(unknowns)}
-	result.Conditions, result.Default, result.Always = conditionsOf(queries)
+	result.Conditions, result.Default, result.Always = conditionsOf(ctx, queries)
 	result.bound(limits.maxResiduals())
 	return result, nil
 }
@@ -779,9 +779,13 @@ func partial(ctx context.Context, bundle *Bundle, data *Data, ask Request) (*reg
 		unknowns = []string{ast.InputRootDocument.String()}
 	}
 
+	compiler, err := bundle.forPartial()
+	if err != nil {
+		return nil, err
+	}
 	options := []func(*rego.Rego){
-		rego.Query(queryFor(bundle.Compiler, ask.Decision)),
-		rego.Compiler(bundle.forPartial()),
+		rego.Query(bundle.query(ask.Decision)),
+		rego.Compiler(compiler),
 		rego.Store(data.store),
 		rego.Unknowns(unknowns),
 	}
@@ -794,6 +798,17 @@ func partial(ctx context.Context, bundle *Bundle, data *Data, ask Request) (*reg
 		return nil, fmt.Errorf("%w: %s: %w", ErrPartial, ask.Decision, err)
 	}
 	return queries, nil
+}
+
+// query writes the query partial evaluation asks a decision: the rule that
+// computes the field alone, when the decision is a field of an answer written
+// out as an object (see fieldRules), and what queryFor writes otherwise. It is
+// asked after forPartial, which is what writes those rules.
+func (b *Bundle) query(decision string) string {
+	if field, found := b.fieldQueries[decision]; found {
+		return field
+	}
+	return queryFor(b.Compiler, decision)
 }
 
 // queryFor writes the query that asks whether a decision grants anything.
@@ -898,13 +913,17 @@ func DependsOn(ctx context.Context, bundle *Bundle, data *Data, ask Request, doc
 	if err != nil {
 		return false, err
 	}
+	compiler, err := bundle.forPartial()
+	if err != nil {
+		return false, err
+	}
 
 	mentioned := false
 	followed := map[*ast.Rule]bool{}
 	var visit func(ref ast.Ref) bool
 	visit = func(ref ast.Ref) bool {
 		mentioned = mentioned || ref.HasPrefix(docRef)
-		for _, rule := range bundle.forPartial().GetRulesForVirtualDocument(ref) {
+		for _, rule := range compiler.GetRulesForVirtualDocument(ref) {
 			if !mentioned && !followed[rule] {
 				followed[rule] = true
 				ast.WalkRefs(rule, visit)
@@ -1064,7 +1083,12 @@ func (rs *ResidualSet) bound(max int) {
 // support module. The design called support modules a case to handle even
 // though they are empty on the simple example; on a policy written the way
 // people write policies they are where the answer is.
-func conditionsOf(queries *rego.PartialQueries) ([]Condition, string, bool) {
+//
+// A query that names nothing left open is decided rather than reported: partial
+// evaluation leaves some calls on constants as it found them, count(set()) == 0
+// among them, and a condition on nothing is true or false whatever the request
+// turns out to be.
+func conditionsOf(ctx context.Context, queries *rego.PartialQueries) ([]Condition, string, bool) {
 	var (
 		conditions []Condition
 		fallback   string
@@ -1077,6 +1101,10 @@ func conditionsOf(queries *rego.PartialQueries) ([]Condition, string, bool) {
 			always = true
 			continue
 		}
+		if holds, closed := decided(ctx, query); closed {
+			always = always || holds
+			continue
+		}
 		if expanded, def, ok := expandSupport(query, queries.Support); ok {
 			conditions = append(conditions, expanded...)
 			if def != "" {
@@ -1087,6 +1115,47 @@ func conditionsOf(queries *rego.PartialQueries) ([]Condition, string, bool) {
 		conditions = append(conditions, Condition{Query: query.String(), Value: "true"})
 	}
 	return conditions, fallback, always
+}
+
+// decided evaluates a condition that names nothing left open, and reports
+// whether it holds and whether it was one of those.
+//
+// Nothing left open means no variable and no reference but the builtins the
+// condition calls, and none of them nondeterministic: evaluating a call to
+// http.send would send it, and this tool does not call the addresses it finds in
+// the policies it reads.
+func decided(ctx context.Context, query ast.Body) (holds, closed bool) {
+	closed = true
+	ast.WalkTerms(query, func(term *ast.Term) bool {
+		switch value := term.Value.(type) {
+		case ast.Var:
+			closed = false
+		case ast.Ref:
+			builtin, isBuiltin := ast.BuiltinMap[value.String()]
+			if !isBuiltin || builtin.Nondeterministic {
+				closed = false
+			}
+			// The operator of a call: its name is not a variable of the query.
+			return true
+		}
+		return !closed
+	})
+	if !closed {
+		return false, false
+	}
+
+	results, err := rego.New(rego.ParsedQuery(query)).Eval(ctx)
+	if err != nil {
+		return false, false
+	}
+	// A query that is one comparison answers with its value, false included,
+	// rather than with no result.
+	for _, result := range results {
+		if !slices.ContainsFunc(result.Expressions, func(expr *rego.ExpressionValue) bool { return expr.Value == false }) {
+			return true, true
+		}
+	}
+	return false, true
 }
 
 // expandSupport reads the conditions out of a support module.
