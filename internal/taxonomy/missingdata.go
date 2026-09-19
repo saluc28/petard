@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 )
 
@@ -202,40 +201,4 @@ func (g guarded) covers(decision, path string) bool {
 		}
 	}
 	return false
-}
-
-// AddCoverageGaps records on the reads of the graph what this pattern found out
-// about them afterwards: that a path a check depends on is absent for part of
-// the data, so the check does not apply there.
-//
-// It enriches the read rather than adding an edge of its own, because the fact
-// is about that read and nothing else. A parallel edge would leave the graph
-// holding the same relation twice with half the truth on each.
-//
-// It reports how many findings reached no edge at all. That would mean the
-// pattern is speaking about a read the graph does not hold, which is a defect
-// in one of the two and not a quiet nothing.
-func AddCoverageGaps(g *graph.Graph, findings []Finding) int {
-	unmatched := 0
-	for _, finding := range findings {
-		if finding.Path == "" || len(finding.UncoveredKeys) == 0 {
-			continue
-		}
-
-		properties := map[string]any{
-			graph.PropUncoveredKeys: strings.Join(finding.UncoveredKeys, ", "),
-			graph.PropKeysChecked:   finding.KeysChecked,
-			graph.PropEnforcingSide: finding.EnforcingSide,
-			graph.PropConfidence:    finding.Confidence,
-		}
-
-		reached := 0
-		for _, site := range finding.Reads {
-			reached += g.EnrichEdges(graph.EdgeKindReads, site.Rule, finding.Path, properties)
-		}
-		if reached == 0 {
-			unmatched++
-		}
-	}
-	return unmatched
 }

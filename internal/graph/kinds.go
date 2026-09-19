@@ -222,4 +222,24 @@ const (
 	PropReachTransitive = "reach_transitive"
 	PropReachDirect     = "reach_direct"
 	PropRelation        = "relation"
+
+	// PropPatterns lists the ids of the patterns that report a finding on a node
+	// or an edge, and PropCandidatePatterns the ones that report a candidate,
+	// sorted. They are what a saved query asks for: which pattern made an edge
+	// is not otherwise in the graph, and several patterns make no edge at all,
+	// they only say something about one that is there.
+	PropPatterns          = "patterns"
+	PropCandidatePatterns = "candidate_patterns"
+
+	// PropPositions are the positions in a hierarchy a principal holds, one
+	// line per decision with what it grants through the relation and without.
+	PropPositions = "positions"
+
+	// PropEmptyDomains are the collections an every of a rule iterates where an
+	// empty one makes the check true.
+	PropEmptyDomains = "empty_domains"
+
+	// PropMitigation says whether anything outside the policy can still stop a
+	// check that fails open, and how.
+	PropMitigation = "mitigation"
 )

@@ -292,7 +292,7 @@ func TestFailOpenOnMissingDataNeedsTheData(t *testing.T) {
 // What this pattern learns about a read afterwards belongs on that read, not on
 // an edge of its own: the graph would otherwise hold the same relation twice
 // with half the truth on each.
-func TestAddCoverageGapsEnrichesTheRead(t *testing.T) {
+func TestMissingDataMarksTheRead(t *testing.T) {
 	a := fixtureAnalysis(t)
 	g := graphOn(t, a)
 
@@ -304,7 +304,11 @@ func TestAddCoverageGapsEnrichesTheRead(t *testing.T) {
 		t.Fatal("the fixture stopped holding a check that does not cover all the data")
 	}
 
-	if unmatched := AddCoverageGaps(g, findings); unmatched != 0 {
+	unmatched, err := AddFindings(g, a.Reads, findings)
+	if err != nil {
+		t.Fatalf("AddFindings() error = %v", err)
+	}
+	if unmatched != 0 {
 		t.Errorf("%d findings reached no read, and every one of them names a read the graph holds", unmatched)
 	}
 

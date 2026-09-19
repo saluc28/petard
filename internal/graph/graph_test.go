@@ -3,6 +3,7 @@ package graph
 import (
 	"errors"
 	"maps"
+	"slices"
 	"testing"
 )
 
@@ -237,10 +238,10 @@ func TestGraphEdgeCarriesProvenance(t *testing.T) {
 	}
 }
 
-// TestEnrichEdges covers what a pattern does when it learns something about a
+// TestMarkEdges covers what a pattern does when it learns something about a
 // read after the read is already in the graph: the fact belongs on that edge,
 // and a fact that reaches no edge at all has to be countable rather than lost.
-func TestEnrichEdges(t *testing.T) {
+func TestMarkEdges(t *testing.T) {
 	g := New()
 	for id, kind := range map[string]NodeKind{
 		"data.t.allow":    NodeKindRule,
@@ -258,7 +259,8 @@ func TestEnrichEdges(t *testing.T) {
 		}
 	}
 
-	if reached := g.EnrichEdges(EdgeKindReads, "data.t.deny", "data.users[_].x", map[string]any{PropKeysChecked: 2}); reached != 1 {
+	mark := Mark{Pattern: "PTD-OPA-002", Properties: map[string]any{PropKeysChecked: 2}}
+	if reached := g.MarkEdges(EdgeKindReads, "data.t.deny", "data.users[_].x", mark); reached != 1 {
 		t.Errorf("edges reached = %d, want 1", reached)
 	}
 
@@ -271,10 +273,61 @@ func TestEnrichEdges(t *testing.T) {
 
 	// A fact about a relation the graph does not hold is a defect in whoever
 	// stated it, and the count is the only way that shows.
-	if reached := g.EnrichEdges(EdgeKindReads, "data.t.allow", "data.other", map[string]any{PropKeysChecked: 1}); reached != 0 {
+	if reached := g.MarkEdges(EdgeKindReads, "data.t.allow", "data.other", mark); reached != 0 {
 		t.Errorf("edges reached = %d, want none", reached)
 	}
-	if reached := g.EnrichEdges(EdgeKindReads, "data.t.allow", "data.users[_].x", nil); reached != 0 {
-		t.Errorf("enriching with nothing reached %d edges, want none", reached)
+	if reached := g.MarkEdges(EdgeKindReads, "data.t.allow", "data.users[_].x", Mark{}); reached != 0 {
+		t.Errorf("marking with nothing reached %d edges, want none", reached)
+	}
+}
+
+// Two patterns on the same element keep both their answers: the ids go into a
+// list each, sorted and once, a candidate apart from a finding, and a list a
+// pattern contributes to grows rather than being replaced.
+func TestMarksAddUp(t *testing.T) {
+	g := New()
+	for _, node := range []Node{
+		{ID: "data.t.allow", Kind: NodeKindRule},
+		{ID: "data.settings.open", Kind: NodeKindAttribute},
+		{ID: "dave", Kind: NodeKindPrincipal},
+	} {
+		if err := g.AddNode(node); err != nil {
+			t.Fatalf("AddNode(%s) error = %v", node.ID, err)
+		}
+	}
+	if err := g.AddEdge(Edge{Kind: EdgeKindReads, From: "data.t.allow", To: "data.settings.open"}); err != nil {
+		t.Fatalf("AddEdge() error = %v", err)
+	}
+
+	for _, mark := range []Mark{
+		{Pattern: "PTD-OPA-008"},
+		{Pattern: "PTD-OPA-002"},
+		{Pattern: "PTD-OPA-008"},
+		{Pattern: "PTD-OPA-001", Candidate: true},
+	} {
+		if reached := g.MarkEdges(EdgeKindReads, "data.t.allow", "data.settings.open", mark); reached != 1 {
+			t.Fatalf("edges reached = %d, want 1", reached)
+		}
+	}
+	edge := g.Edges()[0]
+	if got := edge.Properties[PropPatterns]; !slices.Equal(got.([]string), []string{"PTD-OPA-002", "PTD-OPA-008"}) {
+		t.Errorf("patterns = %v, want both, sorted and once", got)
+	}
+	if got := edge.Properties[PropCandidatePatterns]; !slices.Equal(got.([]string), []string{"PTD-OPA-001"}) {
+		t.Errorf("candidate patterns = %v, want the candidate alone", got)
+	}
+
+	for _, position := range []string{"data.t.b: 2 ways", "data.t.a: 18 ways", "data.t.b: 2 ways"} {
+		mark := Mark{Pattern: "PTD-OPA-003", Candidate: true, Lists: map[string][]string{PropPositions: {position}}}
+		if !g.MarkNode("dave", mark) {
+			t.Fatal("MarkNode() reached nothing on a node of the graph")
+		}
+	}
+	dave, _ := g.Node("dave")
+	if got := dave.Properties[PropPositions]; !slices.Equal(got.([]string), []string{"data.t.a: 18 ways", "data.t.b: 2 ways"}) {
+		t.Errorf("positions = %v, want each once, sorted", got)
+	}
+	if g.MarkNode("nobody", Mark{Pattern: "PTD-OPA-003"}) {
+		t.Error("MarkNode() reached a node the graph does not hold")
 	}
 }

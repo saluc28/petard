@@ -163,20 +163,71 @@ func (g *Graph) AddEdge(e Edge) error {
 	return nil
 }
 
-// EnrichEdges merges properties into every edge of the given kind between two
-// nodes, and reports how many it reached.
+// Mark is what a pattern of the taxonomy leaves on a node or an edge it reports
+// on.
 //
-// It exists because some of what the analysis knows about an edge is found
-// after the edge is: that a read is absent for part of the data is a fact about
-// a read, discovered by a pattern that runs once every read is known. The
-// alternative would be for the pattern to build its own parallel edge, and the
-// graph would then hold the same relation twice with half the truth on each.
+// It exists because most of what the patterns find is found after the graph
+// is: that a read is absent for part of the data is a fact about a read,
+// discovered once every read is known. The alternative would be for each
+// pattern to build a parallel edge of its own, and the graph would then hold
+// the same relation twice with half the truth on each.
+type Mark struct {
+	// Pattern is the id of the pattern. It joins PropPatterns, or
+	// PropCandidatePatterns when what the pattern reports is a candidate.
+	Pattern   string
+	Candidate bool
+
+	// Properties are merged into the ones already there.
+	Properties map[string]any
+
+	// Lists are added to the list held under the same key, each value once and
+	// in order, so that two findings about the same element keep both their
+	// answers. A key named here holds nothing but such a list.
+	Lists map[string][]string
+}
+
+// empty reports whether the mark carries nothing to leave.
+func (m Mark) empty() bool {
+	return m.Pattern == "" && len(m.Properties) == 0 && len(m.Lists) == 0
+}
+
+// leave applies the mark to a set of properties, and returns them.
+func (m Mark) leave(properties map[string]any) map[string]any {
+	if properties == nil {
+		properties = make(map[string]any)
+	}
+	maps.Copy(properties, m.Properties)
+	if m.Pattern != "" {
+		key := PropPatterns
+		if m.Candidate {
+			key = PropCandidatePatterns
+		}
+		appendSorted(properties, key, m.Pattern)
+	}
+	for key, values := range m.Lists {
+		appendSorted(properties, key, values...)
+	}
+	return properties
+}
+
+// appendSorted adds values to the list held under key, sorted and once each.
+// Sorting is what keeps two runs over the same policy byte for byte equal,
+// whatever order the patterns were applied in.
+func appendSorted(properties map[string]any, key string, values ...string) {
+	held, _ := properties[key].([]string)
+	list := append(slices.Clone(held), values...)
+	slices.Sort(list)
+	properties[key] = slices.Compact(list)
+}
+
+// MarkEdges leaves a mark on every edge of the given kind between two nodes,
+// and reports how many it reached.
 //
 // The count is the point of the return value: a pattern whose finding reaches
 // no edge has matched something the graph does not contain, which is a defect
 // worth noticing rather than a silent no-op.
-func (g *Graph) EnrichEdges(kind EdgeKind, from, to string, properties map[string]any) int {
-	if len(properties) == 0 {
+func (g *Graph) MarkEdges(kind EdgeKind, from, to string, mark Mark) int {
+	if mark.empty() {
 		return 0
 	}
 
@@ -185,13 +236,22 @@ func (g *Graph) EnrichEdges(kind EdgeKind, from, to string, properties map[strin
 		if edge.Kind != kind || edge.From != from || edge.To != to {
 			continue
 		}
-		if g.edges[i].Properties == nil {
-			g.edges[i].Properties = make(map[string]any, len(properties))
-		}
-		maps.Copy(g.edges[i].Properties, properties)
+		g.edges[i].Properties = mark.leave(g.edges[i].Properties)
 		reached++
 	}
 	return reached
+}
+
+// MarkNode leaves a mark on the node held under id, and reports whether there
+// was one.
+func (g *Graph) MarkNode(id string, mark Mark) bool {
+	node, found := g.nodes[id]
+	if !found || mark.empty() {
+		return false
+	}
+	node.Properties = mark.leave(node.Properties)
+	g.nodes[id] = node
+	return true
 }
 
 // Node returns the node held under id.

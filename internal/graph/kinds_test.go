@@ -129,6 +129,12 @@ func TestPropertyKeys(t *testing.T) {
 		PropProvenanceTerm:   "provenance_term",
 		PropProvenanceOrigin: "provenance_origin",
 		PropUnderNegation:    "under_negation",
+
+		PropPatterns:          "patterns",
+		PropCandidatePatterns: "candidate_patterns",
+		PropPositions:         "positions",
+		PropEmptyDomains:      "empty_domains",
+		PropMitigation:        "mitigation",
 	}
 	for got, expected := range keys {
 		if got != expected {

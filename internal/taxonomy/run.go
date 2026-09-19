@@ -132,8 +132,8 @@ type Gaps struct {
 	// cannot say.
 	ConditionalWays int
 
-	// UnmatchedFindings are facts about a read the graph does not hold, which
-	// is a defect in one of the two rather than nothing to report.
+	// UnmatchedFindings are facts about something the graph does not hold,
+	// which is a defect in one of the two rather than nothing to report.
 	UnmatchedFindings int
 }
 
@@ -143,7 +143,8 @@ type Gaps struct {
 // The order is not arbitrary. The reads come first because everything else
 // attaches to the attributes they create, the write model and the capabilities
 // then add the two sides of the crossing this project is about, and the
-// findings arrive last: two of them enrich edges that have to exist already.
+// findings arrive last: the escalations draw their edges, and then every
+// finding marks the edges and nodes it is about, the escalations included.
 func Assemble(ctx context.Context, a Analysis, findings Findings) (*graph.Graph, Gaps, error) {
 	var gaps Gaps
 
@@ -164,8 +165,9 @@ func Assemble(ctx context.Context, a Analysis, findings Findings) (*graph.Graph,
 	if err := AddEscalations(g, all); err != nil {
 		return nil, gaps, err
 	}
-	gaps.UnmatchedFindings = AddCoverageGaps(g, all)
-
+	if gaps.UnmatchedFindings, err = AddFindings(g, a.Reads, all); err != nil {
+		return nil, gaps, err
+	}
 	return g, gaps, nil
 }
 
