@@ -37,11 +37,11 @@ jobs:
           go mod tidy
           git diff --exit-code go.mod go.sum
 
-      - name: Check formatting
-        run: |
-          unformatted=$(gofmt -l .)
-          test -z "$unformatted" || (echo "not gofmt-ed:" && echo "$unformatted" && exit 1)
-
+      # Formatting is not checked here. gofmt's output changes between Go
+      # releases, so the same file can be formatted for one version of the
+      # matrix and unformatted for another, and the check fails on a file
+      # nobody can write correctly. The Lint workflow runs it once, on one
+      # version.
       - name: Build
         run: go build ./...
 
