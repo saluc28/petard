@@ -109,7 +109,10 @@ where it serves whoever is reading, and it does not filter results.
 ### The side of a decision matters for absence, not for control
 
 A value can reach a decision on the side that grants or on the side that denies. For some
-patterns that side is the finding, and for others it does not count.
+patterns that side is the finding, and for others it does not count. The side is the parity of
+the negations between the decision and the value, the one on the read included, so two take each
+other back: an exemption a violation asks not to hold, in a decision that asks for no violation,
+is on the side that grants.
 
 It is the finding when the value is **missing**, because then the outcome is fixed and only the
 side is left to decide it. An undefined read on the side that denies silences the check and the

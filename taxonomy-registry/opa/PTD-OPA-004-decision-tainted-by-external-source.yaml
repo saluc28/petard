@@ -236,10 +236,12 @@ verified:
     `__local0__ = __local2__`. Real output. It was also checked that the raw AST does **not**
     see the nested call under a pass over the expressions, while the compiled form does.
     On the fixture, in Rego v1 and v0 with the same numbers, the engine measures **7 values read
-    from outside the policy**, all of them from `http.send`, and all 7 reach a decision: 2 in
-    granting position, in `quill.enrichment.allow` from `idp.petard-fixture.invalid` and in
-    `quill.risk.allow_positive_side` from `risk.petard-fixture.invalid`, and 5 only under a
-    `not`, in the three denying decisions of `quill.risk`. They make **5 findings**, one per
+    from outside the policy**, all of them from `http.send`, and all 7 reach a decision. 5 of
+    them reach the three denying decisions of `quill.risk` under a `not`, and 2 do not, in
+    `quill.enrichment.allow` from `idp.petard-fixture.invalid` and in
+    `quill.risk.allow_positive_side` from `risk.petard-fixture.invalid`. Counted by parity with
+    the negation of the read itself, 3 are in granting position, those 2 and the error
+    `denied_defensive` reads under a `not`, and 4 only deny. They make **5 findings**, one per
     decision and host. Signal 2 is what counts here: the propagation arrives at the decision
     across the rule graph, so the pattern separates "the policy calls `http.send`" from "this
     decision depends on that endpoint".
@@ -254,9 +256,9 @@ verified:
     carries the host, which is the identity of the answering party. A computed destination stays
     distinguishable, reported as such rather than as an unreadable host, with a test of its own.
     The side a value reaches is not a signal, because whoever answers picks the answer. A test
-    checks that the 5 values of `quill.risk` really arrive through a negation, computed on the
-    path from the decision rather than on the expression, and that their decisions are reported
-    all the same.
+    checks that 4 values of `quill.risk` really reach their decision only to deny, counting the
+    negations on the path from the decision together with the one on the read, and that their
+    decisions are reported all the same.
     One finding per fact: the fact is the pair of a decision and an external party, and the
     places to look sit inside the finding. Two paths to the same host are the same party.
     regal v0.42.0 reports **no violations** on the fixture, which holds the case and the counter
