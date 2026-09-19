@@ -1,0 +1,482 @@
+[
+  {
+    "name": "PTD-OPA-001: attributes the subject writes about themselves",
+    "guid": "ea5718a9-b63c-4634-9c8b-f965fb342b82",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Attribute self-write",
+    "description": "Reads of a field the subject of the request can write in their own record, confirmed by the write model.",
+    "query": "MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)\nWHERE 'PTD-OPA-001' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-001: candidates the write model does not settle",
+    "guid": "98cea44d-8876-4896-a0af-8eb42152ae5e",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Attribute self-write",
+    "description": "Reads of a field indexed by the subject of the request, where no write model says who writes it. Each one is a question for whoever knows the system around OPA.",
+    "query": "MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)\nWHERE 'PTD-OPA-001' IN e.candidate_patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-001: escalations that start with a write to one's own record",
+    "guid": "3dd11449-b212-49d0-a00c-6a41219c2504",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Attribute self-write",
+    "description": "The escalations the chain with PTD-OPA-003 draws: the principal writes a field of their own record and reaches the position of another. via_write_path names the write.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Principal)\nWHERE 'PTD-OPA-003' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-001: one row per read",
+    "guid": "b75cd2fb-8ebb-43fa-9168-07678a9c77de",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Attribute self-write",
+    "description": "Where each read of a self-written field is, to open the policy at the right line.",
+    "query": "MATCH (r:PTD_Rule)-[e:PTD_Reads]->(a:PTD_Attribute)\nWHERE 'PTD-OPA-001' IN e.patterns\nRETURN r.name AS rule, a.name AS attribute, e.ref AS ref, e.source_file AS file, e.source_line AS line",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-002: checks of a decision declared to deny",
+    "guid": "7229aac9-d16f-43b7-9afb-37c79e1e7506",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Fail-open on absence",
+    "description": "The same gaps in decisions the enforcement point reads as a refusal, such as a violation of Gatekeeper, declared with -deny-entrypoint.",
+    "query": "MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)\nWHERE 'PTD-OPA-002' IN e.patterns AND e.enforcing_side STARTS WITH 'entrypoint declared to deny'\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-002: checks that do not apply to part of the data",
+    "guid": "838629e1-0e9a-4432-bce5-a379a2256628",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Fail-open on absence",
+    "description": "Reads on the side of a decision that denies, of a path some documents do not have: for those documents the check produces nothing and the request goes through.",
+    "query": "MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)\nWHERE 'PTD-OPA-002' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-002: where each check is missing",
+    "guid": "523ce455-95d4-4509-aa83-c46693c6c4fe",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Fail-open on absence",
+    "description": "The documents each check does not reach, out of how many were tried.",
+    "query": "MATCH (r:PTD_Rule)-[e:PTD_Reads]->(a:PTD_Attribute)\nWHERE 'PTD-OPA-002' IN e.patterns\nRETURN r.name AS rule, a.name AS attribute, e.uncovered_keys AS uncovered, e.keys_checked AS checked\nORDER BY checked DESC",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-003: one row per position",
+    "guid": "ee559bb7-ed9a-4b38-be08-b6d5bb610526",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Transitive grant through an intermediate object",
+    "description": "Each position, with the decision, what it grants through the relation, and what it grants without it.",
+    "query": "MATCH (p:PTD_Principal)\nWHERE 'PTD-OPA-003' IN p.candidate_patterns\nUNWIND p.positions AS position\nRETURN p.name AS principal, position",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-003: positions worth taking",
+    "guid": "2304f559-7d6f-4860-af37-36d9c4c2a823",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Transitive grant through an intermediate object",
+    "description": "Principals who reach, through a hierarchy, what they would not reach without it. A position is a target, not a defect: see who can take one.",
+    "query": "MATCH (p:PTD_Principal)\nWHERE 'PTD-OPA-003' IN p.candidate_patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-003: what a position worth taking reaches",
+    "guid": "50c6ec0a-5e4c-4563-b7ea-b57c2c4658e9",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Transitive grant through an intermediate object",
+    "description": "What the holders of a position worth taking can do, given the data as it stands.",
+    "query": "MATCH q = (p:PTD_Principal)-[:PTD_CanPerform]->()\nWHERE 'PTD-OPA-003' IN p.candidate_patterns\nRETURN q",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-003: who can take a position",
+    "guid": "5e844028-83df-4ec7-9431-9b4e5d985c78",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Transitive grant through an intermediate object",
+    "description": "The escalations toward a position worth taking: the principal can write the field that puts them there. reach_transitive and reach_direct are the ways of getting in with the relation and without it.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Principal)\nWHERE 'PTD-OPA-003' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-004: decisions that believe an external source",
+    "guid": "8e6bfbcd-8917-4a8a-b666-256bb33379c0",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Unverified external data source",
+    "description": "Values a decision reads from the answer of a call, and the endpoint that gives it: whoever controls that endpoint decides in the policy's place.",
+    "query": "MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(:PTD_Principal)\nWHERE 'PTD-OPA-004' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-004: destinations the policy computes",
+    "guid": "7c00c34c-63de-4b1c-8f52-e52ae620a603",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Unverified external data source",
+    "description": "Calls whose destination is not written in the policy. When the request can steer it, whoever asks also chooses who the policy asks.",
+    "query": "MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(s:PTD_Principal)\nWHERE 'PTD-OPA-004' IN e.patterns AND s.name STARTS WITH 'http.send at '\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-004: external sources by the rules that believe them",
+    "guid": "eb127fd8-aa40-42eb-8668-20cdc001e6ea",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Unverified external data source",
+    "description": "Each endpoint, with how many reads of its answers reach a decision.",
+    "query": "MATCH (r:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(s:PTD_Principal)\nWHERE 'PTD-OPA-004' IN e.patterns\nRETURN s.name AS source, count(r) AS reads\nORDER BY reads DESC",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-005: checks that stop applying when a source does not answer",
+    "guid": "87fe46c0-9eec-432a-a294-c8ca3d4c581a",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Fail-open on absence",
+    "description": "Reads of an answer on the side that denies: when the endpoint is down the check produces nothing and the request goes through.",
+    "query": "MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(:PTD_Principal)\nWHERE 'PTD-OPA-005' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-005: failures nothing can make fatal",
+    "guid": "3a9201aa-1428-484c-b44f-0b43be4e7f84",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Fail-open on absence",
+    "description": "The same checks where the call asks for raise_error false, so strict-builtin-errors has no error left to stop.",
+    "query": "MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(:PTD_Principal)\nWHERE 'PTD-OPA-005' IN e.patterns AND e.mitigation STARTS WITH 'raise_error is false'\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-005: one row per check",
+    "guid": "8600436a-31a7-4505-aedd-9a9d29690f9d",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Fail-open on absence",
+    "description": "Each check that fails open, the endpoint it waits for, and what can still stop the failure.",
+    "query": "MATCH (r:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(s:PTD_Principal)\nWHERE 'PTD-OPA-005' IN e.patterns\nRETURN r.name AS rule, s.name AS source, e.mitigation AS mitigation",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-006: escalations through a write another decision allows",
+    "guid": "4c3c57e0-00c0-408e-ad94-ec75df67e189",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "A grant split across two decisions",
+    "description": "A decision lets the principal write a value that a second decision grants on, and a principal who holds that value today is where the write leads.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Principal)\nWHERE 'PTD-OPA-006' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-006: one row per escalation",
+    "guid": "a51e70d2-c560-416e-8372-f34b359368d5",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "A grant split across two decisions",
+    "description": "Who writes what, through which endpoint, allowed by which decision, and granted by which.",
+    "query": "MATCH (a:PTD_Principal)-[e:PTD_CanEscalateTo]->(b:PTD_Principal)\nWHERE 'PTD-OPA-006' IN e.patterns\nRETURN a.name AS principal, b.name AS reaches, e.value AS value, e.via AS via, e.authorized_by AS allowed_by, e.decision AS granted_by",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-006: what those escalations open",
+    "guid": "2c1f1951-b04d-4de4-82d0-03c5e64a9b49",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "A grant split across two decisions",
+    "description": "The same escalations, followed by what the principal at the far end can do.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Principal)-[:PTD_CanPerform]->()\nWHERE 'PTD-OPA-006' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-007: decisions that pass when a collection is empty",
+    "guid": "14ecab2a-955e-4b9e-9825-288230c00719",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Fail-open on absence",
+    "description": "The same, where the rule is a decision the enforcement point asks for directly.",
+    "query": "MATCH (r:PTD_Rule)\nWHERE 'PTD-OPA-007' IN r.patterns AND r.is_decision = true\nRETURN r",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-007: one row per collection",
+    "guid": "583021a0-b8ee-400c-99d0-6e48b4cc5de7",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Fail-open on absence",
+    "description": "Each rule and the collection whose emptiness it does not guard against.",
+    "query": "MATCH (r:PTD_Rule)\nWHERE 'PTD-OPA-007' IN r.patterns\nUNWIND r.empty_domains AS collection\nRETURN r.name AS rule, collection",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-007: rules that pass when a collection is empty",
+    "guid": "ad501273-317a-4771-8599-f4420304f7cc",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Fail-open on absence",
+    "description": "Rules holding an every on the side that grants, over a collection the request or the data can leave empty. With nothing to check, the every is true.",
+    "query": "MATCH (r:PTD_Rule)\nWHERE 'PTD-OPA-007' IN r.patterns\nRETURN r",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-008: documents that decide for anybody",
+    "guid": "de09a36a-ae72-4639-bca3-e6d528ac8269",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Global switch",
+    "description": "A document every request shares, which a decision reads for a principal no document names: whoever writes it decides for everybody at once.",
+    "query": "MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)\nWHERE 'PTD-OPA-008' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-008: one row per document",
+    "guid": "20021b8b-4389-4e91-be6a-5f2616eea109",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Global switch",
+    "description": "Each document and the rule that reads it for anybody.",
+    "query": "MATCH (r:PTD_Rule)-[e:PTD_Reads]->(a:PTD_Attribute)\nWHERE 'PTD-OPA-008' IN e.patterns\nRETURN a.name AS document, r.name AS rule, e.ref AS ref",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-008: who can flip them",
+    "guid": "4c186b86-269f-4503-b08f-ad5e4005ee5d",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Global switch",
+    "description": "The same documents, and whoever the write model says can write them.",
+    "query": "MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_WrittenBy]->(:PTD_Principal)\nWHERE 'PTD-OPA-008' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "Petard: every escalation",
+    "guid": "add3eff5-92cc-47fa-9e23-d29f03dfe870",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Petard",
+    "description": "Every principal that can reach the position another one holds, by writing something it is allowed to write. The edges come from PTD-OPA-003 and PTD-OPA-006.",
+    "query": "MATCH p = (:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Principal)\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "Petard: what an escalation opens",
+    "guid": "92406cd7-f887-4439-84f2-3c0f3bec525a",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Petard",
+    "description": "The escalations, followed by what the principal at their far end can do: what the one who escalates would get.",
+    "query": "MATCH p = (:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Principal)-[:PTD_CanPerform]->()\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "Petard: what each principal can do",
+    "guid": "9b80bf23-369e-4195-8cb8-3857516c68eb",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Petard",
+    "description": "What each principal can get out of each decision, given the data as it stands. The condition property is what still has to hold.",
+    "query": "MATCH p = (:PTD_Principal)-[:PTD_CanPerform]->()\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "Petard: who writes what the decisions read",
+    "guid": "c6f94c8f-c735-48e2-b8c0-19f8f42a01e6",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Petard",
+    "description": "The attributes the decisions depend on, and whoever the write model says can write them.",
+    "query": "MATCH p = (:PTD_Rule)-[:PTD_Reads]->(:PTD_Attribute)-[:PTD_WrittenBy]->(:PTD_Principal)\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard"
+    ],
+    "acknowledgements": []
+  }
+]

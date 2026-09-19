@@ -1,0 +1,17 @@
+name: "PTD-OPA-001: attributes the subject writes about themselves"
+guid: ea5718a9-b63c-4634-9c8b-f965fb342b82
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Attribute self-write
+description: >
+  Reads of a field the subject of the request can write in their own record, confirmed by the write
+  model.
+query: |-
+  MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)
+  WHERE 'PTD-OPA-001' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml
+acknowledgements: []

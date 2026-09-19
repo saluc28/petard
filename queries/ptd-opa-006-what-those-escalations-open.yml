@@ -1,0 +1,16 @@
+name: "PTD-OPA-006: what those escalations open"
+guid: 2c1f1951-b04d-4de4-82d0-03c5e64a9b49
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: A grant split across two decisions
+description: >
+  The same escalations, followed by what the principal at the far end can do.
+query: |-
+  MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Principal)-[:PTD_CanPerform]->()
+  WHERE 'PTD-OPA-006' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml
+acknowledgements: []

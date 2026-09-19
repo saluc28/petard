@@ -1,0 +1,17 @@
+name: "PTD-OPA-005: failures nothing can make fatal"
+guid: 3a9201aa-1428-484c-b44f-0b43be4e7f84
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Fail-open on absence
+description: >
+  The same checks where the call asks for raise_error false, so strict-builtin-errors has no error
+  left to stop.
+query: |-
+  MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(:PTD_Principal)
+  WHERE 'PTD-OPA-005' IN e.patterns AND e.mitigation STARTS WITH 'raise_error is false'
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml
+acknowledgements: []

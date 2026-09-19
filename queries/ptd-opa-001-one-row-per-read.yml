@@ -1,0 +1,16 @@
+name: "PTD-OPA-001: one row per read"
+guid: b75cd2fb-8ebb-43fa-9168-07678a9c77de
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Attribute self-write
+description: >
+  Where each read of a self-written field is, to open the policy at the right line.
+query: |-
+  MATCH (r:PTD_Rule)-[e:PTD_Reads]->(a:PTD_Attribute)
+  WHERE 'PTD-OPA-001' IN e.patterns
+  RETURN r.name AS rule, a.name AS attribute, e.ref AS ref, e.source_file AS file, e.source_line AS line
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml
+acknowledgements: []

@@ -1,0 +1,17 @@
+name: "PTD-OPA-007: one row per collection"
+guid: 583021a0-b8ee-400c-99d0-6e48b4cc5de7
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Fail-open on absence
+description: >
+  Each rule and the collection whose emptiness it does not guard against.
+query: |-
+  MATCH (r:PTD_Rule)
+  WHERE 'PTD-OPA-007' IN r.patterns
+  UNWIND r.empty_domains AS collection
+  RETURN r.name AS rule, collection
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml
+acknowledgements: []

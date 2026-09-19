@@ -1,0 +1,16 @@
+name: "Petard: every escalation"
+guid: add3eff5-92cc-47fa-9e23-d29f03dfe870
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Petard
+description: >
+  Every principal that can reach the position another one holds, by writing something it is allowed
+  to write. The edges come from PTD-OPA-003 and PTD-OPA-006.
+query: |-
+  MATCH p = (:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Principal)
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard
+acknowledgements: []

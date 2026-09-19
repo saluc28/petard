@@ -1,0 +1,16 @@
+name: "PTD-OPA-003: what a position worth taking reaches"
+guid: 50c6ec0a-5e4c-4563-b7ea-b57c2c4658e9
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Transitive grant through an intermediate object
+description: >
+  What the holders of a position worth taking can do, given the data as it stands.
+query: |-
+  MATCH q = (p:PTD_Principal)-[:PTD_CanPerform]->()
+  WHERE 'PTD-OPA-003' IN p.candidate_patterns
+  RETURN q
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml
+acknowledgements: []

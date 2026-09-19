@@ -1,0 +1,17 @@
+name: "PTD-OPA-004: decisions that believe an external source"
+guid: 8e6bfbcd-8917-4a8a-b666-256bb33379c0
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Unverified external data source
+description: >
+  Values a decision reads from the answer of a call, and the endpoint that gives it: whoever
+  controls that endpoint decides in the policy's place.
+query: |-
+  MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(:PTD_Principal)
+  WHERE 'PTD-OPA-004' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml
+acknowledgements: []

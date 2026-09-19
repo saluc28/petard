@@ -1,0 +1,16 @@
+name: "PTD-OPA-008: who can flip them"
+guid: 4c186b86-269f-4503-b08f-ad5e4005ee5d
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Global switch
+description: >
+  The same documents, and whoever the write model says can write them.
+query: |-
+  MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_WrittenBy]->(:PTD_Principal)
+  WHERE 'PTD-OPA-008' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml
+acknowledgements: []

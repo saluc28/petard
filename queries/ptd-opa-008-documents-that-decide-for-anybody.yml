@@ -1,0 +1,17 @@
+name: "PTD-OPA-008: documents that decide for anybody"
+guid: de09a36a-ae72-4639-bca3-e6d528ac8269
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Global switch
+description: >
+  A document every request shares, which a decision reads for a principal no document names: whoever
+  writes it decides for everybody at once.
+query: |-
+  MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)
+  WHERE 'PTD-OPA-008' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml
+acknowledgements: []

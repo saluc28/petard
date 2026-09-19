@@ -1,0 +1,17 @@
+name: "PTD-OPA-007: rules that pass when a collection is empty"
+guid: ad501273-317a-4771-8599-f4420304f7cc
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Fail-open on absence
+description: >
+  Rules holding an every on the side that grants, over a collection the request or the data can
+  leave empty. With nothing to check, the every is true.
+query: |-
+  MATCH (r:PTD_Rule)
+  WHERE 'PTD-OPA-007' IN r.patterns
+  RETURN r
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml
+acknowledgements: []

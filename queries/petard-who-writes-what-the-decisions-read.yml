@@ -1,0 +1,15 @@
+name: "Petard: who writes what the decisions read"
+guid: c6f94c8f-c735-48e2-b8c0-19f8f42a01e6
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Petard
+description: >
+  The attributes the decisions depend on, and whoever the write model says can write them.
+query: |-
+  MATCH p = (:PTD_Rule)-[:PTD_Reads]->(:PTD_Attribute)-[:PTD_WrittenBy]->(:PTD_Principal)
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard
+acknowledgements: []

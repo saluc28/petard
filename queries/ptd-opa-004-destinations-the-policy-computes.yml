@@ -1,0 +1,17 @@
+name: "PTD-OPA-004: destinations the policy computes"
+guid: 7c00c34c-63de-4b1c-8f52-e52ae620a603
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Unverified external data source
+description: >
+  Calls whose destination is not written in the policy. When the request can steer it, whoever asks
+  also chooses who the policy asks.
+query: |-
+  MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(s:PTD_Principal)
+  WHERE 'PTD-OPA-004' IN e.patterns AND s.name STARTS WITH 'http.send at '
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml
+acknowledgements: []

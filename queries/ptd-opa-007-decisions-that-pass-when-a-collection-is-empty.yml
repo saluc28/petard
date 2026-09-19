@@ -1,0 +1,16 @@
+name: "PTD-OPA-007: decisions that pass when a collection is empty"
+guid: 14ecab2a-955e-4b9e-9825-288230c00719
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Fail-open on absence
+description: >
+  The same, where the rule is a decision the enforcement point asks for directly.
+query: |-
+  MATCH (r:PTD_Rule)
+  WHERE 'PTD-OPA-007' IN r.patterns AND r.is_decision = true
+  RETURN r
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-007-every-over-empty-domain.yaml
+acknowledgements: []

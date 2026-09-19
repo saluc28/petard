@@ -1,0 +1,16 @@
+name: "PTD-OPA-005: one row per check"
+guid: 8600436a-31a7-4505-aedd-9a9d29690f9d
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Fail-open on absence
+description: >
+  Each check that fails open, the endpoint it waits for, and what can still stop the failure.
+query: |-
+  MATCH (r:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(s:PTD_Principal)
+  WHERE 'PTD-OPA-005' IN e.patterns
+  RETURN r.name AS rule, s.name AS source, e.mitigation AS mitigation
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml
+acknowledgements: []

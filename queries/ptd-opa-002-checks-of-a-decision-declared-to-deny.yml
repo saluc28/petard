@@ -1,0 +1,17 @@
+name: "PTD-OPA-002: checks of a decision declared to deny"
+guid: 7229aac9-d16f-43b7-9afb-37c79e1e7506
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Fail-open on absence
+description: >
+  The same gaps in decisions the enforcement point reads as a refusal, such as a violation of
+  Gatekeeper, declared with -deny-entrypoint.
+query: |-
+  MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)
+  WHERE 'PTD-OPA-002' IN e.patterns AND e.enforcing_side STARTS WITH 'entrypoint declared to deny'
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-002-deny-undefined-on-missing-data.yaml
+acknowledgements: []

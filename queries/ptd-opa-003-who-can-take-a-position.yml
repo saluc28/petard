@@ -1,0 +1,18 @@
+name: "PTD-OPA-003: who can take a position"
+guid: 5e844028-83df-4ec7-9431-9b4e5d985c78
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Transitive grant through an intermediate object
+description: >
+  The escalations toward a position worth taking: the principal can write the field that puts them
+  there. reach_transitive and reach_direct are the ways of getting in with the relation and without
+  it.
+query: |-
+  MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Principal)
+  WHERE 'PTD-OPA-003' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml
+acknowledgements: []
