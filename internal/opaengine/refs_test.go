@@ -596,6 +596,99 @@ allow if {
 	}
 }
 
+// violationsPolicy is a check written as a violation, the form a decision takes
+// when it answers with its violations as well as with a verdict.
+const violationsPolicy = `package t
+
+violations contains "multi-factor authentication is required" if {
+	data.tenants[input.tenant].policy.require_mfa == true
+	not input.mfa
+}
+
+decision := {"allowed": count(violations) == 0, "violations": [v | some v in violations]}
+
+allow_when_none if count(violations) == 0
+
+allow_when_empty if violations == set()
+
+deny_when_some if count(violations) > 0
+`
+
+// Counting nothing is asking for nothing: a decision that grants on
+// count(violations) == 0 denies through every violation, since a partial set
+// exists even when it is empty. The list of violations in the same answer
+// reaches the rule with no negation, and is left out of the field the
+// enforcement point reads; asked as a whole, the answer lists them, and the
+// check is no longer only on the side that denies.
+func TestReadsTakeCountingNothingAsANegation(t *testing.T) {
+	tests := []struct {
+		declared string
+		negated  bool
+	}{
+		{declared: "data.t.decision.allowed", negated: true},
+		{declared: "data.t.decision", negated: false},
+		{declared: "data.t.allow_when_none", negated: true},
+		{declared: "data.t.allow_when_empty", negated: true},
+		{declared: "data.t.deny_when_some", negated: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.declared, func(t *testing.T) {
+			bundle, err := Load([]string{writeSources(t, map[string]string{"policy.rego": violationsPolicy})}, ParseModeAuto)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			bundle.Entrypoints = []string{tt.declared}
+			reads, err := Reads(bundle, Limits{})
+			if err != nil {
+				t.Fatalf("Reads() error = %v", err)
+			}
+
+			read := readOfPath(t, reads, "data.tenants[_].policy.require_mfa")
+			if len(read.Decisions) != 1 || read.Decisions[0].Name != tt.declared {
+				t.Fatalf("the check reaches %+v, want %s alone", read.Decisions, tt.declared)
+			}
+			if read.Decisions[0].UnderNegation != tt.negated {
+				t.Errorf("under negation = %v, want %v", read.Decisions[0].UnderNegation, tt.negated)
+			}
+		})
+	}
+}
+
+// The field an enforcement point reads depends on what can make the rule fail,
+// whatever field it computes, and not on a list only another field holds. A
+// setting read inside that list is no read of the decision; one read to fill
+// in another field is, since without it the rule has no fields at all.
+func TestReadsOfAFieldLeaveOutWhatOnlyBuildsAnother(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"policy.rego": `package t
+
+violations contains "blocked" if data.blocklist[input.user]
+
+decision := {
+	"allowed": count(violations) == 0,
+	"violations": [v | some v in violations; data.settings.verbose],
+	"contact": data.settings.contact,
+}
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	bundle.Entrypoints = []string{"data.t.decision.allowed"}
+	reads, err := Reads(bundle, Limits{})
+	if err != nil {
+		t.Fatalf("Reads() error = %v", err)
+	}
+
+	if !slices.Equal(reads.Paths(), []string{"data.blocklist[_]", "data.settings.contact"}) {
+		t.Errorf("Paths() = %v, want the check and the setting the answer cannot do without", reads.Paths())
+	}
+	if read := readOfPath(t, reads, "data.blocklist[_]"); !read.Decisions[0].UnderNegation {
+		t.Error("the blocklist reaches the answer without a negation, and it only ever denies")
+	}
+}
+
 // A declaration that matches nothing is a typo, and taking it as zero decisions
 // would report a policy nobody looked at as a policy that reads nothing.
 func TestReadsRefusesEntrypointsItCannotUse(t *testing.T) {

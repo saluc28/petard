@@ -37,6 +37,17 @@ type refReader struct {
 	// who is calling.
 	current *ast.Rule
 
+	// top is the expression of the current rule's own body being walked, nested
+	// bodies included. It ties what the walk finds to the part of the rule it
+	// belongs to, since a decision that is one field of what a rule returns
+	// depends on some of those expressions only.
+	top int
+
+	// within holds, for a rule that returns an object a decision is one field
+	// of, the expressions of its body that field depends on, by the name of the
+	// decision. See fieldExprs.
+	within map[*ast.Rule]map[string]map[int]bool
+
 	found     []ruleRefs
 	callSites map[*ast.Rule][]callSite
 
@@ -97,6 +108,7 @@ type foundClosure struct {
 	bindings map[ast.Var]binding
 
 	location *ast.Location
+	top      int
 }
 
 // foundEvery is one every expression met while walking.
@@ -117,6 +129,7 @@ type foundEvery struct {
 	guarded bool
 
 	location *ast.Location
+	top      int
 }
 
 // ruleRefs are the data references met in one rule.
@@ -135,6 +148,9 @@ type ruleRefs struct {
 type callEdge struct {
 	callee  *ast.Rule
 	negated bool
+
+	// top is the expression of the calling rule the edge comes from.
+	top int
 }
 
 // scope is what a body knows while it is being walked: what its variables
@@ -145,6 +161,11 @@ type callEdge struct {
 type scope struct {
 	bindings map[ast.Var]binding
 	negated  bool
+
+	// empty are the terms of this body it only asks to be empty, which are
+	// walked as if under a negation. See askedEmpty. They belong to one body and
+	// are not inherited.
+	empty map[*ast.Term]bool
 }
 
 // foundRef is a data reference met while walking, before the reads of a rule
@@ -159,6 +180,9 @@ type foundRef struct {
 
 	negated  bool
 	location *ast.Location
+
+	// top is the expression of the rule's own body the reference sits in.
+	top int
 }
 
 func (r *refReader) walk() {
@@ -204,7 +228,12 @@ func (r *refReader) walkBody(body ast.Body, outer scope, found *[]foundRef) {
 		bindings: r.bindingsOf(r.current, body, outer.bindings),
 		negated:  outer.negated,
 	}
-	for _, expr := range body {
+	inner.empty = r.askedEmpty(body)
+	own := len(body) > 0 && len(r.current.Body) > 0 && body[0] == r.current.Body[0]
+	for i, expr := range body {
+		if own {
+			r.top = i
+		}
 		if expr.IsEvery() {
 			// Recorded from here rather than from walkExpr, because telling the
 			// fail-open form from the guarded one takes the whole body the every
@@ -228,6 +257,7 @@ func (r *refReader) markEvery(expr *ast.Expr, body ast.Body, sc scope) {
 		bindings: sc.bindings,
 		guarded:  guardsDomain(body, every.Domain, sc.bindings),
 		location: expr.Loc(),
+		top:      r.top,
 	})
 }
 
@@ -408,11 +438,14 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 					bindings: sc.bindings,
 					negated:  sc.negated,
 					location: expr.Loc(),
+					top:      r.top,
 				})
 			}
 		}
 		for _, operand := range expr.Operands() {
-			r.walkTerm(operand, sc, found)
+			operandScope := sc
+			operandScope.negated = sc.negated || sc.empty[operand]
+			r.walkTerm(operand, operandScope, found)
 		}
 		return
 	}
@@ -463,6 +496,7 @@ func (r *refReader) walkTerm(term *ast.Term, sc scope, found *[]foundRef) {
 				bindings: sc.bindings,
 				negated:  sc.negated,
 				location: term.Loc(),
+				top:      r.top,
 			})
 		}
 		for _, inner := range value[1:] {
@@ -593,7 +627,7 @@ func (r *refReader) reach(callee *ast.Rule, negated bool) {
 	if !r.visited[callee] {
 		r.pending = append(r.pending, callee)
 	}
-	r.edges[r.current] = append(r.edges[r.current], callEdge{callee: callee, negated: negated})
+	r.edges[r.current] = append(r.edges[r.current], callEdge{callee: callee, negated: negated, top: r.top})
 }
 
 // markClosure records a call that follows a relation transitively.
@@ -619,6 +653,7 @@ func (r *refReader) markClosure(operator ast.Ref, expr *ast.Expr, sc scope) {
 		args:     operands[:arity],
 		bindings: sc.bindings,
 		location: expr.Loc(),
+		top:      r.top,
 	})
 }
 

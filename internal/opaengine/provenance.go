@@ -29,7 +29,12 @@ func (r *refReader) resolve(limits Limits, reach map[*ast.Rule]decisionPaths) *R
 			}
 			budget := &callBudget{limits: limits}
 			read := r.readOf(entry.rule, candidate, budget)
-			read.Decisions = reachedDecisions(reach[entry.rule])
+			read.Decisions = r.decisionsAt(entry.rule, candidate.top, reach)
+			if len(read.Decisions) == 0 {
+				// The expression only builds a field of the answer that no
+				// decision asks about, which is not a read of any of them.
+				continue
+			}
 			read.Matches = matchesFor(matches[entry.rule], candidate.resolved.ref)
 			result.Reads = append(result.Reads, read)
 			result.Warnings = append(result.Warnings, budget.warnings...)

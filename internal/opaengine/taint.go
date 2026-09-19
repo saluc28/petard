@@ -153,7 +153,11 @@ func (r *refReader) taints(reach map[*ast.Rule]decisionPaths, limits Limits) ([]
 			if !external {
 				continue
 			}
-			taints = append(taints, r.taintOf(entry.rule, candidate, source, reach[entry.rule]))
+			decisions := r.decisionsAt(entry.rule, candidate.top, reach)
+			if len(decisions) == 0 {
+				continue
+			}
+			taints = append(taints, r.taintOf(entry.rule, candidate, source, decisions))
 		}
 	}
 	return taints, warnings
@@ -164,7 +168,7 @@ func (r *refReader) taints(reach map[*ast.Rule]decisionPaths, limits Limits) ([]
 type decisionPaths map[string]bool
 
 // taintOf describes one tainted read.
-func (r *refReader) taintOf(rule *ast.Rule, candidate foundRef, source binding, reached decisionPaths) Taint {
+func (r *refReader) taintOf(rule *ast.Rule, candidate foundRef, source binding, decisions []ReachedDecision) Taint {
 	ref, _ := r.readable(candidate.resolved.ref)
 	taint := Taint{
 		Rule:          rulePath(rule).String(),
@@ -183,7 +187,7 @@ func (r *refReader) taintOf(rule *ast.Rule, candidate foundRef, source binding, 
 		taint.File, taint.Line = loc.File, loc.Row
 	}
 
-	for _, decision := range reachedDecisions(reached) {
+	for _, decision := range decisions {
 		taint.Decisions = append(taint.Decisions, TaintedDecision{
 			Name:          decision.Name,
 			UnderNegation: candidate.negated || decision.UnderNegation,
@@ -251,6 +255,11 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 			paths[name] = paths[name] || at.clean
 
 			for _, edge := range r.edges[at.rule] {
+				if at.rule == decision.rule && decision.within != nil && !decision.within[edge.top] {
+					// The expression only builds another field of what the
+					// rule returns, and this decision is not asked about it.
+					continue
+				}
 				queue = append(queue, state{rule: edge.callee, clean: at.clean && !edge.negated})
 			}
 		}

@@ -341,14 +341,22 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 	}
 
 	pending := make([]*ast.Rule, 0, len(decisions))
+	within := make(map[*ast.Rule]map[string]map[int]bool)
 	for _, decision := range decisions {
 		pending = append(pending, decision.rule)
+		if decision.within != nil {
+			if within[decision.rule] == nil {
+				within[decision.rule] = make(map[string]map[int]bool)
+			}
+			within[decision.rule][decision.name] = decision.within
+		}
 	}
 	reader := &refReader{
 		compiler:   bundle.Compiler,
 		visited:    make(map[*ast.Rule]bool),
 		pending:    pending,
 		inputPaths: make(map[*ast.Rule][]string),
+		within:     within,
 		underWith:  make(map[string]bool),
 		callSites:  make(map[*ast.Rule][]callSite),
 		edges:      make(map[*ast.Rule][]callEdge),
@@ -388,7 +396,10 @@ func (r *refReader) closures(reads []Read, reach map[*ast.Rule]decisionPaths) []
 		closure := Closure{
 			Builtin:   found.builtin,
 			Rule:      rulePath(found.rule).String(),
-			Decisions: reachedDecisions(reach[found.rule]),
+			Decisions: r.decisionsAt(found.rule, found.top, reach),
+		}
+		if len(closure.Decisions) == 0 {
+			continue
 		}
 		if len(found.args) > 0 {
 			closure.Relation = r.relationOf(found.args[0], found.bindings, reads)
@@ -421,7 +432,10 @@ func (r *refReader) quantifiers(reach map[*ast.Rule]decisionPaths) []Quantifier 
 		quantifier := Quantifier{
 			Rule:      rulePath(found.rule).String(),
 			Guarded:   found.guarded,
-			Decisions: reachedDecisions(reach[found.rule]),
+			Decisions: r.decisionsAt(found.rule, found.top, reach),
+		}
+		if len(quantifier.Decisions) == 0 {
+			continue
 		}
 
 		if resolved, ok := resolveDomain(found.domain, found.bindings); ok {
@@ -489,6 +503,10 @@ func sortedUnique(values []string) []string {
 type decisionRoot struct {
 	name string
 	rule *ast.Rule
+
+	// within are the expressions of the rule the decision depends on when it
+	// is a field of what the rule returns, and nil when it is the whole of it.
+	within map[int]bool
 }
 
 // entrypointRules returns the decisions of a bundle: the rules the policy
@@ -509,23 +527,29 @@ type decisionRoot struct {
 // checks it with GetRules (v1/compile/compile.go:705 at v1.20.2), and
 // evaluates it by carrying the rest of the reference into the value
 // (v1/topdown/eval.go:4038). Here the decision keeps the declared name, so
-// that residuals and dependence are asked of the field, while the walk starts
-// from the rule, all of it: which parts of a body feed which field is not
-// something the walk tells apart, and a read that feeds only another field
-// counts for this decision too.
+// that residuals and dependence are asked of the field, and the walk starts
+// from the rule less the expressions that only build another field, where
+// leaving them out cannot change whether the rule holds (see fieldExprs).
 func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 	compiler := bundle.Compiler
 
+	type key struct {
+		name string
+		rule *ast.Rule
+	}
 	var roots []decisionRoot
-	seen := make(map[decisionRoot]bool)
-	keep := func(name string, found []*ast.Rule) {
+	seen := make(map[key]bool)
+	// declared is the reference of a decision that reaches into the value its
+	// rules return, and nil for one that is the rules themselves.
+	keep := func(found []*ast.Rule, declared ast.Ref) {
 		for _, rule := range found {
-			root := decisionRoot{name: name, rule: rule}
-			if root.name == "" {
-				root.name = rulePath(rule).String()
+			root := decisionRoot{name: rulePath(rule).String(), rule: rule}
+			if declared != nil {
+				root.name = declared.String()
+				root.within = fieldExprs(rule, declared[len(rulePath(rule)):])
 			}
-			if !seen[root] {
-				seen[root] = true
+			if !seen[key{root.name, rule}] {
+				seen[key{root.name, rule}] = true
 				roots = append(roots, root)
 			}
 		}
@@ -535,7 +559,7 @@ func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 		if ref.Annotations == nil || !ref.Annotations.Entrypoint {
 			continue
 		}
-		keep("", compiler.GetRulesExact(ref.Path))
+		keep(compiler.GetRulesExact(ref.Path), nil)
 	}
 
 	for _, declared := range bundle.Entrypoints {
@@ -548,7 +572,7 @@ func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 			found = documentRules(compiler, ref)
 		}
 		if len(found) > 0 {
-			keep("", found)
+			keep(found, nil)
 			continue
 		}
 
@@ -558,7 +582,7 @@ func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 		if len(found) == 0 {
 			return nil, fmt.Errorf("%w: %s", ErrNoSuchEntrypoint, declared)
 		}
-		keep(ref.String(), found)
+		keep(found, ref)
 	}
 	return roots, nil
 }
