@@ -9,9 +9,9 @@ description: >
   also chooses who the policy asks.
 query: |-
   MATCH p = (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(s:PTD_Principal)
-  WHERE 'PTD-OPA-004' IN e.patterns AND s.name STARTS WITH 'http.send at '
+  WHERE 'PTD-OPA-004' IN e.patterns AND s.name STARTS WITH 'HTTP.SEND AT '
   RETURN p
-revision: 1
+revision: 2
 resources:
   - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml
 acknowledgements: []

@@ -1,18 +1,17 @@
-name: "PTD-OPA-003: one row per position"
+name: "PTD-OPA-003: the positions of each principal"
 guid: ee559bb7-ed9a-4b38-be08-b6d5bb610526
 prebuilt: false
 platforms:
   - Open Policy Agent
 category: Transitive grant through an intermediate object
 description: >
-  Each position, with the decision, what it grants through the relation, and what it grants without
-  it.
+  Each principal and the positions found on it: the decision, what a position grants through the
+  relation, and what it grants without it.
 query: |-
   MATCH (p:PTD_Principal)
   WHERE 'PTD-OPA-003' IN p.candidate_patterns
-  UNWIND p.positions AS position
-  RETURN p.name AS principal, position
-revision: 1
+  RETURN p.name AS principal, p.positions AS positions
+revision: 2
 resources:
   - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-003-transitive-grant-via-ownership.yaml
 acknowledgements: []

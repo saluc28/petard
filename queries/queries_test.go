@@ -165,3 +165,50 @@ func TestQueriesAskForWhatTheGraphHolds(t *testing.T) {
 		}
 	}
 }
+
+// unwoundProperty finds UNWIND applied to a property rather than to a list
+// written in the query.
+var unwoundProperty = regexp.MustCompile(`(?i)UNWIND\s+[a-z][a-z0-9_]*\.`)
+
+// On the PostgreSQL backend, UNWIND over a property fails the whole query:
+// dawgs hands the expression to unnest() as it is (cypher/models/pgsql/
+// translate/unwind.go at v0.8.1), a property arrives as text, and PostgreSQL
+// has no unnest(text). A list is returned whole instead, as one column.
+func TestNoQueryUnwindsAProperty(t *testing.T) {
+	all, err := All()
+	if err != nil {
+		t.Fatalf("All() error = %v", err)
+	}
+	for _, query := range all {
+		if found := unwoundProperty.FindString(query.Query); found != "" {
+			t.Errorf("%s unwinds a property (%s), which the PostgreSQL backend cannot run",
+				query.Name, strings.TrimSpace(found))
+		}
+	}
+}
+
+// comparedName finds a literal compared against the two properties BloodHound
+// rewrites.
+var comparedName = regexp.MustCompile(`\.(name|objectid)\s*(?:=|=~|STARTS WITH|ENDS WITH|CONTAINS)\s*'([^']*)'`)
+
+// Ingest upper-cases name and objectid unless the use_raw_object_id feature
+// flag is on, and that flag ships disabled and not user updatable
+// (cmd/api/src/services/graphify/ingestnodes.go and the migration
+// 20260710120000_v9_add_use_raw_object_id_flag_bed_8954.sql at v9.7.1). A query
+// that compares either against a lower case literal matches nothing, which
+// reads like a clean policy. BloodHound's own prebuilt queries write the
+// literal in upper case for the same reason.
+func TestQueriesCompareNamesInUpperCase(t *testing.T) {
+	all, err := All()
+	if err != nil {
+		t.Fatalf("All() error = %v", err)
+	}
+	for _, query := range all {
+		for _, match := range comparedName.FindAllStringSubmatch(query.Query, -1) {
+			if match[2] != strings.ToUpper(match[2]) {
+				t.Errorf("%s compares %s against %q, and ingest stores it upper case",
+					query.Name, match[1], match[2])
+			}
+		}
+	}
+}
