@@ -187,6 +187,10 @@ type Inputs struct {
 	// author annotated none.
 	Entrypoints []string
 
+	// DenyEntrypoints are the decisions declared from outside that refuse the
+	// request when they hold. See opaengine.Bundle.DenyEntrypoints.
+	DenyEntrypoints []string
+
 	// Subject is the part of the request that names who is asking, declared
 	// from outside, and empty to have it recognized. See opaengine.ShapeOf.
 	Subject string
@@ -209,6 +213,7 @@ func Load(inputs Inputs) (Analysis, error) {
 		return Analysis{}, err
 	}
 	bundle.Entrypoints = inputs.Entrypoints
+	bundle.DenyEntrypoints = inputs.DenyEntrypoints
 
 	reads, err := opaengine.Reads(bundle, inputs.Limits)
 	if err != nil {

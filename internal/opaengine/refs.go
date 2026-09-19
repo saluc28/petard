@@ -285,6 +285,12 @@ type ReadSet struct {
 	// Decisions are the entrypoints the walk started from.
 	Decisions []string
 
+	// Denying are the decisions among them declared to deny, sorted. The side
+	// of every read is counted from theirs, and what partial evaluation leaves
+	// of one of them are the ways to be refused rather than the ways to get
+	// something, which is what a caller measuring access has to know.
+	Denying []string
+
 	// SkippedUnderWith lists rules that only expressions carrying a with
 	// modifier reach. They are left out of the decisions, and listed rather
 	// than dropped in silence: counting them would treat test scaffolding as
@@ -311,6 +317,11 @@ func (rs *ReadSet) Paths() []string {
 	return slices.Compact(paths)
 }
 
+// Denies reports whether a decision was declared to deny.
+func (rs *ReadSet) Denies(decision string) bool {
+	return slices.Contains(rs.Denying, decision)
+}
+
 // CountWithProvenance returns how many reads have the given provenance.
 func (rs *ReadSet) CountWithProvenance(p Provenance) int {
 	count := 0
@@ -325,12 +336,13 @@ func (rs *ReadSet) CountWithProvenance(p Provenance) int {
 // Reads finds every place the decisions of a bundle read data.
 //
 // It starts from the decisions, the rules the policy annotates as entrypoints
-// plus the ones Bundle.Entrypoints declares, and walks the rules they
-// depend on, following calls but not expressions that carry a with modifier.
-// Inside each rule it resolves references against the bindings of the body
-// they live in, including the bodies of comprehensions and every expressions,
-// which carry scopes of their own. What a body cannot answer, because the
-// index is a formal parameter, is then asked of the call sites.
+// plus the ones Bundle.Entrypoints and Bundle.DenyEntrypoints declare, and
+// walks the rules they depend on, following calls but not expressions that
+// carry a with modifier. Inside each rule it resolves references against the
+// bindings of the body they live in, including the bodies of comprehensions and
+// every expressions, which carry scopes of their own. What a body cannot
+// answer, because the index is a formal parameter, is then asked of the call
+// sites.
 //
 // Pass Limits{} for the default bounds.
 func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
@@ -379,8 +391,12 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 
 	for _, decision := range decisions {
 		result.Decisions = append(result.Decisions, decision.name)
+		if decision.denies {
+			result.Denying = append(result.Denying, decision.name)
+		}
 	}
 	result.Decisions = sortedUnique(result.Decisions)
+	result.Denying = sortedUnique(result.Denying)
 	result.SkippedUnderWith = reader.skipped()
 	return result, nil
 }
@@ -509,6 +525,10 @@ type decisionRoot struct {
 	// within are the expressions of the rule the decision depends on when it
 	// is a field of what the rule returns, and nil when it is the whole of it.
 	within map[int]bool
+
+	// denies is true for a decision declared to deny, whose rule holding is
+	// the side that refuses.
+	denies bool
 }
 
 // entrypointRules returns the decisions of a bundle: the rules the policy
@@ -532,6 +552,9 @@ type decisionRoot struct {
 // that residuals and dependence are asked of the field, and the walk starts
 // from the rule less the expressions that only build another field, where
 // leaving them out cannot change whether the rule holds (see fieldExprs).
+//
+// The decisions declared to deny come last and go the same way, and a rule
+// already taken as a decision is marked as denying rather than taken twice.
 func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 	compiler := bundle.Compiler
 
@@ -540,20 +563,22 @@ func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 		rule *ast.Rule
 	}
 	var roots []decisionRoot
-	seen := make(map[key]bool)
+	at := make(map[key]int)
 	// declared is the reference of a decision that reaches into the value its
 	// rules return, and nil for one that is the rules themselves.
-	keep := func(found []*ast.Rule, declared ast.Ref) {
+	keep := func(found []*ast.Rule, declared ast.Ref, denies bool) {
 		for _, rule := range found {
-			root := decisionRoot{name: rulePath(rule).String(), rule: rule}
+			root := decisionRoot{name: rulePath(rule).String(), rule: rule, denies: denies}
 			if declared != nil {
 				root.name = declared.String()
 				root.within = fieldExprs(rule, declared[len(rulePath(rule)):])
 			}
-			if !seen[key{root.name, rule}] {
-				seen[key{root.name, rule}] = true
-				roots = append(roots, root)
+			if i, taken := at[key{root.name, rule}]; taken {
+				roots[i].denies = roots[i].denies || denies
+				continue
 			}
+			at[key{root.name, rule}] = len(roots)
+			roots = append(roots, root)
 		}
 	}
 
@@ -561,30 +586,41 @@ func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 		if ref.Annotations == nil || !ref.Annotations.Entrypoint {
 			continue
 		}
-		keep(compiler.GetRulesExact(ref.Path), nil)
+		keep(compiler.GetRulesExact(ref.Path), nil, false)
 	}
 
-	for _, declared := range bundle.Entrypoints {
+	declare := func(declared string, denies bool) error {
 		ref, err := entrypointRef(declared)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		found := compiler.GetRulesExact(ref)
 		if len(found) == 0 {
 			found = documentRules(compiler, ref)
 		}
 		if len(found) > 0 {
-			keep(found, nil)
-			continue
+			keep(found, nil, denies)
+			return nil
 		}
 
 		// Past every rule, into the value one of them returns: the decision is
 		// that field, and it keeps the name it was declared with.
 		found = compiler.GetRulesForVirtualDocument(ref)
 		if len(found) == 0 {
-			return nil, fmt.Errorf("%w: %s", ErrNoSuchEntrypoint, declared)
+			return fmt.Errorf("%w: %s", ErrNoSuchEntrypoint, declared)
 		}
-		keep(found, ref)
+		keep(found, ref, denies)
+		return nil
+	}
+	for _, declared := range bundle.Entrypoints {
+		if err := declare(declared, false); err != nil {
+			return nil, err
+		}
+	}
+	for _, declared := range bundle.DenyEntrypoints {
+		if err := declare(declared, true); err != nil {
+			return nil, err
+		}
 	}
 	return roots, nil
 }

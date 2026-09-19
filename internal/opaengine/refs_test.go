@@ -704,6 +704,137 @@ exempt if data.exemptions[input.namespace]
 	}
 }
 
+// denyingPolicy is a check written the way an admission controller queries
+// one: a set of violations, with an exemption inside.
+const denyingPolicy = `package t
+
+violation contains "the image is not allowed" if {
+	some container in input.containers
+	data.settings.enforced
+	not exempt
+}
+
+exempt if data.exemptions[input.namespace]
+
+allow if count(violation) == 0
+`
+
+// A decision can deny: Gatekeeper refuses the request when violation returns
+// anything, and conftest when deny does. Declared that way, the side of a read
+// is counted from the side that denies, and it comes out the same as for the
+// decision that grants on no violation. Declared the other way, the same rule
+// is read as granting whatever it collects.
+func TestReadsFromADecisionThatDenies(t *testing.T) {
+	tests := []struct {
+		name    string
+		declare func(*Bundle)
+		denying []string
+		negated map[string]bool
+	}{
+		{
+			name:    "declared to deny",
+			declare: func(b *Bundle) { b.DenyEntrypoints = []string{"t/violation"} },
+			denying: []string{"data.t.violation"},
+			negated: map[string]bool{"data.settings.enforced": true, "data.exemptions[_]": false},
+		},
+		{
+			name:    "the decision that grants on none",
+			declare: func(b *Bundle) { b.Entrypoints = []string{"data.t.allow"} },
+			negated: map[string]bool{"data.settings.enforced": true, "data.exemptions[_]": false},
+		},
+		{
+			name:    "declared to grant",
+			declare: func(b *Bundle) { b.Entrypoints = []string{"t/violation"} },
+			negated: map[string]bool{"data.settings.enforced": false, "data.exemptions[_]": true},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bundle, err := Load([]string{writeSources(t, map[string]string{"policy.rego": denyingPolicy})}, ParseModeAuto)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			tt.declare(bundle)
+			reads, err := Reads(bundle, Limits{})
+			if err != nil {
+				t.Fatalf("Reads() error = %v", err)
+			}
+
+			if !slices.Equal(reads.Denying, tt.denying) {
+				t.Errorf("Denying = %v, want %v", reads.Denying, tt.denying)
+			}
+			for _, decision := range reads.Decisions {
+				if reads.Denies(decision) != slices.Contains(tt.denying, decision) {
+					t.Errorf("Denies(%s) = %v", decision, reads.Denies(decision))
+				}
+			}
+			negated := map[string]bool{}
+			for _, read := range reads.Reads {
+				for _, decision := range read.Decisions {
+					negated[read.Path] = decision.UnderNegation
+				}
+			}
+			if !maps.Equal(negated, tt.negated) {
+				t.Errorf("under negation = %v, want %v", negated, tt.negated)
+			}
+		})
+	}
+}
+
+// A rule the policy annotates, or the caller declares, and also declares to
+// deny is one decision, and it denies: the first two say it is queried, and
+// the third says how its answer is read.
+func TestReadsTakeTheDeclarationToDenyAlongWithTheOthers(t *testing.T) {
+	const policy = `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+deny contains "blocked" if data.blocklist[input.user]
+`
+	tests := []struct {
+		name        string
+		entrypoints []string
+	}{
+		{name: "annotated", entrypoints: nil},
+		{name: "annotated and declared", entrypoints: []string{"t/deny"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bundle, err := Load([]string{writeSources(t, map[string]string{"policy.rego": policy})}, ParseModeAuto)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			bundle.Entrypoints = tt.entrypoints
+			bundle.DenyEntrypoints = []string{"data.t.deny"}
+			reads, err := Reads(bundle, Limits{})
+			if err != nil {
+				t.Fatalf("Reads() error = %v", err)
+			}
+
+			if !slices.Equal(reads.Decisions, []string{"data.t.deny"}) || !slices.Equal(reads.Denying, reads.Decisions) {
+				t.Fatalf("Decisions = %v, Denying = %v, want the one rule, denying", reads.Decisions, reads.Denying)
+			}
+			expected := []ReachedDecision{{Name: "data.t.deny", UnderNegation: true}}
+			if read := readOfPath(t, reads, "data.blocklist[_]"); !slices.Equal(read.Decisions, expected) {
+				t.Errorf("decisions = %v, want %v", read.Decisions, expected)
+			}
+		})
+	}
+}
+
+// A declaration to deny that matches nothing is a typo like any other.
+func TestReadsRefusesADecisionToDenyItCannotFind(t *testing.T) {
+	bundle, err := Load([]string{writeSources(t, map[string]string{"policy.rego": denyingPolicy})}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	bundle.DenyEntrypoints = []string{"t/violations"}
+	if _, err := Reads(bundle, Limits{}); !errors.Is(err, ErrNoSuchEntrypoint) {
+		t.Errorf("Reads() error = %v, want ErrNoSuchEntrypoint", err)
+	}
+}
+
 // The field an enforcement point reads depends on what can make the rule fail,
 // whatever field it computes, and not on a list only another field holds. A
 // setting read inside that list is no read of the decision; one read to fill

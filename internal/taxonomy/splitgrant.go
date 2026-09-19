@@ -149,12 +149,14 @@ func authorizedGrants(reads *opaengine.ReadSet, shape opaengine.Shape, model *wr
 					continue
 				}
 				for _, decision := range read.Decisions {
-					if decision.UnderNegation {
+					if !grantingSide(reads, decision) {
 						// Not because the side makes the write harmless: the
 						// values collected later are the ones the decision
 						// compares with, and here those are the values that
-						// deny. Lifting the denial takes another value, which
-						// nothing names, so this is a declared false negative.
+						// deny, the same as for any value of a decision
+						// declared to deny. Lifting the denial takes another
+						// value, which nothing names, so this is a declared
+						// false negative.
 						continue
 					}
 					key := decision.Name + "\x00" + read.Path + "\x00" + writer.AuthorizedBy.Decision + "\x00" + writer.AuthorizedBy.Value
@@ -395,9 +397,11 @@ func authorizedJoins(reads *opaengine.ReadSet, shape opaengine.Shape, model *wri
 					continue
 				}
 				for _, decision := range read.Decisions {
-					if decision.UnderNegation {
+					if !grantingSide(reads, decision) {
 						// The membership only ever denies there, so adding an
-						// element takes access away rather than granting it.
+						// element takes access away rather than granting it;
+						// or the decision denies, and what its residuals say is
+						// who gets refused.
 						continue
 					}
 					key := decision.Name + "\x00" + list + "\x00" + writer.AuthorizedBy.Decision

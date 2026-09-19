@@ -225,7 +225,9 @@ func reachedDecisions(reached decisionPaths) []ReachedDecision {
 //
 // The side is the parity of the negations on the way down. A second negation
 // takes the first one back: an exemption a violation asks not to hold, in a
-// decision that asks for no violation, grants when it holds.
+// decision that asks for no violation, grants when it holds. A decision
+// declared to deny starts on the side that denies, as if the enforcement point
+// asked for it not to hold, which is what it does.
 //
 // The state is the pair of a rule and the side the path so far lands on, so a
 // rule reached both ways is recorded both ways and the side that grants wins.
@@ -243,7 +245,7 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 		name := decision.name
 
 		seen := make(map[state]bool)
-		queue := []state{{rule: decision.rule, grants: true}}
+		queue := []state{{rule: decision.rule, grants: !decision.denies}}
 		for len(queue) > 0 {
 			at := queue[0]
 			queue = queue[1:]

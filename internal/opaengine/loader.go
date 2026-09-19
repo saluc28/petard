@@ -106,6 +106,18 @@ type Bundle struct {
 	// would be refusing to analyze them at all.
 	Entrypoints []string
 
+	// DenyEntrypoints are decisions the PEP queries to refuse the request: it
+	// is refused when the rule holds, or when it collects anything, the way
+	// Gatekeeper reads violation and conftest reads deny. They are spelled like
+	// Entrypoints and are decisions like them, and a rule the policy annotates
+	// or Entrypoints names as well is one decision, which denies.
+	//
+	// Which way a decision answers is decided where it is enforced, and OPA's
+	// annotations have no field for it, so it is declared from outside for the
+	// same reason the decisions themselves are. Nothing is inferred from a
+	// name: a rule called deny can just as well be one that a decision negates.
+	DenyEntrypoints []string
+
 	// parsed are the modules as written, kept until partial evaluation first
 	// asks for the policy it runs against, which is built from them.
 	parsed map[string]*ast.Module

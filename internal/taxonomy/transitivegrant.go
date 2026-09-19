@@ -147,7 +147,9 @@ func TransitiveGrant(ctx context.Context, bundle *opaengine.Bundle, reads *opaen
 // them separately would report each as harmless because the other still holds.
 //
 // A closure reached only through a negation is left out: a relation that only
-// ever denies is not one that grants a position, whatever its reach.
+// ever denies is not one that grants a position, whatever its reach. So is one
+// that a decision declared to deny reaches, since what the pattern counts of it
+// would be the ways to be refused.
 func relationsPerDecision(reads *opaengine.ReadSet) map[string][]string {
 	relations := make(map[string][]string)
 	for _, closure := range reads.Closures {
@@ -158,7 +160,7 @@ func relationsPerDecision(reads *opaengine.ReadSet) map[string][]string {
 			continue
 		}
 		for _, decision := range closure.Decisions {
-			if !decision.UnderNegation {
+			if grantingSide(reads, decision) {
 				relations[decision.Name] = append(relations[decision.Name], closure.Relation...)
 			}
 		}
@@ -177,7 +179,7 @@ func closureSites(reads *opaengine.ReadSet) map[string][]ReadSite {
 	for _, closure := range reads.Closures {
 		site := ReadSite{Ref: closure.Builtin, Rule: closure.Rule, File: closure.File, Line: closure.Line}
 		for _, decision := range closure.Decisions {
-			if !decision.UnderNegation {
+			if grantingSide(reads, decision) {
 				sites[decision.Name] = append(sites[decision.Name], site)
 			}
 		}

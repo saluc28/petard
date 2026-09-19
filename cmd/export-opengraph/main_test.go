@@ -417,3 +417,17 @@ func TestRunRefusesASubjectNothingReads(t *testing.T) {
 		t.Errorf("a payload was written for an analysis that was refused (stat: %v)", err)
 	}
 }
+
+// A decision declared to deny on the command line reaches the analysis, and one
+// that names no rule is refused like any other declaration.
+func TestRunRefusesADecisionToDenyThatNamesNothing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "petard.json")
+
+	var stdout, stderr bytes.Buffer
+	if code := run(analysisArgs("-out", path, "-deny-entrypoint", "quill/violation"), &stdout, &stderr); code != exitFailure {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFailure, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "no rule has the declared entrypoint path: quill/violation") {
+		t.Errorf("stderr does not name the declaration: %s", stderr.String())
+	}
+}

@@ -78,6 +78,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	regoV1 := flags.Bool("rego-v1", false, "parse as Rego v1 and do not fall back to v0")
 	var entrypoints repeatedString
 	flags.Var(&entrypoints, "entrypoint", "a rule the PEP queries, or a field of what it returns, as data.authz.allow or authz/allow; repeat for more")
+	var denyEntrypoints repeatedString
+	flags.Var(&denyEntrypoints, "deny-entrypoint", "a rule the PEP queries to refuse the request when it holds or collects anything, as k8sallowedrepos/violation; repeat for more")
 	subject := flags.String("subject", "", "the part of the request that names who is asking, as input.user; without it, it is recognized")
 	dataPath := flags.String("data", "", "path to the concrete data; without it there are no principals and no capabilities")
 	writeModelPath := flags.String("write-model", "", "path to the write model; without it every match stays a candidate")
@@ -123,12 +125,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	ctx := context.Background()
 	payload, err := build(ctx, taxonomy.Inputs{
-		Paths:          paths,
-		Mode:           mode,
-		Entrypoints:    entrypoints,
-		Subject:        *subject,
-		DataPath:       *dataPath,
-		WriteModelPath: *writeModelPath,
+		Paths:           paths,
+		Mode:            mode,
+		Entrypoints:     entrypoints,
+		DenyEntrypoints: denyEntrypoints,
+		Subject:         *subject,
+		DataPath:        *dataPath,
+		WriteModelPath:  *writeModelPath,
 		Limits: opaengine.Limits{
 			MaxCallDepth: *maxCallDepth,
 			MaxCallPaths: *maxCallPaths,

@@ -526,6 +526,20 @@ func TestRunTakesADeclaredSubject(t *testing.T) {
 	}
 }
 
+// A decision declared to deny is listed with its direction, next to the ones
+// the policy annotates, since every side in the report is counted from it.
+func TestRunTakesADecisionDeclaredToDeny(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	if code := run([]string{"-deny-entrypoint", "quill/tenant_policy/denied_mfa", fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "decisions: 14\n") || !strings.Contains(out, "  data.quill.tenant_policy.denied_mfa, to deny\n") {
+		t.Errorf("the report does not list the decision declared to deny:\n%s", out)
+	}
+}
+
 func TestRunUsageErrors(t *testing.T) {
 	tests := []struct {
 		name string

@@ -28,8 +28,9 @@ const everyConfidence = "B"
 //
 //  1. an entrypoint reaches an every expression, which the walk collects as a
 //     quantifier with the decisions that depend on it;
-//  2. the every is on the granting side: a decision reaches it without going
-//     through a negation, so its vacuous truth grants rather than denies;
+//  2. the every is on the granting side: a decision reaches it with an even
+//     number of negations, or an odd one when it is declared to deny, so its
+//     vacuous truth lets the request through rather than stopping it;
 //  3. the domain derives from input or data, so the request or the documents
 //     can make it empty, rather than being a literal that never is;
 //  4. no guard in the body forces the domain non-empty first, which is the
@@ -64,7 +65,7 @@ func FailOpenOnEmptyEvery(reads *opaengine.ReadSet) []Finding {
 			findings = append(findings, Finding{
 				PatternID: EveryOverEmptyDomain,
 				Verdict:   VerdictFinding,
-				Summary: fmt.Sprintf("%s grants when %s is empty, because the every over it is vacuously true",
+				Summary: fmt.Sprintf("%s lets the request through when %s is empty, because the every over it is vacuously true",
 					decision.Name, quantifier.Domain),
 				Decision:   decision.Name,
 				Path:       quantifier.Domain,

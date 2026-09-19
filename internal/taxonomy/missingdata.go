@@ -20,16 +20,20 @@ const DenyUndefinedOnMissingData = "PTD-OPA-002"
 // The registry files it at B, and says why: the weak signal is knowing which
 // side of a decision applies the check, which depends on how the PEP combines
 // the answers and is therefore outside the policy. This engine never guesses
-// it. The walk starts at the rules the policy itself annotates as entrypoints,
-// and the side that denies is a negated edge of that walk, so the claim rests
-// on a declaration by the author plus a bool in the AST. A recognizer that
-// inferred decisions from names would have to lower this.
+// it. The walk starts at the rules the policy annotates or the caller declares
+// as entrypoints, from the side the decision was declared on, and the side that
+// denies is the parity of the negated edges of that walk, so the claim rests
+// on a declaration plus a bool in the AST. A recognizer that inferred decisions
+// or their direction from names would have to lower this.
 const missingDataConfidence = "A"
 
-// enforcingSideDeclared is how the side that applies the check was found, and
-// it travels with the finding so that the confidence above can be checked
-// rather than trusted.
-const enforcingSideDeclared = "declared entrypoint, reached under a negation"
+// enforcingSideDeclared and enforcingSideDeclaredToDeny are how the side that
+// applies the check was found, and they travel with the finding so that the
+// confidence above can be checked rather than trusted.
+const (
+	enforcingSideDeclared       = "declared entrypoint, reached under a negation"
+	enforcingSideDeclaredToDeny = "entrypoint declared to deny, reached with an even number of negations"
+)
 
 // ErrNeedsData is returned when a pattern that reads the concrete data is asked
 // to run without it.
@@ -44,10 +48,11 @@ var ErrNeedsData = errors.New("taxonomy: the pattern reads the concrete data, an
 //
 // The signals of the pattern, in order:
 //
-//  1. the read sits in a rule that reaches a decision only through a negation,
-//     which is the side that denies, and the read itself is not negated: a deny
-//     rule whose body is undefined produces nothing, and a not on nothing
-//     succeeds;
+//  1. the read sits in a rule a decision reaches only on the side that denies,
+//     through a negation or, from a decision declared to deny, through none,
+//     and the read itself is not negated: a deny rule whose body is undefined
+//     produces nothing, and a not on nothing succeeds, the same as a violation
+//     that is not there;
 //  2. the reads are the resolved ones the walk produced, as in every other
 //     pattern;
 //  3. the path is absent for at least one document of the collections it
@@ -109,7 +114,11 @@ func FailOpenOnMissingData(ctx context.Context, reads *opaengine.ReadSet, data *
 			}
 
 			at[key] = len(findings)
-			findings = append(findings, missingDataFinding(read, decision.Name, presence, site))
+			finding := missingDataFinding(read, decision.Name, presence, site)
+			if reads.Denies(decision.Name) {
+				finding.EnforcingSide = enforcingSideDeclaredToDeny
+			}
+			findings = append(findings, finding)
 		}
 	}
 	return findings, nil

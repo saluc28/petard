@@ -139,6 +139,12 @@ func AddCapabilities(ctx context.Context, g *graph.Graph, a Analysis) (int, erro
 	conditional := 0
 	for _, principal := range principals {
 		for _, decision := range a.Reads.Decisions {
+			if a.Reads.Denies(decision) {
+				// What is left of a decision that denies are the ways to be
+				// refused, and an edge somebody walks is a way to get in. See
+				// grantingSide.
+				continue
+			}
 			residuals, err := opaengine.Residuals(ctx, a.Bundle, a.Data, opaengine.Request{
 				Decision: decision,
 				Unknowns: unknowns,
@@ -155,6 +161,18 @@ func AddCapabilities(ctx context.Context, g *graph.Graph, a Analysis) (int, erro
 		}
 	}
 	return conditional, nil
+}
+
+// grantingSide reports whether a decision reaches a read on the side that
+// grants, and is one partial evaluation can measure access on.
+//
+// The patterns that measure access ask OPA what a decision still grants, and
+// what it leaves of a decision declared to deny are the ways to be refused.
+// Turning those around would take the complement of every condition, and the
+// complement of a residual is a negation no edge and no written value can
+// carry, so such a decision is left to the patterns that do not measure.
+func grantingSide(reads *opaengine.ReadSet, decision opaengine.ReachedDecision) bool {
+	return !decision.UnderNegation && !reads.Denies(decision.Name)
 }
 
 // addCapabilities turns the ways one decision can still hold for one principal
