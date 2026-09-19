@@ -127,23 +127,14 @@ detection:
 
 graph:
   emits: finding
-  edge: PTD_Reads
-  edge_note: >
+  marks:
+    - kind: PTD_Rule
+      properties: [empty_domains, is_decision]
+  marks_note: >
     It does not emit `PTD_CanEscalateTo`: nobody reaches anybody, a check simply does not cover
-    the empty case, which is a missing coverage like `PTD-OPA-002` and not a route. When the
-    domain is a `data` path the finding marks the dependency between the decision and that
-    attribute; when the domain is part of the request, as in the fixture, the finding lives in the
-    report with no attribute to attach to, the way a decision that reads no `data` has none.
-  from: PTD_Rule
-  to: PTD_Attribute
-  traversable: false
-  traversable_note: >
-    False on purpose, as for 002: nothing is crossed, it is an observation that a check does not
-    apply to the empty case.
-  properties:
-    - decision: the decision that goes fail-open
-    - domain: the collection the every iterates, which the request can make empty
-    - guarded: whether a guard against the empty case was found, which is what a counter case has
+    the empty case, which is a missing coverage like `PTD-OPA-002` and not a route. The pattern
+    marks the rule that holds the `every`, with the collections it iterates in `empty_domains`.
+    A rule that reads no document has no node otherwise, and the pattern adds it.
 
 false_positives:
   - condition: >

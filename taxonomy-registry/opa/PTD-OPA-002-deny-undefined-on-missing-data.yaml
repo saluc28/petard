@@ -152,26 +152,21 @@ detection:
 
 graph:
   emits: finding
-  edge: PTD_Reads
-  edge_note: >
+  marks:
+    - kind: PTD_Reads
+      properties: [uncovered_keys, keys_checked, enforcing_side, confidence]
+  marks_note: >
     It does not emit `PTD_CanEscalateTo`: there is no principal reaching another one. This is a
-    **missing coverage**, not a route. The edge is the dependency between the decision and the
-    absent attribute, marked with the list of uncovered keys.
+    **missing coverage**, not a route. The pattern marks the read the check depends on, from the
+    rule to the attribute that is absent, with the keys where it is absent and how many were
+    tried.
+  edge: PTD_Reads
   from: PTD_Rule
   to: PTD_Attribute
   traversable: false
   traversable_note: >
     False on purpose. Marking it traversable would produce paths in the interface that nobody
     can walk: nothing is being crossed here, it is an observation that a check does not cover.
-  properties:
-    - attribute_path: the resolved reference
-    - uncovered_keys: the keys for which the path is absent
-    - coverage_ratio: how many keys are covered out of how many there are
-    - enforcing_side: how it was established which side applies the check
-  properties_note: >
-    These properties live in the finding and in the report, **not in the exported edge**. Edge
-    properties end up in ingested data, so they are added once and together rather than one
-    pattern at a time. `PTD-OPA-004` says the same about `PTD_TaintedBy`, for the same reason.
 
 false_positives:
   - condition: >
@@ -331,8 +326,8 @@ fixture:
     Two tenants. One declares `policy.require_mfa`, the other has no `policy` key at all. The
     deny rule requires MFA only where the key exists.
   expected_edge: >
-    PTD_Reads from the decision to the attribute `data.tenants[*].policy.require_mfa`, with
-    `uncovered_keys: [dolm]`.
+    PTD_Reads from `data.quill.tenant_policy.denied_mfa` to `data.tenants[_].policy.require_mfa`,
+    marked with the id of this pattern, `uncovered_keys: dolm` and `keys_checked: 2`.
   expected_note: >
     The fixture also holds the counter case: a second check where the key exists for **every**
     tenant and which therefore must not be reported.

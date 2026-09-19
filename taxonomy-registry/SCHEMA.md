@@ -71,7 +71,8 @@ what it takes to **find** a defect, not what it takes to show its effect.
 | Subfield | What |
 |---|---|
 | `emits` | `finding` \| `candidate`. **`finding` only when `requires_write_model` is false, or the model is there.** Otherwise `candidate` |
-| `edge` | the edge kind in the data model |
+| `marks` | where the pattern leaves its id in the exported graph, one entry per `kind` of node or edge, with the `properties` a reader finds there. The id goes in `patterns` for a finding and in `candidate_patterns` for a candidate. A test holds every entry against what the engine does on the fixture |
+| `edge` | the edge kind in the data model the finding is about, when it is about one |
 | `from` / `to` | which nodes it joins |
 | `traversable` | bool: it becomes `is_traversable` in the OpenGraph schema. Marking an edge traversable when it does not stand for a capability produces **paths in the interface that nobody can walk** |
 

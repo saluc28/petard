@@ -186,38 +186,26 @@ graph:
     `finding`, like `PTD-OPA-002` and for the same reason: it is observable that the check does
     not apply, without needing to know who writes what. It does not emit `PTD_CanEscalateTo`,
     because there is no principal reaching another one.
-  edge: PTD_TaintedBy
-  edge_note: >
-    The same edge kind as `PTD-OPA-004`, with `failure_mode` telling them apart: there the
-    decision depends on the **content** of the response, here on its **existence**. It reuses
-    the same `PTD_Principal` node for the endpoint when 004 has already created it, so the same
-    host appears once in the graph with two edges saying two different things about it.
-  from: PTD_Attribute
-  to: PTD_Principal
-  from_note: >
-    As in `PTD-OPA-004`: the edge runs from the value that was believed towards whoever
-    answered, and whoever answered is a `PTD_Principal`.
+  marks:
+    - kind: PTD_Reads
+      properties: [mitigation, provenance_origin]
+  marks_note: >
+    The pattern marks the read of the answer, the same read `PTD-OPA-004` marks, and the two ids
+    on one edge say two different things about it: there the decision depends on the
+    **content** of the response, here on its **existence**. `mitigation` is one sentence rather
+    than three fields: with `raise_error: false` there is no error left to make fatal, at the
+    default the caller can still ask for `strict-builtin-errors`, and with a computed request it
+    cannot be said, which is a third thing again. A property for whether the error is handled
+    does not appear, because that is already inside signal 4: a rule where something consumes
+    the error is not reported at all.
+  edge: PTD_Reads
+  from: PTD_Rule
+  to: PTD_Attribute
   traversable: false
   traversable_note: >
     False, as in 002 and 004. Nothing is being crossed here: it is an observation that a check
     stops covering. Marking it traversable would produce paths in the interface that nobody can
     walk.
-  properties:
-    - endpoint: the URL or host, or `dynamic` with the expression that computes it
-    - failure_mode: always `unavailability`, telling it apart from the content taint of 004
-    - enforcing_side: how it was established which side applies the check
-    - mitigation_available: whether `strict-builtin-errors` would still have any effect
-  properties_note: >
-    The finding carries the host, the decision, the rule that goes quiet and **one sentence
-    about the mitigation** rather than three fields describing it in pieces. Three values on
-    their own are not actionable and together they say one thing: with `raise_error: false`
-    there is no error left to make fatal, at the default the caller can still ask for
-    `strict-builtin-errors`, and with a computed request it cannot be said, which is a third
-    thing again.
-    A property for whether the error is handled does not appear, because that is already inside
-    signal 4: a rule where something consumes the error is not reported at all.
-    As with the other patterns, these properties live in the finding and not in the exported
-    edge.
 
 false_positives:
   - condition: >
@@ -371,8 +359,9 @@ fixture:
     does not handle the service not answering. The fixture's host does not resolve, so the case
     is reproducible without a network and without mocks.
   expected_edge: >
-    PTD_TaintedBy from the decision to the attribute, with `failure_mode: unavailability` and
-    `mitigation_available: false`.
+    PTD_Reads from `data.quill.risk.denied_vulnerable` to `enrichment.body.risk_score`, marked
+    with the ids of this pattern and of `PTD-OPA-004`, and a `mitigation` saying that with
+    `raise_error: false` there is no error left to make fatal.
   expected_note: >
     Three counter cases, and all three are needed because the pattern has three ways of getting
     it wrong.

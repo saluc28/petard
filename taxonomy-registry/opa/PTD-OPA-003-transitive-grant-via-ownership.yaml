@@ -170,18 +170,26 @@ graph:
     which is what ties the gain to **this** position rather than to some route or other.
     Without the third comparison the chain would report anybody who can write something that
     grants something, and would say escalation where the honest word is access.
-  edge: PTD_CanPerform
+  marks:
+    - kind: PTD_Principal
+      properties: [positions]
+    - kind: PTD_CanEscalateTo
+      properties: [decision, relation, reach_transitive, reach_direct, via_write_path, via,
+        confidence]
+  marks_note: >
+    A position is marked on the principal who holds it, as a candidate, with one line in
+    `positions` for each decision: what it grants through the relation and what it grants
+    without it. The chain marks the `PTD_CanEscalateTo` it draws, as a finding, with the two
+    counts, the relation and the write it goes through.
+  edge: PTD_CanEscalateTo
   from: PTD_Principal
-  to: PTD_Resource
+  to: PTD_Principal
   traversable: true
   traversable_note: >
-    Traversable, because something really is being crossed here: it is the ability to reach a
-    resource. It is the edge that makes the path appear in the interface once the chain closes.
-  properties:
-    - reach_transitive: how much the decision grants with the relation in place
-    - reach_direct: how much it grants with the relation cut
-    - amplification: the ratio between the two
-    - relation: the path in `data` the propagation depends on
+    Traversable, because something really is being crossed here: the principal can take the
+    position, through a write the bundle allows. It is the edge that makes the path appear in the
+    interface once the chain closes, next to the `PTD_CanPerform` edges that say what the
+    position reaches.
   properties_note: >
     **The two `reach_*` count residual conditions, which is to say routes and not resources.** A
     document a decision grants through two different branches counts twice, and that is the
@@ -194,8 +202,6 @@ graph:
     from, in the idiomatic form, is the formal parameter of the function holding the call, which
     the compiler has renamed, so it is only nameable when the policy writes it as a constant. In
     their place the finding carries the **relation**, which is the thing to act on.
-    As with the other patterns, these properties live in the finding and not in the exported
-    edge, whose properties are a closed list.
 
 false_positives:
   - condition: >
@@ -456,7 +462,9 @@ fixture:
     A hierarchy `root -> div{1,2,3} -> team{i}{j}`, with 18 documents all in the leaves. One
     principal is a member of `root` alone, which contains no documents.
   expected_edge: >
-    PTD_CanPerform towards all 18 resources, with reach_direct 0 and reach_transitive 18.
+    `dave` carries the id of this pattern in `candidate_patterns`, with the position
+    `data.quill.authz.allow: 18 ways through data.projects[_].parent, and 0 without it`. The chain
+    draws the `PTD_CanEscalateTo` from `mallory` to `dave`, marked with the id as a finding.
   expected_note: >
     The fixture also holds the counter case: a principal who is a member of a leaf, whose
     amplification is 1 and who therefore must not be reported.

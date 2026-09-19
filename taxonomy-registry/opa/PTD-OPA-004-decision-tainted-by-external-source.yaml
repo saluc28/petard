@@ -121,12 +121,17 @@ detection:
 
 graph:
   emits: finding
+  marks:
+    - kind: PTD_Reads
+      properties: [ref, provenance, provenance_origin]
+  marks_note: >
+    The pattern marks the read of the answer, from the rule to the value. The value and whoever
+    gave it are in the graph whatever the pattern says: the engine draws every value from outside
+    the policy as a `PTD_Attribute`, and the endpoint as a `PTD_Principal` named after it, joined
+    by `PTD_TaintedBy`. That is the most important consequence of the pattern, since whoever
+    controls that host enters the authorization graph as an actor, visible next to the real
+    users. A `PTD_CanEscalateTo` out of that node would need the model to declare who controls it.
   edge: PTD_TaintedBy
-  edge_note: >
-    It also emits a **new node**: the external endpoint as a `PTD_Principal`. That is the most
-    important consequence of the pattern, since whoever controls that host enters the
-    authorization graph as an actor, visible next to the real users.
-    A `PTD_CanEscalateTo` out of that node is added only if the model declares who controls it.
   from: PTD_Attribute
   to: PTD_Principal
   from_note: >
@@ -136,15 +141,6 @@ graph:
   traversable_note: >
     A `TaintedBy` edge is a dependency, not a capability, so it is not traversable. What would
     be traversable is the edge starting at the external principal, if anybody declares it.
-  properties:
-    - endpoint: the URL or host, or `dynamic` with the expression that computes it
-    - taint_path: the chain from the builtin to the decision
-    - constrained: whether the value is constrained in the same body
-    - raise_error: the value of that option in the call
-  properties_note: >
-    As with the other patterns, these properties live in the finding and not yet in the exported
-    edge, whose properties are a closed list: they end up in ingested data, so they are added
-    once and together.
 
 false_positives:
   - condition: >
@@ -207,8 +203,8 @@ fixture:
   case: >
     A rule grants access based on a field of the response from an enrichment endpoint.
   expected_edge: >
-    PTD_TaintedBy from the decision to the attribute, plus a PTD_Principal node for the
-    endpoint.
+    PTD_Reads from the rule to the value, marked with the id of this pattern, and the value joined
+    by PTD_TaintedBy to a PTD_Principal named after the endpoint.
   expected_note: >
     The counter case is indispensable: a second `http.send` call whose result reaches **no**
     decision, used for a log or assigned and never used. The engine must not report it. It is

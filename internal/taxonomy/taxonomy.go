@@ -77,9 +77,20 @@ type Pattern struct {
 	Graph struct {
 		Emits string `yaml:"emits"`
 		Edge  string `yaml:"edge"`
+
+		// Marks are where the pattern leaves its id in the exported graph.
+		Marks []GraphMark `yaml:"marks"`
 	} `yaml:"graph"`
 
 	FalsePositives []FalsePositive `yaml:"false_positives"`
+}
+
+// GraphMark is one kind of node or edge a pattern leaves its id on, and the
+// properties a reader finds there. It is a claim about the engine, and a test
+// holds it against what the engine does on the fixture.
+type GraphMark struct {
+	Kind       string   `yaml:"kind"`
+	Properties []string `yaml:"properties"`
 }
 
 // FalsePositive is one condition under which the pattern fires with no abuse

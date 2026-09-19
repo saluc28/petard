@@ -152,6 +152,13 @@ graph:
     A finding once the write model names the decision behind the write, since at that point every
     step is an answer OPA gave. Without the model, the reads of signal 1 are what 001 already
     reports as candidates, and this pattern adds nothing to them.
+  marks:
+    - kind: PTD_CanEscalateTo
+      properties: [decision, authorized_by, value, via_write_path, via, confidence]
+  marks_note: >
+    The pattern marks the escalation it draws: `via_write_path` is the entry of the write model
+    the write goes through, `authorized_by` the decision the writing endpoint consumes, `value`
+    the value written, and `decision` the decision that grants after the write.
   edge: PTD_CanEscalateTo
   from: PTD_Principal
   to: PTD_Principal
@@ -160,11 +167,6 @@ graph:
     Traversable for the same reason as the escalation of the 001 to 003 chain: the principal can
     take the position, through a write the bundle allows. The target is a principal who holds the
     granting value today; on the fixture, `alice`, the editor.
-  properties:
-    - via_write_path: the entry of the write model the write goes through
-    - authorized_by: the decision the writing endpoint consumes
-    - value: the value written
-    - decision: the decision that grants after the write
 
 false_positives:
   - condition: >

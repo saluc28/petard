@@ -131,26 +131,21 @@ detection:
 
 graph:
   emits: finding
-  edge: PTD_Reads
-  edge_note: >
+  marks:
+    - kind: PTD_Reads
+      properties: [ref, provenance]
+  marks_note: >
     It does not emit `PTD_CanEscalateTo`: the writer does not become another principal, they
     decide for all of them, and an edge from the writer to every principal would claim a set of
-    routes where there is one switch. The finding marks the dependency between the decision and
-    the document, and the writers are already in the graph as `PTD_WrittenBy`.
+    routes where there is one switch. The pattern marks the read of the document by the
+    decision, and the writers the model names are in the graph as `PTD_WrittenBy`.
+  edge: PTD_Reads
   from: PTD_Rule
   to: PTD_Attribute
   traversable: false
   traversable_note: >
     False on purpose, as for 002 and 007: the finding is an observation about who holds the
     decision, and nothing in it is crossed.
-  properties:
-    - decision: the decision the document decides
-    - attribute_path: the document, as read
-    - today: what the decision gives somebody no document names as the data stands
-    - writers: who the write model says writes the document
-  properties_note: >
-    As with the other patterns, these live in the finding and in the report, not in the exported
-    edge, whose properties are a closed list.
 
 false_positives:
   - condition: >

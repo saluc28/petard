@@ -128,15 +128,18 @@ graph:
     covers every field of it, so the engine emits a `finding` on a field the subject cannot
     really write: that is the first of the false positives below, and the model is where it is
     fixed.
-  edge: PTD_CanEscalateTo
-  from: PTD_Principal
-  to: PTD_Principal
-  traversable: true
-  properties:
-    - attribute_path: the resolved reference, for instance `data.users[input.user].profile.department`
-    - via_write_path: the `WrittenBy` entry that made it a finding
-    - confidence: the level reached on this instance
-    - residual: the residual condition left by partial evaluation, where there is one
+  marks:
+    - kind: PTD_Reads
+      properties: [ref, provenance, source_file, source_line]
+  marks_note: >
+    The pattern marks the reads of the field, from every rule that reads it to the attribute,
+    with its id in `patterns`, or in `candidate_patterns` when there is no write model. The
+    escalation the write opens is drawn by the chain with `PTD-OPA-003`: a `PTD_CanEscalateTo`
+    that carries the id of 003 and names the write in `via_write_path`.
+  edge: PTD_Reads
+  from: PTD_Rule
+  to: PTD_Attribute
+  traversable: false
 
 false_positives:
   - condition: >
@@ -287,7 +290,10 @@ fixture:
     An unprivileged user can write `profile.department` on their own record. A rule grants
     `read` across tenants to whoever has `profile.department == "security"`.
   expected_edge: >
-    PTD_CanEscalateTo from the unprivileged principal to the cross-tenant level of access.
+    PTD_Reads from `data.quill.authz.allow` and `data.quill.authz.is_member` to
+    `data.users[_].profile.department`, marked with the id of this pattern. The escalation the
+    write opens is the `PTD_CanEscalateTo` from `mallory` to `dave` that the chain draws, marked
+    with `PTD-OPA-003`.
   expected_note: >
     The fixture also holds the **counter case**: a second field of the same record, read by a
     decision but NOT writable by the user, which the engine must not report. Without a counter
