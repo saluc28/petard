@@ -495,4 +495,6 @@ notes:
     decision as a reason to stay quiet about a value somebody controls, and this pattern stays on
     the side that grants only because of how it measures: signal 3 writes the values a decision
     compares with, and on the side that denies those are the values that deny. Lifting a denial
-    means writing some other value, which the pattern has no way to name.
+    means writing some other value, which the pattern has no way to name. A decision declared to
+    deny is left out for the same reason, on either side: every value it compares with is one
+    that makes it refuse.

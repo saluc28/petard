@@ -83,13 +83,15 @@ detection:
     - order: 2
       check: >
         The rule sits on the side that grants: reached from the entrypoint with a parity of
-        negations such that the body being true makes the decision hold. An `every` whose vacuous
+        negations such that the body being true lets the request through, by making the decision
+        hold or, for one declared to deny, by keeping it from holding. An `every` whose vacuous
         truth denies is fail-closed and is not reported.
       rationale: >
         This is the parity signal of `PTD-OPA-002` put to the opposite question. There the
         fail-open is missing data on the denying side; here it is a vacuous truth on the granting
         side. It inherits the same weak point, that which side applies the check depends on the
-        PEP, and here the `entrypoint` annotations declare it.
+        PEP, and here the `entrypoint` annotations declare it, and `-deny-entrypoint` declares a
+        decision the PEP reads as a refusal.
     - order: 3
       check: >
         The domain of the `every`, the collection it iterates, derives from `input` or `data`

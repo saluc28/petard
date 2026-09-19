@@ -127,7 +127,10 @@ detection:
         This is the signal that decides whether the defect is a fail-open or harmless, and it
         was checked to really discriminate: the same code, opposite outcomes on the two sides.
         It reuses signal 1 of `PTD-OPA-002` and inherits its weak point, that which side applies
-        the check depends on the PEP, which is outside the policy.
+        the check depends on the PEP, which is outside the policy. A set whose being non-empty
+        denies is either one the decision asks to be empty, `count(violations) == 0`, or one the
+        PEP reads itself, as Gatekeeper reads `violation`, and then it is declared with
+        `-deny-entrypoint`.
     - order: 3
       check: >
         Follow the chain of bindings from the output variable of the call and check that a term
@@ -166,7 +169,7 @@ detection:
     identify here.
     The engine computes A, for the same reason as `PTD-OPA-002`: it starts only from rules
     annotated `entrypoint: true` and stops with an error if there are none, so the denying side
-    is a negated edge of a declared descent rather than a heuristic. The file stays at `B`
+    is counted on a declared descent rather than guessed. The file stays at `B`
     because that is the level of the pattern when decisions have to be recognized, which is the
     general case. A bundle with no annotations is analyzable because entrypoints can be
     **declared** from outside, not because the engine learned to recognize them, so the descent

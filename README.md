@@ -45,7 +45,10 @@ declared decision can also be the document that rules with a reference in their 
 together, such as `authzen/allow` for rules written `allow["decision"]`, or one field of what a
 rule returns. A rule that answers `{"allowed": ..., "violations": [...]}` is defined whatever it
 says, and AWX reads `allowed` out of it, so the decision to declare there is
-`aac/aap/policy/owner_scope/allowed`.
+`aac/aap/policy/owner_scope/allowed`. A decision can also be declared to deny, for an
+enforcement point that refuses the request as soon as the decision holds or collects anything,
+the way Gatekeeper reads `violation`: which side a read is on is then counted from the refusal
+(`taxonomy-registry/README.md` section 3).
 
 From the decisions it walks the rules they depend on, following calls into functions and
 leaving alone the expressions that mock the world with a `with` modifier, and reports:
@@ -131,10 +134,11 @@ The fixture, with the write model and the concrete data:
 go run ./cmd/analyze-opa -write-model fixtures/vulnerable-bundle/write-model.yaml -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
 ```
 
-A bundle that annotates no entrypoint, with the decision declared the way `opa build` takes one:
+A bundle that annotates no entrypoint, with the decision declared the way `opa build` takes one,
+and declared to deny, since Gatekeeper refuses the request when `violation` returns anything:
 
 ```
-go run ./cmd/analyze-opa -entrypoint k8sallowedrepos/violation path/to/policy
+go run ./cmd/analyze-opa -deny-entrypoint k8sallowedrepos/violation path/to/policy
 ```
 
 A decision whose enforcement point reads one field of the object it returns, with the requester

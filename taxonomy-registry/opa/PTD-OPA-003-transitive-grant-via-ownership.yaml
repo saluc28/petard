@@ -546,6 +546,10 @@ notes:
       unbounded role expansion runs through `graph.reachable` or `walk`, which is exactly signal
       1. A role that reaches far only through the inheritance graph is measured here like any
       other position.
+  - note: >
+      A decision declared to deny is not measured. What partial evaluation leaves of it are the
+      ways to be refused, so the two counts of signal 3 would count refusals, and a hierarchy
+      that lifts one stays a false negative (`taxonomy-registry/README.md` section 3).
 
 related:
   - id: PTD-OPA-001

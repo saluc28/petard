@@ -195,6 +195,28 @@ checks the input against a schema given in an annotation or on the command line
 (`opa eval --schema`, `cmd/eval.go:289` at `v1.20.2`). A declared subject that no decision reads
 is refused, the way an entrypoint that names no rule is.
 
+### Which way a decision answers is declared too
+
+Whether a decision grants or refuses is up to the point that enforces it, and a policy has no way
+to say it. Gatekeeper queries `violation` on every constraint template
+(`data.template.violation[r]`, `frameworks/constraint/pkg/client/drivers/rego/rego.go:34` at
+`241c4a079fc8`, the revision Gatekeeper `v3.21.0` vendors) and refuses the request when a result
+carries the deny action (`pkg/webhook/policy.go:206` at `v3.21.0`). conftest counts every element
+of a rule named `deny` or `violation`, with a suffix or without, as a failure
+(`policy/engine.go:48` and `390` at `v0.70.0`). OPA's annotations mark an entrypoint and carry no
+direction (`v1/ast/annotations.go:28` at `v1.20.2`).
+
+So a decision that refuses is declared, `-deny-entrypoint k8sallowedrepos/violation`, like the
+decision itself and the subject, and never inferred from a name: a rule called `deny` can just as
+well be one an `allow` negates. The engine reads it as its own negation, a set asked to be empty
+or a rule asked not to hold, so `violation` declared to deny and `allow if count(violation) == 0`
+declared to grant put every value on the same side.
+
+What partial evaluation leaves of a decision that denies are the ways to be refused. The patterns
+that measure access with it, `PTD-OPA-003` and `PTD-OPA-006`, leave such a decision out, and so
+do the capability edges of the graph: an edge somebody walks is a way in, and the complement of a
+residual condition is a negation no edge can carry.
+
 ---
 
 ## 4. Format

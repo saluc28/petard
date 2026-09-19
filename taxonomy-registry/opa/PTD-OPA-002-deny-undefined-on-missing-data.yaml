@@ -95,7 +95,9 @@ detection:
         bool.
         Knowing which side applies the check depends on the PEP, and it stays the fragile point
         of the pattern: here the `entrypoint` annotations declare it, and that is where the
-        descent starts from.
+        descent starts from. A decision the PEP reads as a refusal, a `violation` of
+        Gatekeeper, is declared with `-deny-entrypoint`, and the descent starts on the side
+        that denies.
         The symmetric shape, a negated read inside a rule the decision reaches with no negations
         (`allow if not data.blocklist[input.user]`), has the same parity and the same outcome,
         and is **not reported**: the fixture does not contain it, and a signal with no case and
@@ -411,6 +413,9 @@ open_questions:
       which is what Gatekeeper v3.21.0 vendors). The per-instance confidence **does not drop**: a
       decision
       declared by the analyst is as declared as one annotated by the author.
+      The direction is declared the same way: `-deny-entrypoint` names a decision the PEP reads
+      as a refusal, which is how Gatekeeper reads `violation` (`taxonomy-registry/README.md`
+      section 3).
   - question: >
       What does enumerating the absent keys cost on real data?
     note: >
