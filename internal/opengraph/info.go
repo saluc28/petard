@@ -126,6 +126,12 @@ func nodeInfo(kind graph.NodeKind) map[string]bhgraph.KindInfo {
 		),
 			patternsFound(),
 			"{{ with .Properties.positions }}**Positions worth taking**\n{{ range . }}\n- {{ . }}{{ end }}\n{{ end }}",
+			// Most principals of a graph carry no mark at all, and a section
+			// that renders to nothing leaves a heading with a blank under it.
+			"{{ if and (not .Properties.patterns) (not .Properties.candidate_patterns) "+
+				"(not .Properties.positions) }}No pattern reports on this principal. What it can "+
+				"get out of the decisions is on its `PTD_CanPerform` edges, and whose position it "+
+				"can take on `PTD_CanEscalateTo`.{{ end }}",
 		)
 	case graph.NodeKindAction:
 		return meaning("An operation the policy names, such as read or merge. A capability points " +

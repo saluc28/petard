@@ -129,12 +129,21 @@ func fixturePayload(t *testing.T) (nodes map[string]nodeContext, edges []relatio
 		for _, kind := range node.Kinds {
 			context.Kinds = append(context.Kinds, kindContext{Name: kind})
 		}
-		nodes[node.ID] = context
+		// Ingest upper-cases objectid and name unless the use_raw_object_id
+		// feature flag is on, and it ships disabled and not user updatable
+		// (cmd/api/src/services/graphify/ingestnodes.go and the migration
+		// 20260710120000_v9_add_use_raw_object_id_flag_bed_8954.sql at v9.7.1).
+		// A panel rendered against the payload would read a name the analyst
+		// never sees.
+		if name, isString := context.Properties["name"].(string); isString {
+			context.Properties["name"] = strings.ToUpper(name)
+		}
+		nodes[strings.ToUpper(node.ID)] = context
 	}
 	for _, edge := range decoded.Graph.Edges {
 		edges = append(edges, relationshipContext{
-			Source:     nodes[edge.Start.Value],
-			Target:     nodes[edge.End.Value],
+			Source:     nodes[strings.ToUpper(edge.Start.Value)],
+			Target:     nodes[strings.ToUpper(edge.End.Value)],
 			Kind:       kindContext{Name: edge.Kind},
 			Properties: edge.Properties,
 		})
@@ -156,6 +165,12 @@ func render(t *testing.T, sections map[string]string, context any) string {
 		var rendered bytes.Buffer
 		if err := parsed.Execute(&rendered, context); err != nil {
 			t.Fatalf("section %s does not render: %v", key, err)
+		}
+		// BloodHound shows a section that renders to nothing as its heading
+		// with a blank under it, which reads as a panel that failed rather
+		// than as an entity nothing was found on.
+		if strings.TrimSpace(rendered.String()) == "" {
+			t.Errorf("section %s renders empty", key)
 		}
 		panels = append(panels, rendered.String())
 	}
@@ -200,12 +215,13 @@ func TestPanelsRenderForEveryEntityOfTheFixture(t *testing.T) {
 			t.Errorf("%s does not say %q:\n%s", what, expected, text)
 		}
 	}
-	says("PTD_CanEscalateTo carol -> alice", "**carol** can take the position **alice** holds")
-	says("PTD_Reads data.quill.tenant_policy.denied_mfa -> data.tenants[_].policy.require_mfa",
+	says("PTD_CanEscalateTo CAROL -> ALICE", "**CAROL** can take the position **ALICE** holds")
+	says("PTD_Reads DATA.QUILL.TENANT_POLICY.DENIED_MFA -> DATA.TENANTS[_].POLICY.REQUIRE_MFA",
 		"**Absent for** dolm, out of 2 documents tried.")
-	says("data.quill.review.allow_unguarded", "`input.reviews`")
+	says("DATA.QUILL.REVIEW.ALLOW_UNGUARDED", "`input.reviews`")
+	says("MALLORY", "No pattern reports on this principal.")
 	for what, text := range rendered {
-		if strings.HasPrefix(what, "PTD_CanEscalateTo carol") && !strings.Contains(text, "PTD-OPA-006") {
+		if strings.HasPrefix(what, "PTD_CanEscalateTo CAROL") && !strings.Contains(text, "PTD-OPA-006") {
 			t.Errorf("%s does not name the pattern that drew it:\n%s", what, text)
 		}
 	}
