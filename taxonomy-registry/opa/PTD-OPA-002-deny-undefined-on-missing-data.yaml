@@ -82,8 +82,10 @@ detection:
     - order: 1
       check: >
         Identify the reads that sit on the **negative side** of the decision: the ones in a rule
-        an entrypoint reaches only by crossing a `not`, and that are not themselves inside a
-        negated expression.
+        an entrypoint reaches only by crossing a `not`, or a comparison of a set or object the
+        policy builds with nothing, `count(violations) == 0` or `violations == set()`, which asks
+        of every element what a `not` asks; and that are not themselves inside a negated
+        expression.
       rationale: >
         The two negations are counted together because it is their parity that says what the
         absence does: one negation between the decision and the read, and missing data lets the
