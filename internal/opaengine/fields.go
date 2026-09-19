@@ -28,6 +28,12 @@ import (
 // on the first, which is where the walk follows the rule. The comparison is an
 // equality where the answer is a value and a unification where it is a
 // condition, and both are read.
+//
+// A not in front of the comparison asks for something again. Where the count
+// is compared, the comparison is the only expression the not covers, so it is
+// not read as asking for nothing; where the collection itself is compared with
+// an empty one, the not covers the collection too, and the walk takes the two
+// negations back by parity.
 func (r *refReader) askedEmpty(body ast.Body) map[*ast.Term]bool {
 	zero := map[ast.Var]bool{}
 	var asked []*ast.Term
@@ -40,7 +46,7 @@ func (r *refReader) askedEmpty(body ast.Body) map[*ast.Term]bool {
 			continue
 		}
 		for _, pair := range [][2]*ast.Term{{operands[0], operands[1]}, {operands[1], operands[0]}} {
-			if v, isVar := varOf(pair[0]); isVar && isZero(pair[1]) {
+			if v, isVar := varOf(pair[0]); isVar && isZero(pair[1]) && !expr.Negated {
 				zero[v] = true
 			}
 			if isEmptyCollection(pair[1]) {

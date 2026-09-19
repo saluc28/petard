@@ -68,8 +68,8 @@ func TestTaintedByExternalSourceReportsTheDenyingSide(t *testing.T) {
 			}
 		}
 	}
-	if denying != 5 {
-		t.Fatalf("values reaching a decision only to deny = %d, want 5: this test would prove nothing otherwise", denying)
+	if denying != 4 {
+		t.Fatalf("values reaching a decision only to deny = %d, want 4: this test would prove nothing otherwise", denying)
 	}
 
 	reported := map[string]bool{}

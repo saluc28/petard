@@ -612,6 +612,10 @@ allow_when_none if count(violations) == 0
 allow_when_empty if violations == set()
 
 deny_when_some if count(violations) > 0
+
+deny_when_not_none if not count(violations) == 0
+
+deny_when_not_empty if not violations == set()
 `
 
 // Counting nothing is asking for nothing: a decision that grants on
@@ -619,7 +623,8 @@ deny_when_some if count(violations) > 0
 // exists even when it is empty. The list of violations in the same answer
 // reaches the rule with no negation, and is left out of the field the
 // enforcement point reads; asked as a whole, the answer lists them, and the
-// check is no longer only on the side that denies.
+// check is no longer only on the side that denies. A not in front of the
+// comparison asks for something again, and the two negations cancel out.
 func TestReadsTakeCountingNothingAsANegation(t *testing.T) {
 	tests := []struct {
 		declared string
@@ -630,6 +635,8 @@ func TestReadsTakeCountingNothingAsANegation(t *testing.T) {
 		{declared: "data.t.allow_when_none", negated: true},
 		{declared: "data.t.allow_when_empty", negated: true},
 		{declared: "data.t.deny_when_some", negated: false},
+		{declared: "data.t.deny_when_not_none", negated: false},
+		{declared: "data.t.deny_when_not_empty", negated: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.declared, func(t *testing.T) {
@@ -649,6 +656,49 @@ func TestReadsTakeCountingNothingAsANegation(t *testing.T) {
 			}
 			if read.Decisions[0].UnderNegation != tt.negated {
 				t.Errorf("under negation = %v, want %v", read.Decisions[0].UnderNegation, tt.negated)
+			}
+		})
+	}
+}
+
+// Two negations on the way down cancel out. A check written as violations with
+// an exemption inside grants through the exemption: the exemption holding takes
+// a violation away, and no violation is what the decision asks for. The side is
+// the parity of the negations met on the way.
+func TestReadsCountNegationsByParity(t *testing.T) {
+	reads := readsOf(t, `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+allow if count(violations) == 0
+
+violations contains "the image is not allowed" if {
+	some container in input.containers
+	data.settings.enforced
+	not allowed_image(container.image)
+	not exempt
+}
+
+allowed_image(image) if startswith(image, data.registries[_])
+
+exempt if data.exemptions[input.namespace]
+`, Limits{})
+
+	tests := []struct {
+		path    string
+		negated bool
+	}{
+		{path: "data.settings.enforced", negated: true},
+		{path: "data.registries[_]", negated: false},
+		{path: "data.exemptions[_]", negated: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			read := readOfPath(t, reads, tt.path)
+			expected := []ReachedDecision{{Name: "data.t.allow", UnderNegation: tt.negated}}
+			if !slices.Equal(read.Decisions, expected) {
+				t.Errorf("decisions = %v, want %v", read.Decisions, expected)
 			}
 		})
 	}

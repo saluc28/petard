@@ -102,8 +102,10 @@ allow if {
 
 // The fixture is built around one distinction, and this is it: two rules call
 // the same builtin, and only one of them contributes to a decision. The seven
-// values below are what the engine measures, and the two that reach a decision
-// in a position to grant are the ones a pattern can act on.
+// values below are what the engine measures. Three reach a decision in a
+// position to grant: the two answers a decision grants on, and the error the
+// defensive rule reads under not, since an answer that carries one keeps that
+// branch of the denial from holding.
 func TestTaintsOnFixture(t *testing.T) {
 	for _, version := range []string{"policy-v1", "policy-v0"} {
 		t.Run(version, func(t *testing.T) {
@@ -139,7 +141,11 @@ func TestTaintsOnFixture(t *testing.T) {
 			}
 			slices.Sort(granting)
 
-			expected := []string{"data.quill.enrichment.allow", "data.quill.risk.allow_positive_side"}
+			expected := []string{
+				"data.quill.enrichment.allow",
+				"data.quill.risk.allow_positive_side",
+				"data.quill.risk.denied_defensive",
+			}
 			if !slices.Equal(granting, expected) {
 				t.Errorf("values reaching a decision to grant = %v, want %v", granting, expected)
 			}
@@ -266,6 +272,36 @@ risky if {
 	}
 	if !taint.Grants() {
 		t.Error("Grants() is false, but one decision reads the value to grant")
+	}
+}
+
+// A value read under not, in a rule the decision reaches under not, reaches it
+// to grant: when the answer says trusted, the rule that denies cannot hold. The
+// two negations are one on the way down and one in the rule, and they cancel
+// out the same as two on the way down.
+func TestTaintsCancelANegationInTheRuleWithOneOnTheWay(t *testing.T) {
+	reads := readsOf(t, `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+default allow := false
+
+allow if not denied
+
+denied if {
+	response := http.send({"method": "GET", "url": "https://score.invalid/s"})
+	not response.body.trusted
+}
+`, Limits{})
+
+	taint := taintOfRule(t, reads, "data.t.denied")
+	if !taint.UnderNegation {
+		t.Fatal("the read is not marked as negated in its own rule, and this test would prove nothing")
+	}
+	expected := []TaintedDecision{{Name: "data.t.allow", UnderNegation: false}}
+	if !slices.Equal(taint.Decisions, expected) {
+		t.Errorf("decisions = %v, want %v", taint.Decisions, expected)
 	}
 }
 

@@ -160,7 +160,14 @@ type callEdge struct {
 // travel together rather than as two parameters that could get out of step.
 type scope struct {
 	bindings map[ast.Var]binding
-	negated  bool
+
+	// negated is the parity of the negations the walk is under, the same as on
+	// the way down from a decision. Inside one rule the compiler leaves little
+	// room for a second one: it binds a comprehension handed to a call to a
+	// variable of its own, outside the negated expression, and every cannot be
+	// negated at all. What is left is a collection compared with an empty one
+	// under not.
+	negated bool
 
 	// empty are the terms of this body it only asks to be empty, which are
 	// walked as if under a negation. See askedEmpty. They belong to one body and
@@ -398,7 +405,7 @@ func parameterVars(rule *ast.Rule) map[ast.Var]bool {
 }
 
 func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
-	sc.negated = sc.negated || expr.Negated
+	sc.negated = sc.negated != expr.Negated
 
 	// An expression with a with modifier is simulating a decision, not taking
 	// one. Neither its reads nor the rules it reaches belong to the analysis.
@@ -444,7 +451,7 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 		}
 		for _, operand := range expr.Operands() {
 			operandScope := sc
-			operandScope.negated = sc.negated || sc.empty[operand]
+			operandScope.negated = sc.negated != sc.empty[operand]
 			r.walkTerm(operand, operandScope, found)
 		}
 		return

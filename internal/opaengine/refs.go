@@ -153,8 +153,8 @@ type Read struct {
 // it.
 //
 // The flag is about the way down: whether every path from the decision to the
-// rule holding the read goes through a negation. It is kept apart from the
-// negation of the expression, which Read reports on its own, because the two
+// rule holding the read meets an odd number of negations. It is kept apart from
+// the negation of the expression, which Read reports on its own, because the two
 // combine differently depending on the question. A check whose absence lets the
 // request through is one combination, and there the two negations cancel out. A
 // value somebody controls is not asked the question at all: they pick the value,
@@ -165,7 +165,9 @@ type ReachedDecision struct {
 	Name string
 
 	// UnderNegation is true when every path from the decision down to the rule
-	// goes through a negation, so the rule holding can only deny.
+	// meets an odd number of negations, so the rule holding can only deny. Two
+	// take each other back: in a decision that grants on no violation, the
+	// exemption a violation asks not to hold grants.
 	UnderNegation bool
 }
 

@@ -106,8 +106,9 @@ type TaintedDecision struct {
 	Name string
 
 	// UnderNegation is true when the value only ever reaches this decision to
-	// deny: either the read itself is negated, or every path from the decision
-	// down to it goes through a negation.
+	// deny: the negation of the read itself and the negations on the way down
+	// from the decision add up to an odd number. A value read under not, in a
+	// rule the decision reaches under not, is read to grant.
 	//
 	// It is one flag rather than two because the caller would have to combine
 	// them anyway, and getting that combination wrong is exactly the silent
@@ -164,7 +165,7 @@ func (r *refReader) taints(reach map[*ast.Rule]decisionPaths, limits Limits) ([]
 }
 
 // decisionPaths says, for one rule, which decisions reach it and whether any of
-// them reaches it without going through a negation.
+// them reaches it on the side that grants.
 type decisionPaths map[string]bool
 
 // taintOf describes one tainted read.
@@ -190,7 +191,7 @@ func (r *refReader) taintOf(rule *ast.Rule, candidate foundRef, source binding, 
 	for _, decision := range decisions {
 		taint.Decisions = append(taint.Decisions, TaintedDecision{
 			Name:          decision.Name,
-			UnderNegation: candidate.negated || decision.UnderNegation,
+			UnderNegation: candidate.negated != decision.UnderNegation,
 		})
 	}
 	return taint
@@ -204,8 +205,8 @@ func (r *refReader) taintOf(rule *ast.Rule, candidate foundRef, source binding, 
 // together, and the pattern about a check that goes missing takes them apart.
 func reachedDecisions(reached decisionPaths) []ReachedDecision {
 	decisions := make([]ReachedDecision, 0, len(reached))
-	for name, clean := range reached {
-		decisions = append(decisions, ReachedDecision{Name: name, UnderNegation: !clean})
+	for name, grants := range reached {
+		decisions = append(decisions, ReachedDecision{Name: name, UnderNegation: !grants})
 	}
 	slices.SortFunc(decisions, func(a, b ReachedDecision) int {
 		return strings.Compare(a.Name, b.Name)
@@ -214,7 +215,7 @@ func reachedDecisions(reached decisionPaths) []ReachedDecision {
 }
 
 // decisionReach says, for every rule the walk visited, which decisions reach it
-// and whether any of them reaches it without going through a negation.
+// and whether any of them reaches it on the side that grants.
 //
 // The walk starts at the decisions, so every rule it visited contributes to
 // one; what the walk does not keep is which. That is the missing half of the
@@ -222,15 +223,19 @@ func reachedDecisions(reached decisionPaths) []ReachedDecision {
 // denied_vulnerable makes every read inside that rule a read that denies, and
 // no property of the rule itself can say so.
 //
-// The state is the pair of a rule and whether the path so far avoided every
-// negation, so a rule reached both ways is recorded both ways and the better
-// answer wins. Cycles cannot happen, since OPA refuses to compile a policy
-// whose rules depend on each other in a loop, but the visited set makes the
-// walk terminate regardless of that guarantee.
+// The side is the parity of the negations on the way down. A second negation
+// takes the first one back: an exemption a violation asks not to hold, in a
+// decision that asks for no violation, grants when it holds.
+//
+// The state is the pair of a rule and the side the path so far lands on, so a
+// rule reached both ways is recorded both ways and the side that grants wins.
+// Cycles cannot happen, since OPA refuses to compile a policy whose rules
+// depend on each other in a loop, but the visited set makes the walk terminate
+// regardless of that guarantee.
 func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisionPaths {
 	type state struct {
-		rule  *ast.Rule
-		clean bool
+		rule   *ast.Rule
+		grants bool
 	}
 
 	reached := make(map[*ast.Rule]decisionPaths)
@@ -238,7 +243,7 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 		name := decision.name
 
 		seen := make(map[state]bool)
-		queue := []state{{rule: decision.rule, clean: true}}
+		queue := []state{{rule: decision.rule, grants: true}}
 		for len(queue) > 0 {
 			at := queue[0]
 			queue = queue[1:]
@@ -252,7 +257,7 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 				paths = make(decisionPaths)
 				reached[at.rule] = paths
 			}
-			paths[name] = paths[name] || at.clean
+			paths[name] = paths[name] || at.grants
 
 			for _, edge := range r.edges[at.rule] {
 				if at.rule == decision.rule && decision.within != nil && !decision.within[edge.top] {
@@ -260,7 +265,7 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 					// rule returns, and this decision is not asked about it.
 					continue
 				}
-				queue = append(queue, state{rule: edge.callee, clean: at.clean && !edge.negated})
+				queue = append(queue, state{rule: edge.callee, grants: at.grants != edge.negated})
 			}
 		}
 	}
