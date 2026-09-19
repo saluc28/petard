@@ -168,8 +168,8 @@ whether it can walk what was just uploaded:
 go run ./cmd/export-opengraph -url https://bloodhound.example -install -upload -verify -write-model fixtures/vulnerable-bundle/write-model.yaml -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
 ```
 
-On the fixture, against BloodHound CE 9.7.0, both escalations come back walkable:
-`MALLORY -> DAVE` and `CAROL -> ALICE`.
+On the fixture, against BloodHound CE 9.7.1 with the graph in PostgreSQL, both escalations come
+back walkable: `MALLORY -> DAVE` and `CAROL -> ALICE`.
 
 `-verify` is the one that answers the question the rest only sets up. For every
 `PTD_CanEscalateTo` in the payload it asks BloodHound for the shortest path between the two
