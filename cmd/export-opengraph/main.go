@@ -33,6 +33,7 @@ import (
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
+	"github.com/saluc28/petard/queries"
 )
 
 func main() {
@@ -89,7 +90,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	out := flags.String("out", "", "write the payload here; without it nothing is written to disk")
 	url := flags.String("url", "", "base url of the BloodHound API; without it nothing is sent")
-	install := flags.Bool("install", false, "install the extension definition schema before uploading")
+	install := flags.Bool("install", false, "install the extension definition schema and the saved queries before uploading")
 	upload := flags.Bool("upload", false, "upload the payload as an ingest job")
 	verify := flags.Bool("verify", false, "ask the server to walk every escalation the payload declares")
 	wait := flags.Duration("wait", 2*time.Minute, "how long to wait for the ingest to be processed")
@@ -258,6 +259,12 @@ func send(ctx context.Context, out io.Writer, url string, payload bhgraph.Graph,
 		// schema is in.
 		fmt.Fprintf(out, "schema installed, %d of %d relationship kinds are traversable\n",
 			len(schema.TraversableKinds()), len(schema.RelationshipKinds))
+
+		added, present, err := installQueries(ctx, api)
+		if err != nil {
+			return fmt.Errorf("saving the queries: %w", err)
+		}
+		fmt.Fprintf(out, "saved queries: %d added, %d already there\n", added, present)
 	}
 
 	if steps.upload {
@@ -275,6 +282,56 @@ func send(ctx context.Context, out io.Writer, url string, payload bhgraph.Graph,
 		return walkEscalations(ctx, out, api, payload, confirmed)
 	}
 	return nil
+}
+
+// installQueries saves the queries that come with Petard for the owner of the
+// token, and reports how many it added and how many were there already.
+//
+// A query is left alone when the owner already has one under its name:
+// BloodHound refuses a second query with a name the user has (CreateSavedQuery,
+// cmd/api/src/api/v2/saved_queries.go:481 at v9.7.0), and one saved by an
+// earlier version keeps its text until it is deleted.
+func installQueries(ctx context.Context, api *client.Client) (added, present int, err error) {
+	raw, err := api.Get(ctx, "/api/v2/saved-queries")
+	if err != nil {
+		return 0, 0, err
+	}
+	var saved struct {
+		Data []struct {
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		return 0, 0, fmt.Errorf("reading the saved queries: %w", err)
+	}
+	have := make(map[string]bool, len(saved.Data))
+	for _, query := range saved.Data {
+		have[query.Name] = true
+	}
+
+	all, err := queries.All()
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, query := range all {
+		if have[query.Name] {
+			present++
+			continue
+		}
+		body, err := json.Marshal(map[string]string{
+			"name":        query.Name,
+			"query":       query.Query,
+			"description": query.Description,
+		})
+		if err != nil {
+			return added, present, err
+		}
+		if _, err := api.Post(ctx, "/api/v2/saved-queries", body); err != nil {
+			return added, present, fmt.Errorf("%s: %w", query.Name, err)
+		}
+		added++
+	}
+	return added, present, nil
 }
 
 // requireExtensions refuses to go on when the extension management flag is off.

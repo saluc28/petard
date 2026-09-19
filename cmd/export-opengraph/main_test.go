@@ -9,11 +9,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/saluc28/bhgraph/client"
+
+	"github.com/saluc28/petard/queries"
 )
 
 func fixture(name string) string {
@@ -114,6 +117,11 @@ type instance struct {
 
 	// pathQueries is the raw query string of every shortest path request.
 	pathQueries []string
+
+	// saved are the names of the queries the owner of the token already has,
+	// and created the ones the run saved.
+	saved   []string
+	created []string
 }
 
 type task struct {
@@ -150,6 +158,28 @@ func (i *instance) start(t *testing.T) string {
 				t.Errorf("encoding the tasks: %v", err)
 			}
 			_, _ = w.Write(body)
+
+		case r.URL.Path == "/api/v2/saved-queries" && r.Method == http.MethodGet:
+			var listed []map[string]string
+			for _, name := range i.saved {
+				listed = append(listed, map[string]string{"name": name})
+			}
+			body, err := json.Marshal(map[string]any{"data": listed, "count": len(listed)})
+			if err != nil {
+				t.Errorf("encoding the saved queries: %v", err)
+			}
+			_, _ = w.Write(body)
+
+		case r.URL.Path == "/api/v2/saved-queries" && r.Method == http.MethodPost:
+			var created struct {
+				Name  string `json:"name"`
+				Query string `json:"query"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&created); err != nil || created.Name == "" || created.Query == "" {
+				t.Errorf("a saved query arrived without a name or a query: %v", err)
+			}
+			i.created = append(i.created, created.Name)
+			w.WriteHeader(http.StatusCreated)
 
 		case r.URL.Path == "/api/v2/graphs/shortest-path":
 			i.pathQueries = append(i.pathQueries, r.URL.RawQuery)
@@ -189,25 +219,50 @@ func TestRunInstallsTheSchemaBeforeUploading(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
+	// The saved queries go in right after the schema, and are counted by the
+	// test that is about them.
 	expected := []string{
 		"GET /api/v2/features",
 		"PUT /api/v2/extensions",
+		"GET /api/v2/saved-queries",
 		"POST /api/v2/file-upload/start",
 		"POST /api/v2/file-upload/7",
 		"POST /api/v2/file-upload/7/end",
 		"GET /api/v2/file-upload/7/completed-tasks",
 	}
-	if len(server.calls) != len(expected) {
-		t.Fatalf("calls = %v, want %v", server.calls, expected)
-	}
-	for i, call := range expected {
-		if server.calls[i] != call {
-			t.Errorf("call %d = %q, want %q", i, server.calls[i], call)
-		}
+	calls := slices.DeleteFunc(slices.Clone(server.calls), func(call string) bool {
+		return call == "POST /api/v2/saved-queries"
+	})
+	if !slices.Equal(calls, expected) {
+		t.Errorf("calls = %v, want %v", calls, expected)
 	}
 
 	if out := stdout.String(); !strings.Contains(out, "ingest job 7") {
 		t.Errorf("the report does not name the job, which is the only handle on what happens next:\n%s", out)
+	}
+}
+
+// Installing also saves the queries that come with Petard, the way into the
+// graph once it is there, and leaves alone the ones the owner already has:
+// BloodHound refuses a second query under a name the user already uses.
+func TestRunInstallsTheSavedQueries(t *testing.T) {
+	all, err := queries.All()
+	if err != nil {
+		t.Fatalf("queries.All() error = %v", err)
+	}
+	server := &instance{extensionsFlag: true, saved: []string{all[0].Name}}
+	base := server.start(t)
+
+	var stdout, stderr bytes.Buffer
+	if code := run(analysisArgs("-url", base, "-install"), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+
+	if len(server.created) != len(all)-1 || slices.Contains(server.created, all[0].Name) {
+		t.Errorf("created %d queries, want the %d the owner does not have yet", len(server.created), len(all)-1)
+	}
+	if want := fmt.Sprintf("saved queries: %d added, 1 already there", len(all)-1); !strings.Contains(stdout.String(), want) {
+		t.Errorf("the report does not say %q:\n%s", want, stdout.String())
 	}
 }
 
