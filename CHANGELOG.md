@@ -9,7 +9,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `analyze-opa`, which reads an OPA bundle in either Rego syntax and reports what its decisions
+- `petard`, one binary with subcommands: `analyze`, `export`, `measure` and `version`.
+- `petard analyze`, which reads an OPA bundle in either Rego syntax and reports what its decisions
   depend on: every read of `data` with the reference, the file and the line, who chooses the
   document each read lands on, the values the policy did not compute, and the shape of the
   request with the level it was recognized at. Given concrete data it evaluates each decision
@@ -20,7 +21,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The write model, which declares who can write which path, since no policy says it. Without one
   every match stays a candidate, and the run reports how much of what the decisions read the
   model covers.
-- `export-opengraph`, which sends the same analysis to BloodHound CE as a structured OpenGraph:
+- `petard export`, which sends the same analysis to BloodHound CE as a structured OpenGraph:
   it installs the extension schema and the saved queries, uploads the payload, and with
   `-verify` asks the server to walk every escalation the payload declares. `-prune-queries`
   removes saved queries a rename left behind.
@@ -28,4 +29,4 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   node kinds, five relationship kinds, and what BloodHound shows in the Entity Panel for each.
 - 29 saved Cypher queries under `queries/`, two to four per pattern, in the format of the
   BloodHound Query Library.
-- `measure-corpus`, which runs the engine over a body of Rego written by somebody else.
+- `petard measure`, which runs the engine over a body of Rego written by somebody else.

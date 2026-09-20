@@ -57,7 +57,7 @@ linters:
       # failed write to those leaves nothing useful to do about it. The one
       # thing written to a file is the payload, and that goes through
       # os.WriteFile, whose error is returned.
-      - path: ^cmd/
+      - path: ^(cmd|internal/cli)/
         linters:
           - errcheck
         text: 'fmt\.Fprint|\.Flush'

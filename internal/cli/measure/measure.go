@@ -1,4 +1,4 @@
-// Command measure-corpus runs the analysis over a body of Rego written by
+// Command petard measure runs the analysis over a body of Rego written by
 // other people and reports what it could do with it.
 //
 // The fixture answers whether the engine finds what we planted; this answers
@@ -12,7 +12,7 @@
 // does, and a test asserting them would go red for a change that is not ours.
 // What the corpus reveals about the engine becomes an ordinary test instead,
 // with the reproduction inlined, in the package that was wrong.
-package main
+package measure
 
 import (
 	"errors"
@@ -28,10 +28,6 @@ import (
 	"github.com/saluc28/petard/internal/opaengine"
 )
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
-}
-
 const (
 	exitOK      = 0
 	exitFailure = 1
@@ -45,11 +41,13 @@ const (
 // constraint template embeds the policy and its libraries and never the tests.
 const testSuffix = "_test.rego"
 
-func run(args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("measure-corpus", flag.ContinueOnError)
+// Run is the subcommand, taking its arguments without the name and returning
+// the exit code.
+func Run(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("petard measure", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprint(stderr, "usage: measure-corpus [flags] <corpus root>...\n\n"+
+		fmt.Fprint(stderr, "usage: petard measure [flags] <corpus root>...\n\n"+
 			"Every directory holding .rego files is measured as one policy.\n\n")
 		flags.PrintDefaults()
 	}
@@ -69,7 +67,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if *regoV0 && *regoV1 {
-		fmt.Fprintln(stderr, "measure-corpus: -rego-v0 and -rego-v1 ask for opposite things")
+		fmt.Fprintln(stderr, "petard measure: -rego-v0 and -rego-v1 ask for opposite things")
 		return exitUsage
 	}
 
@@ -83,11 +81,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	policies, err := collect(roots)
 	if err != nil {
-		fmt.Fprintf(stderr, "measure-corpus: %v\n", err)
+		fmt.Fprintf(stderr, "petard measure: %v\n", err)
 		return exitFailure
 	}
 	if len(policies) == 0 {
-		fmt.Fprintf(stderr, "measure-corpus: no .rego file under %s\n", strings.Join(roots, ", "))
+		fmt.Fprintf(stderr, "petard measure: no .rego file under %s\n", strings.Join(roots, ", "))
 		return exitFailure
 	}
 
@@ -191,7 +189,7 @@ func collectUnder(root string) ([]policy, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("measure-corpus: walking %s: %w", root, err)
+		return nil, fmt.Errorf("petard measure: walking %s: %w", root, err)
 	}
 
 	policies := make([]policy, 0, len(byDir))

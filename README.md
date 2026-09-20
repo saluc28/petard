@@ -47,7 +47,7 @@ Run it on the vulnerable bundle that comes with the repository:
 
 ```
 git clone https://github.com/saluc28/petard && cd petard
-go run ./cmd/analyze-opa -write-model fixtures/vulnerable-bundle/write-model.yaml \
+go run ./cmd/petard analyze -write-model fixtures/vulnerable-bundle/write-model.yaml \
   -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
 ```
 
@@ -71,7 +71,7 @@ because a token on a command line ends up in the shell history:
 ```
 export BLOODHOUND_TOKEN_ID=...
 export BLOODHOUND_TOKEN_KEY=...
-go run ./cmd/export-opengraph -url https://bloodhound.example -install -upload -verify \
+go run ./cmd/petard export -url https://bloodhound.example -install -upload -verify \
   -write-model fixtures/vulnerable-bundle/write-model.yaml \
   -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
 ```
@@ -148,7 +148,7 @@ one that does not has to be told, because the alternative is guessing which rule
 point queries:
 
 ```
-go run ./cmd/analyze-opa -entrypoint authz/allow path/to/policy
+go run ./cmd/petard analyze -entrypoint authz/allow path/to/policy
 ```
 
 An enforcement point that refuses the request as soon as a rule returns anything, the way
@@ -156,14 +156,14 @@ Gatekeeper reads `violation`, declares that side instead. Which side a read is o
 counted from the refusal:
 
 ```
-go run ./cmd/analyze-opa -deny-entrypoint k8sallowedrepos/violation path/to/policy
+go run ./cmd/petard analyze -deny-entrypoint k8sallowedrepos/violation path/to/policy
 ```
 
 A decision can also be one field of what a rule returns, and the part of the request that names
 the requester can be declared rather than recognized:
 
 ```
-go run ./cmd/analyze-opa -entrypoint aac/aap/policy/owner_scope/allowed \
+go run ./cmd/petard analyze -entrypoint aac/aap/policy/owner_scope/allowed \
   -subject input.created_by.username -data path/to/config path/to/policy
 ```
 
@@ -192,9 +192,8 @@ write model does not parse a quoted key that contains a dot or a slash.
 ## Layout
 
 ```
-cmd/analyze-opa       reads a bundle and reports what its decisions depend on
-cmd/export-opengraph  the same analysis as a graph BloodHound can ingest
-cmd/measure-corpus    runs the engine over a corpus of third-party policies
+cmd/petard            the binary, which dispatches to the subcommands
+internal/cli          one package per subcommand: analyze, export, measure
 internal/opaengine    everything that knows what Rego is
 internal/graph        the engine-neutral model, all a second engine has to fill
 internal/opengraph    the adapter to what BloodHound ingests, over bhgraph

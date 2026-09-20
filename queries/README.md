@@ -30,12 +30,12 @@ upper case, the way BloodHound's own prebuilt queries write it.
 
 ## Getting them into BloodHound
 
-`export-opengraph -install` saves them for the owner of the token, next to the extension schema.
+`petard export -install` saves them for the owner of the token, next to the extension schema.
 A query the owner already has under the same name is left as it is.
 
 BloodHound keys a saved query by its name, so a query renamed between two versions of Petard
 arrives as a second query and the old one stays, with the old question in it.
-`export-opengraph -prune-queries` deletes the ones this build no longer has, naming each as it
+`petard export -prune-queries` deletes the ones this build no longer has, naming each as it
 goes. It is a flag of its own because it removes what somebody may have come to rely on.
 
 `queries.json` holds the same queries as one list, which is the form

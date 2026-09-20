@@ -1,4 +1,4 @@
-package main
+package analyze
 
 import (
 	"bytes"
@@ -8,13 +8,13 @@ import (
 )
 
 func fixture(version string) string {
-	return filepath.Join("..", "..", "fixtures", "vulnerable-bundle", version)
+	return filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", version)
 }
 
 func TestRunReportsTheMeasures(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := run([]string{fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+	if code := Run([]string{fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -42,7 +42,7 @@ func TestRunReportsTheMeasures(t *testing.T) {
 func TestRunReportsTheLookupsByValue(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := run([]string{fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+	if code := Run([]string{fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -73,12 +73,12 @@ func TestRunBuildsEveryKindOfTheModel(t *testing.T) {
 
 	args := []string{
 		"-graph",
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
-		"-write-model", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
-		"-data", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-write-model", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
+		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -112,7 +112,7 @@ func TestRunBuildsEveryKindOfTheModel(t *testing.T) {
 func TestRunFallsBackToRegoV0(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := run([]string{fixture("policy-v0")}, &stdout, &stderr); code != exitOK {
+	if code := Run([]string{fixture("policy-v0")}, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 	if out := stdout.String(); !strings.Contains(out, "parsed as rego v0") {
@@ -124,8 +124,8 @@ func TestRunFallsBackToRegoV0(t *testing.T) {
 // once without it. What changes is not how much the engine found, it is what it
 // is willing to claim.
 func TestRunNeedsTheWriteModelToClaimAFinding(t *testing.T) {
-	registry := filepath.Join("..", "..", "taxonomy-registry", "opa")
-	model := filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml")
+	registry := filepath.Join("..", "..", "..", "taxonomy-registry", "opa")
+	model := filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml")
 
 	tests := []struct {
 		name       string
@@ -155,7 +155,7 @@ func TestRunNeedsTheWriteModelToClaimAFinding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 
-			if code := run(tt.args, &stdout, &stderr); code != exitOK {
+			if code := Run(tt.args, &stdout, &stderr); code != exitOK {
 				t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 			}
 			out := stdout.String()
@@ -175,11 +175,11 @@ func TestRunNeedsTheWriteModelToClaimAFinding(t *testing.T) {
 func TestRunReportsTheExternalSources(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
 		fixture("policy-v1"),
 	}
 
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -205,12 +205,12 @@ func TestRunReportsTheExternalSources(t *testing.T) {
 func TestRunPartiallyEvaluatesAgainstTheData(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
-		"-data", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
 
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -230,8 +230,8 @@ func TestRunPartiallyEvaluatesAgainstTheData(t *testing.T) {
 // answers. With the data it names the tenant the check skips, and stays quiet
 // about the field that is there for every tenant.
 func TestRunSaysWhenAPatternCouldNotLook(t *testing.T) {
-	registry := filepath.Join("..", "..", "taxonomy-registry", "opa")
-	data := filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data")
+	registry := filepath.Join("..", "..", "..", "taxonomy-registry", "opa")
+	data := filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data")
 
 	tests := []struct {
 		name       string
@@ -260,7 +260,7 @@ func TestRunSaysWhenAPatternCouldNotLook(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 
-			if code := run(tt.args, &stdout, &stderr); code != exitOK {
+			if code := Run(tt.args, &stdout, &stderr); code != exitOK {
 				t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 			}
 			out := stdout.String()
@@ -283,11 +283,11 @@ func TestRunSaysWhenAPatternCouldNotLook(t *testing.T) {
 func TestRunReportsTheChecksThatGoQuiet(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
 		fixture("policy-v1"),
 	}
 
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -320,12 +320,12 @@ func TestRunReportsTheChecksThatGoQuiet(t *testing.T) {
 func TestRunReportsWhatAPositionIsWorth(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
-		"-data", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
 
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -352,13 +352,13 @@ func TestRunReportsWhatAPositionIsWorth(t *testing.T) {
 func TestRunReportsTheEscalation(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
-		"-write-model", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
-		"-data", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-write-model", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
+		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
 
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -383,13 +383,13 @@ func TestRunReportsTheEscalation(t *testing.T) {
 func TestRunReportsTheSplitGrant(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
-		"-write-model", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
-		"-data", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-write-model", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
+		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
 
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -415,13 +415,13 @@ func TestRunReportsTheSplitGrant(t *testing.T) {
 func TestRunReportsTheGlobalSwitch(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
-		"-write-model", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
-		"-data", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-write-model", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
+		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
 
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -446,12 +446,12 @@ func TestRunReportsTheGlobalSwitch(t *testing.T) {
 func TestRunClaimsNoEscalationWithoutTheWriteModel(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
-		"-data", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
 
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -469,13 +469,13 @@ func TestRunClaimsNoEscalationWithoutTheWriteModel(t *testing.T) {
 func TestRunSaysWhenTheResidualBoundCuts(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
-		"-data", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "data"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		"-max-residuals", "2",
 		fixture("policy-v1"),
 	}
 
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -491,12 +491,12 @@ func TestRunSaysWhenTheResidualBoundCuts(t *testing.T) {
 func TestRunReportsWriteModelCoverage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "taxonomy-registry", "opa"),
-		"-write-model", filepath.Join("..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-write-model", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
 		fixture("policy-v1"),
 	}
 
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 	if out := stdout.String(); !strings.Contains(out, "write model: 6 of 11 paths covered (54%)") {
@@ -509,7 +509,7 @@ func TestRunReportsWriteModelCoverage(t *testing.T) {
 func TestRunTakesADeclaredSubject(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := run([]string{"-subject", "input.user", fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+	if code := Run([]string{"-subject", "input.user", fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 	if out := stdout.String(); !strings.Contains(out, "request shape:  subject=input.user (level A, declared)") {
@@ -518,7 +518,7 @@ func TestRunTakesADeclaredSubject(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"-subject", "input.requester", fixture("policy-v1")}, &stdout, &stderr); code != exitFailure {
+	if code := Run([]string{"-subject", "input.requester", fixture("policy-v1")}, &stdout, &stderr); code != exitFailure {
 		t.Errorf("exit code = %d, want %d", code, exitFailure)
 	}
 	if !strings.Contains(stderr.String(), "no decision reads the declared subject: input.requester") {
@@ -531,7 +531,7 @@ func TestRunTakesADeclaredSubject(t *testing.T) {
 func TestRunTakesADecisionDeclaredToDeny(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := run([]string{"-deny-entrypoint", "quill/tenant_policy/denied_mfa", fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+	if code := Run([]string{"-deny-entrypoint", "quill/tenant_policy/denied_mfa", fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 	out := stdout.String()
@@ -553,7 +553,7 @@ func TestRunUsageErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 
-			if code := run(tt.args, &stdout, &stderr); code != exitUsage {
+			if code := Run(tt.args, &stdout, &stderr); code != exitUsage {
 				t.Errorf("exit code = %d, want %d", code, exitUsage)
 			}
 			if stdout.Len() != 0 {
@@ -566,10 +566,10 @@ func TestRunUsageErrors(t *testing.T) {
 func TestRunReportsAFailureOnStderr(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := run([]string{filepath.Join("does", "not", "exist")}, &stdout, &stderr); code != exitFailure {
+	if code := Run([]string{filepath.Join("does", "not", "exist")}, &stdout, &stderr); code != exitFailure {
 		t.Errorf("exit code = %d, want %d", code, exitFailure)
 	}
-	if !strings.Contains(stderr.String(), "analyze-opa:") {
+	if !strings.Contains(stderr.String(), "petard analyze:") {
 		t.Errorf("stderr does not name the program: %s", stderr.String())
 	}
 }

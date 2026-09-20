@@ -1,4 +1,4 @@
-package main
+package export
 
 import (
 	"bytes"
@@ -21,7 +21,7 @@ import (
 )
 
 func fixture(name string) string {
-	return filepath.Join("..", "..", "fixtures", "vulnerable-bundle", name)
+	return filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", name)
 }
 
 // analysisArgs are the fixture with everything it takes to reach every kind of
@@ -39,7 +39,7 @@ func TestRunWritesAPayloadBloodHoundWouldAccept(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "graph", "petard.json")
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-out", path), &stdout, &stderr); code != exitOK {
+	if code := Run(analysisArgs("-out", path), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -228,7 +228,7 @@ func TestRunInstallsTheSchemaBeforeUploading(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	args := analysisArgs("-url", base, "-install", "-upload")
-	if code := run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(args, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -267,7 +267,7 @@ func TestRunInstallsTheSavedQueries(t *testing.T) {
 	base := server.start(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-url", base, "-install"), &stdout, &stderr); code != exitOK {
+	if code := Run(analysisArgs("-url", base, "-install"), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -295,7 +295,7 @@ func TestPruneQueriesDeletesWhatThisBuildNoLongerHas(t *testing.T) {
 	base := server.start(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-url", base, "-prune-queries"), &stdout, &stderr); code != exitOK {
+	if code := Run(analysisArgs("-url", base, "-prune-queries"), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -327,7 +327,7 @@ func TestRunWaitsForTheIngestToBeProcessed(t *testing.T) {
 	base := server.start(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-url", base, "-upload"), &stdout, &stderr); code != exitOK {
+	if code := Run(analysisArgs("-url", base, "-upload"), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -355,7 +355,7 @@ func TestRunReportsWhatTheIngestRejected(t *testing.T) {
 	base := server.start(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-url", base, "-upload"), &stdout, &stderr); code != exitFailure {
+	if code := Run(analysisArgs("-url", base, "-upload"), &stdout, &stderr); code != exitFailure {
 		t.Fatalf("exit code = %d, want %d: a job with errors is not a success", code, exitFailure)
 	}
 	if !strings.Contains(stderr.String(), "PTD_Nonsense") {
@@ -371,7 +371,7 @@ func TestRunVerifiesTheEscalationIsWalkable(t *testing.T) {
 	base := server.start(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-url", base, "-install", "-upload", "-verify"), &stdout, &stderr); code != exitOK {
+	if code := Run(analysisArgs("-url", base, "-install", "-upload", "-verify"), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -420,7 +420,7 @@ func TestRunFailsWhenAnEscalationDoesNotWalk(t *testing.T) {
 	base := server.start(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-url", base, "-upload", "-verify"), &stdout, &stderr); code != exitFailure {
+	if code := Run(analysisArgs("-url", base, "-upload", "-verify"), &stdout, &stderr); code != exitFailure {
 		t.Fatalf("exit code = %d, want %d", code, exitFailure)
 	}
 	if !strings.Contains(stdout.String(), "does not walk it") {
@@ -436,7 +436,7 @@ func TestRunRefusesWhenTheExtensionFlagIsOff(t *testing.T) {
 	base := server.start(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-url", base, "-verify"), &stdout, &stderr); code != exitFailure {
+	if code := Run(analysisArgs("-url", base, "-verify"), &stdout, &stderr); code != exitFailure {
 		t.Fatalf("exit code = %d, want %d", code, exitFailure)
 	}
 	if !strings.Contains(stderr.String(), client.FeatureFlagExtensions) {
@@ -457,7 +457,7 @@ func TestRunSaysWhenItCouldNotReadTheFlag(t *testing.T) {
 	base := server.start(t)
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-url", base, "-verify"), &stdout, &stderr); code != exitFailure {
+	if code := Run(analysisArgs("-url", base, "-verify"), &stdout, &stderr); code != exitFailure {
 		t.Fatalf("exit code = %d, want %d", code, exitFailure)
 	}
 	if !strings.Contains(stdout.String(), "could not read") {
@@ -477,7 +477,7 @@ func TestRunRefusesToSendWithoutCredentials(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	args := analysisArgs("-url", "https://bloodhound.invalid", "-upload")
-	if code := run(args, &stdout, &stderr); code != exitFailure {
+	if code := Run(args, &stdout, &stderr); code != exitFailure {
 		t.Fatalf("exit code = %d, want %d", code, exitFailure)
 	}
 	if !strings.Contains(stderr.String(), envTokenID) {
@@ -499,7 +499,7 @@ func TestRunRefusesInvocationsThatAskForNothing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			if code := run(tt.args, &stdout, &stderr); code != exitUsage {
+			if code := Run(tt.args, &stdout, &stderr); code != exitUsage {
 				t.Errorf("exit code = %d, want %d (stderr: %s)", code, exitUsage, stderr.String())
 			}
 		})
@@ -512,7 +512,7 @@ func TestRunRefusesASubjectNothingReads(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "petard.json")
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-out", path, "-subject", "input.requester"), &stdout, &stderr); code != exitFailure {
+	if code := Run(analysisArgs("-out", path, "-subject", "input.requester"), &stdout, &stderr); code != exitFailure {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFailure, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "no decision reads the declared subject: input.requester") {
@@ -529,7 +529,7 @@ func TestRunRefusesADecisionToDenyThatNamesNothing(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "petard.json")
 
 	var stdout, stderr bytes.Buffer
-	if code := run(analysisArgs("-out", path, "-deny-entrypoint", "quill/violation"), &stdout, &stderr); code != exitFailure {
+	if code := Run(analysisArgs("-out", path, "-deny-entrypoint", "quill/violation"), &stdout, &stderr); code != exitFailure {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFailure, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "no rule has the declared entrypoint path: quill/violation") {

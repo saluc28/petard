@@ -1,6 +1,6 @@
-// Command export-opengraph turns a policy into a BloodHound OpenGraph.
+// Command petard export turns a policy into a BloodHound OpenGraph.
 //
-// It runs the same analysis analyze-opa reports on, assembles the internal
+// It runs the same analysis petard analyze reports on, assembles the internal
 // graph, and writes it as an ingest payload. Pointed at a BloodHound instance
 // it can also install the extension definition schema, run the ingest job, and
 // ask the server to walk the escalations it just uploaded, which is the only
@@ -11,7 +11,7 @@
 // A token on a command line ends up in the shell history and in the process
 // list of every user on the machine, and this one signs requests that can write
 // to the graph.
-package main
+package export
 
 import (
 	"context"
@@ -35,10 +35,6 @@ import (
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/queries"
 )
-
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
-}
 
 const (
 	exitOK      = 0
@@ -65,11 +61,13 @@ func (r *repeatedString) Set(value string) error {
 	return nil
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("export-opengraph", flag.ContinueOnError)
+// Run is the subcommand, taking its arguments without the name and returning
+// the exit code.
+func Run(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("petard export", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprint(stderr, "usage: export-opengraph [flags] <path>...\n\n"+
+		fmt.Fprint(stderr, "usage: petard export [flags] <path>...\n\n"+
 			"Paths are Rego files or directories holding them.\n"+
 			"With -url, the credentials are read from "+envTokenID+" and "+envTokenKey+".\n\n")
 		flags.PrintDefaults()
@@ -105,15 +103,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if *regoV0 && *regoV1 {
-		fmt.Fprintln(stderr, "export-opengraph: -rego-v0 and -rego-v1 ask for opposite things")
+		fmt.Fprintln(stderr, "petard export: -rego-v0 and -rego-v1 ask for opposite things")
 		return exitUsage
 	}
 	if (*install || *prune || *upload || *verify) && *url == "" {
-		fmt.Fprintln(stderr, "export-opengraph: -install, -prune-queries, -upload and -verify need -url")
+		fmt.Fprintln(stderr, "petard export: -install, -prune-queries, -upload and -verify need -url")
 		return exitUsage
 	}
 	if *out == "" && !*install && !*prune && !*upload && !*verify {
-		fmt.Fprintln(stderr, "export-opengraph: nothing to do, give -out or -url with -install, -prune-queries, -upload or -verify")
+		fmt.Fprintln(stderr, "petard export: nothing to do, give -out or -url with -install, -prune-queries, -upload or -verify")
 		return exitUsage
 	}
 
@@ -141,14 +139,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		},
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "export-opengraph: %v\n", err)
+		fmt.Fprintf(stderr, "petard export: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "graph: %d nodes, %d edges\n", len(payload.Nodes), len(payload.Edges))
 
 	if *out != "" {
 		if err := write(*out, payload); err != nil {
-			fmt.Fprintf(stderr, "export-opengraph: %v\n", err)
+			fmt.Fprintf(stderr, "petard export: %v\n", err)
 			return exitFailure
 		}
 		fmt.Fprintf(stdout, "written to %s\n", *out)
@@ -157,7 +155,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if *install || *prune || *upload || *verify {
 		steps := remote{install: *install, prune: *prune, upload: *upload, verify: *verify, wait: *wait}
 		if err := send(ctx, stdout, *url, payload, steps); err != nil {
-			fmt.Fprintf(stderr, "export-opengraph: %v\n", err)
+			fmt.Fprintf(stderr, "petard export: %v\n", err)
 			return exitFailure
 		}
 	}

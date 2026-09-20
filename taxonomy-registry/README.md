@@ -367,8 +367,8 @@ barely there.
 `open-policy-agent/contrib`, at commit `90f7ca99ce603c4ce3e40cc990b5a33bb895b557`, is a different
 kind of corpus: 28 units, all of them Rego v1, among them OPA behind Kafka, Kong, PAM, a
 Kubernetes authorizer and an AuthZEN proxy, and in front of databases that filter by a decision.
-Each of those queries its own decision, so each unit was run through `analyze-opa` with the
-decision its configuration or code queries; `measure-corpus` declares decisions by rule name,
+Each of those queries its own decision, so each unit was run through `petard analyze` with the
+decision its configuration or code queries; `petard measure` declares decisions by rule name,
 which suits Gatekeeper and not this. 16 units have a request to decide about. The other 12 are
 configuration checks, libraries, test inputs and a bundle signing demo.
 

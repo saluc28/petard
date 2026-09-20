@@ -1,4 +1,4 @@
-package main
+package measure
 
 import (
 	"bytes"
@@ -81,7 +81,7 @@ func TestRunMeasuresACorpus(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"-verbose", root}, &stdout, &stderr); code != exitOK {
+	if code := Run([]string{"-verbose", root}, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -118,7 +118,7 @@ func TestRunLeavesTestFilesOutOfThePolicy(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{root}, &stdout, &stderr); code != exitOK {
+	if code := Run([]string{root}, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -138,7 +138,7 @@ func TestRunLeavesTestFilesOutOfThePolicy(t *testing.T) {
 func TestRunRejectsAnEmptyCorpus(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := run([]string{t.TempDir()}, &stdout, &stderr); code != exitFailure {
+	if code := Run([]string{t.TempDir()}, &stdout, &stderr); code != exitFailure {
 		t.Errorf("exit code = %d, want %d", code, exitFailure)
 	}
 	if !strings.Contains(stderr.String(), "no .rego file") {
@@ -149,7 +149,7 @@ func TestRunRejectsAnEmptyCorpus(t *testing.T) {
 func TestRunWithoutARoot(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := run(nil, &stdout, &stderr); code != exitUsage {
+	if code := Run(nil, &stdout, &stderr); code != exitUsage {
 		t.Errorf("exit code = %d, want %d", code, exitUsage)
 	}
 }

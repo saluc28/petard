@@ -1,18 +1,17 @@
-// Command analyze-opa reads Rego policies and reports what their decisions
+// Command petard analyze reads Rego policies and reports what their decisions
 // read from data, and who chooses the documents they land on.
 //
 // It exists so that the analysis can be looked at without running the tests.
 // Flags are parsed with the standard library: four options do not justify a
 // dependency, and the phase where this program grows a command tree is not
 // this one.
-package main
+package analyze
 
 import (
 	"context"
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -24,10 +23,6 @@ import (
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/writemodel"
 )
-
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
-}
 
 const (
 	exitOK      = 0
@@ -48,11 +43,13 @@ func (r *repeatedString) Set(value string) error {
 	return nil
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("analyze-opa", flag.ContinueOnError)
+// Run is the subcommand, taking its arguments without the name and returning
+// the exit code.
+func Run(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("petard analyze", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprint(stderr, "usage: analyze-opa [flags] <path>...\n\n"+
+		fmt.Fprint(stderr, "usage: petard analyze [flags] <path>...\n\n"+
 			"Paths are Rego files or directories holding them.\n\n")
 		flags.PrintDefaults()
 	}
@@ -81,7 +78,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if *regoV0 && *regoV1 {
-		fmt.Fprintln(stderr, "analyze-opa: -rego-v0 and -rego-v1 ask for opposite things")
+		fmt.Fprintln(stderr, "petard analyze: -rego-v0 and -rego-v1 ask for opposite things")
 		return exitUsage
 	}
 
@@ -95,7 +92,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	bundle, err := opaengine.Load(paths, mode)
 	if err != nil {
-		fmt.Fprintf(stderr, "analyze-opa: %v\n", err)
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
 	bundle.Entrypoints = entrypoints
@@ -109,12 +106,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	reads, err := opaengine.Reads(bundle, limits)
 	if err != nil {
-		fmt.Fprintf(stderr, "analyze-opa: %v\n", err)
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
 	shape, err := opaengine.ShapeOf(reads, *subject)
 	if err != nil {
-		fmt.Fprintf(stderr, "analyze-opa: %v\n", err)
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
 
@@ -122,7 +119,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if *writeModelPath != "" {
 		model, err = writemodel.Load(*writeModelPath)
 		if err != nil {
-			fmt.Fprintf(stderr, "analyze-opa: %v\n", err)
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 			return exitFailure
 		}
 	}
@@ -131,7 +128,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if *dataPath != "" {
 		data, err = opaengine.LoadData([]string{*dataPath})
 		if err != nil {
-			fmt.Fprintf(stderr, "analyze-opa: %v\n", err)
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 			return exitFailure
 		}
 	}
@@ -141,7 +138,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	ctx := context.Background()
 	if data != nil {
 		if err := reportResiduals(ctx, stdout, bundle, data, reads, limits); err != nil {
-			fmt.Fprintf(stderr, "analyze-opa: %v\n", err)
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 			return exitFailure
 		}
 	}
@@ -156,17 +153,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	findings, err := taxonomy.Run(ctx, analyzed)
 	if err != nil {
-		fmt.Fprintf(stderr, "analyze-opa: %v\n", err)
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
 	if err := reportFindings(stdout, stderr, analyzed, findings, *registryPath); err != nil {
-		fmt.Fprintf(stderr, "analyze-opa: %v\n", err)
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
 
 	if *showGraph {
 		if err := reportGraph(ctx, stdout, analyzed, findings); err != nil {
-			fmt.Fprintf(stderr, "analyze-opa: %v\n", err)
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 			return exitFailure
 		}
 	}
@@ -266,7 +263,7 @@ func reportFindings(out, stderr io.Writer, a taxonomy.Analysis, findings taxonom
 	if err != nil {
 		// The registry is content, and a run without it still measured
 		// something worth printing.
-		fmt.Fprintf(stderr, "analyze-opa: %v\n", err)
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 	}
 
 	for _, reported := range []struct {

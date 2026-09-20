@@ -87,7 +87,7 @@ The engine also runs over bodies of Rego written by other people, which do not l
 repository:
 
 ```
-go run ./cmd/measure-corpus /path/to/corpus/src
+go run ./cmd/petard measure /path/to/corpus/src
 ```
 
 ## The export
@@ -98,7 +98,7 @@ definition schema that tells BloodHound which of the edges its pathfinding may w
 kind means, and what to show in the Entity Panel. The schema is generated from the model and
 checked by a golden test, so the two cannot disagree.
 
-`export-opengraph` refuses to run when the `opengraph_extension_management` feature flag is off.
+`petard export` refuses to run when the `opengraph_extension_management` feature flag is off.
 With it off, pathfinding answers from the built-in AD and Azure kinds alone and says "path not
 found" whether or not the path is there, so `-verify` would report a confident no for the wrong
 reason.
