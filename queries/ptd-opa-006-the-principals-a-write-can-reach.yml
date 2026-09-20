@@ -1,0 +1,17 @@
+name: "PTD-OPA-006: the principals a write can reach"
+guid: a51e70d2-c560-416e-8372-f34b359368d5
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: A grant split across two decisions
+description: >
+  The positions somebody else can take by writing what a second decision allows them to write.
+  These are the accounts to look at first.
+query: |-
+  MATCH (:PTD_Principal)-[e:PTD_CanEscalateTo]->(b:PTD_Principal)
+  WHERE 'PTD-OPA-006' IN e.patterns
+  RETURN b
+revision: 2
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-006-write-allowed-by-another-decision.yaml
+acknowledgements: []

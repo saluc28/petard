@@ -1,0 +1,17 @@
+name: "PTD-OPA-008: the decisions a shared document decides for"
+guid: 20021b8b-4389-4e91-be6a-5f2616eea109
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Global switch
+description: >
+  Only the decisions the enforcement point asks for directly, out of the rules that read a
+  document every request shares.
+query: |-
+  MATCH p = (r:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)
+  WHERE 'PTD-OPA-008' IN e.patterns AND r.is_decision = true
+  RETURN p
+revision: 2
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-008-global-document-decides-for-anybody.yaml
+acknowledgements: []

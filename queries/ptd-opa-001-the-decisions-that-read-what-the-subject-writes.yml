@@ -1,0 +1,17 @@
+name: "PTD-OPA-001: the decisions that read what the subject writes"
+guid: b75cd2fb-8ebb-43fa-9168-07678a9c77de
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Attribute self-write
+description: >
+  Only the decisions the enforcement point asks for directly, out of the rules that read an
+  attribute the subject writes. It is the surface an attacker actually reaches.
+query: |-
+  MATCH p = (r:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)
+  WHERE 'PTD-OPA-001' IN e.patterns AND r.is_decision = true
+  RETURN p
+revision: 2
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml
+acknowledgements: []

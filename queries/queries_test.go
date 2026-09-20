@@ -109,9 +109,13 @@ func TestEveryQueryIsComplete(t *testing.T) {
 			}
 		})
 	}
+	// Two is the floor rather than a target. How many questions a pattern
+	// affords depends on what it marks: one that marks a rule and nothing
+	// around it has fewer than one that marks a read, and a third query
+	// written to reach a quota is one that returns nothing.
 	for _, pattern := range patterns {
-		if perPattern[pattern.ID] < 3 {
-			t.Errorf("%s has %d queries, and every pattern gets at least three", pattern.ID, perPattern[pattern.ID])
+		if perPattern[pattern.ID] < 2 {
+			t.Errorf("%s has %d queries, and every pattern gets at least two", pattern.ID, perPattern[pattern.ID])
 		}
 	}
 }
@@ -183,6 +187,38 @@ func TestNoQueryUnwindsAProperty(t *testing.T) {
 		if found := unwoundProperty.FindString(query.Query); found != "" {
 			t.Errorf("%s unwinds a property (%s), which the PostgreSQL backend cannot run",
 				query.Name, strings.TrimSpace(found))
+		}
+	}
+}
+
+var (
+	returned   = regexp.MustCompile(`(?s)RETURN\s+(.*)$`)
+	identifier = regexp.MustCompile(`^[a-z][a-zA-Z0-9_]*$`)
+)
+
+// The Explore view shows a graph and nothing else: it treats an answer with no
+// nodes and no edges as no answer at all, whatever else came back
+// (packages/javascript/bh-shared-ui/src/hooks/useExploreGraph/queries/
+// cypherSearch.ts at v9.7.1). A query that returns columns is answered by the
+// API and reported to the analyst as "No results match your criteria", which
+// reads as a clean policy. What a finding says in words is on the entity, in
+// its Entity Panel, and a query is there to put that entity on the screen.
+func TestEveryQueryReturnsAGraph(t *testing.T) {
+	all, err := All()
+	if err != nil {
+		t.Fatalf("All() error = %v", err)
+	}
+	for _, query := range all {
+		match := returned.FindStringSubmatch(query.Query)
+		if match == nil {
+			t.Errorf("%s returns nothing", query.Name)
+			continue
+		}
+		for _, term := range strings.Split(match[1], ",") {
+			if term = strings.TrimSpace(term); !identifier.MatchString(term) {
+				t.Errorf("%s returns %q rather than a node, a relationship or a path",
+					query.Name, term)
+			}
 		}
 	}
 }

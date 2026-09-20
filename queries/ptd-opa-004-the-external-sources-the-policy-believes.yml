@@ -1,17 +1,17 @@
-name: "PTD-OPA-004: external sources by the rules that believe them"
+name: "PTD-OPA-004: the external sources the policy believes"
 guid: eb127fd8-aa40-42eb-8668-20cdc001e6ea
 prebuilt: false
 platforms:
   - Open Policy Agent
 category: Unverified external data source
 description: >
-  Each endpoint, with how many reads of its answers reach a decision.
+  The sources themselves, as principals: whoever controls one of them decides in the policy's
+  place.
 query: |-
-  MATCH (r:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(s:PTD_Principal)
+  MATCH (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(s:PTD_Principal)
   WHERE 'PTD-OPA-004' IN e.patterns
-  RETURN s.name AS source, count(r) AS reads
-  ORDER BY reads DESC
-revision: 1
+  RETURN s
+revision: 2
 resources:
   - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-004-decision-tainted-by-external-source.yaml
 acknowledgements: []

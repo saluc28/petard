@@ -1,16 +1,17 @@
-name: "PTD-OPA-005: one row per check"
+name: "PTD-OPA-005: the sources whose silence turns a check off"
 guid: 8600436a-31a7-4505-aedd-9a9d29690f9d
 prebuilt: false
 platforms:
   - Open Policy Agent
 category: Fail-open on absence
 description: >
-  Each check that fails open, the endpoint it waits for, and what can still stop the failure.
+  The external sources themselves. Each one turns off a check by not answering, which costs less
+  than answering the wrong thing.
 query: |-
-  MATCH (r:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(s:PTD_Principal)
+  MATCH (:PTD_Rule)-[e:PTD_Reads]->(:PTD_Attribute)-[:PTD_TaintedBy]->(s:PTD_Principal)
   WHERE 'PTD-OPA-005' IN e.patterns
-  RETURN r.name AS rule, s.name AS source, e.mitigation AS mitigation
-revision: 1
+  RETURN s
+revision: 3
 resources:
   - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-005-fail-open-on-source-unavailable.yaml
 acknowledgements: []
