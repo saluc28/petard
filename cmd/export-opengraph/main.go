@@ -91,6 +91,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	out := flags.String("out", "", "write the payload here; without it nothing is written to disk")
 	url := flags.String("url", "", "base url of the BloodHound API; without it nothing is sent")
 	install := flags.Bool("install", false, "install the extension definition schema and the saved queries before uploading")
+	prune := flags.Bool("prune-queries", false, "delete the saved queries of Petard this build no longer has, such as one renamed since it was installed")
 	upload := flags.Bool("upload", false, "upload the payload as an ingest job")
 	verify := flags.Bool("verify", false, "ask the server to walk every escalation the payload declares")
 	wait := flags.Duration("wait", 2*time.Minute, "how long to wait for the ingest to be processed")
@@ -107,12 +108,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "export-opengraph: -rego-v0 and -rego-v1 ask for opposite things")
 		return exitUsage
 	}
-	if (*install || *upload || *verify) && *url == "" {
-		fmt.Fprintln(stderr, "export-opengraph: -install, -upload and -verify need -url")
+	if (*install || *prune || *upload || *verify) && *url == "" {
+		fmt.Fprintln(stderr, "export-opengraph: -install, -prune-queries, -upload and -verify need -url")
 		return exitUsage
 	}
-	if *out == "" && !*install && !*upload && !*verify {
-		fmt.Fprintln(stderr, "export-opengraph: nothing to do, give -out or -url with -install, -upload or -verify")
+	if *out == "" && !*install && !*prune && !*upload && !*verify {
+		fmt.Fprintln(stderr, "export-opengraph: nothing to do, give -out or -url with -install, -prune-queries, -upload or -verify")
 		return exitUsage
 	}
 
@@ -153,8 +154,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "written to %s\n", *out)
 	}
 
-	if *install || *upload || *verify {
-		steps := remote{install: *install, upload: *upload, verify: *verify, wait: *wait}
+	if *install || *prune || *upload || *verify {
+		steps := remote{install: *install, prune: *prune, upload: *upload, verify: *verify, wait: *wait}
 		if err := send(ctx, stdout, *url, payload, steps); err != nil {
 			fmt.Fprintf(stderr, "export-opengraph: %v\n", err)
 			return exitFailure
@@ -168,6 +169,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 // the wrong slots gets a plausible looking run that proves nothing.
 type remote struct {
 	install bool
+	prune   bool
 	upload  bool
 	verify  bool
 	wait    time.Duration
@@ -267,6 +269,14 @@ func send(ctx context.Context, out io.Writer, url string, payload bhgraph.Graph,
 		fmt.Fprintf(out, "saved queries: %d added, %d already there\n", added, present)
 	}
 
+	// After installing, so that a run asked to do both never leaves the owner
+	// with the old queries deleted and the new ones not saved.
+	if steps.prune {
+		if err := pruneQueries(ctx, out, api); err != nil {
+			return fmt.Errorf("pruning the queries: %w", err)
+		}
+	}
+
 	if steps.upload {
 		job, err := api.Ingest(ctx, payload)
 		if err != nil {
@@ -292,20 +302,12 @@ func send(ctx context.Context, out io.Writer, url string, payload bhgraph.Graph,
 // cmd/api/src/api/v2/saved_queries.go:481 at v9.7.0), and one saved by an
 // earlier version keeps its text until it is deleted.
 func installQueries(ctx context.Context, api *client.Client) (added, present int, err error) {
-	raw, err := api.Get(ctx, "/api/v2/saved-queries")
+	saved, err := savedQueries(ctx, api)
 	if err != nil {
 		return 0, 0, err
 	}
-	var saved struct {
-		Data []struct {
-			Name string `json:"name"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &saved); err != nil {
-		return 0, 0, fmt.Errorf("reading the saved queries: %w", err)
-	}
-	have := make(map[string]bool, len(saved.Data))
-	for _, query := range saved.Data {
+	have := make(map[string]bool, len(saved))
+	for _, query := range saved {
 		have[query.Name] = true
 	}
 
@@ -332,6 +334,81 @@ func installQueries(ctx context.Context, api *client.Client) (added, present int
 		added++
 	}
 	return added, present, nil
+}
+
+// savedQuery is a query the owner of the token has, as the list endpoint
+// returns it.
+type savedQuery struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// savedQueries lists what the owner of the token has saved.
+//
+// The endpoint defaults to the queries the caller owns and to a limit of ten
+// thousand (saved_queries.go:134 at v9.7.1), so this neither pages nor reaches
+// a query somebody else shared.
+func savedQueries(ctx context.Context, api *client.Client) ([]savedQuery, error) {
+	raw, err := api.Get(ctx, "/api/v2/saved-queries")
+	if err != nil {
+		return nil, err
+	}
+	var saved struct {
+		Data []savedQuery `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		return nil, fmt.Errorf("reading the saved queries: %w", err)
+	}
+	return saved.Data, nil
+}
+
+// pruneQueries deletes the saved queries that came from Petard and that this
+// build no longer has, naming each one as it goes.
+//
+// Installing never deletes anything, and BloodHound keys a saved query by its
+// name, so a query renamed between two versions of Petard is a second query
+// rather than the same one: the owner keeps the old text, with the old
+// question, next to the new one. Which is why this is a flag of its own and
+// not part of -install. It removes what somebody may have come to rely on, and
+// that is a decision for whoever runs it.
+//
+// A query counts as Petard's when the part of its name before the colon is one
+// this build uses, which is a pattern id or "Petard". Anything else the owner
+// saved is left alone, including a query about Petard's graph that they wrote
+// and named themselves.
+func pruneQueries(ctx context.Context, out io.Writer, api *client.Client) error {
+	all, err := queries.All()
+	if err != nil {
+		return err
+	}
+	current, prefixes := make(map[string]bool, len(all)), map[string]bool{}
+	for _, query := range all {
+		current[query.Name] = true
+		if prefix, _, found := strings.Cut(query.Name, ": "); found {
+			prefixes[prefix] = true
+		}
+	}
+
+	saved, err := savedQueries(ctx, api)
+	if err != nil {
+		return err
+	}
+
+	removed := 0
+	for _, query := range saved {
+		prefix, _, found := strings.Cut(query.Name, ": ")
+		if !found || !prefixes[prefix] || current[query.Name] {
+			continue
+		}
+		path := fmt.Sprintf("/api/v2/saved-queries/%d", query.ID)
+		if _, err := api.Delete(ctx, path); err != nil {
+			return fmt.Errorf("%s: %w", query.Name, err)
+		}
+		fmt.Fprintf(out, "  deleted %s\n", query.Name)
+		removed++
+	}
+	fmt.Fprintf(out, "saved queries: %d deleted, %d left from this build\n", removed, len(all))
+	return nil
 }
 
 // requireExtensions refuses to go on when the extension management flag is off.

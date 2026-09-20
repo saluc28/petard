@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -119,9 +120,11 @@ type instance struct {
 	pathQueries []string
 
 	// saved are the names of the queries the owner of the token already has,
-	// and created the ones the run saved.
+	// created the ones the run saved, and deleted the ones it removed. A saved
+	// query is served under the id of its position in saved, counting from one.
 	saved   []string
 	created []string
+	deleted []string
 }
 
 type task struct {
@@ -160,9 +163,9 @@ func (i *instance) start(t *testing.T) string {
 			_, _ = w.Write(body)
 
 		case r.URL.Path == "/api/v2/saved-queries" && r.Method == http.MethodGet:
-			var listed []map[string]string
-			for _, name := range i.saved {
-				listed = append(listed, map[string]string{"name": name})
+			var listed []map[string]any
+			for n, name := range i.saved {
+				listed = append(listed, map[string]any{"id": n + 1, "name": name})
 			}
 			body, err := json.Marshal(map[string]any{"data": listed, "count": len(listed)})
 			if err != nil {
@@ -180,6 +183,16 @@ func (i *instance) start(t *testing.T) string {
 			}
 			i.created = append(i.created, created.Name)
 			w.WriteHeader(http.StatusCreated)
+
+		case strings.HasPrefix(r.URL.Path, "/api/v2/saved-queries/") && r.Method == http.MethodDelete:
+			id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/api/v2/saved-queries/"))
+			if err != nil || id < 1 || id > len(i.saved) {
+				t.Errorf("a delete arrived for %q, which is not a saved query", r.URL.Path)
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			i.deleted = append(i.deleted, i.saved[id-1])
+			w.WriteHeader(http.StatusNoContent)
 
 		case r.URL.Path == "/api/v2/graphs/shortest-path":
 			i.pathQueries = append(i.pathQueries, r.URL.RawQuery)
@@ -263,6 +276,43 @@ func TestRunInstallsTheSavedQueries(t *testing.T) {
 	}
 	if want := fmt.Sprintf("saved queries: %d added, 1 already there", len(all)-1); !strings.Contains(stdout.String(), want) {
 		t.Errorf("the report does not say %q:\n%s", want, stdout.String())
+	}
+}
+
+// Installing never deletes, and BloodHound keys a saved query by its name, so a
+// query renamed between two versions of Petard stays next to the new one with
+// the old question in it. Pruning is what removes those, and it has to leave
+// everything else alone: a pattern this build has no query for, and whatever
+// the owner wrote themselves.
+func TestPruneQueriesDeletesWhatThisBuildNoLongerHas(t *testing.T) {
+	all, err := queries.All()
+	if err != nil {
+		t.Fatalf("queries.All() error = %v", err)
+	}
+	gone := []string{"PTD-OPA-001: one row per read", "Petard: a view from an older version"}
+	kept := []string{all[0].Name, "PTD-OPA-099: a pattern this build does not have", "Mine: my own query"}
+	server := &instance{extensionsFlag: true, saved: append(slices.Clone(gone), kept...)}
+	base := server.start(t)
+
+	var stdout, stderr bytes.Buffer
+	if code := run(analysisArgs("-url", base, "-prune-queries"), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+
+	if !slices.Equal(server.deleted, gone) {
+		t.Errorf("deleted %v, want %v", server.deleted, gone)
+	}
+	if len(server.created) != 0 {
+		t.Errorf("pruning saved %v, and it is not what -prune-queries is for", server.created)
+	}
+	out := stdout.String()
+	for _, name := range gone {
+		if !strings.Contains(out, name) {
+			t.Errorf("the report does not name %q, and a deletion nobody sees is one nobody agreed to:\n%s", name, out)
+		}
+	}
+	if want := fmt.Sprintf("saved queries: %d deleted", len(gone)); !strings.Contains(out, want) {
+		t.Errorf("the report does not say %q:\n%s", want, out)
 	}
 }
 
