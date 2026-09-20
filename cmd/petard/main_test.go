@@ -53,8 +53,14 @@ func TestVersionSaysWhichBuild(t *testing.T) {
 		if code := run([]string{name}, &stdout, &stderr); code != 0 {
 			t.Errorf("%s: exit code = %d, want 0 (stderr: %s)", name, code, stderr.String())
 		}
-		if line := strings.TrimSpace(stdout.String()); !strings.HasPrefix(line, "petard ") || len(line) < 10 {
-			t.Errorf("%s printed %q", name, line)
+		out := stdout.String()
+		if first, _, _ := strings.Cut(out, "\n"); !strings.HasPrefix(first, "petard ") || len(first) < 10 {
+			t.Errorf("%s printed %q", name, first)
+		}
+		// Which OPA is linked in decides what an analysis says, and the answer
+		// to "why does this bundle report differently now" starts here.
+		if !strings.Contains(out, "\nopa v") {
+			t.Errorf("%s does not say which OPA is compiled in:\n%s", name, out)
 		}
 	}
 }

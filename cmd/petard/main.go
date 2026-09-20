@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"runtime/debug"
+	"slices"
 	"strings"
 
 	"github.com/saluc28/petard/internal/cli/analyze"
@@ -54,7 +56,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "demo":
 		return demo.Run(args[1:], stdout, stderr)
 	case "version", "-version", "--version":
-		fmt.Fprintln(stdout, buildLine())
+		for _, line := range buildLines() {
+			fmt.Fprintln(stdout, line)
+		}
 		return exitOK
 	case "help", "-h", "-help", "--help":
 		usage(stdout)
@@ -78,6 +82,40 @@ Commands:
 
 Run "petard <command> -h" for the flags of that command.
 `)
+}
+
+// reported are the dependencies whose version changes what an analysis says.
+//
+// OPA is the parser and the evaluator, so the answer to "why does this bundle
+// report differently than it did last month" is usually which one is linked in.
+// bhgraph decides what BloodHound is asked to accept. They are compiled in, not
+// called, so nobody can swap them without a new binary, and a report is only
+// reproducible next to the versions that produced it.
+var reported = []string{
+	"github.com/open-policy-agent/opa",
+	"github.com/saluc28/bhgraph",
+}
+
+// buildLines describe the binary: what it is, and what it carries.
+func buildLines() []string {
+	lines := []string{buildLine()}
+
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return lines
+	}
+	for _, dep := range info.Deps {
+		if !slices.Contains(reported, dep.Path) {
+			continue
+		}
+		if dep.Replace != nil {
+			lines = append(lines, fmt.Sprintf("%s %s, replaced by %s %s",
+				path.Base(dep.Path), dep.Version, dep.Replace.Path, dep.Replace.Version))
+			continue
+		}
+		lines = append(lines, path.Base(dep.Path)+" "+dep.Version)
+	}
+	return lines
 }
 
 // buildLine describes the binary in one line.

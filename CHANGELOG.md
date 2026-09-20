@@ -10,7 +10,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - `petard`, one binary with subcommands: `analyze`, `export`, `measure`, `demo` and
-  `version`.
+  `version`, which reports the build and the versions of OPA and bhgraph compiled into
+  it, since those decide what an analysis says.
 - `petard analyze`, which reads an OPA bundle in either Rego syntax and reports what its decisions
   depend on: every read of `data` with the reference, the file and the line, who chooses the
   document each read lands on, the values the policy did not compute, and the shape of the
