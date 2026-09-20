@@ -2,7 +2,7 @@
   "schema": {
     "name": "petard",
     "display_name": "Petard",
-    "version": "v0.2.0",
+    "version": "v0.2.1",
     "namespace": "PTD"
   },
   "node_kinds": [
@@ -34,7 +34,7 @@
       "name": "PTD_Action",
       "display_name": "Action",
       "description": "An operation a principal may be allowed to perform, as the policy names it.",
-      "is_display_kind": false,
+      "is_display_kind": true,
       "icon": "bolt",
       "color": "#e0a458",
       "info": {
@@ -68,7 +68,7 @@
       "name": "PTD_Attribute",
       "display_name": "Attribute",
       "description": "A field a decision depends on, whether it was read from data or believed from an external answer. It is what an escalation aims at.",
-      "is_display_kind": false,
+      "is_display_kind": true,
       "icon": "tag",
       "color": "#9b5de5",
       "info": {
@@ -85,7 +85,7 @@
       "name": "PTD_Rule",
       "display_name": "Rule",
       "description": "A rule of the analyzed policy. Whether the PEP asks for it directly is the is_decision property.",
-      "is_display_kind": false,
+      "is_display_kind": true,
       "icon": "gavel",
       "color": "#bc4749",
       "info": {

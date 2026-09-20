@@ -52,6 +52,23 @@ func TestSchemaDescribesEveryKindOfTheModel(t *testing.T) {
 	}
 }
 
+// The server registers an icon only for a kind declared a display kind
+// (upsertCustomIcons in cmd/api/src/database/upsert_schema_extension.go at
+// v9.7.1), and the UI falls back to a question mark for a kind it has no icon
+// for (GetIconInfo in packages/javascript/bh-shared-ui/src/utils/icons.ts). A
+// kind given an icon here and not declared a display kind is a question mark in
+// the browser.
+func TestEveryKindIsDrawnAndDeclaredADisplayKind(t *testing.T) {
+	for _, kind := range Schema().NodeKinds {
+		if !kind.IsDisplayKind {
+			t.Errorf("%s is not a display kind, so BloodHound draws it as a question mark", kind.Name)
+		}
+		if kind.Icon == "" || kind.Color == "" {
+			t.Errorf("%s has icon %q and color %q", kind.Name, kind.Icon, kind.Color)
+		}
+	}
+}
+
 // Traversability is the whole difference between a graph the UI walks and one
 // it only displays, and it is decided in the model. The schema has to carry the
 // same answer, not a second opinion.

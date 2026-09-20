@@ -25,7 +25,7 @@ import (
 // Version is the version of the schema Petard installs, which changes whenever
 // a kind or a property does. BloodHound keys an extension by its name, so this
 // is what tells one installation from the next.
-const Version = "v0.2.0"
+const Version = "v0.2.1"
 
 // namespace is what the extension declares, and it is PTD and not PTD_.
 //
@@ -42,12 +42,19 @@ const namespace = "PTD"
 //
 // Icons are Font Awesome free solid names, which is what BloodHound renders.
 // Declaring them here makes the custom-nodes endpoint unnecessary.
+//
+// Every kind is declared a display kind, the way MSSQLHound declares all seven
+// of its own. The server registers an icon only for a display kind
+// (upsertCustomIcons in cmd/api/src/database/upsert_schema_extension.go at
+// v9.7.1), and the UI draws a question mark for a kind it finds no icon for
+// (GetIconInfo in packages/javascript/bh-shared-ui/src/utils/icons.ts). A node
+// here carries one kind, so there is nothing for a display kind to disambiguate
+// and nothing to gain by leaving one out.
 type display struct {
 	displayName string
 	description string
 	icon        string
 	color       string
-	primary     bool
 }
 
 // displays are keyed by kind, and a kind missing from this table is a schema
@@ -60,7 +67,6 @@ var displays = map[graph.NodeKind]display{
 		description: "Anything that can hold privilege: a user, a role, a service account, or an external system that decides on their behalf.",
 		icon:        "user",
 		color:       "#4d7ea8",
-		primary:     true,
 	},
 	graph.NodeKindAction: {
 		displayName: "Action",
@@ -73,7 +79,6 @@ var displays = map[graph.NodeKind]display{
 		description: "What an action is performed on, named by the document a decision turned out to allow.",
 		icon:        "file",
 		color:       "#6a994e",
-		primary:     true,
 	},
 	graph.NodeKindAttribute: {
 		displayName: "Attribute",
@@ -124,7 +129,7 @@ func Schema() bhgraph.Extension {
 			Name:          string(kind),
 			DisplayName:   drawn.displayName,
 			Description:   drawn.description,
-			IsDisplayKind: drawn.primary,
+			IsDisplayKind: true,
 			Icon:          drawn.icon,
 			Color:         drawn.color,
 			Info:          nodeInfo(kind),
