@@ -29,3 +29,20 @@ jobs:
         with:
           version: latest
           args: --timeout 5m
+
+  # A release configuration is otherwise only exercised by a tag, and a tag
+  # that fails leaves a version number spent with no release behind it.
+  release-config:
+    name: Release config
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          install-only: true
+
+      - name: goreleaser check
+        run: goreleaser check

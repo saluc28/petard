@@ -1,0 +1,81 @@
+version: 2
+
+project_name: petard
+
+env:
+  # The binary has to run on a machine that has no toolchain and no libc of a
+  # particular version, which is the whole point of downloading one file.
+  - CGO_ENABLED=0
+
+builds:
+  - id: petard
+    main: ./cmd/petard
+    binary: petard
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Go builds it, but nobody has asked for it and nobody would test it.
+      - goos: windows
+        goarch: arm64
+    # The version, the commit and the date are what a bug report needs first,
+    # and a binary built any other way says so by leaving them empty.
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .ShortCommit }}
+      - -X main.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  # One file to download and run, the way opa and regal ship. An archive would
+  # mean explaining how to unpack it before anybody sees anything.
+  - id: binary
+    formats:
+      - binary
+    files:
+      - none*
+    # Reads like uname, so a download line can be copied without thinking:
+    # petard_Linux_x86_64, petard_Darwin_arm64.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+
+kos:
+  - id: image
+    build: petard
+    repositories:
+      - ghcr.io/saluc28/petard
+    tags:
+      - "{{ .Version }}"
+      - latest
+    bare: true
+    preserve_import_paths: false
+    # A shell in the image is worth having the day a pipeline step behaves
+    # differently from the same command on a laptop.
+    base_image: cgr.dev/chainguard/busybox:latest-glibc
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  # The release notes are written by hand, from CHANGELOG.md. A generated list
+  # of commit subjects would say what happened to us rather than what changed
+  # for whoever uses this.
+  disable: true
+
+release:
+  # Draft, so the notes are read before anybody is notified.
+  draft: true
