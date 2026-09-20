@@ -67,7 +67,7 @@ func TestHelpGoesToStdout(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Errorf("help wrote to stderr: %s", stderr.String())
 	}
-	for _, command := range []string{"analyze", "export", "measure", "version"} {
+	for _, command := range []string{"analyze", "export", "measure", "demo", "version"} {
 		if !strings.Contains(stdout.String(), command) {
 			t.Errorf("the usage does not list %s:\n%s", command, stdout.String())
 		}

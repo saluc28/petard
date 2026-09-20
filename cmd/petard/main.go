@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/saluc28/petard/internal/cli/analyze"
+	"github.com/saluc28/petard/internal/cli/demo"
 	"github.com/saluc28/petard/internal/cli/export"
 	"github.com/saluc28/petard/internal/cli/measure"
 )
@@ -50,6 +51,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return export.Run(args[1:], stdout, stderr)
 	case "measure":
 		return measure.Run(args[1:], stdout, stderr)
+	case "demo":
+		return demo.Run(args[1:], stdout, stderr)
 	case "version", "-version", "--version":
 		fmt.Fprintln(stdout, buildLine())
 		return exitOK
@@ -70,6 +73,7 @@ Commands:
   analyze   read a policy bundle and report what its decisions depend on
   export    send the same analysis to BloodHound as an OpenGraph payload
   measure   run the engine over a body of Rego written by somebody else
+  demo      analyze the vulnerable bundle built into this binary
   version   print the version, the commit and the build date
 
 Run "petard <command> -h" for the flags of that command.

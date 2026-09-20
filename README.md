@@ -43,15 +43,14 @@ than a guess about it. [docs/taxonomy.md](docs/taxonomy.md) walks both chains.
 
 Petard needs Go 1.26 or newer, and analyzing a policy never calls the endpoints written in it.
 
-Run it on the vulnerable bundle that comes with the repository:
-
 ```
-git clone https://github.com/saluc28/petard && cd petard
-go run ./cmd/petard analyze -write-model fixtures/vulnerable-bundle/write-model.yaml \
-  -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
+go install github.com/saluc28/petard/cmd/petard@latest
+petard demo
 ```
 
-It reports what the decisions depend on, and then what the taxonomy found:
+`demo` analyzes a policy with escalation built into it on purpose, written by hand and carried
+inside the binary, so there is something to look at before you point the tool at your own
+policies. It reports what the decisions depend on, and then what the taxonomy found:
 
 ```
 bundle:    8 files, parsed as rego v1
@@ -65,15 +64,17 @@ PTD-OPA-006, One decision lets a principal write the data another decision grant
   alice holds, 2 places to look (confidence D), written via PUT /api/v1/users/{id}/roles
 ```
 
-Send the same analysis to BloodHound CE. The credentials come from two environment variables,
-because a token on a command line ends up in the shell history:
+To send an analysis to BloodHound CE, write the bundle to disk and export it. The credentials
+come from two environment variables, because a token on a command line ends up in the shell
+history:
 
 ```
+petard demo -extract .
 export BLOODHOUND_TOKEN_ID=...
 export BLOODHOUND_TOKEN_KEY=...
-go run ./cmd/petard export -url https://bloodhound.example -install -upload -verify \
-  -write-model fixtures/vulnerable-bundle/write-model.yaml \
-  -data fixtures/vulnerable-bundle/data fixtures/vulnerable-bundle/policy-v1
+petard export -url https://bloodhound.example -install -upload -verify \
+  -write-model vulnerable-bundle/write-model.yaml \
+  -data vulnerable-bundle/data vulnerable-bundle/policy-v1
 ```
 
 ```
@@ -148,7 +149,7 @@ one that does not has to be told, because the alternative is guessing which rule
 point queries:
 
 ```
-go run ./cmd/petard analyze -entrypoint authz/allow path/to/policy
+petard analyze -entrypoint authz/allow path/to/policy
 ```
 
 An enforcement point that refuses the request as soon as a rule returns anything, the way
@@ -156,14 +157,14 @@ Gatekeeper reads `violation`, declares that side instead. Which side a read is o
 counted from the refusal:
 
 ```
-go run ./cmd/petard analyze -deny-entrypoint k8sallowedrepos/violation path/to/policy
+petard analyze -deny-entrypoint k8sallowedrepos/violation path/to/policy
 ```
 
 A decision can also be one field of what a rule returns, and the part of the request that names
 the requester can be declared rather than recognized:
 
 ```
-go run ./cmd/petard analyze -entrypoint aac/aap/policy/owner_scope/allowed \
+petard analyze -entrypoint aac/aap/policy/owner_scope/allowed \
   -subject input.created_by.username -data path/to/config path/to/policy
 ```
 
@@ -203,7 +204,7 @@ internal/fixture      generated worlds, and the truth about them
 queries/              the saved Cypher queries, one file each
 taxonomy-registry/    the patterns as versioned data
 schema/               the extension definition schema, generated from the model
-fixtures/             the bundle written by hand, in Rego v1 and v0
+fixtures/             the bundle written by hand, in Rego v1 and v0, embedded for demo
 ```
 
 ## Documentation

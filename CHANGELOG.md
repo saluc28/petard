@@ -9,7 +9,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `petard`, one binary with subcommands: `analyze`, `export`, `measure` and `version`.
+- `petard`, one binary with subcommands: `analyze`, `export`, `measure`, `demo` and
+  `version`.
 - `petard analyze`, which reads an OPA bundle in either Rego syntax and reports what its decisions
   depend on: every read of `data` with the reference, the file and the line, who chooses the
   document each read lands on, the values the policy did not compute, and the shape of the
@@ -30,3 +31,5 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - 29 saved Cypher queries under `queries/`, two to four per pattern, in the format of the
   BloodHound Query Library.
 - `petard measure`, which runs the engine over a body of Rego written by somebody else.
+- `petard demo`, which analyzes the vulnerable bundle carried inside the binary, so a
+  release can be tried without a policy of your own. `-extract` writes the bundle to disk.

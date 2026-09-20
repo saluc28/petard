@@ -87,7 +87,7 @@ The engine also runs over bodies of Rego written by other people, which do not l
 repository:
 
 ```
-go run ./cmd/petard measure /path/to/corpus/src
+petard measure /path/to/corpus/src
 ```
 
 ## The export

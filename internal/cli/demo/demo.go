@@ -1,0 +1,85 @@
+// Package demo runs the analysis over the bundle built into the binary.
+package demo
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+
+	"github.com/saluc28/petard/fixtures"
+	"github.com/saluc28/petard/internal/cli/analyze"
+)
+
+const (
+	exitOK      = 0
+	exitFailure = 1
+	exitUsage   = 2
+)
+
+// Run unpacks the bundle and analyzes it, or writes it where the caller asked
+// and stops there.
+//
+// It takes no policy path of its own: the point is to answer "what does this
+// thing do" for somebody holding a binary and nothing else.
+func Run(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("petard demo", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		fmt.Fprint(stderr, "usage: petard demo [-extract <dir>]\n\n"+
+			"Analyzes the vulnerable bundle built into this binary.\n\n")
+		flags.PrintDefaults()
+	}
+	extract := flags.String("extract", "", "write the bundle here instead of analyzing it")
+
+	if err := flags.Parse(args); err != nil {
+		return exitUsage
+	}
+	if flags.NArg() > 0 {
+		fmt.Fprintf(stderr, "petard demo: %q is not an argument this command takes; "+
+			"run petard analyze to analyze a policy of your own\n", flags.Arg(0))
+		return exitUsage
+	}
+
+	if *extract != "" {
+		root, err := fixtures.Unpack(*extract)
+		if err != nil {
+			fmt.Fprintf(stderr, "petard demo: %v\n", err)
+			return exitFailure
+		}
+		fmt.Fprintf(stdout, "bundle written to %s\n", root)
+		fmt.Fprintf(stdout, "analyze it with: petard analyze -write-model %s -data %s %s\n",
+			filepath.Join(root, "write-model.yaml"),
+			filepath.Join(root, "data"),
+			filepath.Join(root, "policy-v1"))
+		return exitOK
+	}
+
+	dir, err := os.MkdirTemp("", "petard-demo-")
+	if err != nil {
+		fmt.Fprintf(stderr, "petard demo: %v\n", err)
+		return exitFailure
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	root, err := fixtures.Unpack(dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "petard demo: %v\n", err)
+		return exitFailure
+	}
+
+	code := analyze.Run([]string{
+		"-write-model", filepath.Join(root, "write-model.yaml"),
+		"-data", filepath.Join(root, "data"),
+		filepath.Join(root, "policy-v1"),
+	}, stdout, stderr)
+	if code != exitOK {
+		return code
+	}
+
+	fmt.Fprint(stdout, "\nThat was the bundle built into this binary, written by hand with the "+
+		"escalations in it.\nRun petard demo -extract <dir> to get the files, edit them, and "+
+		"analyze them again.\n")
+	return exitOK
+}
