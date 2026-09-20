@@ -126,10 +126,10 @@ Five node kinds and five relationship kinds, declared in `internal/graph` and ex
 graph LR
   Rule[PTD_Rule] -->|PTD_Reads| Attribute[PTD_Attribute]
   Attribute -->|PTD_WrittenBy| Principal[PTD_Principal]
-  Attribute -->|PTD_TaintedBy| Source["PTD_Principal, an external source"]
-  Principal -->|PTD_CanPerform| Action[PTD_Action]
-  Principal -->|PTD_CanPerform| Resource[PTD_Resource]
   Principal -->|PTD_CanEscalateTo| Other[PTD_Principal]
+  Principal -->|PTD_CanPerform| Resource[PTD_Resource]
+  Principal -->|PTD_CanPerform| Action[PTD_Action]
+  Attribute -->|PTD_TaintedBy| Source["PTD_Principal, an external source"]
 ```
 
 `PTD_CanPerform`, `PTD_WrittenBy` and `PTD_CanEscalateTo` are the three BloodHound may walk.
@@ -179,10 +179,6 @@ result.
 It does not decide whether a finding is a problem in your system. A position in a hierarchy is a
 target rather than a defect, and the report says who can take it and leaves the judgment to you.
 
-It reads Rego, not Cedar. The model in `internal/graph` is engine-neutral and nothing from OPA's
-AST crosses into it, which is what makes a second engine possible, but nobody has written one
-yet.
-
 It reports at the level the request was recognized at, from a declaration down to a guess about
 field names, and the level travels with every claim that rests on it. An edge measured at level
 D is a hypothesis about which field names the requester, and reads differently from one measured
@@ -221,6 +217,7 @@ fixtures/             the bundle written by hand, in Rego v1 and v0
   what `verified` means
 - [queries/README.md](queries/README.md): the saved queries, and what the BloodHound backend
   will and will not run
+- [CHANGELOG.md](CHANGELOG.md): what changed between versions
 
 ## License
 
