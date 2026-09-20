@@ -85,6 +85,32 @@ func patternLines(key, heading string) string {
 	return b.String()
 }
 
+// confidenceLine says what the level an edge carries means.
+//
+// The scale is the one internal/opaengine recognizes a request on, and a panel
+// that prints the letter and stops leaves the reader to guess whether D is good
+// news. The wording follows the levels themselves, so that an edge measured
+// from a declaration reads differently from one measured from a guess about
+// field names.
+func confidenceLine() string {
+	levels := []struct{ level, means string }{
+		{"A", "the request is declared rather than recognized, by an annotation in the policy or by " +
+			"whoever deploys it"},
+		{"B", "the request has the shape the AuthZEN Authorization API standardizes"},
+		{"C", "a convention of a specific domain recognized it, such as a Kubernetes admission review"},
+		{"D", "the names of the fields look like a subject or an action, which is a guess and says so"},
+		{"E", "nothing recognized the request, so only the syntactic level of the analysis holds"},
+	}
+
+	var b strings.Builder
+	b.WriteString("{{ with .Properties.confidence }}**The request was recognized at level {{ . }}** of A to E")
+	for _, level := range levels {
+		fmt.Fprintf(&b, `{{ if eq . "%s" }}: %s{{ end }}`, level.level, level.means)
+	}
+	b.WriteString(".{{ end }}")
+	return b.String()
+}
+
 // patternsFound is the part of a panel that names the patterns reporting on the
 // selected entity, findings first.
 func patternsFound() string {
@@ -173,7 +199,7 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 			"{{ with .Properties.decision }}**Decision** `{{ . }}`{{ end }}",
 			"{{ with .Properties.condition }}**What still has to hold**, as partial evaluation left it:\n\n```\n{{ . }}\n```{{ end }}",
 			"{{ with .Properties.action }}**Action** {{ . }}{{ end }}",
-			"{{ with .Properties.confidence }}The request was recognized at level {{ . }} on the A to E scale.{{ end }}",
+			confidenceLine(),
 		)
 	case graph.EdgeKindReads:
 		return withDetails(meaning(
@@ -205,6 +231,7 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 				"{{ with .Properties.via }} through `{{ . }}`{{ end }}.",
 			"{{ with .Properties.value }}The value written is `{{ . }}`{{ with $.Properties.authorized_by }}, which `{{ . }}` allows{{ end }}.{{ end }}",
 			"{{ with .Properties.relation }}Through `{{ . }}`: {{ $.Properties.reach_transitive }} ways in with it, {{ $.Properties.reach_direct }} without it.{{ end }}",
+			confidenceLine(),
 			patternsFound(),
 		)
 	case graph.EdgeKindTaintedBy:

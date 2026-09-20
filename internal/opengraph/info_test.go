@@ -220,6 +220,8 @@ func TestPanelsRenderForEveryEntityOfTheFixture(t *testing.T) {
 		"**Absent for** dolm, out of 2 documents tried.")
 	says("DATA.QUILL.REVIEW.ALLOW_UNGUARDED", "`input.reviews`")
 	says("MALLORY", "No pattern reports on this principal.")
+	says("PTD_CanEscalateTo MALLORY -> DAVE",
+		"the names of the fields look like a subject or an action, which is a guess")
 	for what, text := range rendered {
 		if strings.HasPrefix(what, "PTD_CanEscalateTo CAROL") && !strings.Contains(text, "PTD-OPA-006") {
 			t.Errorf("%s does not name the pattern that drew it:\n%s", what, text)
