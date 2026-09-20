@@ -432,6 +432,22 @@
     "acknowledgements": []
   },
   {
+    "name": "Petard: who controls the data, and what that opens",
+    "guid": "0d1e2cb8-a526-41f7-9cff-3ff4318094c0",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Petard",
+    "description": "The two halves of the picture in one view: who the write model says can write the documents the decisions read, and the positions a principal can take with what that opens. The halves do not meet in the graph, because the write that makes an escalation possible is on the escalation edge itself.",
+    "query": "MATCH p = (:PTD_Rule)-[:PTD_Reads]->(:PTD_Attribute)-[:PTD_WrittenBy]->(:PTD_Principal)\nMATCH q = (:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Principal)-[:PTD_CanPerform]->()\nRETURN p, q",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard"
+    ],
+    "acknowledgements": []
+  },
+  {
     "name": "Petard: who writes what the decisions read",
     "guid": "c6f94c8f-c735-48e2-b8c0-19f8f42a01e6",
     "prebuilt": false,
