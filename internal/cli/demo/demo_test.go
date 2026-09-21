@@ -22,10 +22,16 @@ func TestDemoAnalyzesTheBundleInTheBinary(t *testing.T) {
 		"parsed as rego v1",
 		"PTD-OPA-006 finding: carol can write editor",
 		"petard demo -extract",
+		// The report names the files it read, and they read like a checkout
+		// rather than like wherever the bundle happened to be unpacked.
+		"vulnerable-bundle/policy-v1/authz.rego:",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the demo does not say %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "petard-demo-") || strings.Contains(out, os.TempDir()) {
+		t.Errorf("the report shows the temporary directory it ran in:\n%s", out)
 	}
 }
 

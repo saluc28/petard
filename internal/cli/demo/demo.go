@@ -2,11 +2,13 @@
 package demo
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/saluc28/petard/fixtures"
 	"github.com/saluc28/petard/internal/cli/analyze"
@@ -69,11 +71,18 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
+	// The analysis names every file it read, and here those names are a
+	// temporary directory nobody asked about. The report is held and the
+	// prefix taken off it, so it reads like a run against a checkout.
+	var report, problems bytes.Buffer
 	code := analyze.Run([]string{
 		"-write-model", filepath.Join(root, "write-model.yaml"),
 		"-data", filepath.Join(root, "data"),
 		filepath.Join(root, "policy-v1"),
-	}, stdout, stderr)
+	}, &report, &problems)
+
+	fmt.Fprint(stdout, shorten(report.String(), root))
+	fmt.Fprint(stderr, shorten(problems.String(), root))
 	if code != exitOK {
 		return code
 	}
@@ -82,4 +91,17 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		"escalations in it.\nRun petard demo -extract <dir> to get the files, edit them, and "+
 		"analyze them again.\n")
 	return exitOK
+}
+
+// shorten replaces the directory the bundle was unpacked into with the name it
+// carries inside the binary.
+//
+// Both spellings are taken off: the analysis reports paths with forward
+// slashes, and the directory arrives from the operating system with whatever
+// separator it uses.
+func shorten(report, root string) string {
+	for _, spelling := range []string{filepath.ToSlash(root), root} {
+		report = strings.ReplaceAll(report, spelling, fixtures.BundleDir)
+	}
+	return report
 }
