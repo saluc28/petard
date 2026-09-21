@@ -39,12 +39,37 @@ other. Neither names a value it made up. The engine leaves the document unknown 
 what is left of the decision, so "some value here works" is an answer from the policy rather
 than a guess about it. [docs/taxonomy.md](docs/taxonomy.md) walks both chains.
 
-## Quickstart
+## Install
 
-Petard needs Go 1.26 or newer, and analyzing a policy never calls the endpoints written in it.
+One file, no runtime:
 
 ```
-go install github.com/saluc28/petard/cmd/petard@latest
+# Linux, x86_64
+curl -L -o petard https://github.com/saluc28/petard/releases/latest/download/petard_Linux_x86_64
+chmod +x ./petard
+
+# macOS, Apple silicon
+curl -L -o petard https://github.com/saluc28/petard/releases/latest/download/petard_Darwin_arm64
+chmod +x ./petard
+```
+
+On Windows:
+
+```
+Invoke-WebRequest -Uri "https://github.com/saluc28/petard/releases/latest/download/petard_Windows_x86_64.exe" -OutFile "petard.exe"
+```
+
+In a pipeline, `ghcr.io/saluc28/petard:latest`, or pin the version. From source, with Go 1.26 or
+newer, `go install github.com/saluc28/petard/cmd/petard@latest`.
+
+`petard version` says which build it is and which OPA is compiled into it, which is what an
+analysis depends on.
+
+## Quickstart
+
+Analyzing a policy never calls the endpoints written in it.
+
+```
 petard demo
 ```
 
