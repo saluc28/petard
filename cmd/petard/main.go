@@ -17,8 +17,10 @@ import (
 
 	"github.com/saluc28/petard/internal/cli/analyze"
 	"github.com/saluc28/petard/internal/cli/demo"
+	"github.com/saluc28/petard/internal/cli/explain"
 	"github.com/saluc28/petard/internal/cli/export"
 	"github.com/saluc28/petard/internal/cli/measure"
+	"github.com/saluc28/petard/internal/cli/patterns"
 )
 
 // version, commit and date are set by the linker on a release build. A binary
@@ -47,41 +49,69 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
-	case "analyze":
-		return analyze.Run(args[1:], stdout, stderr)
-	case "export":
-		return export.Run(args[1:], stdout, stderr)
-	case "measure":
-		return measure.Run(args[1:], stdout, stderr)
-	case "demo":
-		return demo.Run(args[1:], stdout, stderr)
 	case "version", "-version", "--version":
 		for _, line := range buildLines() {
 			fmt.Fprintln(stdout, line)
 		}
 		return exitOK
 	case "help", "-h", "-help", "--help":
+		if len(args) > 1 {
+			return helpFor(args[1], stdout, stderr)
+		}
 		usage(stdout)
 		return exitOK
-	default:
-		fmt.Fprintf(stderr, "%s: unknown command %q\n\n", programName, args[0])
-		usage(stderr)
-		return exitUsage
 	}
+
+	for _, command := range commands {
+		if command.name == args[0] {
+			return command.run(args[1:], stdout, stderr)
+		}
+	}
+	fmt.Fprintf(stderr, "%s: unknown command %q\n\n", programName, args[0])
+	usage(stderr)
+	return exitUsage
+}
+
+// command is one subcommand: the word, what it does in a line, and the package
+// that does it. The list is what the usage prints, so a command added here is
+// a command the usage names.
+type command struct {
+	name, does string
+	run        func(args []string, stdout, stderr io.Writer) int
+}
+
+var commands = []command{
+	{"analyze", "read a policy bundle and report what its decisions depend on", analyze.Run},
+	{"explain", "print what one pattern looks for, and what it will not report", explain.Run},
+	{"patterns", "list the patterns this binary carries", patterns.Run},
+	{"export", "send the same analysis to BloodHound as an OpenGraph payload", export.Run},
+	{"measure", "run the engine over a body of Rego written by somebody else", measure.Run},
+	{"demo", "analyze the vulnerable bundle built into this binary", demo.Run},
 }
 
 func usage(out io.Writer) {
-	fmt.Fprint(out, `usage: petard <command> [flags] <path>...
+	fmt.Fprint(out, "usage: petard <command> [flags] <path>...\n\nCommands:\n")
+	for _, command := range commands {
+		fmt.Fprintf(out, "  %-9s %s\n", command.name, command.does)
+	}
+	fmt.Fprint(out, "  version   print the version, the commit and the build date\n\n"+
+		"Run \"petard help <command>\" for the flags of that command.\n")
+}
 
-Commands:
-  analyze   read a policy bundle and report what its decisions depend on
-  export    send the same analysis to BloodHound as an OpenGraph payload
-  measure   run the engine over a body of Rego written by somebody else
-  demo      analyze the vulnerable bundle built into this binary
-  version   print the version, the commit and the build date
-
-Run "petard <command> -h" for the flags of that command.
-`)
+// helpFor prints one subcommand's flags, which each of them writes itself when
+// it is asked for them. Asking through help rather than through -h is the
+// difference between a question and a mistake, so the answer goes to stdout
+// and the run is a success.
+func helpFor(name string, stdout, stderr io.Writer) int {
+	for _, command := range commands {
+		if command.name == name {
+			command.run([]string{"-h"}, stdout, stdout)
+			return exitOK
+		}
+	}
+	fmt.Fprintf(stderr, "%s: unknown command %q\n\n", programName, name)
+	usage(stderr)
+	return exitUsage
 }
 
 // reported are the dependencies whose version changes what an analysis says.

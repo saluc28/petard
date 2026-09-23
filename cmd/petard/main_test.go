@@ -9,7 +9,7 @@ import (
 // The dispatch is the whole of this command, and a subcommand that silently
 // does nothing is worse than one that is missing: the run looks like it worked.
 func TestEverySubcommandIsReachable(t *testing.T) {
-	for _, name := range []string{"analyze", "export", "measure"} {
+	for _, name := range []string{"analyze", "explain", "export", "measure"} {
 		t.Run(name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			// No paths, so each one prints its own usage and refuses.
@@ -21,6 +21,18 @@ func TestEverySubcommandIsReachable(t *testing.T) {
 				t.Errorf("the usage does not say %q:\n%s", want, stderr.String())
 			}
 		})
+	}
+}
+
+// patterns takes no argument at all, so it is the one subcommand that has
+// something to say when run with none.
+func TestPatternsListsWithoutArguments(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"patterns"}, &stdout, &stderr); code != 0 {
+		t.Errorf("exit code = %d, want 0 (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "PTD-OPA-001") {
+		t.Errorf("the list is empty:\n%s", stdout.String())
 	}
 }
 
@@ -65,6 +77,28 @@ func TestVersionSaysWhichBuild(t *testing.T) {
 	}
 }
 
+// Asking for the flags of one command through help is a question, not a
+// mistake: the answer belongs on stdout and the run is a success.
+func TestHelpForOneCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"help", "analyze"}, &stdout, &stderr); code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("help wrote to stderr: %s", stderr.String())
+	}
+	for _, want := range []string{"usage: petard analyze", "-fail-on", "-write-model"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("the flags do not mention %q:\n%s", want, stdout.String())
+		}
+	}
+
+	stdout.Reset()
+	if code := run([]string{"help", "analyse"}, &stdout, &stderr); code != 2 {
+		t.Errorf("a typo after help: exit code = %d, want 2", code)
+	}
+}
+
 func TestHelpGoesToStdout(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"help"}, &stdout, &stderr); code != 0 {
@@ -73,7 +107,7 @@ func TestHelpGoesToStdout(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Errorf("help wrote to stderr: %s", stderr.String())
 	}
-	for _, command := range []string{"analyze", "export", "measure", "demo", "version"} {
+	for _, command := range []string{"analyze", "explain", "patterns", "export", "measure", "demo", "version"} {
 		if !strings.Contains(stdout.String(), command) {
 			t.Errorf("the usage does not list %s:\n%s", command, stdout.String())
 		}
