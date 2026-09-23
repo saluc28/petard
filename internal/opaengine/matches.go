@@ -188,9 +188,9 @@ func (r *refReader) summary(rules []*ast.Rule) []paramComparison {
 	r.summaries[key] = nil
 
 	var summary []paramComparison
-	for _, rule := range rules {
-		bindings := r.bindingsOf(rule, rule.Body, nil)
-		for _, expr := range rule.Body {
+	var visit func(rule *ast.Rule, body ast.Body, bindings map[ast.Var]binding)
+	visit = func(rule *ast.Rule, body ast.Body, bindings map[ast.Var]binding) {
+		for _, expr := range body {
 			for _, compared := range r.comparisonsIn(rule, expr, bindings) {
 				left, leftOK := sideOf(rule, compared.left, bindings)
 				right, rightOK := sideOf(rule, compared.right, bindings)
@@ -202,7 +202,16 @@ func (r *refReader) summary(rules []*ast.Rule) []paramComparison {
 					summary = append(summary, entry)
 				}
 			}
+			// An operand of a not, an and or an or is read the way the walk
+			// reads it, with the bindings of its own body on top.
+			operands, _ := operandBodies(expr)
+			for _, operand := range operands {
+				visit(rule, operand, r.bindingsOf(rule, operand, bindings))
+			}
 		}
+	}
+	for _, rule := range rules {
+		visit(rule, rule.Body, r.bindingsOf(rule, rule.Body, nil))
 	}
 	r.summaries[key] = summary
 	return summary

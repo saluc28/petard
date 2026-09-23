@@ -126,13 +126,15 @@ type Read struct {
 	Matches []Match
 
 	// UnderNegation is true when the reference is read inside a negated
-	// expression.
+	// expression, or more exactly under an odd number of negations inside its
+	// rule: a read under a not inside a not grants.
 	//
-	// It is a plain bool in the AST, so this is exact rather than inferred,
-	// and the taxonomy needs it: when the value is missing, a read to deny and
-	// a read to grant fail in opposite directions. It says nothing about the
-	// way down from the decision to this rule, which is a property of the walk
-	// and is reported in Decisions.
+	// The AST says whether an expression negates, with a bool or with a not
+	// that holds a body of its own, so this is exact rather than inferred, and
+	// the taxonomy needs it: when the value is missing, a read to deny and a
+	// read to grant fail in opposite directions. It says nothing about the way
+	// down from the decision to this rule, which is a property of the walk and
+	// is reported in Decisions.
 	UnderNegation bool
 
 	// Decisions are the entrypoints that depend on this read, sorted by name.

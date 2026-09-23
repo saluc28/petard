@@ -2,9 +2,15 @@ package analyze
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/open-policy-agent/opa/v1/ast"
+
+	"github.com/saluc28/petard/internal/opaengine"
 )
 
 func fixture(version string) string {
@@ -580,5 +586,81 @@ func TestRunReportsAFailureOnStderr(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "petard analyze:") {
 		t.Errorf("stderr does not name the program: %s", stderr.String())
+	}
+}
+
+// Importing the not keyword changes the form of every negation in a module: the
+// flag on the expression becomes a not holding a body of its own. The fixture
+// with that one line added to each file is the same policy, and the whole
+// report has to come out the same, graph included, down to the lines, which
+// move by the two the import takes.
+func TestRunReadsTheFixtureTheSameWithNotImported(t *testing.T) {
+	variant := t.TempDir()
+	sources, err := filepath.Glob(filepath.Join(fixture("policy-v1"), "*.rego"))
+	if err != nil || len(sources) == 0 {
+		t.Fatalf("no fixture policy to rewrite (error %v)", err)
+	}
+	for _, source := range sources {
+		text, err := os.ReadFile(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(string(text), "\n")
+		for i, line := range lines {
+			if strings.HasPrefix(line, "package ") {
+				lines[i] = line + "\n\nimport future.keywords.not"
+				break
+			}
+		}
+		if err := os.WriteFile(filepath.Join(variant, filepath.Base(source)), []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The comparison proves nothing unless the negations really changed form.
+	bundle, err := opaengine.Load([]string{variant}, opaengine.ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	withBody := 0
+	for _, module := range bundle.Compiler.Modules {
+		ast.WalkExprs(module, func(expr *ast.Expr) bool {
+			if _, isNot := expr.Terms.(*ast.Not); isNot {
+				withBody++
+			}
+			return false
+		})
+	}
+	if withBody == 0 {
+		t.Fatal("no negation of the variant holds a body, so the two runs read the same AST")
+	}
+
+	report := func(policy string) string {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		args := detailed(
+			"-graph",
+			"-write-model", fixture("write-model.yaml"),
+			"-data", fixture("data"),
+			policy,
+		)
+		if code := Run(args, &stdout, &stderr); code != exitOK {
+			t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+		}
+		out := strings.ReplaceAll(stdout.String(), filepath.ToSlash(policy), "POLICY")
+		out = regexp.MustCompile(`\.rego:\d+`).ReplaceAllString(out, ".rego:N")
+		out = regexp.MustCompile(`source_line=\d+`).ReplaceAllString(out, "source_line=N")
+		return regexp.MustCompile(` +`).ReplaceAllString(out, " ")
+	}
+
+	written, imported := report(fixture("policy-v1")), report(variant)
+	if written != imported {
+		writtenLines, importedLines := strings.Split(written, "\n"), strings.Split(imported, "\n")
+		for i := range min(len(writtenLines), len(importedLines)) {
+			if writtenLines[i] != importedLines[i] {
+				t.Fatalf("the reports part at line %d:\n  as written:   %s\n  not imported: %s", i+1, writtenLines[i], importedLines[i])
+			}
+		}
+		t.Fatalf("the reports differ in length: %d lines as written, %d with not imported", len(writtenLines), len(importedLines))
 	}
 }

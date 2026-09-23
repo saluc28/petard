@@ -56,3 +56,29 @@ measure if allow with input as {"user": "mallory"}
 		}
 	}
 }
+
+// With the not keyword imported, a negation holds a body of its own instead of
+// carrying a flag, the plain form included, and it is counted all the same.
+func TestBundleConstructsCountANotWithABody(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"policy.rego": `package t
+
+import future.keywords.not
+
+allow if {
+	not data.blocklist[input.user]
+	not {
+		data.suspended[input.user]
+		input.strict
+	}
+}
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := bundle.Constructs().Negations; got != 2 {
+		t.Errorf("Constructs().Negations = %d, want 2", got)
+	}
+}

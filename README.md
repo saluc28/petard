@@ -268,9 +268,11 @@ D is a hypothesis about which field names the requester, and reads differently f
 against a declaration.
 
 Some shapes of negation are still invisible to the walk. `count(S) == 0` over a comprehension
-written inline reads as an ordinary comparison, `not count(S) > 0` is not read as "empty", and a
-policy that imports the future keywords for `not`, `and` and `or` reports no reads at all. The
-write model does not parse a quoted key that contains a dot or a slash.
+written inline reads as an ordinary comparison, and `not count(S) > 0` is not read as "empty". An
+`and` or an `or` written inside a comprehension, an `every` or a `not` is read like any other
+expression, but partial evaluation answers for it with the documents it reads rather than with
+the requests that make it hold. The write model does not parse a quoted key that contains a dot
+or a slash.
 
 ## Layout
 

@@ -168,6 +168,133 @@ allow if {
 	}
 }
 
+// With the keywords imported, and, or and not are expressions holding bodies of
+// their own, and every negation of the module takes that form, the plain one
+// included. The reads inside them are reads like any other, and each keeps its
+// side: a not flips it, a not inside a not flips it back, and and and or leave
+// it where it is.
+func TestReadsGoIntoAndOrAndNot(t *testing.T) {
+	reads := readsOf(t, `package t
+
+import future.keywords.and
+import future.keywords.not
+import future.keywords.or
+
+# METADATA
+# scope: document
+# entrypoint: true
+default allow := false
+
+allow if {
+	data.roles[input.user] == "admin" or data.groups[input.group].open
+	data.flags.enabled and data.flags.visible
+	not data.blocklist[input.user]
+	not {
+		data.suspended[input.user]
+		not data.pardoned[input.user]
+	}
+	not banned
+}
+
+banned if data.bans[input.user]
+`, Limits{})
+
+	tests := []struct {
+		path    string
+		negated bool
+
+		// wayDown is whether the rule holding the read is reached under a
+		// negation, which a not holding a rule sets like any other.
+		wayDown bool
+	}{
+		{path: "data.roles[_]", negated: false},
+		{path: "data.groups[_].open", negated: false},
+		{path: "data.flags.enabled", negated: false},
+		{path: "data.flags.visible", negated: false},
+		{path: "data.blocklist[_]", negated: true},
+		{path: "data.suspended[_]", negated: true},
+		{path: "data.pardoned[_]", negated: false},
+		{path: "data.bans[_]", negated: false, wayDown: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			read := readOfPath(t, reads, tt.path)
+			if read.UnderNegation != tt.negated {
+				t.Errorf("UnderNegation = %v, want %v", read.UnderNegation, tt.negated)
+			}
+			expected := []ReachedDecision{{Name: "data.t.allow", UnderNegation: tt.wayDown}}
+			if !slices.Equal(read.Decisions, expected) {
+				t.Errorf("decisions = %v, want %v", read.Decisions, expected)
+			}
+		})
+	}
+}
+
+// A count of the domain guards an every only where it has to hold. Next to the
+// every, or in an operand of an and, it does; under a not it asks for the
+// opposite, and in an operand of an or the other operand can hold instead.
+func TestQuantifiersTakeAGuardOnlyWhereItHolds(t *testing.T) {
+	reads := readsOf(t, `package t
+
+import future.keywords.and
+import future.keywords.not
+import future.keywords.or
+
+# METADATA
+# scope: document
+# entrypoint: true
+plain if {
+	count(input.reviews) > 0
+	every review in input.reviews { review.approved }
+}
+
+# METADATA
+# scope: document
+# entrypoint: true
+joined if {
+	count(input.reviews) > 0 and input.ready
+	every review in input.reviews { review.approved }
+}
+
+# METADATA
+# scope: document
+# entrypoint: true
+either if {
+	count(input.reviews) > 0 or input.trusted
+	every review in input.reviews { review.approved }
+}
+
+# METADATA
+# scope: document
+# entrypoint: true
+negated if {
+	not count(input.reviews) > 0
+	every review in input.reviews { review.approved }
+}
+`, Limits{})
+
+	expected := map[string]bool{
+		"data.t.plain":   true,
+		"data.t.joined":  true,
+		"data.t.either":  false,
+		"data.t.negated": false,
+	}
+	seen := map[string]bool{}
+	for _, quantifier := range reads.Quantifiers {
+		for _, decision := range quantifier.Decisions {
+			seen[decision.Name] = true
+			if want, known := expected[decision.Name]; known && quantifier.Guarded != want {
+				t.Errorf("%s: guarded = %v, want %v", decision.Name, quantifier.Guarded, want)
+			}
+		}
+	}
+	for name := range expected {
+		if !seen[name] {
+			t.Errorf("%s: no every found, so its guard was never judged", name)
+		}
+	}
+}
+
 // __local6__ is the truth and it is unreadable. The compiler keeps the names
 // the author wrote for exactly this, and a report nobody can read is a report
 // nobody checks.

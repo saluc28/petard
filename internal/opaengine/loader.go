@@ -74,10 +74,10 @@ func (m ParseMode) String() string {
 type Bundle struct {
 	// Compiler holds the compiled modules, and is the single source of truth
 	// for everything downstream but partial evaluation, which runs against the
-	// same policy with its rules that carry an else rewritten. The parsed AST is
-	// not kept: the compiler resolves imports, desugars the syntax and rewrites
-	// the bodies into explicit dataflow, and rebuilding any of that by hand
-	// would mean rewriting parts of OPA.
+	// same policy with some of its rules rewritten (see partialCompiler). The
+	// parsed AST is not kept: the compiler resolves imports, desugars the syntax
+	// and rewrites the bodies into explicit dataflow, and rebuilding any of that
+	// by hand would mean rewriting parts of OPA.
 	Compiler *ast.Compiler
 
 	// RegoVersion is the syntax the modules were parsed as. Under
@@ -123,9 +123,10 @@ type Bundle struct {
 	parsed map[string]*ast.Module
 
 	// partialCompiler holds the same policy with every rule that carries an else
-	// rewritten into rules partial evaluation can go through, and a rule of its
-	// own for every field of an answer written out as an object. It is nil when
-	// the policy has neither. See exclusiveElse and fieldRules.
+	// rewritten into rules partial evaluation can go through, a rule of its own
+	// for every field of an answer written out as an object, and the and and or
+	// of every body taken apart. It is nil when the policy has none of them. See
+	// exclusiveElse, fieldRules and splitLogical.
 	partialCompiler *ast.Compiler
 
 	// fieldQueries are the rules of partialCompiler that compute one field
@@ -144,25 +145,36 @@ type Bundle struct {
 // objects, it doubled the time of a run that never evaluates anything.
 func (b *Bundle) forPartial() (*ast.Compiler, error) {
 	b.partialOnce.Do(func() {
+		compiler := b.Compiler
 		modules := b.parsed
 		b.parsed = nil
-		if modules == nil {
-			return
+		if modules != nil {
+			// The else goes first, so that the branches it becomes get fields
+			// of their own too.
+			rewrote := exclusiveElse(modules)
+			b.fieldQueries = fieldRules(modules)
+			if rewrote || len(b.fieldQueries) > 0 {
+				compiler = ast.NewCompiler()
+				compiler.Compile(modules)
+				if compiler.Failed() {
+					b.partialErr = fmt.Errorf("%w, rewritten for partial evaluation: %w", ErrCompile, compiler.Errors)
+					return
+				}
+			}
 		}
-		// The else goes first, so that the branches it becomes get fields of
-		// their own too.
-		rewrote := exclusiveElse(modules)
-		b.fieldQueries = fieldRules(modules)
-		if !rewrote && len(b.fieldQueries) == 0 {
-			return
+		// And and or come last, on what the compiler made of everything else:
+		// see splitLogical for why they need the compiled form.
+		if split := splitLogical(compiler.Modules); split != nil {
+			compiler = ast.NewCompiler()
+			compiler.Compile(split)
+			if compiler.Failed() {
+				b.partialErr = fmt.Errorf("%w, with and and or taken apart for partial evaluation: %w", ErrCompile, compiler.Errors)
+				return
+			}
 		}
-		compiler := ast.NewCompiler()
-		compiler.Compile(modules)
-		if compiler.Failed() {
-			b.partialErr = fmt.Errorf("%w, rewritten for partial evaluation: %w", ErrCompile, compiler.Errors)
-			return
+		if compiler != b.Compiler {
+			b.partialCompiler = compiler
 		}
-		b.partialCompiler = compiler
 	})
 	if b.partialErr != nil {
 		return nil, b.partialErr

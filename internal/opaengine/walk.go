@@ -162,11 +162,13 @@ type scope struct {
 	bindings map[ast.Var]binding
 
 	// negated is the parity of the negations the walk is under, the same as on
-	// the way down from a decision. Inside one rule the compiler leaves little
-	// room for a second one: it binds a comprehension handed to a call to a
-	// variable of its own, outside the negated expression, and every cannot be
-	// negated at all. What is left is a collection compared with an empty one
-	// under not.
+	// the way down from a decision. Inside one rule a negation written the old
+	// way leaves little room for a second one: the compiler binds a
+	// comprehension handed to a call to a variable of its own, outside the
+	// negated expression, and every cannot be negated at all, which leaves a
+	// collection compared with an empty one under not. A not that holds a body
+	// of its own is the exception, since the body can hold anything, another
+	// not included. See operandBodies.
 	negated bool
 
 	// empty are the terms of this body it only asks to be empty, which are
@@ -282,11 +284,33 @@ func guardsDomain(body ast.Body, domain *ast.Term, bindings map[ast.Var]binding)
 	if !ok {
 		return false
 	}
+	return countsDomain(body, target, bindings)
+}
 
+// countsDomain reports whether a body counts a domain where the count has to
+// hold.
+//
+// A count under not asks for the opposite, and one in an operand of an or can be
+// skipped by the other operand holding instead: neither keeps the domain
+// non-empty. Both operands of an and have to hold, and each is a body of its
+// own, where the compiler binds what the count reads.
+func countsDomain(body ast.Body, target ast.Ref, bindings map[ast.Var]binding) bool {
 	guarded := false
 	ast.WalkExprs(body, func(expr *ast.Expr) bool {
-		if guarded || !expr.IsCall() || expr.Operator().String() != ast.Count.Name {
-			return guarded
+		if guarded {
+			return true
+		}
+		switch operator := expr.Terms.(type) {
+		case *ast.Not, *ast.LogicalOr:
+			return true
+		case *ast.LogicalAnd:
+			for _, operand := range []ast.Body{operator.Lhs, operator.Rhs} {
+				guarded = guarded || countsDomain(operand, target, merge(bindings, collectBindings(operand)))
+			}
+			return true
+		}
+		if !expr.IsCall() || expr.Operator().String() != ast.Count.Name {
+			return false
 		}
 		operands := expr.Operands()
 		if len(operands) == 0 {
@@ -424,6 +448,15 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 		return
 	}
 
+	if operands, negates := operandBodies(expr); operands != nil {
+		inner := sc
+		inner.negated = sc.negated != negates
+		for _, operand := range operands {
+			r.walkBody(operand, inner, found)
+		}
+		return
+	}
+
 	if expr.IsCall() {
 		// The operator of a call is a rule reference, not a read: following it
 		// is how the walk moves from one rule to the next.
@@ -459,6 +492,30 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 
 	if term, ok := expr.Terms.(*ast.Term); ok {
 		r.walkTerm(term, sc, found)
+	}
+}
+
+// operandBodies returns the bodies an expression holds as the operands of a not,
+// an and or an or, and whether the expression negates them.
+//
+// These are the forms the and, or and not future keywords parse to
+// (v1/ast/parser.go:3878 at v1.20.2), and the compiler keeps them as they are:
+// the evaluator goes into them itself (v1/topdown/eval.go:495 to 529). With not
+// imported, every negation of a module takes this form, not only the ones
+// written with braces. Each operand is a body of its own, whose variables stay
+// inside it, which is how the walk treats it. A not flips the side of
+// everything it holds; and and or leave it where it is, since an operand of
+// either can decide the request in the same direction the expression does.
+func operandBodies(expr *ast.Expr) ([]ast.Body, bool) {
+	switch operator := expr.Terms.(type) {
+	case *ast.Not:
+		return []ast.Body{operator.Body}, true
+	case *ast.LogicalAnd:
+		return []ast.Body{operator.Lhs, operator.Rhs}, false
+	case *ast.LogicalOr:
+		return []ast.Body{operator.Lhs, operator.Rhs}, false
+	default:
+		return nil, false
 	}
 }
 

@@ -124,6 +124,37 @@ is_requester(name) if name == input.user
 	}
 }
 
+// A function that compares in an operand of an or holds through that comparison
+// as much as through a body of its own, and the lookup is found the same way:
+// once for each part of the request the operands compare with.
+func TestReadsFindTheRequestByValueInsideAnOr(t *testing.T) {
+	policy := `package lookup
+
+import future.keywords.or
+
+# METADATA
+# entrypoint: true
+allow if {
+	some binding in data.bindings
+	is_requester(binding.user)
+}
+
+is_requester(name) if {
+	name == input.user or name == input.delegate
+}
+`
+	read := readOfPath(t, readsOf(t, policy, Limits{}), "data.bindings[_].user")
+
+	var terms []string
+	for _, match := range read.Matches {
+		terms = append(terms, match.Term)
+	}
+	slices.Sort(terms)
+	if expected := []string{"input.delegate", "input.user"}; !slices.Equal(terms, expected) {
+		t.Errorf("matches of data.bindings[_].user = %+v, want one for each of %v", read.Matches, expected)
+	}
+}
+
 // A lookup by value says who is compared with the document, and leaves alone
 // who names its key: the policies of Chef are still chosen by the data.
 func TestAMatchLeavesTheProvenanceAlone(t *testing.T) {

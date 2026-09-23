@@ -38,7 +38,9 @@ type Constructs struct {
 	Comprehensions int
 
 	// Negations counts the negated expressions anywhere in the bundle, which is
-	// exact rather than inferred because Expr.Negated is a bool.
+	// exact rather than inferred: a negation is an expression with Expr.Negated
+	// set, or a not holding a body of its own, which is what every negation of
+	// a module that imports the not keyword parses to.
 	Negations int
 
 	// Defaults counts the rules that declare a fallback value, the difference
@@ -77,7 +79,7 @@ func (b *Bundle) Constructs() Constructs {
 			if len(expr.With) > 0 {
 				counts.With++
 			}
-			if expr.Negated {
+			if expr.IsNegated() {
 				counts.Negations++
 			}
 			if expr.IsEvery() {

@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A policy that imports the `not`, `and` or `or` keyword is read in full. With `not` imported,
+  every negation in a module parses to a form the analysis did not go into, so the reads under
+  it were missing from the report, and with them findings of `PTD-OPA-002`, `PTD-OPA-004` and
+  `PTD-OPA-005`. The fixture with that one import added now reports what it reports without it.
+- Partial evaluation answers for a rule written with `and` or `or` the way it answers for the
+  same rule written as separate bodies: with the requests that make it hold, rather than with
+  the documents its operands read.
+
 ## [0.2.0] - 2026-09-23
 
 ### Added
