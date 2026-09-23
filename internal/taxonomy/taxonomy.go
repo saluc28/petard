@@ -15,9 +15,9 @@
 package taxonomy
 
 import (
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
 	"strings"
 
 	yaml "go.yaml.in/yaml/v3"
@@ -58,6 +58,12 @@ const (
 // and drifts in silence, because the engine that moved is also the only thing
 // that could have noticed.
 type Pattern struct {
+	// File is the name the pattern was read from, which is how a report sends
+	// somebody to the whole of it. It comes from the filesystem rather than
+	// from the file, so a pattern named one thing and filed under another says
+	// where it really is.
+	File string `yaml:"-"`
+
 	SchemaVersion int    `yaml:"schema_version"`
 	ID            string `yaml:"id"`
 	Name          string `yaml:"name"`
@@ -138,16 +144,29 @@ type FalsePositiveCase struct {
 	Note string `yaml:"note"`
 }
 
-// LoadRegistry reads every pattern of one engine from the registry directory.
-func LoadRegistry(dir string) ([]Pattern, error) {
-	entries, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
+// LoadRegistry reads every pattern of one engine from a filesystem holding the
+// registry files of that engine, in the order their names sort.
+//
+// It takes a filesystem rather than a directory because the patterns travel
+// two ways: embedded in the binary, which is how a report gets titles on a
+// machine that has never seen the repository, and read from disk, which is how
+// somebody working on the registry sees their edits without rebuilding.
+//
+// A filesystem with no pattern in it is an error. The alternative, an empty
+// list, is how a wrong -registry used to reach the report: every finding filed
+// under a bare id, and nothing said about why.
+func LoadRegistry(fsys fs.FS) ([]Pattern, error) {
+	entries, err := fs.Glob(fsys, "*.yaml")
 	if err != nil {
-		return nil, fmt.Errorf("taxonomy: listing %s: %w", dir, err)
+		return nil, fmt.Errorf("taxonomy: listing the registry: %w", err)
+	}
+	if len(entries) == 0 {
+		return nil, errors.New("taxonomy: no pattern files in the registry")
 	}
 
 	patterns := make([]Pattern, 0, len(entries))
 	for _, file := range entries {
-		content, err := os.ReadFile(file)
+		content, err := fs.ReadFile(fsys, file)
 		if err != nil {
 			return nil, fmt.Errorf("taxonomy: reading %s: %w", file, err)
 		}
@@ -165,6 +184,7 @@ func LoadRegistry(dir string) ([]Pattern, error) {
 		if err := checkFalsePositives(pattern); err != nil {
 			return nil, fmt.Errorf("taxonomy: %s: %w", file, err)
 		}
+		pattern.File = file
 		patterns = append(patterns, pattern)
 	}
 	return patterns, nil

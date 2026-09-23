@@ -12,22 +12,24 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"path/filepath"
 	"slices"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/saluc28/petard/internal/cli/render"
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/writemodel"
+	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
 const (
 	exitOK      = 0
 	exitFailure = 1
 	exitUsage   = 2
+	exitFound   = 3
 )
 
 // repeatedString is a flag that may be given more than once, the way opa build
@@ -66,8 +68,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	maxResiduals := flags.Int("max-residuals", 0, "how many residual conditions to report per decision (0 for the default)")
 	writeModelPath := flags.String("write-model", "", "path to the write model; without it every match stays a candidate")
 	dataPath := flags.String("data", "", "path to the concrete data; with it the decisions are also partially evaluated")
-	registryPath := flags.String("registry", filepath.Join("taxonomy-registry", "opa"), "path to the taxonomy registry")
+	registryPath := flags.String("registry", "", registry.FlagUsage)
 	showGraph := flags.Bool("graph", false, "also build the internal graph model and report what it holds")
+	verbose := flags.Bool("v", false, "print the evidence too: every read, the residual decisions and every place to look")
+	quiet := flags.Bool("quiet", false, "print the escalations and the findings alone, and nothing at all when there are none")
+	failOn := flags.String("fail-on", failOnFindings, "exit 3 on findings, on any match including candidates, or on neither: findings|any|none")
+	noColor := flags.Bool("no-color", false, "never use escape sequences, whatever the terminal says")
 
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
@@ -81,6 +87,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "petard analyze: -rego-v0 and -rego-v1 ask for opposite things")
 		return exitUsage
 	}
+	if *verbose && *quiet {
+		fmt.Fprintln(stderr, "petard analyze: -v and -quiet ask for opposite things")
+		return exitUsage
+	}
+	if !slices.Contains([]string{failOnFindings, failOnAny, failOnNone}, *failOn) {
+		fmt.Fprintf(stderr, "petard analyze: -fail-on %s is none of %s, %s, %s\n",
+			*failOn, failOnFindings, failOnAny, failOnNone)
+		return exitUsage
+	}
 
 	mode := opaengine.ParseModeAuto
 	switch {
@@ -88,6 +103,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		mode = opaengine.ParseModeV0
 	case *regoV1:
 		mode = opaengine.ParseModeV1
+	}
+
+	// Before the analysis rather than after it: a registry that cannot be read
+	// is the difference between a report and a list of codes, and finding that
+	// out at the end means having waited for it.
+	patterns, err := taxonomy.LoadRegistry(registry.Source(*registryPath))
+	if err != nil {
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+		return exitFailure
 	}
 
 	bundle, err := opaengine.Load(paths, mode)
@@ -133,16 +157,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	report(stdout, bundle, reads, shape)
-
 	ctx := context.Background()
-	if data != nil {
-		if err := reportResiduals(ctx, stdout, bundle, data, reads, limits); err != nil {
-			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
-			return exitFailure
-		}
-	}
-
 	analyzed := taxonomy.Analysis{
 		Bundle: bundle,
 		Reads:  reads,
@@ -156,15 +171,77 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
-	if err := reportFindings(stdout, stderr, analyzed, findings, *registryPath); err != nil {
+	coverage, err := taxonomy.CoverageOf(reads, model)
+	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
+	}
+
+	found := summarize(findings, patterns)
+	printSummary(stdout, analyzed, found, coverage, printing{
+		style:   render.StyleFor(stdout, *noColor),
+		quiet:   *quiet,
+		verbose: *verbose,
+	})
+
+	if *verbose {
+		fmt.Fprintln(stdout)
+		report(stdout, bundle, reads, shape)
+		if data != nil {
+			if err := reportResiduals(ctx, stdout, bundle, data, reads, limits); err != nil {
+				fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+				return exitFailure
+			}
+		}
+		reportFindings(stdout, analyzed, findings, patterns, coverage)
 	}
 
 	if *showGraph {
 		if err := reportGraph(ctx, stdout, analyzed, findings); err != nil {
 			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 			return exitFailure
+		}
+	}
+	return exitCode(found, *failOn)
+}
+
+// How -fail-on is spelled, and what each spelling counts.
+const (
+	// failOnFindings is the default, and it is the default because a check
+	// nobody can fail is a check nobody runs twice. A finding needs a write
+	// model to exist at all for the patterns that ask for one, so a first run
+	// against a policy with nothing declared does not fail on those: it fails
+	// on the ones that read the policy alone, which are facts about the bundle
+	// as it stands.
+	//
+	// Precedent: regal --fail-level defaults to error and exits 3
+	// (cmd/lint.go:136 at v0.42.0), conftest and staticcheck fail on what they
+	// find as well.
+	failOnFindings = "findings"
+
+	// failOnAny counts candidates too, for the run that wants to know about
+	// everything the patterns matched, write model or no write model.
+	failOnAny = "any"
+
+	// failOnNone reports and exits 0 regardless, which is what a demonstration
+	// wants, and a first look at somebody else's policy.
+	failOnNone = "none"
+)
+
+// exitCode separates having found something from having broken down.
+//
+// A pipeline has to tell the two apart: a failing analysis is a bug to fix, and
+// a finding is the tool doing its job. Hence 3 for what was found, 1 for what
+// went wrong, 2 for a command line that made no sense.
+func exitCode(found summary, failOn string) int {
+	switch failOn {
+	case failOnFindings:
+		if found.findings() > 0 {
+			return exitFound
+		}
+	case failOnAny:
+		if found.findings()+found.candidates() > 0 {
+			return exitFound
 		}
 	}
 	return exitOK
@@ -245,25 +322,13 @@ func sortedKeys[V any](m map[string]V) []string {
 // reportFindings prints what the patterns made of the analysis, under the
 // titles the registry gives them, and says what the write model could and could
 // not answer for.
-func reportFindings(out, stderr io.Writer, a taxonomy.Analysis, findings taxonomy.Findings, registry string) error {
-	coverage, err := taxonomy.CoverageOf(a.Reads, a.Model)
-	if err != nil {
-		return err
-	}
-
+func reportFindings(out io.Writer, a taxonomy.Analysis, findings taxonomy.Findings, patterns []taxonomy.Pattern, coverage taxonomy.Coverage) {
 	// In a closed world an undeclared path is an assumed safe path, so this
 	// number is what keeps a clean run from looking like an empty model.
 	fmt.Fprintf(out, "\nwrite model: %d of %d paths covered (%d%%)\n",
 		len(coverage.Covered), len(coverage.Read), coverage.Percent())
 	for _, path := range coverage.Uncovered {
 		fmt.Fprintf(out, "  not covered: %s\n", path)
-	}
-
-	patterns, err := taxonomy.LoadRegistry(registry)
-	if err != nil {
-		// The registry is content, and a run without it still measured
-		// something worth printing.
-		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 	}
 
 	for _, reported := range []struct {
@@ -288,7 +353,6 @@ func reportFindings(out, stderr io.Writer, a taxonomy.Analysis, findings taxonom
 		}
 		reportPattern(out, patterns, reported.id, reported.found)
 	}
-	return nil
 }
 
 // reportResiduals asks every decision what is left of it once the data is

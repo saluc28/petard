@@ -13,12 +13,13 @@ import (
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/writemodel"
+	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
 // The Entity Panel names every pattern by its title and links its file, so the
 // notes here and the registry have to agree, one pattern for one pattern.
 func TestPatternNotesFollowTheRegistry(t *testing.T) {
-	patterns, err := taxonomy.LoadRegistry(filepath.Join("..", "..", "taxonomy-registry", "opa"))
+	patterns, err := taxonomy.LoadRegistry(registry.OPA)
 	if err != nil {
 		t.Fatalf("LoadRegistry() error = %v", err)
 	}

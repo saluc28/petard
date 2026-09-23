@@ -2,9 +2,10 @@ package taxonomy
 
 import (
 	"maps"
-	"path/filepath"
 	"slices"
 	"testing"
+
+	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
 // The registry says where each pattern leaves its id in the exported graph, and
@@ -13,7 +14,7 @@ import (
 // ones its file declares, and every property the file promises is on at least
 // one of them.
 func TestRegistryMarksAreWhereTheEngineLeavesThem(t *testing.T) {
-	patterns, err := LoadRegistry(filepath.Join("..", "..", "taxonomy-registry", "opa"))
+	patterns, err := LoadRegistry(registry.OPA)
 	if err != nil {
 		t.Fatalf("LoadRegistry() error = %v", err)
 	}

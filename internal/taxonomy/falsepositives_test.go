@@ -9,6 +9,7 @@ import (
 
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/writemodel"
+	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
 // Every condition a pattern declares it fires on for nothing, run against the
@@ -30,7 +31,7 @@ import (
 // skips because the case left them out fails here, instead of passing because
 // a pattern that never ran reported nothing.
 func TestDeclaredFalsePositivesRunAsDeclared(t *testing.T) {
-	patterns, err := LoadRegistry(filepath.Join("..", "..", "taxonomy-registry", "opa"))
+	patterns, err := LoadRegistry(registry.OPA)
 	if err != nil {
 		t.Fatalf("LoadRegistry() error = %v", err)
 	}

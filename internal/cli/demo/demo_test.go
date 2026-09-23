@@ -20,14 +20,33 @@ func TestDemoAnalyzesTheBundleInTheBinary(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		"parsed as rego v1",
-		"PTD-OPA-006 finding: carol can write editor",
+		"carol -> alice",
+		"PUT /api/v1/users/{id}/roles",
 		"petard demo -extract",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the demo does not say %q:\n%s", want, out)
+		}
+	}
+}
+
+// The evidence is a flag away here as it is in analyze, because the first thing
+// somebody asks of a summary is where it got that.
+func TestDemoShowsTheEvidenceWhenAsked(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-v"}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+
+	out := stdout.String()
+	for _, want := range []string{
+		"PTD-OPA-006 finding: carol can write editor",
 		// The report names the files it read, and they read like a checkout
 		// rather than like wherever the bundle happened to be unpacked.
 		"vulnerable-bundle/policy-v1/authz.rego:",
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("the demo does not say %q:\n%s", want, out)
+			t.Errorf("the detailed demo does not say %q:\n%s", want, out)
 		}
 	}
 	if strings.Contains(out, "petard-demo-") || strings.Contains(out, os.TempDir()) {

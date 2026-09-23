@@ -7,6 +7,7 @@ import (
 	"github.com/saluc28/bhgraph"
 
 	"github.com/saluc28/petard/internal/graph"
+	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
 // This file holds what BloodHound shows in the Entity Panel for each kind: what
@@ -18,7 +19,7 @@ import (
 // else, so that a test can render it the way the server does.
 
 // registryURL is where the file of each pattern is read on GitHub.
-const registryURL = "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/"
+const registryURL = registry.URL
 
 // patternNote is what the panel says about one pattern: its title in the
 // registry, the name that makes its file, and what closes it, which is what the

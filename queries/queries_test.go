@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/taxonomy"
+	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
 var update = flag.Bool("update", false, "rewrite queries.json from the query files")
@@ -60,7 +60,7 @@ func TestEveryQueryIsComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("All() error = %v", err)
 	}
-	patterns, err := taxonomy.LoadRegistry(filepath.Join("..", "taxonomy-registry", "opa"))
+	patterns, err := taxonomy.LoadRegistry(registry.OPA)
 	if err != nil {
 		t.Fatalf("LoadRegistry() error = %v", err)
 	}

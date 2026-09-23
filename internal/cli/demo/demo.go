@@ -29,11 +29,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("petard demo", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprint(stderr, "usage: petard demo [-extract <dir>]\n\n"+
+		fmt.Fprint(stderr, "usage: petard demo [-v] [-extract <dir>]\n\n"+
 			"Analyzes the vulnerable bundle built into this binary.\n\n")
 		flags.PrintDefaults()
 	}
 	extract := flags.String("extract", "", "write the bundle here instead of analyzing it")
+	verbose := flags.Bool("v", false, "print the evidence too, as petard analyze -v does")
 
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
@@ -71,15 +72,24 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
+	// A demonstration is not a gate: the bundle is built to be full of
+	// findings, and exiting 3 over the ones it was written to have would say
+	// something about the fixture rather than about the tool.
+	analysis := []string{
+		"-fail-on", "none",
+		"-write-model", filepath.Join(root, "write-model.yaml"),
+		"-data", filepath.Join(root, "data"),
+	}
+	if *verbose {
+		analysis = append(analysis, "-v")
+	}
+	analysis = append(analysis, filepath.Join(root, "policy-v1"))
+
 	// The analysis names every file it read, and here those names are a
 	// temporary directory nobody asked about. The report is held and the
 	// prefix taken off it, so it reads like a run against a checkout.
 	var report, problems bytes.Buffer
-	code := analyze.Run([]string{
-		"-write-model", filepath.Join(root, "write-model.yaml"),
-		"-data", filepath.Join(root, "data"),
-		filepath.Join(root, "policy-v1"),
-	}, &report, &problems)
+	code := analyze.Run(analysis, &report, &problems)
 
 	fmt.Fprint(stdout, shorten(report.String(), root))
 	fmt.Fprint(stderr, shorten(problems.String(), root))

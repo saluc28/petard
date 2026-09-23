@@ -4,9 +4,11 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"testing/fstest"
 
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/writemodel"
+	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
 func fixturePath(parts ...string) string {
@@ -423,7 +425,7 @@ func TestCoverageOnFixture(t *testing.T) {
 }
 
 func TestLoadRegistry(t *testing.T) {
-	patterns, err := LoadRegistry(filepath.Join("..", "..", "taxonomy-registry", "opa"))
+	patterns, err := LoadRegistry(registry.OPA)
 	if err != nil {
 		t.Fatalf("LoadRegistry() error = %v", err)
 	}
@@ -443,5 +445,15 @@ func TestLoadRegistry(t *testing.T) {
 	}
 	if pattern.Graph.Emits != "finding" {
 		t.Errorf("emits = %q, want finding", pattern.Graph.Emits)
+	}
+}
+
+// A registry with nothing in it has to be an error rather than a list of no
+// patterns. The empty list reaches a report as findings filed under bare ids,
+// with the titles gone and nothing saying they were ever expected.
+func TestLoadRegistryRefusesAFilesystemWithNoPatterns(t *testing.T) {
+	_, err := LoadRegistry(fstest.MapFS{"README.md": {Data: []byte("not a pattern")}})
+	if err == nil {
+		t.Fatal("LoadRegistry() on a filesystem with no pattern files returned no error")
 	}
 }

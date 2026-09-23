@@ -11,10 +11,17 @@ func fixture(version string) string {
 	return filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", version)
 }
 
+// detailed asks for the whole report and for an exit code that speaks about the
+// run rather than about what was found. The tests below read the evidence,
+// which is what -v prints, and the verdict has tests of its own further down.
+func detailed(args ...string) []string {
+	return append([]string{"-v", "-fail-on", failOnNone}, args...)
+}
+
 func TestRunReportsTheMeasures(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := Run([]string{fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(fixture("policy-v1")), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -42,7 +49,7 @@ func TestRunReportsTheMeasures(t *testing.T) {
 func TestRunReportsTheLookupsByValue(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := Run([]string{fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(fixture("policy-v1")), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -78,7 +85,7 @@ func TestRunBuildsEveryKindOfTheModel(t *testing.T) {
 		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 
@@ -112,7 +119,7 @@ func TestRunBuildsEveryKindOfTheModel(t *testing.T) {
 func TestRunFallsBackToRegoV0(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := Run([]string{fixture("policy-v0")}, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(fixture("policy-v0")), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 	if out := stdout.String(); !strings.Contains(out, "parsed as rego v0") {
@@ -155,7 +162,7 @@ func TestRunNeedsTheWriteModelToClaimAFinding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 
-			if code := Run(tt.args, &stdout, &stderr); code != exitOK {
+			if code := Run(detailed(tt.args...), &stdout, &stderr); code != exitOK {
 				t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 			}
 			out := stdout.String()
@@ -179,7 +186,7 @@ func TestRunReportsTheExternalSources(t *testing.T) {
 		fixture("policy-v1"),
 	}
 
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -210,7 +217,7 @@ func TestRunPartiallyEvaluatesAgainstTheData(t *testing.T) {
 		fixture("policy-v1"),
 	}
 
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -260,7 +267,7 @@ func TestRunSaysWhenAPatternCouldNotLook(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 
-			if code := Run(tt.args, &stdout, &stderr); code != exitOK {
+			if code := Run(detailed(tt.args...), &stdout, &stderr); code != exitOK {
 				t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 			}
 			out := stdout.String()
@@ -287,7 +294,7 @@ func TestRunReportsTheChecksThatGoQuiet(t *testing.T) {
 		fixture("policy-v1"),
 	}
 
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -325,7 +332,7 @@ func TestRunReportsWhatAPositionIsWorth(t *testing.T) {
 		fixture("policy-v1"),
 	}
 
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -358,7 +365,7 @@ func TestRunReportsTheEscalation(t *testing.T) {
 		fixture("policy-v1"),
 	}
 
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -389,7 +396,7 @@ func TestRunReportsTheSplitGrant(t *testing.T) {
 		fixture("policy-v1"),
 	}
 
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -421,7 +428,7 @@ func TestRunReportsTheGlobalSwitch(t *testing.T) {
 		fixture("policy-v1"),
 	}
 
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -451,7 +458,7 @@ func TestRunClaimsNoEscalationWithoutTheWriteModel(t *testing.T) {
 		fixture("policy-v1"),
 	}
 
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -475,7 +482,7 @@ func TestRunSaysWhenTheResidualBoundCuts(t *testing.T) {
 		fixture("policy-v1"),
 	}
 
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 
@@ -496,7 +503,7 @@ func TestRunReportsWriteModelCoverage(t *testing.T) {
 		fixture("policy-v1"),
 	}
 
-	if code := Run(args, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed(args...), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
 	}
 	if out := stdout.String(); !strings.Contains(out, "write model: 6 of 11 paths covered (54%)") {
@@ -509,7 +516,7 @@ func TestRunReportsWriteModelCoverage(t *testing.T) {
 func TestRunTakesADeclaredSubject(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := Run([]string{"-subject", "input.user", fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed("-subject", "input.user", fixture("policy-v1")), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 	if out := stdout.String(); !strings.Contains(out, "request shape:  subject=input.user (level A, declared)") {
@@ -518,7 +525,7 @@ func TestRunTakesADeclaredSubject(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := Run([]string{"-subject", "input.requester", fixture("policy-v1")}, &stdout, &stderr); code != exitFailure {
+	if code := Run(detailed("-subject", "input.requester", fixture("policy-v1")), &stdout, &stderr); code != exitFailure {
 		t.Errorf("exit code = %d, want %d", code, exitFailure)
 	}
 	if !strings.Contains(stderr.String(), "no decision reads the declared subject: input.requester") {
@@ -531,7 +538,7 @@ func TestRunTakesADeclaredSubject(t *testing.T) {
 func TestRunTakesADecisionDeclaredToDeny(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := Run([]string{"-deny-entrypoint", "quill/tenant_policy/denied_mfa", fixture("policy-v1")}, &stdout, &stderr); code != exitOK {
+	if code := Run(detailed("-deny-entrypoint", "quill/tenant_policy/denied_mfa", fixture("policy-v1")), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 	out := stdout.String()
@@ -548,6 +555,8 @@ func TestRunUsageErrors(t *testing.T) {
 		{name: "no paths", args: nil},
 		{name: "both syntaxes forced", args: []string{"-rego-v0", "-rego-v1", fixture("policy-v1")}},
 		{name: "unknown flag", args: []string{"-what", fixture("policy-v1")}},
+		{name: "everything and nothing", args: []string{"-v", "-quiet", fixture("policy-v1")}},
+		{name: "a threshold that is none of them", args: []string{"-fail-on", "warnings", fixture("policy-v1")}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -566,7 +575,7 @@ func TestRunUsageErrors(t *testing.T) {
 func TestRunReportsAFailureOnStderr(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := Run([]string{filepath.Join("does", "not", "exist")}, &stdout, &stderr); code != exitFailure {
+	if code := Run(detailed(filepath.Join("does", "not", "exist")), &stdout, &stderr); code != exitFailure {
 		t.Errorf("exit code = %d, want %d", code, exitFailure)
 	}
 	if !strings.Contains(stderr.String(), "petard analyze:") {
