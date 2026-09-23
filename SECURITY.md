@@ -29,4 +29,4 @@ If either of those turns out not to hold, that is a vulnerability and worth repo
 
 ## Supported versions
 
-There is no released version yet. Until there is, the supported version is the default branch.
+Only the latest release receives security fixes.
