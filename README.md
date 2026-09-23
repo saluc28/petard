@@ -20,7 +20,8 @@ the line between whoever takes a decision and whoever writes what the decision i
 
 Eight patterns live in [`taxonomy-registry/`](taxonomy-registry), which is versioned data rather
 than code. Every one of them runs against the fixture in this repository, and the registry is the
-source of truth down to what each has been held to. These are one-line glosses.
+source of truth down to what each has been held to. These are one-line glosses; `petard patterns`
+lists them from the binary and `petard explain <id>` prints one in full.
 
 | ID | What it looks for |
 |---|---|
@@ -75,19 +76,53 @@ petard demo
 
 `demo` analyzes a policy with escalation built into it on purpose, written by hand and carried
 inside the binary, so there is something to look at before you point the tool at your own
-policies. It reports what the decisions depend on, and then what the taxonomy found:
+policies. It leads with who can take whose place:
 
 ```
-bundle:    8 files, parsed as rego v1
-decisions: 13
-request shape:  subject=input.user action=input.action resource=input.doc (level D, field names)
-data paths read by the decisions: 11
+8 files, 13 decisions, parsed as rego v1
 
-PTD-OPA-006, One decision lets a principal write the data another decision grants on
-  PTD-OPA-006 finding: carol can write editor into data.users[_].roles, which
-  data.quill.admin.allow allows, and data.quill.publish.allow then grants the position
-  alice holds, 2 places to look (confidence D), written via PUT /api/v1/users/{id}/roles
+Escalations
+  mallory -> dave  (PTD-OPA-003, confidence D)
+    writes     data.users.{owner}.profile.department
+    through    PATCH /api/v1/me/profile
+    in         data.quill.authz.allow
+
+  carol -> alice  (PTD-OPA-006, confidence D)
+    writes     editor into data.users.{owner}.roles
+    through    PUT /api/v1/users/{id}/roles
+    allowed by data.quill.admin.allow
+    in         data.quill.publish.allow
+
+Findings
+    1  PTD-OPA-001  The subject writes an attribute the policy reads to decide about them
+    1  PTD-OPA-002  A deny rule is silent for part of the data, so the check does not apply there
+    1  PTD-OPA-003  A position in a hierarchy grants everything below it, and nothing says so
+    5  PTD-OPA-004  A decision depends on an external source, so whoever controls it decides
+    2  PTD-OPA-005  A check that needs an external source stops applying when it does not answer
+    1  PTD-OPA-006  One decision lets a principal write the data another decision grants on
+    1  PTD-OPA-007  A check written with every stops applying when its domain is empty
+    1  PTD-OPA-008  A document every request shares decides for anybody who asks
+
+Candidates, which need a write model to become findings
+    1  PTD-OPA-003  A position in a hierarchy grants everything below it, and nothing says so
+
+How much to trust this
+  Level D (field names): the subject is input.user. 17 reads over 11 data paths.
+  The write model covers 6 of 11 paths read (54%).
 ```
+
+`-v` adds the evidence under it: every read with its file and line, what each decision is left
+to check once the data is concrete, and every place to go and look.
+
+The patterns travel in the binary, so the two commands that read them work without a checkout:
+
+```
+petard patterns
+petard explain PTD-OPA-006
+```
+
+`explain` prints what the pattern looks for signal by signal, what has to be true for a match to
+be a defect, the conditions it fires on with nothing behind them, and where the file is.
 
 To send an analysis to BloodHound CE, write the bundle to disk and export it. The credentials
 come from two environment variables, because a token on a command line ends up in the shell
@@ -200,6 +235,28 @@ the policy never says, and without it every match stays a candidate. The run rep
 the paths the decisions read the model covers, so an empty model is distinguishable from a clean
 result.
 
+## In a pipeline
+
+```
+petard analyze -quiet -fail-on findings -write-model write-model.yaml -data data policy
+```
+
+| Exit | What it means |
+| ---- | ------------- |
+| 0 | nothing above the threshold |
+| 1 | the analysis could not run |
+| 2 | the command line was wrong |
+| 3 | matches above the threshold |
+
+`-fail-on findings` is the default and counts findings; `any` counts candidates as well, and
+`none` reports and exits 0 whatever it finds. Exit 3 means the analysis ran and found something,
+exit 1 means it could not run, and a pipeline needs to tell those apart.
+
+`-quiet` prints the escalations and the findings and nothing around them, and prints nothing at
+all when there are none. The report goes to stdout and everything else to stderr, and two runs
+of the same bundle print the same bytes. Escape sequences are used only when the output is a
+terminal that takes them; `NO_COLOR` and `-no-color` turn them off.
+
 ## What it does not do
 
 It does not decide whether a finding is a problem in your system. A position in a hierarchy is a
@@ -219,7 +276,7 @@ write model does not parse a quoted key that contains a dot or a slash.
 
 ```
 cmd/petard            the binary, which dispatches to the subcommands
-internal/cli          one package per subcommand: analyze, export, measure
+internal/cli          one package per subcommand, plus render for the printing rules
 internal/opaengine    everything that knows what Rego is
 internal/graph        the engine-neutral model, all a second engine has to fill
 internal/opengraph    the adapter to what BloodHound ingests, over bhgraph
@@ -227,7 +284,7 @@ internal/taxonomy     the registry reader and the patterns
 internal/writemodel   who can write which path, declared rather than inferred
 internal/fixture      generated worlds, and the truth about them
 queries/              the saved Cypher queries, one file each
-taxonomy-registry/    the patterns as versioned data
+taxonomy-registry/    the patterns as versioned data, embedded for explain and patterns
 schema/               the extension definition schema, generated from the model
 fixtures/             the bundle written by hand, in Rego v1 and v0, embedded for demo
 ```

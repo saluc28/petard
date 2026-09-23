@@ -9,6 +9,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `petard patterns`, which lists the taxonomy grouped by the category each pattern belongs to,
+  with `-format json` for whatever reads a list of ids.
+- `petard explain <id or name>`, which prints one pattern in full: what it looks for signal by
+  signal, what has to be true for a match to be a defect, the conditions it fires on with
+  nothing behind it and how each was settled, and where the file is.
+- A summary at the top of `petard analyze`: the escalations first, with who takes whose place,
+  what they write and through which endpoint, then the findings counted per pattern, then one
+  line on how much of it to believe. `-v` prints the evidence under it, which is what the
+  report used to be.
+- `-fail-on findings|any|none` and the exit codes that go with it: 3 for matches above the
+  threshold, 1 for an analysis that could not run, 2 for a command line that made no sense.
+- `-quiet`, which prints the escalations and the findings alone and nothing at all when there
+  are none, and `-no-color`, next to `NO_COLOR` and a check that the output is a terminal.
+- The registry travels inside the binary, so a report names every pattern by its title and
+  `explain` and `patterns` work without a checkout.
+- `petard help <command>` prints the flags of that command.
+
+### Changed
+
+- `petard analyze` exits 3 when it has findings to report. It used to exit 0 whatever it found,
+  which left it unusable as a gate. `-fail-on none` restores the old behavior.
+- `-registry` now means "read the patterns from this directory instead of the ones built in",
+  and a directory with no pattern in it is an error rather than a report with the titles
+  silently missing.
+- `petard demo` takes `-v` as well, and reports without failing over the escalations the bundle
+  was written to have.
+
+## [0.1.0] - 2026-09-21
+
+### Added
+
 - `petard`, one binary with subcommands: `analyze`, `export`, `measure`, `demo` and
   `version`, which reports the build and the versions of OPA and bhgraph compiled into
   it, since those decide what an analysis says.
