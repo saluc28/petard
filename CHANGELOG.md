@@ -19,6 +19,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A read of a key that is not a bare name, such as `data.inventory.cluster["storage.k8s.io/v1"]`,
   no longer stops `petard analyze`. The key is one segment, the way OPA parses it, and a write
   model can name it in the same notation.
+- The analysis follows a value into an argument the head of a function takes apart, as
+  `collab([user, project])` does. A lookup of the requester made there was missing from the
+  report, and a document picked there with what the caller passes was reported as unresolved.
 
 ## [0.2.0] - 2026-09-23
 

@@ -112,7 +112,7 @@ func (b *callBudget) warn(format string, args ...any) {
 // this rule where the caller chooses the document", which is the claim an
 // attack path is built on. Reporting the other paths instead would hide it.
 func (r *refReader) parameterProvenance(rule *ast.Rule, param ast.Var, budget *callBudget, depth int) (Provenance, *Trace) {
-	position, ok := parameterPosition(rule, param)
+	place, ok := parameterPlaceOf(rule, param)
 	if !ok {
 		// Not a parameter: a variable bound by the rule head, or by iteration.
 		// Nothing at a call site can say where it comes from.
@@ -126,14 +126,15 @@ func (r *refReader) parameterProvenance(rule *ast.Rule, param ast.Var, budget *c
 
 	best, bestTrace := ProvenanceUnresolved, (*Trace)(nil)
 	for _, site := range r.callSites[rule] {
-		if position >= len(site.args) {
+		arg, passed := place.pick(site.args, site.bindings)
+		if !passed {
 			continue
 		}
 		if !budget.spend(rule) {
 			break
 		}
 
-		provenance, trace := r.argumentProvenance(site, site.args[position], budget, depth)
+		provenance, trace := r.argumentProvenance(site, arg, budget, depth)
 		if !better(provenance, best) {
 			continue
 		}
@@ -298,15 +299,89 @@ func rootOfRef(ref ast.Ref) Provenance {
 	}
 }
 
-// parameterPosition returns where a variable sits in the argument list of a
-// rule, if it is one of its parameters.
-func parameterPosition(rule *ast.Rule, param ast.Var) (int, bool) {
+// parameterPlace is where a variable sits among the arguments of a rule: the
+// argument, and the keys that lead to it inside the arrays and objects the head
+// takes apart. collab([user, project]) holds user at argument 0, element 0,
+// and InfraBox writes its lookups of the requester that way.
+type parameterPlace struct {
+	position int
+	within   []*ast.Term
+}
+
+// parameterPlaceOf returns where a variable sits in the arguments of a rule, if
+// it is one of its parameters.
+func parameterPlaceOf(rule *ast.Rule, param ast.Var) (parameterPlace, bool) {
 	for i, arg := range rule.Head.Args {
-		if v, ok := varOf(arg); ok && v == param {
-			return i, true
+		if within, found := placeIn(arg, param); found {
+			return parameterPlace{position: i, within: within}, true
 		}
 	}
-	return 0, false
+	return parameterPlace{}, false
+}
+
+// placeIn finds a variable in an argument as the head writes it, and returns
+// the keys on the way to it: an index for an array, a key for an object. The
+// compiler keeps the array or the object in the head and renames the variables
+// inside it, so this is the shape the walk meets.
+func placeIn(term *ast.Term, param ast.Var) ([]*ast.Term, bool) {
+	switch value := term.Value.(type) {
+	case ast.Var:
+		return nil, value == param
+	case *ast.Array:
+		for i := range value.Len() {
+			if within, found := placeIn(value.Elem(i), param); found {
+				return append([]*ast.Term{ast.IntNumberTerm(i)}, within...), true
+			}
+		}
+	case ast.Object:
+		for _, key := range value.Keys() {
+			if within, found := placeIn(value.Get(key), param); found {
+				return append([]*ast.Term{key}, within...), true
+			}
+		}
+	}
+	return nil, false
+}
+
+// pick returns what a call passes for the parameter at this place: the
+// argument, and inside it the element the head takes apart, where the call
+// writes the array or the object out, or binds a variable to one first. A call
+// that hands over a value the policy computes is not followed into it.
+func (p parameterPlace) pick(args []*ast.Term, bindings map[ast.Var]binding) (*ast.Term, bool) {
+	if p.position >= len(args) {
+		return nil, false
+	}
+	term := args[p.position]
+	for _, key := range p.within {
+		if v, isVar := varOf(term); isVar {
+			resolved := resolveVar(v, bindings)
+			if resolved.status != resolvedTerm {
+				return nil, false
+			}
+			term = resolved.term
+		}
+		switch value := term.Value.(type) {
+		case *ast.Array:
+			index, isNumber := key.Value.(ast.Number)
+			if !isNumber {
+				return nil, false
+			}
+			i, isInt := index.Int()
+			if !isInt || i < 0 || i >= value.Len() {
+				return nil, false
+			}
+			term = value.Elem(i)
+		case ast.Object:
+			element := value.Get(key)
+			if element == nil {
+				return nil, false
+			}
+			term = element
+		default:
+			return nil, false
+		}
+	}
+	return term, true
 }
 
 // better reports whether a says more than b about who chooses the document.

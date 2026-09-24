@@ -63,6 +63,31 @@ is_member(user, project) if user in data.projects[project].members
 			expected: []Match{{Term: "input.user", Position: 4, Member: true}},
 		},
 		{
+			// The shape of InfraBox: the requester and the project travel in one
+			// array, which the head of the function takes apart, and the
+			// comparison is written with a single =.
+			name: "the request reaches the comparison inside an array argument",
+			body: `allow if collab([input.user, input.project])
+
+collab([user, project]) if {
+	some i
+	data.collaborators[i].project_id = project
+	data.collaborators[i].user_id = user
+}
+`,
+			path:     "data.collaborators[_].user_id",
+			expected: []Match{{Term: "input.user", Position: 2}},
+		},
+		{
+			name: "the request reaches the comparison inside an object argument",
+			body: `allow if named({"who": input.user})
+
+named({"who": user}) if data.admins[_] == user
+`,
+			path:     "data.admins[_]",
+			expected: []Match{{Term: "input.user", Position: 2}},
+		},
+		{
 			name: "a function that compares its parameter with the request",
 			body: `allow if {
 	some binding in data.bindings

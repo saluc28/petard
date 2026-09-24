@@ -197,3 +197,51 @@ func oneRead(t *testing.T, reads *ReadSet, what string, matches func(Read) bool)
 	}
 	return found[0]
 }
+
+// A head can take an argument apart, and the value then sits inside what the
+// caller writes out: owns([user, doc]) called with [input.user, input.doc]
+// picks the document the request names, and so does the same with an object.
+func TestParameterProvenanceGoesIntoAnArgumentTheHeadTakesApart(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "an array",
+			body: `allow if owns([input.user, input.doc])
+
+owns([user, doc]) if data.documents[doc].owner == user
+`,
+		},
+		{
+			name: "an object",
+			body: `allow if owns({"who": input.user, "what": input.doc})
+
+owns({"who": user, "what": doc}) if data.documents[doc].owner == user
+`,
+		},
+		{
+			name: "an array held in a variable first",
+			body: `allow if {
+	pair := [input.user, input.doc]
+	owns(pair)
+}
+
+owns([user, doc]) if data.documents[doc].owner == user
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reads := readsOf(t, "package t\n\n# METADATA\n# entrypoint: true\n"+tt.body, Limits{})
+
+			read := readOfRule(t, reads, "data.t.owns")
+			if read.Provenance != ProvenanceInput {
+				t.Errorf("provenance = %s, want input: the caller passes input.doc", read.Provenance)
+			}
+			if read.Trace == nil || read.Trace.Term != "input.doc" {
+				t.Errorf("trace = %+v, want the term input.doc", read.Trace)
+			}
+		})
+	}
+}

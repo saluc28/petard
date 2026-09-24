@@ -400,7 +400,7 @@ Four more corpora were run the same way, with the decisions their enforcement po
 |---|---|---|---|
 | `ynotbhatc/rego_policy_libraries`, `enforcement/aap` | 11 | one block of `data.aac.aap.config` each | `PTD-OPA-008`: 11 candidates, confidence A |
 | `chef/automate` | 3 | 15 reads over 8 paths under `data.policies` and `data.roles` | `PTD-OPA-001`: one candidate, confidence D |
-| `SAP/InfraBox` | 1 | 64 reads over 6 paths, in the two documents its API pushes | nothing |
+| `SAP/InfraBox` | 1 | 64 reads over 6 paths, in the two documents its API pushes | `PTD-OPA-001`: one candidate, confidence A |
 | `magda-io/magda` | 1 | no `data` | nothing |
 
 [`ynotbhatc/rego_policy_libraries`](https://github.com/ynotbhatc/rego_policy_libraries), at commit
@@ -433,12 +433,13 @@ no data, so the four patterns that evaluate against it did not run.
 (`src/pyinfraboxutils/ibopa.py:12`) and, on a timer, pushes two documents out of its database:
 who collaborates on which project with which role, and which projects are public (`ibopa.py:39`
 to `52`). With the subject declared as `input.token.user.id`, the walk finds 64 reads over 6
-paths, all of them in those two documents, and no pattern reports anything. For `PTD-OPA-001`
-the silence is a limit of the engine. The collaborator lookup is made by functions that take the
-requester and the project as one array, `project_collaborator([user, project])` at
-`project.rego:11`, and the walk does not follow a parameter into an array; the same lookup
-written with two arguments is a candidate. No value from outside the policy reaches the decision,
-no rule uses `every`, and the repository ships no data.
+paths, all of them in those two documents. `PTD-OPA-001` reports one candidate,
+`data.infrabox.collaborators.collaborators[_].user_id`, which the decisions search for the
+requester in 17 places. The functions that make the search take the requester and the project as
+one array, `project_collaborator([user, project])` at `project.rego:11`, and the requester is the
+first element of what the caller passes. Whoever can add a row to the collaborator table decides
+who the search finds. No value from outside the policy reaches the decision, no rule uses
+`every`, and the repository ships no data.
 
 [`magda-io/magda`](https://github.com/magda-io/magda), at commit
 `854854fa53c4852437f81cfb044e9e744adf354e`, keeps 45 policy files in 27 directories under

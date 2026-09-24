@@ -273,9 +273,6 @@ written inline reads as an ordinary comparison, and `not count(S) > 0` is not re
 expression, but partial evaluation answers for it with the documents it reads rather than with
 the requests that make it hold.
 
-A function that takes the requester inside an array, as `f([user, project])` does, is not
-followed into that argument, so a lookup by value made there is not seen.
-
 ## Layout
 
 ```

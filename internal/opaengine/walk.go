@@ -414,16 +414,19 @@ func addIterations(rule *ast.Rule, body ast.Body, bindings map[ast.Var]binding) 
 	})
 }
 
-// parameterVars returns the formal parameters of a rule.
+// parameterVars returns the formal parameters of a rule, the variables inside
+// an argument the head takes apart included: in collab([user, project]) both
+// are parameters, and their values come from the caller.
 func parameterVars(rule *ast.Rule) map[ast.Var]bool {
 	if rule == nil || len(rule.Head.Args) == 0 {
 		return nil
 	}
 	parameters := make(map[ast.Var]bool, len(rule.Head.Args))
 	for _, arg := range rule.Head.Args {
-		if v, ok := varOf(arg); ok {
+		ast.WalkVars(arg, func(v ast.Var) bool {
 			parameters[v] = true
-		}
+			return false
+		})
 	}
 	return parameters
 }

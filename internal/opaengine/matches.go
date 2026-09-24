@@ -64,6 +64,10 @@ type paramSide struct {
 	// param is the position of the parameter, or -1 when the side is request.
 	param   int
 	request ast.Ref
+
+	// within are the keys to the variable inside an argument the head takes
+	// apart, as parameterPlace keeps them.
+	within []*ast.Term
 }
 
 // paramComparison is a comparison a function makes that its callers can map
@@ -128,7 +132,7 @@ func (r *refReader) comparisonsIn(rule *ast.Rule, expr *ast.Expr, bindings map[a
 	}
 	var found []comparison
 	for _, compared := range r.summary(callees) {
-		left, right := compared.left.at(operands), compared.right.at(operands)
+		left, right := compared.left.at(operands, bindings), compared.right.at(operands, bindings)
 		if left != nil && right != nil {
 			found = append(found, comparison{left: left, right: right, member: compared.member})
 		}
@@ -136,15 +140,17 @@ func (r *refReader) comparisonsIn(rule *ast.Rule, expr *ast.Expr, bindings map[a
 	return found
 }
 
-// at puts the side of a function's comparison into the terms of a call.
-func (s paramSide) at(operands []*ast.Term) *ast.Term {
+// at puts the side of a function's comparison into the terms of a call, the
+// bindings being those of the body that makes it.
+func (s paramSide) at(operands []*ast.Term, bindings map[ast.Var]binding) *ast.Term {
 	if s.param < 0 {
 		return ast.NewTerm(s.request)
 	}
-	if s.param >= len(operands) {
+	term, passed := parameterPlace{position: s.param, within: s.within}.pick(operands, bindings)
+	if !passed {
 		return nil
 	}
-	return operands[s.param]
+	return term
 }
 
 // bindsHere reports whether an equality gives a variable its value rather than
@@ -221,8 +227,8 @@ func (r *refReader) summary(rules []*ast.Rule) []paramComparison {
 // or a part of the request.
 func sideOf(rule *ast.Rule, term *ast.Term, bindings map[ast.Var]binding) (paramSide, bool) {
 	if v, isVar := varOf(term); isVar {
-		if position, isParam := parameterPosition(rule, v); isParam {
-			return paramSide{param: position}, true
+		if place, isParam := parameterPlaceOf(rule, v); isParam {
+			return paramSide{param: place.position, within: place.within}, true
 		}
 		if resolved := resolveVar(v, bindings); resolved.status == resolvedTerm {
 			return sideOf(rule, resolved.term, bindings)
@@ -245,7 +251,8 @@ func (c paramComparison) equal(other paramComparison) bool {
 }
 
 func (s paramSide) equal(other paramSide) bool {
-	return s.param == other.param && s.request.Equal(other.request)
+	return s.param == other.param && s.request.Equal(other.request) &&
+		slices.EqualFunc(s.within, other.within, (*ast.Term).Equal)
 }
 
 // ElementPath is the path of the value a match compares: the read itself, and
@@ -354,7 +361,7 @@ func (r *refReader) documentOf(term *ast.Term, bindings map[ast.Var]binding) (as
 // sites when the term is a parameter.
 func (r *refReader) requestOf(rule *ast.Rule, term *ast.Term, bindings map[ast.Var]binding, budget *callBudget) (string, bool) {
 	if v, isVar := varOf(term); isVar {
-		if _, isParam := parameterPosition(rule, v); isParam {
+		if _, isParam := parameterPlaceOf(rule, v); isParam {
 			provenance, trace := r.parameterProvenance(rule, v, budget, 0)
 			if provenance != ProvenanceInput || trace == nil || trace.Term == "" {
 				return "", false
