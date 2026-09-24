@@ -343,10 +343,11 @@ declares by definition. Those are the conditions a file marks `out-of-band`.
 
 ### What a real corpus said
 
-The engine has been run over `open-policy-agent/gatekeeper-library`, at commit
-`e4d3bd2448b20bc7910417f5b2cf18b63a0bd33c`: 51 units under `src/`, 142 Rego files, all of them
-written by other people. On that corpus the patterns find **zero**, and not because of a limit in
-the engine:
+The engine has been run over
+[`open-policy-agent/gatekeeper-library`](https://github.com/open-policy-agent/gatekeeper-library),
+at commit `e4d3bd2448b20bc7910417f5b2cf18b63a0bd33c`: 51 units under `src/`, 142 Rego files, all
+of them written by other people. On that corpus the patterns find **zero**, and not because of a
+limit in the engine:
 
 | Pattern | Why it is silent |
 |---|---|
@@ -364,9 +365,10 @@ about an object that is being admitted and almost never about who is asking for 
 between whoever decides and whoever writes the data, which is the material of this registry, is
 barely there.
 
-`open-policy-agent/contrib`, at commit `90f7ca99ce603c4ce3e40cc990b5a33bb895b557`, is a different
-kind of corpus: 28 units, all of them Rego v1, among them OPA behind Kafka, Kong, PAM, a
-Kubernetes authorizer and an AuthZEN proxy, and in front of databases that filter by a decision.
+[`open-policy-agent/contrib`](https://github.com/open-policy-agent/contrib), at commit
+`90f7ca99ce603c4ce3e40cc990b5a33bb895b557`, is a different kind of corpus: 28 units, all of them
+Rego v1, among them OPA behind Kafka, Kong, PAM, a Kubernetes authorizer and an AuthZEN proxy, and
+in front of databases that filter by a decision.
 Each of those queries its own decision, so each unit was run through `petard analyze` with the
 decision its configuration or code queries; `petard measure` declares decisions by rule name,
 which suits Gatekeeper and not this. 16 units have a request to decide about. The other 12 are
@@ -392,8 +394,66 @@ shares, so `PTD-OPA-008` has nowhere to start. The two candidates of the AuthZEN
 candidates: whether a user can change their own `roles` depends on the application that stores
 them, and the write model is where that is declared.
 
+Four more corpora were run the same way, with the decisions their enforcement points query:
+
+| Corpus | Decisions | What they read | What the patterns say |
+|---|---|---|---|
+| `ynotbhatc/rego_policy_libraries`, `enforcement/aap` | 11 | one block of `data.aac.aap.config` each | `PTD-OPA-008`: 11 candidates, confidence A |
+| `chef/automate` | 3 | 15 reads over 8 paths under `data.policies` and `data.roles` | `PTD-OPA-001`: one candidate, confidence D |
+| `SAP/InfraBox` | 1 | 64 reads over 6 paths, in the two documents its API pushes | nothing |
+| `magda-io/magda` | 1 | no `data` | nothing |
+
+[`ynotbhatc/rego_policy_libraries`](https://github.com/ynotbhatc/rego_policy_libraries), at commit
+`e1eb90b5a73f8d90362833228837dded51547c87`, gives `petard measure` 296 units, all Rego v1, and
+every one of them loads. 123 define the `compliance_report` its README queries, and for 122 of
+those no request shape is recognized, because the input they take describes a system rather than
+somebody asking. `enforcement/aap` is the part that decides about a request, eleven decisions
+Ansible Automation Platform queries before it runs a job, each answering in an `allowed` field.
+Run with those eleven, the subject declared as `input.created_by.username` and the example
+configuration the directory ships as data, each decision reads its own block of
+`data.aac.aap.config`, and that block decides for a principal no document names. On the example
+configuration `deny_all` and `maintenance_mode` grant that principal whatever they ask, and the
+other nine grant it in one way each. They stay candidates until a write model says who can change
+the configuration.
+
+[`chef/automate`](https://github.com/chef/automate), at commit
+`61ca031112bf605c9c2a8975957b505635374e49`, has six Rego files in the whole repository, the three
+policies of its authorization service and their tests, in
+`components/authz-service/engine/opa/policy`, Rego v0. The service queries three decisions
+(`engine/opa/opa.go:36` to `38`), `authz/authorized_project`, `authz/introspection/authorized_pair`
+and `authz/introspection/authorized_project`. The subject is recognized from field names as
+`input.subjects[_]`, level D, and the candidate is `data.policies[_].members[_]` at
+`authz.rego:10`, where a policy applies to a request when one of the request's subjects is among
+its members. Whoever can add a member to a policy decides who it applies to. The repository ships
+no data, so the four patterns that evaluate against it did not run.
+
+[`SAP/InfraBox`](https://github.com/SAP/InfraBox), at commit
+`946edc0871c3b04e477ed216ffb47db4d11ef089`, keeps 25 policies and one test in
+`src/openpolicyagent/policies`, one package, Rego v0. The API asks `data.infrabox.authz`
+(`src/pyinfraboxutils/ibopa.py:12`) and, on a timer, pushes two documents out of its database:
+who collaborates on which project with which role, and which projects are public (`ibopa.py:39`
+to `52`). With the subject declared as `input.token.user.id`, the walk finds 64 reads over 6
+paths, all of them in those two documents, and no pattern reports anything. For `PTD-OPA-001`
+the silence is a limit of the engine. The collaborator lookup is made by functions that take the
+requester and the project as one array, `project_collaborator([user, project])` at
+`project.rego:11`, and the walk does not follow a parameter into an array; the same lookup
+written with two arguments is a candidate. No value from outside the policy reaches the decision,
+no rule uses `every`, and the repository ships no data.
+
+[`magda-io/magda`](https://github.com/magda-io/magda), at commit
+`854854fa53c4852437f81cfb044e9e744adf354e`, keeps 45 policy files in 27 directories under
+`magda-opa/policies`, Rego v0. Loaded directory by directory, 24 of the 27 fail to compile on the
+functions of `common` they call, so the tree was run as one bundle. Its decision is
+`data.entrypoint.allow`, the one the authorization API asks
+(`magda-authorization-api/src/createOpaRouter.ts:505` and `511`), and it hands each kind of object
+to the `allow` of its own package. The 45 files read no `data`. The roles, permissions and
+organizational units of the user travel in the request under `input.user`, which the API sets to
+the current user it looks up before asking (`createOpaRouter.ts:143` and `180`). The eight
+patterns start from a read of `data`, from a value from outside the policy or from an `every`, and
+the 45 files contain none of them.
+
 A corpus is not what `verified` waits for, and this is worth separating: a corpus says what other
-people write, which is why these two are here, while the conditions a pattern declares against
+people write, which is why these six are here, while the conditions a pattern declares against
 itself are settled one case at a time, in the file that declares them.
 
 ### The fixture
