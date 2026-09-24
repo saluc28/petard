@@ -20,8 +20,10 @@ import (
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
+	"github.com/saluc28/petard/internal/pep"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/writemodel"
+	pepregistry "github.com/saluc28/petard/pep-registry"
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
@@ -63,6 +65,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	var denyEntrypoints repeatedString
 	flags.Var(&denyEntrypoints, "deny-entrypoint", "a rule the PEP queries to refuse the request when it holds or collects anything, as k8sallowedrepos/violation; repeat for more")
 	subject := flags.String("subject", "", "the part of the request that names who is asking, as input.user; without it, it is recognized")
+	enforcementPoint := flags.String("pep", "", "the product that asks for the decisions: an id from pep-registry, as spacelift-login, or a declaration of your own ending in .yaml")
 	maxCallDepth := flags.Int("max-call-depth", 0, "how many calls deep to follow an argument (0 for the default)")
 	maxCallPaths := flags.Int("max-call-paths", 0, "how many call paths to explore per reference (0 for the default)")
 	maxResiduals := flags.Int("max-residuals", 0, "how many residual conditions to report per decision (0 for the default)")
@@ -122,6 +125,18 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	bundle.Entrypoints = entrypoints
 	bundle.DenyEntrypoints = denyEntrypoints
 
+	var point *pep.EnforcementPoint
+	if *enforcementPoint != "" {
+		if point, err = pep.Resolve(pepregistry.Files, *enforcementPoint); err != nil {
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+			return exitFailure
+		}
+		if err := taxonomy.DeclareEnforcementPoint(bundle, point); err != nil {
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+			return exitFailure
+		}
+	}
+
 	limits := opaengine.Limits{
 		MaxCallDepth: *maxCallDepth,
 		MaxCallPaths: *maxCallPaths,
@@ -133,7 +148,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
-	shape, err := opaengine.ShapeOf(reads, *subject)
+	shape, err := taxonomy.ShapeOf(reads, *subject, point)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
@@ -159,12 +174,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	ctx := context.Background()
 	analyzed := taxonomy.Analysis{
-		Bundle: bundle,
-		Reads:  reads,
-		Shape:  shape,
-		Model:  model,
-		Data:   data,
-		Limits: limits,
+		Bundle:           bundle,
+		Reads:            reads,
+		Shape:            shape,
+		Model:            model,
+		Data:             data,
+		EnforcementPoint: point,
+		Limits:           limits,
 	}
 	findings, err := taxonomy.Run(ctx, analyzed)
 	if err != nil {

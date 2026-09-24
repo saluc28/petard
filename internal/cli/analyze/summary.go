@@ -255,6 +255,14 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 	render.Print(out, fmt.Sprintf("Level %s (%s): %s. %d reads over %d data paths.",
 		a.Shape.Confidence, a.Shape.Recognizer, subject, len(a.Reads.Reads), len(coverage.Read)), "  ")
 
+	if point := a.EnforcementPoint; point != nil {
+		request := taxonomy.RequestCoverageOf(a.Reads, point)
+		render.Print(out, fmt.Sprintf("The enforcement point is %s (%s): it says who sets %d of the %s the "+
+			"decisions read, and the caller sets %d of them.",
+			point.ID, point.File, len(request.Declared), count(len(request.Read), "part")+" of the request",
+			len(request.ByCaller)), "  ")
+	}
+
 	if a.Model == nil {
 		render.Print(out, "No write model: every match stays a candidate, because nobody is named "+
 			"as able to write what the decisions read.", "  ")

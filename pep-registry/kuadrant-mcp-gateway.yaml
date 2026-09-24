@@ -1,0 +1,81 @@
+schema_version: 1
+id: kuadrant-mcp-gateway
+title: Kuadrant MCP Gateway, with the OPA authorization of Authorino
+engine: opa
+
+source:
+  kind: source
+  note: >
+    Kuadrant/mcp-gateway at v0.9.0 (c18d2db78e2814bb13dd7318a52be4076f6327a6) and Kuadrant/authorino
+    at v0.28.0 (448d295ab21aecf577ddae1fdeb08e3c18d409e0). The Rego sits in an AuthPolicy, under
+    authorization, and the gateway's router has already read the MCP request and written what it
+    found into headers when Authorino evaluates it: the controller puts the router first among the
+    HTTP filters (internal/controller/mcpgatewayextension_controller.go:797).
+
+decisions:
+  - rule: allow
+    side: grants
+    note: >
+      Authorino puts the Rego of an AuthPolicy in a package of its own, authorino.authz["<uid>"],
+      after default allow = false, and grants when allow is true
+      (pkg/evaluators/authorization/opa.go:31, 32, 119 and 167).
+
+subject: input.auth.identity.sub
+
+fields:
+  - path: input.auth.identity.sub
+    set_by: issuer
+    issuer: the identity source the AuthPolicy authenticates with, a token issuer in the samples of the gateway
+    identifier: id
+    evidence:
+      - "Kuadrant/authorino at v0.28.0, pkg/service/well_known_attributes.go:126: the identity, resolved after it was verified."
+      - "OpenID Connect Core 1.0, section 2: sub is a locally unique and never reassigned identifier within the issuer."
+  - path: input.auth.identity.*
+    set_by: issuer
+    issuer: the identity source the AuthPolicy authenticates with
+    note: >
+      The claims of the identity, verified before the policy runs. Whether one of them is a name
+      somebody picks depends on the claim and on the issuer, which is why it is not declared here.
+    evidence:
+      - "Kuadrant/authorino at v0.28.0, pkg/service/well_known_attributes.go:126, and pkg/service/auth_pipeline.go:676."
+  - path: input.auth.metadata.*
+    set_by: enforcement-point
+    note: What Authorino fetched from the sources the AuthPolicy names, before the policy runs.
+    evidence:
+      - "Kuadrant/authorino at v0.28.0, pkg/service/auth_pipeline.go:679 to 683, and pkg/service/well_known_attributes.go:128."
+  - path: input.request.headers["x-mcp-toolname"]
+    set_by: caller
+    note: >
+      The tool the MCP client calls: params.name of a tools/call request, less the prefix of the
+      server it belongs to.
+    evidence:
+      - "Kuadrant/mcp-gateway at v0.9.0, internal/routing/mcp_request.go:175 to 179, and internal/routing/router_202511.go:165."
+  - path: input.request.headers["x-mcp-method"]
+    set_by: caller
+    note: The method of the MCP request.
+    evidence:
+      - "Kuadrant/mcp-gateway at v0.9.0, internal/routing/router_202511.go:162."
+  - path: input.request.headers["x-mcp-servername"]
+    set_by: enforcement-point
+    note: The server the router routes the tool to, from its own table of tools.
+    evidence:
+      - "Kuadrant/mcp-gateway at v0.9.0, internal/routing/router_202511.go:167."
+  - path: input.request.headers["x-mcp-annotation-hints"]
+    set_by: issuer
+    issuer: the upstream MCP server that declares the tool
+    note: >
+      The annotations the upstream server declared for the tool, readOnly, destructive, idempotent
+      and openWorld, as the router keeps them in its table.
+    evidence:
+      - "Kuadrant/mcp-gateway at v0.9.0, internal/routing/router_202511.go:143 to 159."
+  - path: input.request.*
+    set_by: caller
+    note: The rest of the request, its headers included, as the client sent it.
+    evidence:
+      - "Kuadrant/authorino at v0.28.0, pkg/service/well_known_attributes.go:69: every request header, by its name in lower case."
+  - path: input.source.principal
+    set_by: issuer
+    issuer: the certificate authority the proxy trusts
+    note: The identity of the peer, when the proxy authenticated it with a certificate.
+    evidence:
+      - "Kuadrant/authorino at v0.28.0, pkg/service/well_known_attributes.go:101."

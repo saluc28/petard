@@ -1,0 +1,83 @@
+schema_version: 1
+id: spacelift-login
+title: Spacelift, the login policy
+engine: opa
+
+source:
+  kind: documentation
+  note: >
+    Spacelift is closed source, so every entry rests on its documentation, the login policy page
+    (https://docs.spacelift.io/concepts/policy/login-policy, consulted 2026-09-24), and on what
+    GitHub documents about the teams it hands over. A login policy applies to every login attempt
+    after it is created, and "admin" is one of its rules.
+
+decisions:
+  - rule: allow
+    side: grants
+    note: lets the user log in, without the rights of an administrator
+  - rule: admin
+    side: grants
+    note: logs the user in as an administrator of the whole account
+  - rule: deny
+    side: denies
+    note: refuses the login, whatever the other rules say
+  - rule: deny_admin
+    side: denies
+    note: refuses the rights of an administrator and leaves the login alone
+
+subject: input.session.login
+
+fields:
+  - path: input.session.teams[_]
+    set_by: issuer
+    issuer: GitHub, for an account tied to a GitHub organization, or the identity provider for single sign-on
+    identifier: name
+    note: >
+      For GitHub, the names of the teams the user belongs to in the organization, the teams above
+      theirs included, and the names rather than the slugs: "Example Team", not "example-team". Any
+      member of a GitHub organization can create a team by default, and whoever creates one becomes
+      its maintainer, which is one of the two roles a member of a team has. For single sign-on, what
+      the identity provider maps into the attribute.
+    evidence:
+      - >
+        docs.spacelift.io/concepts/policy/login-policy, consulted 2026-09-24: the teams are queried
+        for organization accounts, include the teams above the user's, and are the GitHub team
+        names, not the IDs.
+      - >
+        github/rest-api-description at 4377b4f4845badf28d13464dfb3042c6cf0e3a1f,
+        descriptions/api.github.com/api.github.com.yaml:28353, "By default, organization members
+        can create teams", and :28355, the creator of a team becomes its maintainer.
+      - >
+        Same file, :28688 and :28696: listing the members of a team returns both roles, member and
+        maintainer.
+  - path: input.session.idp_subject
+    set_by: issuer
+    issuer: the identity provider, for single sign-on
+    identifier: id
+    note: The subject claim, which OpenID Connect defines as never reassigned within its issuer.
+    evidence:
+      - "docs.spacelift.io/concepts/policy/login-policy, consulted 2026-09-24: idp_subject, the sub claim from the identity provider."
+      - "OpenID Connect Core 1.0, section 2: sub is a locally unique and never reassigned identifier within the issuer."
+  - path: input.session.login
+    set_by: issuer
+    issuer: GitHub, or the identity provider for single sign-on
+    note: The login identifier. The documentation does not say which attribute it is for single sign-on.
+    evidence:
+      - "docs.spacelift.io/concepts/policy/login-policy, consulted 2026-09-24: login, the login identifier."
+  - path: input.session.name
+    set_by: issuer
+    issuer: GitHub, or the identity provider for single sign-on
+    note: The display name of the user.
+    evidence:
+      - "docs.spacelift.io/concepts/policy/login-policy, consulted 2026-09-24: name, the display name of the user."
+  - path: input.session.*
+    set_by: enforcement-point
+    note: >
+      The rest of the session, admin, creator_ip, machine and member, as Spacelift works it out.
+    evidence:
+      - "docs.spacelift.io/concepts/policy/login-policy, consulted 2026-09-24: the input schema."
+  - path: input.request.*
+    set_by: enforcement-point
+    note: The address the request came from and when it arrived, remote_ip and timestamp_ns.
+    evidence:
+      - "docs.spacelift.io/concepts/policy/login-policy, consulted 2026-09-24: the input schema."

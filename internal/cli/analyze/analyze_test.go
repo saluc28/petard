@@ -664,3 +664,51 @@ func TestRunReadsTheFixtureTheSameWithNotImported(t *testing.T) {
 		t.Fatalf("the reports differ in length: %d lines as written, %d with not imported", len(writtenLines), len(importedLines))
 	}
 }
+
+// An enforcement point named with -pep declares the decisions by the names the
+// product asks for, splits them by the side they land on, and says in the
+// summary how much of the request it speaks about. The login policy of the
+// Spacelift starter repository reads the teams and nothing else.
+func TestRunTakesADeclaredEnforcementPoint(t *testing.T) {
+	policy := filepath.Join(t.TempDir(), "login.rego")
+	source := `package spacelift
+
+admin { input.session.teams[_] == "DevOps" }
+allow { input.session.member }
+deny  { not allow }
+`
+	if err := os.WriteFile(policy, []byte(source), 0o600); err != nil {
+		t.Fatalf("writing the policy: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run(detailed("-pep", "spacelift-login", policy), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	out := stdout.String()
+	for _, expected := range []string{
+		"decisions: 3\n",
+		"  data.spacelift.deny, to deny\n",
+		"The enforcement point is spacelift-login (pep-registry/spacelift-login.yaml):",
+		`input.session.teams[_] == "DevOps" at `,
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the report does not say %q:\n%s", expected, out)
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(detailed("-pep", "no-such-product", policy), &stdout, &stderr); code != exitFailure {
+		t.Errorf("exit code with an enforcement point nobody declared = %d, want %d", code, exitFailure)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(detailed("-pep", "spacelift-login", filepath.Join(fixture("policy-v1"), "review.rego")), &stdout, &stderr); code != exitFailure {
+		t.Errorf("exit code on a bundle with none of the decisions = %d, want %d", code, exitFailure)
+	}
+	if !strings.Contains(stderr.String(), "the bundle has no rule by any of those names") {
+		t.Errorf("stderr does not say the decisions are missing: %s", stderr.String())
+	}
+}

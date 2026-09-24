@@ -228,6 +228,15 @@ petard analyze -entrypoint aac/aap/policy/owner_scope/allowed \
   -subject input.created_by.username -data path/to/config path/to/policy
 ```
 
+A product that asks for decisions can be declared once instead: which rules it asks for, where it
+puts the requester, and who sets each part of the request. [`pep-registry/`](pep-registry) holds
+the declarations, each claim with the file and line or the page of documentation it was read from,
+and `-pep` names one:
+
+```
+petard analyze -pep spacelift-login path/to/login.rego
+```
+
 Two inputs decide how much of an answer you get. Concrete data under `-data` is what turns a
 pattern into a finding about named principals, since the engine evaluates each decision
 partially against it. The write model under `-write-model` says who can write which path, which
@@ -286,6 +295,7 @@ internal/writemodel   who can write which path, declared rather than inferred
 internal/fixture      generated worlds, and the truth about them
 queries/              the saved Cypher queries, one file each
 taxonomy-registry/    the patterns as versioned data, embedded for explain and patterns
+pep-registry/         the enforcement points as versioned data, embedded for -pep
 schema/               the extension definition schema, generated from the model
 fixtures/             the bundle written by hand, in Rego v1 and v0, embedded for demo
 ```

@@ -6,7 +6,9 @@ import (
 
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
+	"github.com/saluc28/petard/internal/pep"
 	"github.com/saluc28/petard/internal/writemodel"
+	pepregistry "github.com/saluc28/petard/pep-registry"
 )
 
 // This file is the whole taxonomy applied once: every implemented pattern over
@@ -205,6 +207,11 @@ type Inputs struct {
 	// a candidate, because who writes what is not in the policy.
 	WriteModelPath string
 
+	// EnforcementPoint names the product that asks for the decisions, the id
+	// of a declaration in pep-registry or the path to one, and is empty when
+	// nobody said. See pep.Resolve.
+	EnforcementPoint string
+
 	Limits opaengine.Limits
 }
 
@@ -217,20 +224,31 @@ func Load(inputs Inputs) (Analysis, error) {
 	bundle.Entrypoints = inputs.Entrypoints
 	bundle.DenyEntrypoints = inputs.DenyEntrypoints
 
+	var point *pep.EnforcementPoint
+	if inputs.EnforcementPoint != "" {
+		if point, err = pep.Resolve(pepregistry.Files, inputs.EnforcementPoint); err != nil {
+			return Analysis{}, err
+		}
+		if err := DeclareEnforcementPoint(bundle, point); err != nil {
+			return Analysis{}, err
+		}
+	}
+
 	reads, err := opaengine.Reads(bundle, inputs.Limits)
 	if err != nil {
 		return Analysis{}, err
 	}
-	shape, err := opaengine.ShapeOf(reads, inputs.Subject)
+	shape, err := ShapeOf(reads, inputs.Subject, point)
 	if err != nil {
 		return Analysis{}, err
 	}
 
 	analysis := Analysis{
-		Bundle: bundle,
-		Reads:  reads,
-		Shape:  shape,
-		Limits: inputs.Limits,
+		Bundle:           bundle,
+		Reads:            reads,
+		Shape:            shape,
+		EnforcementPoint: point,
+		Limits:           inputs.Limits,
 	}
 
 	if inputs.WriteModelPath != "" {

@@ -13,6 +13,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   request against a value the policy writes, as `input.session.teams[_] == "DevOps"` or
   `not input.emergency`, and whether the check holding grants, refuses or lifts a refusal.
   `petard measure` counts them, and how many lift a refusal.
+- `-pep` on `analyze` and `export`, which names the product that asks for the decisions: the
+  decisions are declared by the names it asks for and the side each lands on, the subject by where
+  it puts the requester, and the summary says how much of the request the declaration speaks
+  about. `pep-registry/` holds the first two, the login policy of Spacelift and the MCP Gateway of
+  Kuadrant with the OPA authorization of Authorino.
 
 ## [0.2.1] - 2026-09-25
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
+	"github.com/saluc28/petard/internal/pep"
 	"github.com/saluc28/petard/internal/writemodel"
 )
 
@@ -27,6 +28,11 @@ type Analysis struct {
 	// failure: it decides what the patterns are allowed to claim.
 	Model *writemodel.Model
 	Data  *opaengine.Data
+
+	// EnforcementPoint is the product that asks for the decisions, declared,
+	// and nil when nobody declared one. It says who sets each part of the
+	// request, which the policy cannot.
+	EnforcementPoint *pep.EnforcementPoint
 
 	Limits opaengine.Limits
 }
