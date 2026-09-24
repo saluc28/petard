@@ -156,6 +156,7 @@ func TestLoadProcessesAnnotations(t *testing.T) {
 		"data.quill.risk.allow_positive_side",
 		"data.quill.risk.allow_vulnerable",
 		"data.quill.tenant_policy.allow",
+		"data.quill.tenant_policy.allow_export",
 	}
 	if len(entrypoints) != len(expected) {
 		t.Fatalf("entrypoints = %v, want %v", entrypoints, expected)

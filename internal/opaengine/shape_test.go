@@ -398,7 +398,7 @@ func TestRecognizeShapeOnFixture(t *testing.T) {
 		t.Fatalf("Reads() error = %v", err)
 	}
 
-	expectedInput := []string{"input.action", "input.doc", "input.mfa", "input.reviews", "input.role", "input.tenant", "input.user"}
+	expectedInput := []string{"input.action", "input.doc", "input.mfa", "input.reviews", "input.role", "input.scheduled", "input.tenant", "input.user"}
 	if !slices.Equal(reads.InputPaths, expectedInput) {
 		t.Errorf("input paths = %v, want %v", reads.InputPaths, expectedInput)
 	}

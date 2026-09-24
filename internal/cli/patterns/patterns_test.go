@@ -21,7 +21,7 @@ func TestPatternsListsTheRegistryInTheBinary(t *testing.T) {
 
 	out := stdout.String()
 	for _, want := range []string{
-		"8 patterns, in 6 categories.",
+		"9 patterns, in 7 categories.",
 		"ATTR-SELF-WRITE, Attribute self-write",
 		"PTD-OPA-001  The subject writes an attribute",
 		"petard explain",
@@ -81,8 +81,8 @@ func TestJSONCarriesEveryPattern(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
 		t.Fatalf("the output is not JSON: %v\n%s", err, stdout.String())
 	}
-	if len(decoded.Patterns) != 8 {
-		t.Fatalf("patterns = %d, want the eight of the registry", len(decoded.Patterns))
+	if len(decoded.Patterns) != 9 {
+		t.Fatalf("patterns = %d, want the nine of the registry", len(decoded.Patterns))
 	}
 
 	ids := make([]string, 0, len(decoded.Patterns))

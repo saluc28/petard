@@ -71,6 +71,11 @@ var patternNotes = []patternNote{
 		title:  "A document every request shares decides for anybody who asks",
 		closes: "Reading the document next to the requester's own record closes it: somebody with no record gets nothing.",
 	},
+	{
+		id: "PTD-OPA-009", name: "self-asserted-exemption",
+		title:  "A request lifts a check on itself by saying it is exempt",
+		closes: "Taking the exemption from a part of the request the enforcement point sets, as it sets a second factor, closes it.",
+	},
 }
 
 // patternLines renders, for a list of pattern ids held under key, one line per

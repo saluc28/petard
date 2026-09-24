@@ -1,12 +1,12 @@
 # The taxonomy
 
 The patterns, the two chains that end in privilege escalation, and what holds a claim up. The
-[README](../README.md) lists the eight patterns in one line each, and
+[README](../README.md) lists the nine patterns in one line each, and
 [taxonomy-registry/README.md](../taxonomy-registry/README.md) is the format itself.
 
 ## The registry is data
 
-Eight patterns live in `taxonomy-registry/`, versioned as data rather than written as code, and
+Nine patterns live in `taxonomy-registry/`, versioned as data rather than written as code, and
 all of them run against the fixture in `internal/taxonomy`. A pattern file carries what the
 pattern looks for, the conditions under which it stays quiet, and what it has been held to: the
 registry is the source of truth, and the glosses in the README are shorthand for what is

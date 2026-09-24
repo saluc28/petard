@@ -257,9 +257,9 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 
 	if point := a.EnforcementPoint; point != nil {
 		request := taxonomy.RequestCoverageOf(a.Reads, point)
-		render.Print(out, fmt.Sprintf("The enforcement point is %s (%s): it says who sets %d of the %s the "+
+		render.Print(out, fmt.Sprintf("The enforcement point is %s: it says who sets %d of the %s the "+
 			"decisions read, and the caller sets %d of them.",
-			point.ID, point.File, len(request.Declared), count(len(request.Read), "part")+" of the request",
+			point.ID, len(request.Declared), count(len(request.Read), "part")+" of the request",
 			len(request.ByCaller)), "  ")
 	}
 

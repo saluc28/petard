@@ -42,6 +42,11 @@ enforcement point that refuses the request as soon as the decision holds or coll
 the way Gatekeeper reads `violation`: which side a read is on is then counted from the refusal
 (`taxonomy-registry/README.md` section 3).
 
+A product that asks for decisions can be declared once instead, in the format of `pep-registry/`:
+the rules it asks for by name and the side each lands on, where it puts the requester, and who
+sets each part of the request. `-pep` names one, and the bundle is asked which of its rules carry
+those names.
+
 ## What the analysis reports
 
 From the decisions it walks the rules they depend on, following calls into functions and leaving

@@ -46,6 +46,11 @@ type Findings struct {
 	// principal nobody named, which is to say for anybody.
 	GlobalSwitch []Finding
 
+	// SelfAsserted holds the refusals a request lifts by saying it is exempt.
+	// It reads the policy and the declaration of the enforcement point, needs
+	// no data, and does not run without the declaration.
+	SelfAsserted []Finding
+
 	// Skipped names the patterns that could not run, and what it would have
 	// taken. A pattern left out in silence reads as a pattern that found
 	// nothing, which is the one thing these patterns exist to disprove.
@@ -62,12 +67,17 @@ func (f Findings) All() []Finding {
 	all = append(all, f.EveryEmpty...)
 	all = append(all, f.SplitGrant...)
 	all = append(all, f.GlobalSwitch...)
+	all = append(all, f.SelfAsserted...)
 	return all
 }
 
 // needsData is what a pattern that reads the documents is missing when there
 // are none, said once so that two callers cannot word it differently.
 const needsData = "it reads the concrete data, and none was given"
+
+// needsEnforcementPoint is what a pattern that asks who sets a part of the
+// request is missing when nobody declared the enforcement point.
+const needsEnforcementPoint = "it asks who sets each part of the request, and no enforcement point was declared"
 
 // Run applies every implemented pattern to one analysis.
 //
@@ -116,6 +126,11 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 	found.Tainted = TaintedByExternalSource(a.Reads)
 	found.Unavailable = GrantsWhenSourceFails(a.Reads)
 	found.EveryEmpty = FailOpenOnEmptyEvery(a.Reads)
+	if a.EnforcementPoint == nil {
+		found.Skipped[SelfAssertedExemption] = needsEnforcementPoint
+	} else {
+		found.SelfAsserted = SelfAssertedExemptions(a)
+	}
 	return found, nil
 }
 

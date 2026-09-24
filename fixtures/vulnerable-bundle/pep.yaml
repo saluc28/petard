@@ -1,0 +1,69 @@
+# The gateway in front of Quill, declared the way pep-registry declares a
+# product.
+#
+# Like the write model, it describes the system around OPA rather than the
+# policy, and it is written by hand: Quill is the application the fixture is
+# written for, and nothing here was read from a product. It is what tells a part
+# of the request the caller chooses from one the gateway sets. It names no
+# subject, so the subject of the fixture stays the one the engine recognizes.
+schema_version: 1
+id: quill-gateway
+title: The gateway in front of Quill
+engine: opa
+
+source:
+  kind: documentation
+  note: The fixture's own gateway, declared in fixtures/vulnerable-bundle/EXPECTED.md.
+
+decisions:
+  - rule: allow
+    side: grants
+  - rule: allow_reading_room
+    side: grants
+  - rule: allow_console
+    side: grants
+  - rule: allow_unguarded
+    side: grants
+  - rule: allow_guarded
+    side: grants
+  - rule: allow_vulnerable
+    side: grants
+  - rule: allow_defensive
+    side: grants
+  - rule: allow_positive_side
+    side: grants
+  - rule: allow_default_option
+    side: grants
+  - rule: allow_export
+    side: grants
+
+fields:
+  - path: input.user
+    set_by: issuer
+    issuer: the single sign-on of Quill
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-009"
+  # THE PTD-OPA-009 COUNTER CASE. The gateway reads it off the session: true
+  # when the session was opened with a second factor.
+  - path: input.mfa
+    set_by: enforcement-point
+    note: Whether the session was opened with a second factor.
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-009"
+  - path: input.tenant
+    set_by: enforcement-point
+    note: The tenant of the session.
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-009"
+  - path: input.reviews
+    set_by: enforcement-point
+    note: The reviews of the change, as the review service keeps them.
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-009"
+  # THE PTD-OPA-009 CASE falls here: input.scheduled is in the body of the
+  # request, with what the caller asks for.
+  - path: input.*
+    set_by: caller
+    note: What the caller asks for, action, doc and role, and anything else the body carries.
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-009"

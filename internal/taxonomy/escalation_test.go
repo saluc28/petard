@@ -14,11 +14,12 @@ func fixtureAnalysis(t *testing.T) Analysis {
 
 	reads, shape, model := analyzeFixture(t)
 	return Analysis{
-		Bundle: fixtureBundle(t),
-		Reads:  reads,
-		Shape:  shape,
-		Model:  model,
-		Data:   fixtureData(t),
+		Bundle:           fixtureBundle(t),
+		Reads:            reads,
+		Shape:            shape,
+		Model:            model,
+		Data:             fixtureData(t),
+		EnforcementPoint: fixtureGateway(t),
 	}
 }
 

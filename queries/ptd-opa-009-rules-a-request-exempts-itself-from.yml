@@ -1,0 +1,17 @@
+name: "PTD-OPA-009: rules a request exempts itself from"
+guid: 87167702-ebf9-4f41-820a-d806bdfcfed4
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Self-asserted exemption
+description: >
+  Rules holding a check on a part of the request that lifts a refusal, where the enforcement point
+  declares that whoever sends the request sets that part.
+query: |-
+  MATCH (r:PTD_Rule)
+  WHERE 'PTD-OPA-009' IN r.patterns
+  RETURN r
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-009-self-asserted-exemption.yaml
+acknowledgements: []

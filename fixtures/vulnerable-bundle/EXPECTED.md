@@ -19,6 +19,7 @@ fixtures/vulnerable-bundle/
 ├── inputs/               sample inputs, kept OUT of the -d directories
 ├── verify/               the measuring instrument, not part of the bundle
 ├── write-model.yaml      who can write what, the one part not derivable from the policy
+├── pep.yaml              who sets each part of the request, the gateway in front of Quill
 └── EXPECTED.md           this file
 ```
 
@@ -29,14 +30,14 @@ fixtures/vulnerable-bundle/
 ### The two variants are the same policy
 
 Checked on the value of every rule the two variants produce under `data.quill`, against every
-input under `inputs/`, which is 153 values over 10 inputs: no divergence between `policy-v1` and
-`policy-v0`.
+input under `inputs/`, which is 190 values over 11 inputs: no divergence between `policy-v1` and
+`policy-v0`, with the rego package of OPA v1.20.2.
 The same pair of trees is also the test of dual parsing:
 
 | | v1 parser | v0 parser (`--v0-compatible`) |
 |---|---|---|
-| `policy-v1/` | passes | 17 errors |
-| `policy-v0/` | 28 errors, "`if` keyword is required before rule body" | passes |
+| `policy-v1/` | passes | 19 errors |
+| `policy-v0/` | 30 errors, "`if` keyword is required before rule body" | passes |
 
 ---
 
@@ -357,6 +358,32 @@ read a document every request shares, and a linter sees the same thing in both. 
 wants the requester's own record before the setting matters, and that is what measuring for
 somebody no document names finds.
 
+### PTD-OPA-009, a request that says it is exempt
+
+`tenant_policy.rego` refuses an export without a second factor, except for the nightly export
+job, which says in the body of its request that it is the scheduled export. The policy reads
+`input.scheduled` and `input.mfa` the same way, in the same rule, and only `pep.yaml`, the
+declaration of the gateway, tells them apart: the gateway sets `mfa` from the session, and
+`scheduled` is in the body with everything else the caller asks for.
+
+| | where | expected |
+|---|---|---|
+| **case** | `tenant_policy.rego`, `allow_export`, `not input.scheduled` in `export_needs_mfa` | **finding**, the caller sets it, at confidence A |
+| **counter case** | the same rule, `not input.mfa` | **nothing**, the gateway sets it |
+| **counter case** | `tenant_policy.rego`, `allow`, `not input.mfa` in `denied_mfa` | **nothing**, for the same reason |
+
+Measured with `data.quill.verify.self_asserted`:
+
+```
+export by mallory, no second factor               allow_export = false
+the same, saying it is the scheduled export       allow_export = TRUE   ← the body says so
+the same, with a second factor                    allow_export = true
+```
+
+Without `-pep` the pattern does not run, and the report says so. In a policy on a request the
+caller writes whole, meeting a condition of a rule that refuses reads the same way as claiming an
+exemption, and only the declaration says which parts are the caller's to assert.
+
 ---
 
 ## 4. What the engine must not report
@@ -380,14 +407,16 @@ legitimate finding for another.
 | 11 | `allow_guarded` | 007 | `count(input.reviews) > 0` denies the empty case, so the every never goes vacuous |
 | 12 | `user in ...members` | 001 | the members are written by the project owner, and joining is not declared |
 | 13 | `allow_console` | 008 | the setting is just as global, but it only decides for somebody with a record |
+| 14 | `not input.mfa`, in `allow_export` and in `allow` | 009 | the gateway sets it from the session |
 
-Expected precision: **two `PTD_CanEscalateTo`** (mallory and carol), **thirteen findings and one
-candidate**, and none of the rows above under the pattern they belong to.
+Expected precision, with the gateway declared: **two `PTD_CanEscalateTo`** (mallory and carol),
+**fourteen findings and one candidate**, and none of the rows above under the pattern they belong
+to.
 
-The thirteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
+The fourteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
 `allow_unguarded`, mallory's escalation, which comes out under the id of 003 because that is where
-the registry says a candidate turns into a finding, carol's escalation under 006, and the reading
-room under 008. The two escalations are the two findings that are also `PTD_CanEscalateTo`
+the registry says a candidate turns into a finding, carol's escalation under 006, the reading room
+under 008, and the scheduled export under 009. The two escalations are the two findings that are also `PTD_CanEscalateTo`
 edges.
 
 ---
@@ -451,7 +480,7 @@ own would report in both cases.
 The registry rests on one claim: **if `regal` can find it by reading a file, it is not a
 pattern.**
 
-Run on 2026-09-14 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant here, but worth
+Run on 2026-09-24 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant here, but worth
 saying):
 
 ```
@@ -495,9 +524,9 @@ Readable with `opa inspect -a`. They serve three purposes:
 There are no `schemas:`, and that is deliberate: they would raise the confidence of a finding
 artificially. The realistic case is that nobody writes them.
 
-**Thirteen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
+**Fourteen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
 of the split grant, `admin` and `publish`, the guarded and unguarded merge decisions of `review`,
-and the reading room and the console of `platform`. A rule
+the reading room and the console of `platform`, and the export of `tenant_policy`. A rule
 without the annotation is a rule the engine never looks at, and leaving the three counter cases
 of `risk.rego` unannotated would break the fixture in two directions at once: *"the engine must
 not report `allow_defensive`"* would be satisfied for the wrong reason, because that rule would
@@ -604,6 +633,10 @@ opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy
 
 ```bash
 opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.global_switch'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.self_asserted'
 ```
 
 Dual parsing, where the first has to pass and the second has to fail:

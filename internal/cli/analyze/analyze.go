@@ -359,6 +359,7 @@ func reportFindings(out io.Writer, a taxonomy.Analysis, findings taxonomy.Findin
 		{taxonomy.EveryOverEmptyDomain, findings.EveryEmpty},
 		{taxonomy.WriteAllowedByAnotherDecision, findings.SplitGrant},
 		{taxonomy.GlobalDocumentDecides, findings.GlobalSwitch},
+		{taxonomy.SelfAssertedExemption, findings.SelfAsserted},
 	} {
 		// Printing nothing for a pattern that could not run would read as "the
 		// check covers everything", which is the one thing these patterns exist

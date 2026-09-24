@@ -1,0 +1,17 @@
+name: "PTD-OPA-009: exemptions nobody declared a setter for"
+guid: 230b1985-bbb7-497a-90d5-d5e0c4babfe6
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Self-asserted exemption
+description: >
+  The same checks, where no enforcement point says who sets the part of the request they read.
+  Whoever sets it may be the caller.
+query: |-
+  MATCH (r:PTD_Rule)
+  WHERE 'PTD-OPA-009' IN r.candidate_patterns
+  RETURN r
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-009-self-asserted-exemption.yaml
+acknowledgements: []

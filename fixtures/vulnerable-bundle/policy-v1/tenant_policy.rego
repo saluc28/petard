@@ -1,5 +1,6 @@
 # Quill, tenant level checks.
-# Holds: PTD-OPA-002 (case and counter case).
+# Holds: PTD-OPA-002 (case and counter case), PTD-OPA-009 (case and counter
+# case).
 package quill.tenant_policy
 
 # METADATA
@@ -33,4 +34,27 @@ denied_mfa if {
 # No uncovered key: the engine must not report it.
 denied_suspended if {
 	data.tenants[input.tenant].status == "suspended"
+}
+
+# METADATA
+# scope: document
+# title: Tenant export decision
+# entrypoint: true
+default allow_export := false
+
+# Exporting the documents of a tenant takes a second factor.
+allow_export if {
+	input.action == "export"
+	not export_needs_mfa
+}
+
+# PTD-OPA-009 CASE, and its counter case, in one rule. The nightly export job
+# has no second factor, so it says in the body of its request that it is the
+# scheduled export, and whoever sends a request can say the same. input.mfa
+# lifts the same refusal, and the gateway sets it from the session: the policy
+# reads the two the same way, and only the declaration of the gateway tells them
+# apart.
+export_needs_mfa if {
+	not input.mfa
+	not input.scheduled
 }

@@ -18,6 +18,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it puts the requester, and the summary says how much of the request the declaration speaks
   about. `pep-registry/` holds the first two, the login policy of Spacelift and the MCP Gateway of
   Kuadrant with the OPA authorization of Authorino.
+- `PTD-OPA-009`, a request lifts a check on itself by saying it is exempt: a check on a part of
+  the request that lifts a refusal, where the enforcement point declares that the caller sets that
+  part. It runs with `-pep`. The fixture holds its case and its counter case in one rule, and
+  `fixtures/vulnerable-bundle/pep.yaml` declares the gateway in front of it.
+
+### Changed
+
+- The extension schema describes `PTD-OPA-009` in the Entity Panel, and two saved queries ask for
+  it: `petard export -install` puts both in place.
 
 ## [0.2.1] - 2026-09-25
 

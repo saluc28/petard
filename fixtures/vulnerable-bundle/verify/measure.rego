@@ -155,3 +155,23 @@ global_switch := {
 	console_bob_off := data.quill.platform.allow_console with input as bob_asks
 		with data.settings.console.enabled as false
 }
+
+# --- PTD-OPA-009: a request that says it is exempt -----------------------------
+# An export without a second factor is refused, unless the body says it is the
+# scheduled export. The policy cannot tell the job from anybody who writes the
+# same field; the second factor lifts the same refusal, and the gateway sets it.
+export_by_hand := {"user": "mallory", "action": "export", "tenant": "berq", "mfa": false}
+
+export_saying_scheduled := {"user": "mallory", "action": "export", "tenant": "berq", "mfa": false, "scheduled": true}
+
+export_with_mfa := {"user": "mallory", "action": "export", "tenant": "berq", "mfa": true}
+
+self_asserted := {
+	"without_a_second_factor": by_hand,
+	"saying_it_is_scheduled": saying_scheduled,
+	"with_a_second_factor": with_mfa,
+} if {
+	by_hand := data.quill.tenant_policy.allow_export with input as export_by_hand
+	saying_scheduled := data.quill.tenant_policy.allow_export with input as export_saying_scheduled
+	with_mfa := data.quill.tenant_policy.allow_export with input as export_with_mfa
+}

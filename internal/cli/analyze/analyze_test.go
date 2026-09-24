@@ -548,7 +548,7 @@ func TestRunTakesADecisionDeclaredToDeny(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "decisions: 14\n") || !strings.Contains(out, "  data.quill.tenant_policy.denied_mfa, to deny\n") {
+	if !strings.Contains(out, "decisions: 15\n") || !strings.Contains(out, "  data.quill.tenant_policy.denied_mfa, to deny\n") {
 		t.Errorf("the report does not list the decision declared to deny:\n%s", out)
 	}
 }
@@ -689,7 +689,7 @@ deny  { not allow }
 	for _, expected := range []string{
 		"decisions: 3\n",
 		"  data.spacelift.deny, to deny\n",
-		"The enforcement point is spacelift-login (pep-registry/spacelift-login.yaml):",
+		"The enforcement point is spacelift-login: it says who sets 2 of the 2 parts",
 		`input.session.teams[_] == "DevOps" at `,
 	} {
 		if !strings.Contains(out, expected) {
@@ -710,5 +710,34 @@ deny  { not allow }
 	}
 	if !strings.Contains(stderr.String(), "the bundle has no rule by any of those names") {
 		t.Errorf("stderr does not say the decisions are missing: %s", stderr.String())
+	}
+}
+
+// With the gateway of the fixture declared, the scheduled export is a finding
+// and the second factor next to it is nothing. Without the declaration the
+// pattern does not run and the report says so: the policy reads the two the
+// same way.
+func TestRunReportsTheSelfAssertedExemption(t *testing.T) {
+	gateway := filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "pep.yaml")
+
+	var stdout, stderr bytes.Buffer
+	if code := Run(detailed("-pep", gateway, fixture("policy-v1")), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "PTD-OPA-009 finding: input.scheduled lifts a refusal in data.quill.tenant_policy.allow_export") {
+		t.Errorf("the report does not name the scheduled export:\n%s", out)
+	}
+	if strings.Contains(out, "PTD-OPA-009 finding: input.mfa") || strings.Contains(out, "PTD-OPA-009 candidate") {
+		t.Errorf("the report names more than the scheduled export:\n%s", out)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(detailed(fixture("policy-v1")), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	if out := stdout.String(); !strings.Contains(out, "PTD-OPA-009  it asks who sets each part of the request") {
+		t.Errorf("without the declaration the report does not say the pattern did not run:\n%s", out)
 	}
 }

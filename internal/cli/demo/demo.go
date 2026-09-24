@@ -52,7 +52,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		fmt.Fprintf(stdout, "bundle written to %s\n", root)
-		fmt.Fprintf(stdout, "analyze it with: petard analyze -write-model %s -data %s %s\n",
+		fmt.Fprintf(stdout, "analyze it with: petard analyze -pep %s -write-model %s -data %s %s\n",
+			filepath.Join(root, "pep.yaml"),
 			filepath.Join(root, "write-model.yaml"),
 			filepath.Join(root, "data"),
 			filepath.Join(root, "policy-v1"))
@@ -77,6 +78,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// something about the fixture rather than about the tool.
 	analysis := []string{
 		"-fail-on", "none",
+		"-pep", filepath.Join(root, "pep.yaml"),
 		"-write-model", filepath.Join(root, "write-model.yaml"),
 		"-data", filepath.Join(root, "data"),
 	}

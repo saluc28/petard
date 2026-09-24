@@ -1,0 +1,237 @@
+schema_version: 1
+
+id: PTD-OPA-009
+name: self-asserted-exemption
+title: A request lifts a check on itself by saying it is exempt
+engine: opa
+status: implemented
+
+category:
+  id: SELF-ASSERTED-EXEMPTION
+  title: Self-asserted exemption
+  summary: >
+    A check refuses unless the request is exempt, and the request is where the exemption is
+    read. Whoever sends it says whether it applies to them.
+    Abstract category: it holds for any engine that decides on attributes of the request, where
+    the attribute that lifts a check is one the caller writes.
+  category_note: >
+    The first instance. The same category covers an exemption keyed on something the caller
+    names rather than asserts, an image whose name matches a list of exempt images for instance,
+    which this instance does not find: see the notes.
+
+summary: >
+  A decision refuses under some condition, except when the request carries a flag, a label or a
+  field that says the refusal does not apply. The policy reads that part of the request the way it
+  reads any other, and whether the caller writes it or the enforcement point sets it is not in the
+  policy. When the caller writes it, the check applies only to whoever does not claim the
+  exemption.
+  In the fixture, exporting the documents of a tenant takes a second factor, except for the
+  nightly export job, which says in the body of its request that it is the scheduled export.
+  Whoever sends a request can say the same.
+
+preconditions:
+  - capability: The principal can send the request the decision is asked about
+    note: >
+      The exemption is a value in the request, and the enforcement point passes it through as the
+      caller wrote it, which is what its declaration says.
+
+mechanism:
+  description: >
+    `not input.scheduled` inside a rule the decision asks not to hold lifts that rule's refusal
+    whenever the request says `scheduled`. Written this way it reads as a narrow exception for one
+    caller, and it is one only if nobody else can write the field. The policy cannot tell the two
+    apart. A second factor the gateway proved, `not input.mfa` in the same rule, is written the
+    same way and is not the caller's to claim.
+  example: |
+    package example
+
+    # the decision the PEP of POST /tenants/{id}/export consumes
+    default allow := false
+
+    allow if {
+        input.action == "export"
+        not needs_second_factor
+    }
+
+    needs_second_factor if {
+        not input.mfa
+        not input.scheduled
+    }
+  example_note: >
+    The export rule of the fixture has the same shape, and it was measured with the rego package of
+    OPA v1.20.2: an export without a second factor is refused, the same export with `scheduled` in
+    the request is allowed, and one with the second factor is allowed.
+
+detection:
+  ast_source: compiled
+  requires:
+    - binding-resolution
+    - rule-graph
+    - enforcement-point
+  requires_note: >
+    `enforcement-point` for signal 2: who sets a part of the request is declared per product in
+    `pep-registry/`, or in a file of the same format named with `-pep`. Without a declaration the
+    pattern does not run, and the report says so: see the first declared false positive for why a
+    candidate would say nothing.
+  signals:
+    - order: 1
+      check: >
+        A decision reaches a check on a part of the request, an equality or a search against a
+        value the policy writes or the part of the request asked to be true, that lands on the
+        side that grants after crossing a negation: it holds inside something that would refuse,
+        so it lifts the refusal. The engine reports it among the checks on the request, as lifting
+        a refusal in that decision.
+      rationale: >
+        The negation is what tells an exemption from a condition of the grant. `input.action ==
+        "export"` in the rule that grants says what is asked for and lifts nothing; `not
+        input.scheduled` in a rule the decision asks not to hold lifts a refusal. A decision
+        declared to deny counts as a negation of its own, so an exemption a violation asks not to
+        hold is found the same way.
+    - order: 2
+      check: >
+        The enforcement point declares that whoever sends the request sets that part. A value
+        searched in a collection of the request is asked about the elements of the collection
+        first.
+      rationale: >
+        The case and the counter case differ only here, and the policy does not say it. A part the
+        enforcement point sets, or copies from an issuer, is left alone: the caller cannot write
+        it, and what an issuer lets people choose is the question of another pattern. A part the
+        declaration does not cover is a candidate, since whoever sets it may be the caller.
+  confidence: A
+  confidence_note: >
+    The claim rests on the declaration of the enforcement point, which declares the request, and
+    a finding carries level A. A candidate, on a part the declaration does not cover, carries the
+    level the request was recognized at.
+  requires_write_model: false
+  requires_write_model_note: >
+    Nobody writes a document here: the value is in the request. What plays the part of the write
+    model is the declaration of the enforcement point, and without it the pattern does not run.
+
+graph:
+  emits: finding
+  marks:
+    - kind: PTD_Rule
+      properties: [is_decision]
+  marks_note: >
+    It does not emit `PTD_CanEscalateTo`: whoever sends the request does not become somebody
+    else, a check stops applying to them. The pattern marks the rule that holds the check on the
+    request, as `PTD-OPA-007` marks the rule that holds the every, and a rule that reads no
+    document has no node otherwise.
+
+false_positives:
+  - condition: >
+      The request is the thing the policy is about, written whole by the caller, as an admission
+      review is: a container that sets its resource limits lifts the violation about limits, and
+      complying reads like claiming an exemption.
+    discriminator: >
+      Which parts the caller asserts about the request and which parts are what it submits is in
+      the meaning of the fields. A declaration that puts the whole object on the caller reports
+      compliance as exemption, which is why the pattern needs a declaration to run and why
+      `pep-registry/` holds none for Gatekeeper. Measured on open-policy-agent/gatekeeper-library
+      at e4d3bd2 with a declaration that asks for `violation` and covers no field: 26 candidates in
+      14 of the 49 units, among them the container's own `resources.limits` in `containerlimits`.
+  - condition: >
+      The enforcement point lets only the caller the exemption is meant for reach the endpoint,
+      the scheduler on a network nobody else is on, and the declaration still says the caller sets
+      the field, which it does.
+    discriminator: >
+      Who can reach the endpoint is in neither the policy, the data nor the declaration, which
+      says who sets a part of the request and not who can send one.
+  - condition: >
+      Another decision the enforcement point also asks refuses the same request on the same
+      condition, so lifting this refusal lifts nothing.
+    discriminator: >
+      The engine judges each decision on its own. Asking whether the other decisions refuse the
+      exempt request would mean evaluating them together, as the enforcement point combines them.
+  - condition: >
+      The declaration is wrong: the enforcement point overwrites the field before asking, and says
+      so nowhere the declaration was read from.
+    discriminator: >
+      Only the product can say it, and the declaration names where it was read so that it can be
+      checked.
+
+not_a_lint_rule: >
+  A linter sees `not input.mfa` and `not input.scheduled` written the same way in the same rule.
+  Which of the two the caller writes is in the declaration of the enforcement point, in no file of
+  the bundle.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  pep: fixtures/vulnerable-bundle/pep.yaml
+  case: >
+    `tenant_policy.rego`, `allow_export`: an export without a second factor is refused unless the
+    request says `scheduled`, and the gateway declares that part of the request as the caller's.
+  counter_case: >
+    The same rule, `not input.mfa`: the second factor lifts the same refusal, and the gateway sets
+    it from the session. The same field lifts the refusal of `allow` in `denied_mfa`, and is left
+    alone there too.
+  expected: >
+    A finding on `input.scheduled` for `data.quill.tenant_policy.allow_export`, and nothing on
+    `input.mfa`.
+
+references:
+  - title: open-policy-agent/gatekeeper-library, lib.exempt_container
+    note: >
+      At commit e4d3bd2448b20bc7910417f5b2cf18b63a0bd33c,
+      `src/rego/lib_exempt_container/lib_exempt_container.rego:3` to `19`: a container is exempt
+      when its image matches one of the images the constraint lists in `exemptImages`, exactly or
+      by a prefix ending in `*`. 21 units carry a copy of it next to their policy and call
+      `is_exempt` 65 times, every time under a `not`. The image is whatever the pod names; the list
+      is the constraint's. The engine does not report it: the image is compared with another part
+      of the request, not with a value the policy writes, and whether a pod can name a matching
+      image is a question about who can publish images under that name.
+  - title: ynotbhatc/rego_policy_libraries, the break glass label of the AAP policies
+    note: >
+      At commit e1eb90b5a73f8d90362833228837dded51547c87, `enforcement/aap/maintenance_window.rego`:
+      the maintenance window and the maintenance mode do not apply to a job carrying the label the
+      configuration names, `break-glass` in the example (lines 63 to 67 and 156 to 158), and the
+      labels are the job's, from the request. AWX puts the labels of the job in what it sends to
+      OPA (ansible/awx at bbda905e0069dde6abe625e005dd79a058a76fdb, `awx/main/tasks/policy.py:200`),
+      and a job template can let whoever launches it choose them (`awx/main/models/mixins.py:68`,
+      `ask_labels_on_launch`). The engine does not report it either: the label is searched in a set
+      the policy builds from the request, and compared with a value from the data.
+  - title: CWE-807, Reliance on Untrusted Inputs in a Security Decision
+    note: >
+      A protection an untrusted actor bypasses by changing an input. This pattern is the case where
+      the input is an exemption.
+
+verified:
+  date: 2026-09-24
+  tool_version: opa 1.20.2
+  how: >
+    The engine finds the case and stays quiet about the counter case on the fixture, run with its
+    gateway declared (`-pep fixtures/vulnerable-bundle/pep.yaml`). The checks on the request list
+    `input.scheduled` and `input.mfa` in `export_needs_mfa` as lifting a refusal in
+    `allow_export`, and `input.mfa` in `denied_mfa` as lifting one in `allow`; the declaration
+    puts `input.mfa` on the gateway and `input.scheduled` with the rest of the body, so one finding
+    comes out. Without a declaration the pattern does not run, and with one that does not cover a
+    part, that part is a candidate.
+    The numbers behind it, `data.quill.verify.self_asserted`, measured with the rego package of
+    OPA v1.20.2: an export without a second factor is refused, and allowed with `scheduled` in the
+    request or with the second factor.
+    `regal` v0.42.0 reports no violations on `policy-v1`.
+    On generated worlds the pattern reports the same finding and nothing else: it rests on the
+    policy and the declaration, and a dataset moves neither.
+
+related:
+  - id: PTD-OPA-001
+    note: >
+      The same shape on the other side of the request. 001 is a document the subject writes that a
+      decision reads about them; this is a part of the request the caller writes that lifts a
+      refusal.
+  - id: PTD-OPA-007
+    note: >
+      Another way a check stops applying without anybody switching it off: there the collection is
+      empty, here the request says the check does not apply.
+
+notes:
+  - >
+    Known false negative: an exemption written as a second way of granting rather than as an
+    exception, `allow if input.emergency` next to `allow if not frozen`. No negation is crossed,
+    and the engine cannot tell it from a condition of the grant, which is what `input.action ==
+    "read"` is.
+  - >
+    Known false negative: an exemption compared with anything the policy does not write out, a
+    list in another part of the request as in the gatekeeper-library, or a value in the data as in
+    the AAP policies, and an exemption searched in a set the policy builds from the request.

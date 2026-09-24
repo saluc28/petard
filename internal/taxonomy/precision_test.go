@@ -45,11 +45,12 @@ func analyzeGenerated(t *testing.T, params fixture.Params) (*fixture.Dataset, An
 	}
 
 	return dataset, Analysis{
-		Bundle: bundle,
-		Reads:  reads,
-		Shape:  opaengine.RecognizeShape(reads),
-		Model:  model,
-		Data:   data,
+		Bundle:           bundle,
+		Reads:            reads,
+		Shape:            opaengine.RecognizeShape(reads),
+		Model:            model,
+		Data:             data,
+		EnforcementPoint: fixtureGateway(t),
 	}
 }
 
@@ -218,6 +219,22 @@ func TestEveryEmptyRestsOnThePolicyNotTheData(t *testing.T) {
 			findings := FailOpenOnEmptyEvery(a.Reads)
 			if len(findings) != 1 || findings[0].Decision != "data.quill.review.allow_unguarded" {
 				t.Errorf("every-empty on generated data = %v, want only the unguarded merge decision", findings)
+			}
+		})
+	}
+}
+
+// The self-asserted exemption rests on the policy and on the declaration of
+// the gateway, and a generated world changes neither: on every one of them the
+// scheduled export comes out, and the second factor does not.
+func TestSelfAssertedExemptionRestsOnThePolicyNotTheData(t *testing.T) {
+	for _, seed := range []uint64{1, 7, 4242} {
+		t.Run(fmt.Sprintf("seed %d", seed), func(t *testing.T) {
+			_, a := analyzeGenerated(t, fixture.Small(seed))
+
+			findings := SelfAssertedExemptions(a)
+			if len(findings) != 1 || findings[0].Path != "input.scheduled" {
+				t.Errorf("self-asserted exemptions on generated data = %v, want only input.scheduled", findings)
 			}
 		})
 	}

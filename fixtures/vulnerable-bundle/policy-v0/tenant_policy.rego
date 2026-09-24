@@ -23,3 +23,21 @@ denied_mfa {
 denied_suspended {
 	data.tenants[input.tenant].status == "suspended"
 }
+
+# METADATA
+# scope: document
+# title: Tenant export decision
+# entrypoint: true
+default allow_export = false
+
+allow_export {
+	input.action == "export"
+	not export_needs_mfa
+}
+
+# PTD-OPA-009 CASE (input.scheduled, set by the caller) and COUNTER CASE
+# (input.mfa, set by the gateway from the session)
+export_needs_mfa {
+	not input.mfa
+	not input.scheduled
+}

@@ -336,8 +336,10 @@ func TestReadsListsTheDecisions(t *testing.T) {
 		t.Fatalf("Reads() error = %v", err)
 	}
 
-	// Thirteen decisions: the three counter cases of PTD-OPA-005 are consumed by
-	// the PEP like the others, and PTD-OPA-006, 007 and 008 add two each. Leaving
+	// Fourteen decisions: the three counter cases of PTD-OPA-005 are consumed by
+	// the PEP like the others, PTD-OPA-006, 007 and 008 add two each, and
+	// PTD-OPA-009 adds the export, which holds its case and its counter case in
+	// one rule. Leaving
 	// any of them unannotated made the engine ignore them, so a counter case
 	// "the engine must not flag" was satisfied for the wrong reason and a case
 	// "it must flag" could not be satisfied at all.
@@ -355,6 +357,7 @@ func TestReadsListsTheDecisions(t *testing.T) {
 		"data.quill.risk.allow_positive_side",
 		"data.quill.risk.allow_vulnerable",
 		"data.quill.tenant_policy.allow",
+		"data.quill.tenant_policy.allow_export",
 	}
 	if !slices.Equal(reads.Decisions, expected) {
 		t.Errorf("decisions = %v, want %v", reads.Decisions, expected)

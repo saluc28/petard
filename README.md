@@ -18,7 +18,7 @@ the line between whoever takes a decision and whoever writes what the decision i
 
 ## What it finds
 
-Eight patterns live in [`taxonomy-registry/`](taxonomy-registry), which is versioned data rather
+Nine patterns live in [`taxonomy-registry/`](taxonomy-registry), which is versioned data rather
 than code. Every one of them runs against the fixture in this repository, and the registry is the
 source of truth down to what each has been held to. These are one-line glosses; `petard patterns`
 lists them from the binary and `petard explain <id>` prints one in full.
@@ -33,6 +33,7 @@ lists them from the binary and `petard explain <id>` prints one in full.
 | `PTD-OPA-006` | one decision lets a principal write the data another decision grants on |
 | `PTD-OPA-007` | a check written with `every` stops applying when its collection is empty |
 | `PTD-OPA-008` | a document every request shares decides for anybody who asks |
+| `PTD-OPA-009` | a request lifts a check on itself by saying it is exempt |
 
 Two of them end in the words privilege escalation, and each draws a `PTD_CanEscalateTo` edge
 between two principals: `PTD-OPA-001` and `PTD-OPA-003` chain into one, `PTD-OPA-006` draws the
@@ -79,7 +80,7 @@ inside the binary, so there is something to look at before you point the tool at
 policies. It leads with who can take whose place:
 
 ```
-8 files, 13 decisions, parsed as rego v1
+8 files, 14 decisions, parsed as rego v1
 
 Escalations
   mallory -> dave  (PTD-OPA-003, confidence D)
@@ -102,12 +103,15 @@ Findings
     1  PTD-OPA-006  One decision lets a principal write the data another decision grants on
     1  PTD-OPA-007  A check written with every stops applying when its domain is empty
     1  PTD-OPA-008  A document every request shares decides for anybody who asks
+    1  PTD-OPA-009  A request lifts a check on itself by saying it is exempt
 
 Candidates, which need a write model to become findings
     1  PTD-OPA-003  A position in a hierarchy grants everything below it, and nothing says so
 
 How much to trust this
   Level D (field names): the subject is input.user. 17 reads over 11 data paths.
+  The enforcement point is quill-gateway: it says who sets 8 of the 8 parts of the request the
+  decisions read, and the caller sets 4 of them.
   The write model covers 6 of 11 paths read (54%).
 ```
 
@@ -133,14 +137,14 @@ petard demo -extract .
 export BLOODHOUND_TOKEN_ID=...
 export BLOODHOUND_TOKEN_KEY=...
 petard export -url https://bloodhound.example -install -upload -verify \
-  -write-model vulnerable-bundle/write-model.yaml \
+  -pep vulnerable-bundle/pep.yaml -write-model vulnerable-bundle/write-model.yaml \
   -data vulnerable-bundle/data vulnerable-bundle/policy-v1
 ```
 
 ```
-graph: 62 nodes, 84 edges
+graph: 63 nodes, 84 edges
 schema installed, 3 of 5 relationship kinds are traversable
-saved queries: 29 added, 0 already there
+saved queries: 31 added, 0 already there
 ingest job 3 started
 job 3 processed 1 file(s) with no errors
   MALLORY -> DAVE: pathfinding walks it
@@ -172,7 +176,7 @@ Pathfinding walks them too, which is what `-verify` checks over the API.
 
 ![Pathfinding between the two principals](docs/assets/pathfinding.png)
 
-Installing also saves 29 Cypher queries, two to four per pattern, named after the question they
+Installing also saves 31 Cypher queries, two to four per pattern, named after the question they
 ask. They return nodes and paths, so the answer opens in the graph and in the table view next to
 it.
 
