@@ -81,6 +81,15 @@ type refReader struct {
 	// matches.go.
 	foundComparisons []foundComparison
 	summaries        map[string][]paramComparison
+
+	// foundTruths are the parts of the request an expression asks to be true,
+	// written as the expression itself: input.emergency, or not
+	// input.emergency. See checks.go.
+	foundTruths []foundTruth
+
+	// ways are the ways each decision reaches each rule, recorded by
+	// decisionReach. See reachWay.
+	ways map[*ast.Rule]map[string]map[reachWay]bool
 }
 
 // closureBuiltins are the constructs a policy has to use to follow a relation
@@ -494,6 +503,7 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 	}
 
 	if term, ok := expr.Terms.(*ast.Term); ok {
+		r.markTruth(term, sc)
 		r.walkTerm(term, sc, found)
 	}
 }

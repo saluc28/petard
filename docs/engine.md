@@ -53,6 +53,12 @@ alone the expressions that mock the world with a `with` modifier, and reports:
   the analysis can name
 - the values a decision depends on that the policy did not compute, such as the body of an
   HTTP response, and which decisions each of them reaches
+- every place a decision holds a part of the request against a value the policy writes, such as
+  `input.session.teams[_] == "DevOps"` or `not input.emergency`, and what the check holding does
+  to each decision: grants, refuses, or lifts a refusal. A check crossed by a negation on the way
+  down from the decision lands on the side that grants inside something that would refuse, which
+  is how an exemption reads, and also how meeting a condition of a rule that refuses reads: who
+  sets the part of the request is what tells the two apart
 - the shape of the request, with the level of confidence it was recognized at, which runs from
   a declaration down to a guess about field names and travels with the answer. Which field names
   the requester is decided where the request is built, so it can be declared too

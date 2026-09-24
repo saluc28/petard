@@ -302,6 +302,8 @@ type resolverCounts struct {
 	callers   int
 	closures  int
 	taints    int
+	checks    int
+	lifting   int
 	withRules int
 	warnings  int
 	byOrigin  map[string]int
@@ -337,6 +339,8 @@ func reportResolver(out io.Writer, results []result) {
 	}
 	count(out, "values from outside", counts.taints)
 	count(out, "transitive closures", counts.closures)
+	count(out, "checks on the request", counts.checks)
+	count(out, "  that lift a refusal", counts.lifting)
 
 	fmt.Fprintf(out, "\nedge cases the walk met\n")
 	count(out, "reads under a negation", counts.negated)
@@ -351,6 +355,12 @@ func (c *resolverCounts) add(reads *opaengine.ReadSet) {
 	c.paths += len(reads.Paths())
 	c.closures += len(reads.Closures)
 	c.taints += len(reads.Taints)
+	c.checks += len(reads.Checks)
+	for _, check := range reads.Checks {
+		if slices.ContainsFunc(check.Decisions, func(d opaengine.CheckedDecision) bool { return d.Exception }) {
+			c.lifting++
+		}
+	}
 	c.withRules += len(reads.SkippedUnderWith)
 	c.warnings += len(reads.Warnings)
 

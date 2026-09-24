@@ -274,6 +274,10 @@ type ReadSet struct {
 	// Quantifiers are the every expressions the decisions reach.
 	Quantifiers []Quantifier
 
+	// Checks are the places the decisions hold a part of the request against a
+	// value the policy writes. See checks.go.
+	Checks []Check
+
 	// Taints are the values the decisions read that the policy did not
 	// compute, with the decisions each of them reaches.
 	//
@@ -389,7 +393,9 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 	result.Taints = taints
 	result.Closures = reader.closures(result.Reads, reach)
 	result.Quantifiers = reader.quantifiers(reach)
-	result.Warnings = sortedUnique(append(result.Warnings, warnings...))
+	checks, checkWarnings := reader.checks(limits)
+	result.Checks = checks
+	result.Warnings = sortedUnique(append(append(result.Warnings, warnings...), checkWarnings...))
 
 	for _, decision := range decisions {
 		result.Decisions = append(result.Decisions, decision.name)

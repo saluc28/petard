@@ -5,6 +5,15 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `petard analyze -v` lists the checks on the request: every place a decision holds a part of the
+  request against a value the policy writes, as `input.session.teams[_] == "DevOps"` or
+  `not input.emergency`, and whether the check holding grants, refuses or lifts a refusal.
+  `petard measure` counts them, and how many lift a refusal.
+
 ## [0.2.1] - 2026-09-25
 
 ### Fixed

@@ -465,6 +465,18 @@ func describeSource(taint opaengine.Taint) string {
 	return taint.Origin + " " + taint.Endpoint
 }
 
+// describeCheckSide says what a check holding does to one decision.
+func describeCheckSide(decision opaengine.CheckedDecision) string {
+	switch {
+	case decision.Exception:
+		return "lifts a refusal in " + decision.Name
+	case decision.Grants:
+		return "grants in " + decision.Name
+	default:
+		return "refuses in " + decision.Name
+	}
+}
+
 // describeShape prints only the parts that were recognized. A field left out
 // is not a gap to paper over: it is the recognizer declining to guess.
 func describeShape(shape opaengine.Shape) string {
@@ -544,6 +556,19 @@ func report(out io.Writer, bundle *opaengine.Bundle, reads *opaengine.ReadSet, s
 					reaches += ", to deny"
 				}
 				fmt.Fprintf(out, "    %s\n", reaches)
+			}
+		}
+	}
+
+	// The request held against values the policy writes. Who can put such a
+	// value in the request is not in the policy, the same way who writes a
+	// document is not, and the side says what putting it there does.
+	if len(reads.Checks) > 0 {
+		fmt.Fprintf(out, "\nchecks on the request against values the policy writes: %d\n", len(reads.Checks))
+		for _, check := range reads.Checks {
+			fmt.Fprintf(out, "  %s at %s:%d\n", check.Expression(), check.File, check.Line)
+			for _, decision := range check.Decisions {
+				fmt.Fprintf(out, "    %s\n", describeCheckSide(decision))
 			}
 		}
 	}

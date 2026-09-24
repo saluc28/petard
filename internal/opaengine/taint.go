@@ -234,18 +234,23 @@ func reachedDecisions(reached decisionPaths) []ReachedDecision {
 // Cycles cannot happen, since OPA refuses to compile a policy whose rules
 // depend on each other in a loop, but the visited set makes the walk terminate
 // regardless of that guarantee.
+//
+// Each way is also kept whole in ways, with whether it crossed a negation,
+// since the parity alone cannot tell a rule that grants from an exception to a
+// rule that refuses: both land on the side that grants. See checkedDecisions.
 func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisionPaths {
 	type state struct {
-		rule   *ast.Rule
-		grants bool
+		rule *ast.Rule
+		way  reachWay
 	}
 
 	reached := make(map[*ast.Rule]decisionPaths)
+	r.ways = make(map[*ast.Rule]map[string]map[reachWay]bool)
 	for _, decision := range decisions {
 		name := decision.name
 
 		seen := make(map[state]bool)
-		queue := []state{{rule: decision.rule, grants: !decision.denies}}
+		queue := []state{{rule: decision.rule, way: reachWay{grants: !decision.denies, crossed: decision.denies}}}
 		for len(queue) > 0 {
 			at := queue[0]
 			queue = queue[1:]
@@ -259,7 +264,15 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 				paths = make(decisionPaths)
 				reached[at.rule] = paths
 			}
-			paths[name] = paths[name] || at.grants
+			paths[name] = paths[name] || at.way.grants
+
+			if r.ways[at.rule] == nil {
+				r.ways[at.rule] = make(map[string]map[reachWay]bool)
+			}
+			if r.ways[at.rule][name] == nil {
+				r.ways[at.rule][name] = make(map[reachWay]bool)
+			}
+			r.ways[at.rule][name][at.way] = true
 
 			for _, edge := range r.edges[at.rule] {
 				if at.rule == decision.rule && decision.within != nil && !decision.within[edge.top] {
@@ -267,11 +280,22 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 					// rule returns, and this decision is not asked about it.
 					continue
 				}
-				queue = append(queue, state{rule: edge.callee, grants: at.grants != edge.negated})
+				queue = append(queue, state{rule: edge.callee, way: reachWay{
+					grants:  at.way.grants != edge.negated,
+					crossed: at.way.crossed || edge.negated,
+				}})
 			}
 		}
 	}
 	return reached
+}
+
+// reachWay is one way a decision reaches a rule: whether the rule holding
+// grants on it, and whether it crossed a negation on the way, the refusal of a
+// decision declared to deny included.
+type reachWay struct {
+	grants  bool
+	crossed bool
 }
 
 // externalOrigin finds the builtin a value descends from, when that builtin is
