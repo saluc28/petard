@@ -15,6 +15,7 @@
 package writemodel
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -55,18 +56,20 @@ type Path struct {
 }
 
 // ParsePath reads a path in either notation.
+//
+// A key in brackets and quotes is one segment whatever it holds, the way OPA
+// parses a reference: data.inventory.cluster["storage.k8s.io/v1"] has five
+// segments, and the fourth is storage.k8s.io/v1. OPA writes a key that way
+// whenever it is not a bare name, so a read of the inventory Gatekeeper
+// replicates arrives in this form.
 func ParsePath(path string) (Path, error) {
 	if path == "" {
 		return Path{}, fmt.Errorf("writemodel: empty path")
 	}
 
-	var segments []Segment
-	for _, part := range strings.Split(path, ".") {
-		parsed, err := parseSegments(part)
-		if err != nil {
-			return Path{}, fmt.Errorf("writemodel: in path %q: %w", path, err)
-		}
-		segments = append(segments, parsed...)
+	segments, err := parseSegments(path)
+	if err != nil {
+		return Path{}, fmt.Errorf("writemodel: in path %q: %w", path, err)
 	}
 
 	for i, segment := range segments {
@@ -77,33 +80,104 @@ func ParsePath(path string) (Path, error) {
 	return Path{Segments: segments}, nil
 }
 
-// parseSegments reads one dot separated part, which may carry indices:
-// users[_] is the collection and the index that follows it, and git[_][_] is a
-// collection of collections, with one index for each level.
-func parseSegments(part string) ([]Segment, error) {
-	if part == "" {
-		return nil, fmt.Errorf("empty segment")
-	}
-
-	name, indices, hasIndex := strings.Cut(part, "[")
-	segments := []Segment{segmentOf(name)}
-	if !hasIndex {
-		return segments, nil
-	}
-
-	indices, ok := strings.CutSuffix(indices, "]")
-	if !ok {
-		return nil, fmt.Errorf("unclosed [ in %q", part)
-	}
-	for index := range strings.SplitSeq(indices, "][") {
-		if index != "_" {
-			// A concrete index would be a path to one document, and the model
-			// speaks about shapes. Writing it out is almost certainly a mistake.
-			return nil, fmt.Errorf("index [%s] in %q: only [_] is a path, a concrete index names one document", index, part)
+// parseSegments reads the names of a path and the indices after each one:
+// users[_] is the collection and the index that follows it, git[_][_] is a
+// collection of collections with one index for each level, and a dot inside a
+// quoted key does not separate anything.
+func parseSegments(path string) ([]Segment, error) {
+	var segments []Segment
+	rest := path
+	for {
+		end := strings.IndexAny(rest, ".[")
+		if end < 0 {
+			end = len(rest)
 		}
-		segments = append(segments, Segment{Kind: SegmentCapture})
+		if end == 0 {
+			return nil, fmt.Errorf("empty segment")
+		}
+		segments = append(segments, segmentOf(rest[:end]))
+		rest = rest[end:]
+
+		for strings.HasPrefix(rest, "[") {
+			segment, after, err := parseIndex(rest)
+			if err != nil {
+				return nil, err
+			}
+			segments = append(segments, segment)
+			rest = after
+		}
+
+		if rest == "" {
+			return segments, nil
+		}
+		if rest[0] != '.' {
+			return nil, fmt.Errorf("%q follows an index, where a dot or another index goes", rest)
+		}
+		rest = rest[1:]
 	}
-	return segments, nil
+}
+
+// parseIndex reads the index at the start of rest and returns what follows it.
+//
+// A quoted key is a literal, read as OPA reads a string: in double quotes with
+// JSON escapes, or raw in backquotes. It is the same segment the key would be
+// written bare, so data.users["profile"] is data.users.profile, and it never
+// means anything else: ["*"] is a key called *, not a subtree.
+func parseIndex(rest string) (Segment, string, error) {
+	switch {
+	case strings.HasPrefix(rest, `["`):
+		closing := closingQuote(rest[2:])
+		if closing < 0 {
+			return Segment{}, "", fmt.Errorf("unclosed quote in %q", rest)
+		}
+		quoted := rest[1 : 2+closing+1]
+		var key string
+		if err := json.Unmarshal([]byte(quoted), &key); err != nil {
+			return Segment{}, "", fmt.Errorf("key %s: %w", quoted, err)
+		}
+		return literalIndex(key, rest[len(quoted)+1:])
+
+	case strings.HasPrefix(rest, "[`"):
+		key, after, closed := strings.Cut(rest[2:], "`")
+		if !closed {
+			return Segment{}, "", fmt.Errorf("unclosed quote in %q", rest)
+		}
+		return literalIndex(key, after)
+	}
+
+	index, after, closed := strings.Cut(rest[1:], "]")
+	if !closed {
+		return Segment{}, "", fmt.Errorf("unclosed [ in %q", rest)
+	}
+	if index != "_" {
+		// A concrete index would be a path to one document, and the model
+		// speaks about shapes. Writing it out is almost certainly a mistake.
+		return Segment{}, "", fmt.Errorf("index [%s]: only [_] is a path, a concrete index names one document", index)
+	}
+	return Segment{Kind: SegmentCapture}, after, nil
+}
+
+// closingQuote returns where the double quote that ends a string sits in s,
+// which starts right after the opening one, or -1 when nothing ends it.
+func closingQuote(s string) int {
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			i++
+		case '"':
+			return i
+		}
+	}
+	return -1
+}
+
+// literalIndex is a quoted key that the closing bracket has to follow.
+func literalIndex(key, rest string) (Segment, string, error) {
+	after, closed := strings.CutPrefix(rest, "]")
+	if !closed {
+		return Segment{}, "", fmt.Errorf("the key %q is not followed by ]", key)
+	}
+	return Segment{Kind: SegmentLiteral, Name: key}, after, nil
 }
 
 func segmentOf(name string) Segment {
@@ -117,24 +191,40 @@ func segmentOf(name string) Segment {
 	}
 }
 
-// String writes the path back in the model's notation.
+// String writes the path back in the model's notation. A literal that would
+// read back as something else written bare, one with a dot in it or one
+// called *, goes in brackets and quotes.
 func (p Path) String() string {
-	parts := make([]string, 0, len(p.Segments))
-	for _, segment := range p.Segments {
+	var out strings.Builder
+	for i, segment := range p.Segments {
+		if segment.Kind == SegmentLiteral && !readsBackBare(segment.Name) {
+			// A string always encodes, so there is no error to handle.
+			quoted, _ := json.Marshal(segment.Name)
+			out.WriteString("[" + string(quoted) + "]")
+			continue
+		}
+		if i > 0 {
+			out.WriteByte('.')
+		}
 		switch segment.Kind {
 		case SegmentSubtree:
-			parts = append(parts, "*")
+			out.WriteString("*")
 		case SegmentCapture:
-			if segment.Name == "" {
-				parts = append(parts, "{}")
-				continue
-			}
-			parts = append(parts, "{"+segment.Name+"}")
+			out.WriteString("{" + segment.Name + "}")
 		default:
-			parts = append(parts, segment.Name)
+			out.WriteString(segment.Name)
 		}
 	}
-	return strings.Join(parts, ".")
+	return out.String()
+}
+
+// readsBackBare reports whether a literal written without quotes parses as the
+// same literal.
+func readsBackBare(name string) bool {
+	if name == "" || strings.ContainsAny(name, ".[]") {
+		return false
+	}
+	return segmentOf(name) == Segment{Kind: SegmentLiteral, Name: name}
 }
 
 // Matches reports whether this path covers the other one.

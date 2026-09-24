@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -139,6 +140,13 @@ func TestPathMatching(t *testing.T) {
 		// The engine writes one [_] for each level of a nested collection.
 		{name: "a capture for each level of a nested collection", entry: "data.git.{file}.{line}.Author", read: "data.git[_][_].Author", expected: true},
 		{name: "a nested collection is not the level above it", entry: "data.git.{file}.Author", read: "data.git[_][_].Author", expected: false},
+		// OPA writes a key that is not a bare name in brackets and quotes, and
+		// parses it back as one segment whatever it holds.
+		{name: "a quoted key is one segment", entry: `data.inventory.cluster["storage.k8s.io/v1"].*`, read: `data.inventory.cluster["storage.k8s.io/v1"].StorageClass`, expected: true},
+		{name: "a capture takes a quoted key", entry: "data.inventory.cluster.{version}.StorageClass", read: `data.inventory.cluster["storage.k8s.io/v1"].StorageClass`, expected: true},
+		{name: "a quoted key is the name written bare", entry: "data.users.{owner}.roles", read: `data.users[_]["roles"]`, expected: true},
+		{name: "the dots of a quoted key separate nothing", entry: "data.inventory.cluster.storage.*", read: `data.inventory.cluster["storage.k8s.io/v1"].StorageClass`, expected: false},
+		{name: "a key called * is not a subtree", entry: `data.users["*"]`, read: "data.users.alice", expected: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -162,6 +170,89 @@ func TestPathMatching(t *testing.T) {
 // nested collection included.
 func TestParsePathRefusesAConcreteIndex(t *testing.T) {
 	for _, path := range []string{"data.users[alice].roles", "data.git[_][3].Author", "data.git[3][_].Author"} {
+		if _, err := ParsePath(path); err == nil {
+			t.Errorf("ParsePath(%q) error = nil, want a refusal", path)
+		}
+	}
+}
+
+// A quoted key reads the way ast.ParseRef reads it at OPA v1.20.2: one string
+// segment, unescaped as JSON in double quotes and as it stands in backquotes,
+// and a literal even when it looks like a capture or a subtree. String writes
+// it back so that it parses to the same path.
+func TestParsePathReadsAQuotedKeyAsOneSegment(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected []Segment
+	}{
+		{
+			name: "a key with dots and a slash",
+			path: `data.inventory.cluster["storage.k8s.io/v1"].StorageClass`,
+			expected: []Segment{
+				{Name: "data"}, {Name: "inventory"}, {Name: "cluster"}, {Name: "storage.k8s.io/v1"}, {Name: "StorageClass"},
+			},
+		},
+		{
+			name: "a key between two indices",
+			path: `data.inventory.namespace[_]["policy/v1"].PodDisruptionBudget[_].metadata.name`,
+			expected: []Segment{
+				{Name: "data"}, {Name: "inventory"}, {Name: "namespace"}, {Kind: SegmentCapture}, {Name: "policy/v1"},
+				{Name: "PodDisruptionBudget"}, {Kind: SegmentCapture}, {Name: "metadata"}, {Name: "name"},
+			},
+		},
+		{
+			name:     "a raw string",
+			path:     "data.users[`raw.key`].roles",
+			expected: []Segment{{Name: "data"}, {Name: "users"}, {Name: "raw.key"}, {Name: "roles"}},
+		},
+		{
+			name:     "an escaped quote",
+			path:     `data.users["a\"b"]`,
+			expected: []Segment{{Name: "data"}, {Name: "users"}, {Name: `a"b`}},
+		},
+		{
+			name:     "a key called *",
+			path:     `data.users["*"]`,
+			expected: []Segment{{Name: "data"}, {Name: "users"}, {Name: "*"}},
+		},
+		{
+			name:     "a key written like a capture",
+			path:     `data.users["{owner}"].roles`,
+			expected: []Segment{{Name: "data"}, {Name: "users"}, {Name: "{owner}"}, {Name: "roles"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path, err := ParsePath(tt.path)
+			if err != nil {
+				t.Fatalf("ParsePath() error = %v", err)
+			}
+			if !slices.Equal(path.Segments, tt.expected) {
+				t.Fatalf("segments = %+v, want %+v", path.Segments, tt.expected)
+			}
+
+			again, err := ParsePath(path.String())
+			if err != nil {
+				t.Fatalf("ParsePath(%q) error = %v", path.String(), err)
+			}
+			if !slices.Equal(again.Segments, path.Segments) {
+				t.Errorf("%q parses back as %+v, want %+v", path.String(), again.Segments, path.Segments)
+			}
+		})
+	}
+}
+
+// A key left open is refused, not read up to wherever the next bracket
+// happens to be.
+func TestParsePathRefusesAKeyLeftOpen(t *testing.T) {
+	for _, path := range []string{
+		`data.inventory.cluster["storage.k8s.io/v1`,
+		`data.inventory.cluster["storage.k8s.io/v1"`,
+		"data.users[`raw.key",
+		`data.users["alice"]roles`,
+		`data.users["a\q"]`,
+	} {
 		if _, err := ParsePath(path); err == nil {
 			t.Errorf("ParsePath(%q) error = nil, want a refusal", path)
 		}

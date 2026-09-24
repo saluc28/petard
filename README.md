@@ -271,8 +271,7 @@ Some shapes of negation are still invisible to the walk. `count(S) == 0` over a 
 written inline reads as an ordinary comparison, and `not count(S) > 0` is not read as "empty". An
 `and` or an `or` written inside a comprehension, an `every` or a `not` is read like any other
 expression, but partial evaluation answers for it with the documents it reads rather than with
-the requests that make it hold. The write model does not parse a quoted key that contains a dot
-or a slash.
+the requests that make it hold.
 
 ## Layout
 

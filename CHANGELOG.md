@@ -16,6 +16,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Partial evaluation answers for a rule written with `and` or `or` the way it answers for the
   same rule written as separate bodies: with the requests that make it hold, rather than with
   the documents its operands read.
+- A read of a key that is not a bare name, such as `data.inventory.cluster["storage.k8s.io/v1"]`,
+  no longer stops `petard analyze`. The key is one segment, the way OPA parses it, and a write
+  model can name it in the same notation.
 
 ## [0.2.0] - 2026-09-23
 
