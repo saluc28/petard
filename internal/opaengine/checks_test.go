@@ -152,17 +152,8 @@ needs_ticket if {
 	not input.emergency
 }
 `
-	bundle, err := Load([]string{writeSources(t, map[string]string{"policy.rego": policy})}, ParseModeV1)
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	reads, err := Reads(bundle, Limits{})
-	if err != nil {
-		t.Fatalf("Reads() error = %v", err)
-	}
-
 	var emergency []Check
-	for _, check := range reads.Checks {
+	for _, check := range readsOf(t, policy, Limits{}).Checks {
 		if check.Request == "input.emergency" {
 			emergency = append(emergency, check)
 		}
