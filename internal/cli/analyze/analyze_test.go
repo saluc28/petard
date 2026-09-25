@@ -548,7 +548,7 @@ func TestRunTakesADecisionDeclaredToDeny(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "decisions: 15\n") || !strings.Contains(out, "  data.quill.tenant_policy.denied_mfa, to deny\n") {
+	if !strings.Contains(out, "decisions: 16\n") || !strings.Contains(out, "  data.quill.tenant_policy.denied_mfa, to deny\n") {
 		t.Errorf("the report does not list the decision declared to deny:\n%s", out)
 	}
 }
@@ -739,5 +739,34 @@ func TestRunReportsTheSelfAssertedExemption(t *testing.T) {
 	}
 	if out := stdout.String(); !strings.Contains(out, "PTD-OPA-009  it asks who sets each part of the request") {
 		t.Errorf("without the declaration the report does not say the pattern did not run:\n%s", out)
+	}
+}
+
+// With the gateway and the write model declared, the group called security is
+// a finding, and the same group by its id is nothing. Without the write model
+// the same match is a candidate: nobody is named as able to pick the name.
+func TestRunReportsTheGrantOnAName(t *testing.T) {
+	gateway := filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "pep.yaml")
+	model := filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml")
+
+	var stdout, stderr bytes.Buffer
+	if code := Run(detailed("-pep", gateway, "-write-model", model, fixture("policy-v1")), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "PTD-OPA-010 finding: data.quill.platform.allow_audit_log grants on a name in input.groups[_]") {
+		t.Errorf("the report does not name the group called security:\n%s", out)
+	}
+	if strings.Contains(out, "PTD-OPA-010 finding: data.quill.platform.allow_audit_log grants on a name in input.group_ids") {
+		t.Errorf("the report names the id of the group:\n%s", out)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(detailed("-pep", gateway, fixture("policy-v1")), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	if out := stdout.String(); !strings.Contains(out, "PTD-OPA-010 candidate: data.quill.platform.allow_audit_log") {
+		t.Errorf("without the write model the report does not keep the match as a candidate:\n%s", out)
 	}
 }

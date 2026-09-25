@@ -22,11 +22,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the request that lifts a refusal, where the enforcement point declares that the caller sets that
   part. It runs with `-pep`. The fixture holds its case and its counter case in one rule, and
   `fixtures/vulnerable-bundle/pep.yaml` declares the gateway in front of it.
+- `PTD-OPA-010`, a decision grants on a name somebody else picks: a check that grants on a part of
+  the request an issuer sets, where the enforcement point declares that the issuer puts a name
+  there, such as the name of a group. It runs with `-pep`. An entry of the write model on that part
+  of the request, `input.groups[_]` in the fixture, says who can make the issuer say a name and
+  turns the candidate into a finding. Such an entry adds no writer to a document and does not count
+  towards coverage. The fixture holds the case and the counter case in one decision: the same group
+  by its name and by the id the directory assigned it.
 
 ### Changed
 
-- The extension schema describes `PTD-OPA-009` in the Entity Panel, and two saved queries ask for
-  it: `petard export -install` puts both in place.
+- The extension schema describes `PTD-OPA-009` and `PTD-OPA-010` in the Entity Panel, and two
+  saved queries ask for each: `petard export -install` puts them in place.
 
 ## [0.2.1] - 2026-09-25
 

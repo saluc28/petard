@@ -30,14 +30,14 @@ fixtures/vulnerable-bundle/
 ### The two variants are the same policy
 
 Checked on the value of every rule the two variants produce under `data.quill`, against every
-input under `inputs/`, which is 190 values over 11 inputs: no divergence between `policy-v1` and
+input under `inputs/`, which is 237 values over 13 inputs: no divergence between `policy-v1` and
 `policy-v0`, with the rego package of OPA v1.20.2.
 The same pair of trees is also the test of dual parsing:
 
 | | v1 parser | v0 parser (`--v0-compatible`) |
 |---|---|---|
 | `policy-v1/` | passes | 19 errors |
-| `policy-v0/` | 30 errors, "`if` keyword is required before rule body" | passes |
+| `policy-v0/` | 32 errors, "`if` keyword is required before rule body" | passes |
 
 ---
 
@@ -384,6 +384,33 @@ Without `-pep` the pattern does not run, and the report says so. In a policy on 
 caller writes whole, meeting a condition of a rule that refuses reads the same way as claiming an
 exemption, and only the declaration says which parts are the caller's to assert.
 
+### PTD-OPA-010, a grant on a name somebody else picks
+
+`platform.rego` opens the audit log to the group called `security`. The single sign-on of Quill
+puts the names of the user's groups in the request, and any account can create a group and name
+it, so `mallory` creates one, calls it `security`, and her next request carries the name. The same
+decision also takes the group by the id the directory assigned it, written the same way:
+`"security" in input.groups` and `"grp-5821" in input.group_ids`. `pep.yaml` declares the first as
+a name the single sign-on hands over and the second as an id, and the write model says who can
+pick a name, with an entry on `input.groups[_]`.
+
+| | where | expected |
+|---|---|---|
+| **case** | `platform.rego`, `allow_audit_log`, `"security" in input.groups` | **finding**, `role:viewer` can create a group of that name, at confidence A |
+| **counter case** | the same decision, `"grp-5821" in input.group_ids` | **nothing**, the directory assigns the id |
+
+Measured with `data.quill.verify.uncontrolled_name`:
+
+```
+mallory, before creating a group              allow_audit_log = false
+mallory, after naming her group security      allow_audit_log = TRUE   ← the name is hers to pick
+mallory, the id of her new group              allow_audit_log = false
+bob, in the security group, by its id         allow_audit_log = true
+```
+
+Without `-pep` the pattern does not run, and without the write model the case stays a candidate:
+the declaration says the value is a name, and only the write model says who can pick it.
+
 ---
 
 ## 4. What the engine must not report
@@ -408,16 +435,17 @@ legitimate finding for another.
 | 12 | `user in ...members` | 001 | the members are written by the project owner, and joining is not declared |
 | 13 | `allow_console` | 008 | the setting is just as global, but it only decides for somebody with a record |
 | 14 | `not input.mfa`, in `allow_export` and in `allow` | 009 | the gateway sets it from the session |
+| 15 | `"grp-5821" in input.group_ids` | 010 | an id the directory assigns, which nobody picks |
 
 Expected precision, with the gateway declared: **two `PTD_CanEscalateTo`** (mallory and carol),
-**fourteen findings and one candidate**, and none of the rows above under the pattern they belong
+**fifteen findings and one candidate**, and none of the rows above under the pattern they belong
 to.
 
-The fourteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
+The fifteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
 `allow_unguarded`, mallory's escalation, which comes out under the id of 003 because that is where
 the registry says a candidate turns into a finding, carol's escalation under 006, the reading room
-under 008, and the scheduled export under 009. The two escalations are the two findings that are also `PTD_CanEscalateTo`
-edges.
+under 008, the scheduled export under 009, and the group called security under 010. The two
+escalations are the two findings that are also `PTD_CanEscalateTo` edges.
 
 ---
 
@@ -480,7 +508,7 @@ own would report in both cases.
 The registry rests on one claim: **if `regal` can find it by reading a file, it is not a
 pattern.**
 
-Run on 2026-09-24 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant here, but worth
+Run on 2026-09-25 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant here, but worth
 saying):
 
 ```
@@ -524,9 +552,10 @@ Readable with `opa inspect -a`. They serve three purposes:
 There are no `schemas:`, and that is deliberate: they would raise the confidence of a finding
 artificially. The realistic case is that nobody writes them.
 
-**Fourteen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
+**Fifteen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
 of the split grant, `admin` and `publish`, the guarded and unguarded merge decisions of `review`,
-the reading room and the console of `platform`, and the export of `tenant_policy`. A rule
+the reading room, the console and the audit log of `platform`, and the export of
+`tenant_policy`. A rule
 without the annotation is a rule the engine never looks at, and leaving the three counter cases
 of `risk.rego` unannotated would break the fixture in two directions at once: *"the engine must
 not report `allow_defensive`"* would be satisfied for the wrong reason, because that rule would
@@ -601,6 +630,10 @@ Two of the uncovered paths are deliberate rather than forgotten:
 The world is closed, so uncovered means *not writable*: these are known false negatives, which is
 the right direction to be wrong in.
 
+The write model has a seventh entry, `input.groups[_]`, which is a part of the request rather
+than a document: it says who can make the single sign-on say the name of a group, for
+`PTD-OPA-010`. No read of data matches it, so it is neither in the table nor in the count.
+
 > Note for the engine: `data.documents.{d}.project` is read **through an alias**,
 > `doc := data.documents[input.doc]` and then `doc.project` in a later expression. It is not
 > visible to anything looking for whole references inside a single expression: it needs binding
@@ -637,6 +670,10 @@ opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy
 
 ```bash
 opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.self_asserted'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.uncontrolled_name'
 ```
 
 Dual parsing, where the first has to pass and the second has to fail:

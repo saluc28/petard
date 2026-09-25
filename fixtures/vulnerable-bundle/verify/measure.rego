@@ -175,3 +175,28 @@ self_asserted := {
 	saying_scheduled := data.quill.tenant_policy.allow_export with input as export_saying_scheduled
 	with_mfa := data.quill.tenant_policy.allow_export with input as export_with_mfa
 }
+
+# --- PTD-OPA-010: a grant on a name somebody else picks ------------------------
+# The audit log is open to the group called security. mallory creates a group,
+# names it security, and the single sign-on puts the name in her next request.
+# The directory gives her group an id of its own, and the id of the real group
+# is not one anybody can pick.
+audit_log_before := {"user": "mallory", "action": "read_audit_log", "groups": [], "group_ids": []}
+
+audit_log_named := {"user": "mallory", "action": "read_audit_log", "groups": ["security"], "group_ids": ["grp-9001"]}
+
+audit_log_her_id := {"user": "mallory", "action": "read_audit_log", "groups": [], "group_ids": ["grp-9001"]}
+
+audit_log_by_id := {"user": "bob", "action": "read_audit_log", "groups": ["platform"], "group_ids": ["grp-5821"]}
+
+uncontrolled_name := {
+	"before_creating_the_group": before,
+	"after_naming_it_security": named,
+	"the_id_of_her_group": her_id,
+	"the_security_group_by_its_id": by_id,
+} if {
+	before := data.quill.platform.allow_audit_log with input as audit_log_before
+	named := data.quill.platform.allow_audit_log with input as audit_log_named
+	her_id := data.quill.platform.allow_audit_log with input as audit_log_her_id
+	by_id := data.quill.platform.allow_audit_log with input as audit_log_by_id
+}

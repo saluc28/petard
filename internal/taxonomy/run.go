@@ -49,6 +49,11 @@ type Findings struct {
 	// no data, and does not run without the declaration.
 	SelfAsserted []Finding
 
+	// UncontrolledName holds the grants on a name somebody outside the policy
+	// picks. Like SelfAsserted it does not run without the declaration, and the
+	// write model decides between a finding and a candidate.
+	UncontrolledName []Finding
+
 	// Skipped names the patterns that could not run, and what it would have
 	// taken. A pattern left out in silence reads as a pattern that found
 	// nothing, which is the one thing these patterns exist to disprove.
@@ -66,6 +71,7 @@ func (f Findings) All() []Finding {
 	all = append(all, f.SplitGrant...)
 	all = append(all, f.GlobalSwitch...)
 	all = append(all, f.SelfAsserted...)
+	all = append(all, f.UncontrolledName...)
 	return all
 }
 
@@ -126,8 +132,12 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 	found.EveryEmpty = FailOpenOnEmptyEvery(a.Reads)
 	if a.EnforcementPoint == nil {
 		found.Skipped[SelfAssertedExemption] = needsEnforcementPoint
-	} else {
-		found.SelfAsserted = SelfAssertedExemptions(a)
+		found.Skipped[GrantOnUncontrolledName] = needsEnforcementPoint
+		return found, nil
+	}
+	found.SelfAsserted = SelfAssertedExemptions(a)
+	if found.UncontrolledName, err = GrantsOnUncontrolledNames(a); err != nil {
+		return Findings{}, err
 	}
 	return found, nil
 }

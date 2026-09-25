@@ -76,6 +76,11 @@ var patternNotes = []patternNote{
 		title:  "A request lifts a check on itself by saying it is exempt",
 		closes: "Taking the exemption from a part of the request the enforcement point sets, as it sets a second factor, closes it.",
 	},
+	{
+		id: "PTD-OPA-010", name: "grant-on-uncontrolled-name",
+		title:  "A decision grants on a name somebody else picks",
+		closes: "Granting on the id the issuer assigns, which nobody picks and nothing else is ever given, closes it.",
+	},
 }
 
 // patternLines renders, for a list of pattern ids held under key, one line per

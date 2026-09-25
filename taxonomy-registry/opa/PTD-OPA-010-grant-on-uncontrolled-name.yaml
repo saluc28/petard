@@ -1,0 +1,229 @@
+schema_version: 1
+
+id: PTD-OPA-010
+name: grant-on-uncontrolled-name
+title: A decision grants on a name somebody else picks
+engine: opa
+status: implemented
+
+category:
+  id: UNCONTROLLED-IDENTIFIER
+  title: Uncontrolled identifier
+  summary: >
+    A decision grants to whoever the request says holds an identifier, and somebody the policy
+    does not govern hands the identifier out: the name of a group, a team or a user that an
+    issuer vouches for, picked by whoever creates or renames the thing it names.
+    Abstract category: it holds for any engine that decides on attributes an issuer puts in the
+    request, where the attribute is a name rather than an identifier the issuer assigns.
+  category_note: >
+    The first instance. The same category covers a name matched rather than compared whole, a
+    prefix or a glob over a group name, which this instance does not read: see the notes.
+
+summary: >
+  A decision grants when a part of the request holds a name the policy writes, a group called
+  `security`. The enforcement point copies that part from an issuer, a single sign-on or an
+  identity provider, so the caller cannot write it. The issuer, though, says whatever name the
+  group was given, and whoever can create a group, or rename one, picks the name. Who can make the
+  issuer say `security` depends on the issuer's own rules for creating and renaming groups, which
+  the policy cannot see.
+  In the fixture, the audit log of the platform is open to the group called `security`, and any
+  account can create a group and name it.
+
+preconditions:
+  - capability: The principal can create, or rename, the thing the name names at the issuer
+    note: >
+      A group in a directory, or a team in a GitHub organization, where members can create teams
+      by default. The write model says who can, in an entry on the part of the request.
+
+mechanism:
+  description: >
+    `"security" in input.groups` holds for anybody whose request carries a group of that name, and
+    the single sign-on puts in the request the names of the groups the user is in. A group created
+    a minute ago under that name is one of them. The same group looked up by the id the directory
+    assigned it, `"grp-5821" in input.group_ids`, is written the same way and holds only for the
+    group that id was given to.
+  example: |
+    package example
+
+    # the decision the PEP of GET /audit-log consumes
+    default allow := false
+
+    allow if {
+        input.action == "read_audit_log"
+        "security" in input.groups
+    }
+  example_note: >
+    The audit log rule of the fixture has the same shape, and it was measured with the rego package
+    of OPA v1.20.2: a request with no groups is refused, the same request after naming a new group
+    `security` is allowed, and the id the directory gave that new group opens nothing.
+
+detection:
+  ast_source: compiled
+  requires:
+    - binding-resolution
+    - rule-graph
+    - enforcement-point
+  requires_note: >
+    `enforcement-point` for signal 2: whether an issuer sets a part of the request, and whether
+    what it puts there is a name or an id, is declared per product in `pep-registry/`, or in a
+    file of the same format named with `-pep`. Without a declaration the pattern does not run, and
+    the report says so.
+  signals:
+    - order: 1
+      check: >
+        A decision reaches a check that holds a part of the request against a value the policy
+        writes, an equality or a search with `in` in either direction, and the check holding moves
+        the decision towards granting. The engine reports it among the checks on the request, as
+        granting in that decision.
+      rationale: >
+        The value the policy writes is the name the grant is keyed on. A part of the request asked
+        to be true is compared with no name, and a check that refuses grants nothing.
+    - order: 2
+      check: >
+        The enforcement point declares that an issuer sets that part, with `identifier: name`. A
+        value searched in a collection of the request is asked about the elements of the
+        collection first.
+      rationale: >
+        The case and the counter case differ only here, and the policy does not say it. Somebody
+        picks a name; the issuer assigns an id and never gives it to anything else. The pattern
+        leaves alone a part the caller sets, which says what the request asks for, and a part the
+        enforcement point works out itself.
+    - order: 3
+      check: >
+        The write model has an entry on that part of the request, naming who can make the issuer
+        say a name there. With one the match is a finding, without one a candidate.
+      rationale: >
+        Who can create or rename a group is a fact about the issuer, of the same kind as who can
+        write a document, and it goes in the same file. An entry on a path into input matches no
+        read of data, so it adds no writer to a document and does not count towards the coverage
+        of the write model.
+  confidence: A
+  confidence_note: >
+    A finding rests on two declarations, the enforcement point's and the write model's, and carries
+    level A. A candidate carries the level the request was recognized at.
+  requires_write_model: true
+  requires_write_model_note: >
+    Without an entry on the part of the request the pattern reports candidates: the declaration of
+    the enforcement point says the value is a name, and only the write model says who can pick it.
+    It emits no `PTD_CanEscalateTo` either way, since the name opens a grant rather than the
+    position of another principal.
+
+graph:
+  emits: finding
+  marks:
+    - kind: PTD_Rule
+      properties: [is_decision]
+  marks_note: >
+    It marks the rule that holds the check on the request, as `PTD-OPA-009` does, and a rule that
+    reads no document has no node otherwise.
+
+false_positives:
+  - condition: >
+      Only somebody already entitled to the grant can create or rename a group: the issuer reserves
+      the name, or limits who creates groups, as the owners of a GitHub organization can limit team
+      creation to themselves.
+    discriminator: >
+      Who can create or rename is a setting of the issuer, and the write model is where it is
+      declared. The pattern takes the entry as written, and without one the match stays a
+      candidate.
+  - condition: >
+      The rule that grants on the name also asks for something the principal who picks the name
+      does not have, a role in the data or a second factor.
+    discriminator: >
+      The engine reports the check and does not evaluate the decision for the principal the write
+      model names, with the name in place. Partial evaluation with the name fixed and that
+      principal as the subject would tell the two apart.
+  - condition: >
+      The grant is meant for whoever holds the name, whoever picked it: a group anybody may create
+      and join by design, where creating one gives nothing joining does not.
+    discriminator: >
+      Intent, which is in neither the policy, the data nor the declarations.
+  - condition: >
+      The issuer never lets a name be picked twice, and the declaration still says `identifier:
+      name`.
+    discriminator: >
+      Only the product can say it. The declaration names where each field was read, so that it can
+      be checked, and a value the issuer assigns and never reuses goes under `identifier: id`.
+
+not_a_lint_rule: >
+  A linter sees `"security" in input.groups` and `"grp-5821" in input.group_ids` as the same
+  search of the request for a string. Which of the two a user can pick is in the declaration of
+  the enforcement point, and who can pick it is in the write model, in no file of the bundle.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  pep: fixtures/vulnerable-bundle/pep.yaml
+  case: >
+    `platform.rego`, `allow_audit_log`: the audit log is open to the group called `security`, the
+    gateway declares the names of the groups as names the single sign-on hands over, and the write
+    model lets any account create a group.
+  counter_case: >
+    The same decision, `"grp-5821" in input.group_ids`: the same group by the id the directory
+    assigned it, which the gateway declares as an id.
+  expected: >
+    A finding on `input.groups[_]` for `data.quill.platform.allow_audit_log`, and nothing on
+    `input.group_ids`.
+
+references:
+  - title: OpenID Connect Core 1.0, Claim Stability and Uniqueness
+    note: >
+      Section 5.7, in the version incorporating errata set 2, consulted 2026-09-25: `sub` and `iss`
+      together are the only claims a relying party can rely upon as a stable identifier for the
+      user, an issuer may re-use an `email` value across users at different points in time, and
+      claims such as `email`, `phone_number`, `preferred_username` and `name` must not be used as
+      unique identifiers for the user.
+  - title: GitHub REST API, Create a team
+    note: >
+      github/rest-api-description at 4377b4f4845badf28d13464dfb3042c6cf0e3a1f,
+      `descriptions/api.github.com/api.github.com.yaml:28353`: by default the members of an
+      organization can create teams, and its owners can limit team creation to owners. Line 28355:
+      whoever creates a team becomes its maintainer.
+
+verified:
+  date: 2026-09-25
+  tool_version: opa 1.20.2
+  how: >
+    The engine finds the case and stays quiet about the counter case on the fixture, run with its
+    gateway and its write model (`-pep fixtures/vulnerable-bundle/pep.yaml -write-model
+    fixtures/vulnerable-bundle/write-model.yaml`). The checks on the request list `"security" in
+    input.groups` and `"grp-5821" in input.group_ids` as granting in `allow_audit_log`; the
+    declaration puts the first on the single sign-on as a name and the second as an id, and the
+    write model lets `role:viewer` create a group, so one finding comes out, at confidence A.
+    Without the write model it is a candidate, and without a declaration the pattern does not run.
+    The numbers behind it, `data.quill.verify.uncontrolled_name`, measured with the rego package of
+    OPA v1.20.2: a request with no groups is refused, the same request with a group named
+    `security` is allowed, the id of that new group opens nothing, and the id of the real group
+    does.
+    `regal` v0.42.0 reports no violations on `policy-v1`.
+    On generated worlds the pattern reports the same finding and nothing else: it rests on the
+    policy and the two declarations, and a dataset moves none of them.
+
+related:
+  - id: PTD-OPA-009
+    note: >
+      The other pattern that reads the request rather than the data, from the same declaration.
+      009 is a part the caller writes that lifts a refusal; this is a part an issuer writes, on a
+      name somebody else picked, that grants.
+  - id: PTD-OPA-001
+    note: >
+      The same shape one step removed. 001 is a document the subject writes that a decision reads
+      about them; here the subject writes no part of the request, and creates the thing whose name
+      the issuer copies into it.
+
+notes:
+  - >
+    Known false negative: a name compared with a set the policy defines in a rule of its own,
+    `g in admins` or `admins[g]` with `admins := {"security"}` elsewhere. The comparison is with a
+    reference to a rule rather than with a value the expression writes, and the engine does not
+    read it as a check on the request. The same set bound to a local variable in the body is read.
+  - >
+    Known false negative: a name matched rather than compared, with `startswith`, `glob.match` or
+    `regex.match`. Only an equality and a search with `in` are checks.
+  - >
+    Known false negative: a refusal keyed on a name, `deny if "contractors" in input.groups`.
+    Whoever can rename the group takes its members out of the refusal, and the pattern looks at the
+    side that grants only.
+  - >
+    Known false negative: a part an issuer sets whose declaration leaves out whether it is a name
+    or an id. The pattern leaves it alone rather than guess.

@@ -22,10 +22,10 @@ import (
 // Each finding goes where its fact is. An escalation marks the edge that draws
 // it, which AddEscalations has to have added already. A position a principal
 // holds marks the principal. A quantifier marks the rule that holds it, and so
-// does an exemption the request asserts, which a rule reading no document does
-// not otherwise have a node for. Every other
-// finding is about reads, and marks the reads it names, from the rule to the
-// document, or to the value an external source answered with.
+// do an exemption the request asserts and a grant on a name, which a rule
+// reading no document does not otherwise have a node for. Every other finding
+// is about reads, and marks the reads it names, from the rule to the document,
+// or to the value an external source answered with.
 //
 // A finding that reaches nothing speaks about something the graph does not
 // hold, which is a defect in one of the two, and the count is how it shows.
@@ -62,7 +62,8 @@ func addFinding(g *graph.Graph, reads *opaengine.ReadSet, finding Finding) (int,
 		}
 		return countOf(g.MarkNode(finding.Principal, mark)), nil
 
-	case finding.PatternID == EveryOverEmptyDomain || finding.PatternID == SelfAssertedExemption:
+	case finding.PatternID == EveryOverEmptyDomain || finding.PatternID == SelfAssertedExemption ||
+		finding.PatternID == GrantOnUncontrolledName:
 		reached := 0
 		for _, site := range finding.Reads {
 			if err := g.AddNode(graph.Node{

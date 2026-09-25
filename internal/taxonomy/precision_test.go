@@ -239,3 +239,22 @@ func TestSelfAssertedExemptionRestsOnThePolicyNotTheData(t *testing.T) {
 		})
 	}
 }
+
+// The grant on a name rests on the policy, the declaration of the gateway and
+// the write model, and a generated world changes none of them: on every one the
+// group called security comes out, and its id does not.
+func TestUncontrolledNameRestsOnThePolicyNotTheData(t *testing.T) {
+	for _, seed := range []uint64{1, 7, 4242} {
+		t.Run(fmt.Sprintf("seed %d", seed), func(t *testing.T) {
+			_, a := analyzeGenerated(t, fixture.Small(seed))
+
+			findings, err := GrantsOnUncontrolledNames(a)
+			if err != nil {
+				t.Fatalf("GrantsOnUncontrolledNames() error = %v", err)
+			}
+			if len(findings) != 1 || findings[0].Path != "input.groups[_]" {
+				t.Errorf("grants on a name on generated data = %v, want only input.groups[_]", findings)
+			}
+		})
+	}
+}

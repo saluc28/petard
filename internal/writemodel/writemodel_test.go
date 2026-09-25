@@ -18,7 +18,7 @@ func fixtureModel(t *testing.T) *Model {
 	return model
 }
 
-// The fixture declares six paths, and the two that matter are the case and
+// The fixture declares seven paths, and the two that matter are the case and
 // the counter case of the self write pattern: the same record, one field the
 // subject writes and one only an administrator writes.
 func TestLoadFixture(t *testing.T) {
@@ -27,8 +27,8 @@ func TestLoadFixture(t *testing.T) {
 	if model.SchemaVersion != SchemaVersion {
 		t.Errorf("schema version = %d, want %d", model.SchemaVersion, SchemaVersion)
 	}
-	if len(model.Entries) != 6 {
-		t.Fatalf("entries = %d, want 6", len(model.Entries))
+	if len(model.Entries) != 7 {
+		t.Fatalf("entries = %d, want 7", len(model.Entries))
 	}
 
 	department := model.Entries[0]

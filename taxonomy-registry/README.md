@@ -16,7 +16,7 @@ Two checks say what is not covered elsewhere.
 `imports`, `performance`, `style`, `testing`, confirmed at the source of v0.42.0 by listing the
 rule directories rather than reading them off a documentation page. The official linter of the
 OPA ecosystem, written by the maintainers, has no notion of "this Rego is dangerous". And
-`regal lint` on the fixture, which holds the case and the counter case of all nine patterns,
+`regal lint` on the fixture, which holds the case and the counter case of all ten patterns,
 reports zero violations.
 
 **OPA's security documentation is about the server, not about the policy.** It covers TLS,
@@ -272,12 +272,13 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, the third instance of the category: an `every` over a domain the request can empty |
 | `PTD-OPA-008` | GLOBAL-SWITCH | opa | finding | C | `verified`, a document every request shares, and the question asked about somebody no document names |
 | `PTD-OPA-009` | SELF-ASSERTED-EXEMPTION | opa | finding | A | `implemented`, the first to read the request instead of the data, for a check the caller lifts by writing a part of it |
+| `PTD-OPA-010` | UNCONTROLLED-IDENTIFIER | opa | finding | A | `implemented`, a grant on a group name an issuer hands over, where whoever creates or renames the group picks the name |
 
-Between them the nine exercise `binding-resolution`, `concrete-data`, `enforcement-point`,
+Between them the ten exercise `binding-resolution`, `concrete-data`, `enforcement-point`,
 `rule-graph` and `taint`. 007 adds no new capability, only a new construct within `rule-graph`,
 008 asks a new question of `concrete-data`, what a decision gives a principal the data knows
-nothing about, and 009 needs the declaration of the enforcement point, which says who sets each
-part of the request.
+nothing about, 009 needs the declaration of the enforcement point, which says who sets each part
+of the request, and 010 asks the same declaration what kind of value an issuer puts there.
 
 `partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
 the engine measures with, and in 002 it is how the fixture checks the **consequence** of a
@@ -362,6 +363,7 @@ limit in the engine:
 | `PTD-OPA-007` | not one `every` in the corpus: the keyword does not appear in any of the 142 files |
 | `PTD-OPA-008` | it measures against concrete data, and the corpus ships none. One read in the whole corpus names a document every request shares, the storage classes Gatekeeper replicates into its inventory |
 | `PTD-OPA-009` | it runs only with the enforcement point declared, and `pep-registry/` declares none for Gatekeeper, since an admission review is the object the policy judges, written whole by the caller. With a declaration that covers no field it reports 26 candidates in 14 units, among them a container's own resource limits |
+| `PTD-OPA-010` | it runs only with the enforcement point declared, too. The one policy that reads who is asking, `noupdateserviceaccount`, compares the user's name and groups with the lists the constraint passes in its parameters, and never with a name the policy writes |
 
 A zero against a real corpus is neither a confirmation nor a refutation of the declared false
 positives: it is a measurement of what that corpus holds. Kubernetes admission policies decide
@@ -454,9 +456,9 @@ functions of `common` they call, so the tree was run as one bundle. Its decision
 to the `allow` of its own package. The 45 files read no `data`. The roles, permissions and
 organizational units of the user travel in the request under `input.user`, which the API sets to
 the current user it looks up before asking (`createOpaRouter.ts:143` and `180`). Eight of the
-nine patterns start from a read of `data`, from a value from outside the policy or from an
-`every`, and the 45 files contain none of them. The ninth, `PTD-OPA-009`, runs only with the
-enforcement point declared.
+ten patterns start from a read of `data`, from a value from outside the policy or from an
+`every`, and the 45 files contain none of them. The other two, `PTD-OPA-009` and `PTD-OPA-010`,
+run only with the enforcement point declared.
 
 A corpus is not what `verified` waits for, and this is worth separating: a corpus says what other
 people write, which is why these six are here, while the conditions a pattern declares against
@@ -465,7 +467,7 @@ itself are settled one case at a time, in the file that declares them.
 ### The fixture
 
 `fixtures/vulnerable-bundle/` holds a case **and at least one counter case** for each of the
-nine, in Rego v1 and v0, with the write model, the declaration of its gateway, and an
+ten, in Rego v1 and v0, with the write model, the declaration of its gateway, and an
 `EXPECTED.md` that declares in words what the engine has to find and what it must not. The numbers
 there are executed, not estimated.
 

@@ -26,3 +26,21 @@ allow_console {
 	"admin" in data.users[input.user].roles
 	data.settings.console.enabled == true
 }
+
+# METADATA
+# scope: document
+# title: Audit log decision
+# entrypoint: true
+default allow_audit_log = false
+
+# PTD-OPA-010 CASE, the group by the name somebody picked
+allow_audit_log {
+	input.action == "read_audit_log"
+	"security" in input.groups
+}
+
+# PTD-OPA-010 COUNTER CASE, the group by the id the directory assigned
+allow_audit_log {
+	input.action == "read_audit_log"
+	"grp-5821" in input.group_ids
+}

@@ -1,0 +1,17 @@
+name: "PTD-OPA-010: rules that grant on a name somebody else picks"
+guid: 7c84362c-46c6-4699-992b-49168742ceef
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Uncontrolled identifier
+description: >
+  Rules holding a check that grants on a name an issuer puts in the request, where the write model
+  says who can make the issuer say it.
+query: |-
+  MATCH (r:PTD_Rule)
+  WHERE 'PTD-OPA-010' IN r.patterns
+  RETURN r
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-010-grant-on-uncontrolled-name.yaml
+acknowledgements: []

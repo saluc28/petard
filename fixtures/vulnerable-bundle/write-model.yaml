@@ -92,6 +92,21 @@ entries:
         note: Whatever is merged into the configuration repository.
         confidence: asserted
 
+  # ---------------------------------------------------------------------
+  # THE PTD-OPA-010 CASE. Not a document: a part of the request, which the
+  # single sign-on fills in with the names of the user's groups. Whoever can
+  # create a group, or rename one, can make it say any name, so the entry
+  # says who can do that. No read of data matches a path into input, so the
+  # entry adds no writer to a document and does not count towards coverage.
+  - path: input.groups[_]
+    writable_by:
+      - principal: role:viewer
+        via: "POST /api/v1/groups"
+        note: >
+          Any account can create a group, a viewer included, and whoever
+          creates one names it and is its first member.
+        confidence: asserted
+
 # ---------------------------------------------------------------------------
 # Paths deliberately NOT declared, to keep the world closed.
 # What is not declared is not writable, so an incomplete model produces false

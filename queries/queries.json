@@ -416,6 +416,38 @@
     "acknowledgements": []
   },
   {
+    "name": "PTD-OPA-010: grants on a name nobody declared a creator for",
+    "guid": "31db46f6-1697-4066-9d88-cc0c35925ec5",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Uncontrolled identifier",
+    "description": "The same checks, where no write model says who can create or rename what the name names. The issuer may let anybody pick it.",
+    "query": "MATCH (r:PTD_Rule)\nWHERE 'PTD-OPA-010' IN r.candidate_patterns\nRETURN r",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-010-grant-on-uncontrolled-name.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-010: rules that grant on a name somebody else picks",
+    "guid": "7c84362c-46c6-4699-992b-49168742ceef",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Uncontrolled identifier",
+    "description": "Rules holding a check that grants on a name an issuer puts in the request, where the write model says who can make the issuer say it.",
+    "query": "MATCH (r:PTD_Rule)\nWHERE 'PTD-OPA-010' IN r.patterns\nRETURN r",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-010-grant-on-uncontrolled-name.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
     "name": "Petard: every escalation",
     "guid": "add3eff5-92cc-47fa-9e23-d29f03dfe870",
     "prebuilt": false,
