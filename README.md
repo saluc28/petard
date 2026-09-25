@@ -147,8 +147,8 @@ petard export -url https://bloodhound.example -install -upload -verify \
 graph: 64 nodes, 84 edges
 schema installed, 3 of 5 relationship kinds are traversable
 saved queries: 33 added, 0 already there
-ingest job 3 started
-job 3 processed 1 file(s) with no errors
+ingest job 1 started
+job 1 processed 1 file(s) with no errors
   MALLORY -> DAVE: pathfinding walks it
   CAROL -> ALICE: pathfinding walks it
 2 of 2 escalations are walkable in BloodHound
