@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/open-policy-agent/opa/v1/ast"
 )
 
 // TestReadsResolveThroughCallSites is the reason calls.go exists.
@@ -241,6 +243,65 @@ owns([user, doc]) if data.documents[doc].owner == user
 			}
 			if read.Trace == nil || read.Trace.Term != "input.doc" {
 				t.Errorf("trace = %+v, want the term input.doc", read.Trace)
+			}
+		})
+	}
+}
+
+// What a call passes for a parameter the head takes apart is found only where
+// the call writes the array or the object out, or binds a variable to one
+// first. Everything else is not followed, a value the policy computes included,
+// and neither is a key the argument does not hold.
+func TestParameterPlacePicksWhatTheCallWritesOut(t *testing.T) {
+	bindings := map[ast.Var]binding{
+		"pair":     {kind: bindingAlias, term: ast.MustParseTerm(`["alice", "doc"]`)},
+		"computed": {kind: bindingRuleOutput, origin: ast.MustParseRef("data.t.pair")},
+	}
+	keys := func(path ...any) []*ast.Term {
+		terms := make([]*ast.Term, 0, len(path))
+		for _, key := range path {
+			terms = append(terms, ast.NewTerm(ast.MustInterfaceToValue(key)))
+		}
+		return terms
+	}
+
+	tests := []struct {
+		name  string
+		place parameterPlace
+		args  string
+
+		// expected is the term picked, and empty when nothing is.
+		expected string
+	}{
+		{"the argument itself", parameterPlace{position: 1}, `["x", "y"]`, `"y"`},
+		{"an element of an array", parameterPlace{within: keys(1)}, `[["x", "y"]]`, `"y"`},
+		{"a key of an object", parameterPlace{within: keys("who")}, `[{"who": "x"}]`, `"x"`},
+		{"an array inside an object", parameterPlace{within: keys("who", 0)}, `[{"who": ["x"]}]`, `"x"`},
+		{"an array held in a variable", parameterPlace{within: keys(1)}, `[pair]`, `"doc"`},
+		{"an argument the call does not pass", parameterPlace{position: 1}, `["x"]`, ""},
+		{"an index past the end", parameterPlace{within: keys(2)}, `[["x", "y"]]`, ""},
+		{"a negative index", parameterPlace{within: keys(-1)}, `[["x", "y"]]`, ""},
+		{"an index that is not whole", parameterPlace{within: keys(0.5)}, `[["x", "y"]]`, ""},
+		{"a key where an array was", parameterPlace{within: keys("who")}, `[["x", "y"]]`, ""},
+		{"a key the object does not hold", parameterPlace{within: keys("what")}, `[{"who": "x"}]`, ""},
+		{"a string where an array was", parameterPlace{within: keys(0)}, `["xy"]`, ""},
+		{"a value the policy computes", parameterPlace{within: keys(0)}, `[computed]`, ""},
+		{"a variable nothing binds", parameterPlace{within: keys(0)}, `[free]`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := ast.MustParseTerm(tt.args).Value.(*ast.Array)
+			var passed []*ast.Term
+			for i := range args.Len() {
+				passed = append(passed, args.Elem(i))
+			}
+
+			got := ""
+			if term, picked := tt.place.pick(passed, bindings); picked {
+				got = term.String()
+			}
+			if got != tt.expected {
+				t.Errorf("pick() = %q, want %q", got, tt.expected)
 			}
 		})
 	}
