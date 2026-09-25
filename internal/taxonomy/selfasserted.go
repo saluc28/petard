@@ -43,7 +43,7 @@ func SelfAssertedExemptions(a Analysis) []Finding {
 	var findings []Finding
 
 	for _, check := range a.Reads.Checks {
-		field, declared := fieldOfCheck(a.EnforcementPoint, check)
+		field, _, declared := fieldOfCheck(a.EnforcementPoint, check)
 		if declared && field.SetBy != pep.SetByCaller {
 			continue
 		}
@@ -66,16 +66,18 @@ func SelfAssertedExemptions(a Analysis) []Finding {
 }
 
 // fieldOfCheck returns what an enforcement point says about the part of the
-// request a check reads. A value searched in a collection of the request is
-// one of its elements, and the declaration may speak about the elements
-// rather than about the collection.
-func fieldOfCheck(point *pep.EnforcementPoint, check opaengine.Check) (pep.Field, bool) {
+// request a check reads, and the path of the part it answered for. A value
+// searched in a collection of the request is one of its elements, and the
+// declaration may speak about the elements rather than about the collection.
+func fieldOfCheck(point *pep.EnforcementPoint, check opaengine.Check) (pep.Field, string, bool) {
 	if check.Operator == opaengine.CheckContains {
-		if field, found := point.FieldFor(check.Request + "[_]"); found {
-			return field, true
+		element := check.Request + "[_]"
+		if field, found := point.FieldFor(element); found {
+			return field, element, true
 		}
 	}
-	return point.FieldFor(check.Request)
+	field, found := point.FieldFor(check.Request)
+	return field, check.Request, found
 }
 
 // exemptionFinding says what was found: the part of the request, the decision
