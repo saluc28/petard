@@ -40,6 +40,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `petard demo -v` prints the same report on every run. The header of the table of reads was
   padded for the path of the temporary directory the bundle is unpacked into. That directory has a
   random name, so the header sat out of line with the rows by a different amount each time.
+- A read of an element by its position, such as `data.admins[0]`, no longer stops
+  `petard analyze`. The position is one segment, the same as in `data.admins["0"]`, because OPA's
+  store looks both up under the key `"0"`. A write model can name it either way.
 
 ## [0.2.1] - 2026-09-25
 

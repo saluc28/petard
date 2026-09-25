@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/open-policy-agent/opa/v1/ast"
 )
 
 func fixtureModel(t *testing.T) *Model {
@@ -147,6 +149,10 @@ func TestPathMatching(t *testing.T) {
 		{name: "a quoted key is the name written bare", entry: "data.users.{owner}.roles", read: `data.users[_]["roles"]`, expected: true},
 		{name: "the dots of a quoted key separate nothing", entry: "data.inventory.cluster.storage.*", read: `data.inventory.cluster["storage.k8s.io/v1"].StorageClass`, expected: false},
 		{name: "a key called * is not a subtree", entry: `data.users["*"]`, read: "data.users.alice", expected: false},
+		// OPA's store keeps a number in a path as the string it is written as.
+		{name: "a capture takes a position", entry: "data.admins.{position}", read: "data.admins[0]", expected: true},
+		{name: "a position is the number quoted", entry: `data.admins["0"]`, read: "data.admins[0]", expected: true},
+		{name: "a position is not another one", entry: "data.admins[1]", read: "data.admins[0]", expected: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -166,12 +172,96 @@ func TestPathMatching(t *testing.T) {
 	}
 }
 
-// A concrete index names one document wherever it sits, the second level of a
-// nested collection included.
-func TestParsePathRefusesAConcreteIndex(t *testing.T) {
-	for _, path := range []string{"data.users[alice].roles", "data.git[_][3].Author", "data.git[3][_].Author"} {
+// A variable in brackets is refused wherever it sits, the second level of a
+// nested collection included, and so is a number OPA would not parse.
+func TestParsePathRefusesAVariableIndex(t *testing.T) {
+	for _, path := range []string{
+		"data.users[alice].roles",
+		"data.git[_][file].Author",
+		"data.git[file][_].Author",
+		"data.users[]",
+		"data.users[01]",
+		"data.users[1.]",
+	} {
 		if _, err := ParsePath(path); err == nil {
 			t.Errorf("ParsePath(%q) error = nil, want a refusal", path)
+		}
+	}
+}
+
+// A number in brackets is the literal OPA's store keeps it under, the number as
+// written, and String writes it back so that it parses to the same path.
+func TestParsePathReadsANumberAsTheKeyItIsStoredUnder(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected []Segment
+	}{
+		{
+			name:     "a position",
+			path:     "data.admins[0]",
+			expected: []Segment{{Name: "data"}, {Name: "admins"}, {Name: "0"}},
+		},
+		{
+			name: "a position in a nested collection",
+			path: "data.git[_][3].Author",
+			expected: []Segment{
+				{Name: "data"}, {Name: "git"}, {Kind: SegmentCapture}, {Name: "3"}, {Name: "Author"},
+			},
+		},
+		{
+			name:     "a negative number",
+			path:     "data.admins[-1]",
+			expected: []Segment{{Name: "data"}, {Name: "admins"}, {Name: "-1"}},
+		},
+		{
+			name:     "a fraction with no integer part",
+			path:     "data.weights[.5]",
+			expected: []Segment{{Name: "data"}, {Name: "weights"}, {Name: ".5"}},
+		},
+		{
+			name:     "an exponent",
+			path:     "data.weights[1e3]",
+			expected: []Segment{{Name: "data"}, {Name: "weights"}, {Name: "1e3"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path, err := ParsePath(tt.path)
+			if err != nil {
+				t.Fatalf("ParsePath() error = %v", err)
+			}
+			if !slices.Equal(path.Segments, tt.expected) {
+				t.Fatalf("segments = %+v, want %+v", path.Segments, tt.expected)
+			}
+
+			again, err := ParsePath(path.String())
+			if err != nil {
+				t.Fatalf("ParsePath(%q) error = %v", path.String(), err)
+			}
+			if !slices.Equal(again.Segments, path.Segments) {
+				t.Errorf("%q parses back as %+v, want %+v", path.String(), again.Segments, path.Segments)
+			}
+		})
+	}
+}
+
+// A number in brackets is taken exactly when OPA's parser reads a number there,
+// so no read the engine writes out is refused and nothing else passes for one.
+func TestParsePathTakesTheNumbersOPATakes(t *testing.T) {
+	for _, index := range []string{
+		"0", "12", "-1", "-0", "1.5", ".5", "-.5", "1e3", "1E+3", "0e5", "1e-3",
+		"01", "00", "1.", "1e", "-", "+1", "0x10", "1_000", "Inf", "alice",
+	} {
+		path := "data.admins[" + index + "]"
+		ref, err := ast.ParseRef(path)
+		isNumber := false
+		if err == nil {
+			_, isNumber = ref[len(ref)-1].Value.(ast.Number)
+		}
+
+		if _, err := ParsePath(path); (err == nil) != isNumber {
+			t.Errorf("ParsePath(%q) error = %v, and OPA reads a number there: %t", path, err, isNumber)
 		}
 	}
 }

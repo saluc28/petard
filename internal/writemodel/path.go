@@ -17,6 +17,7 @@ package writemodel
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -62,6 +63,15 @@ type Path struct {
 // segments, and the fourth is storage.k8s.io/v1. OPA writes a key that way
 // whenever it is not a bare name, so a read of the inventory Gatekeeper
 // replicates arrives in this form.
+//
+// A number in brackets is a literal as well, and the same one as the number
+// quoted: data.admins[0] and data.admins["0"] are one path. OPA's parser tells
+// them apart, but its store keeps every step of a path as a string, and which
+// document the step names, the first element of an array or the key "0" of an
+// object, depends on what the store holds there and not on how the path was
+// written (storage.NewPathForRef, v1/storage/path.go:66, and ptr.Ptr,
+// v1/storage/internal/ptr/ptr.go:19, at OPA v1.20.2). The write model says
+// who writes documents, so it follows the store.
 func ParsePath(path string) (Path, error) {
 	if path == "" {
 		return Path{}, fmt.Errorf("writemodel: empty path")
@@ -149,13 +159,23 @@ func parseIndex(rest string) (Segment, string, error) {
 	if !closed {
 		return Segment{}, "", fmt.Errorf("unclosed [ in %q", rest)
 	}
-	if index != "_" {
-		// A concrete index would be a path to one document, and the model
-		// speaks about shapes. Writing it out is almost certainly a mistake.
-		return Segment{}, "", fmt.Errorf("index [%s]: only [_] is a path, a concrete index names one document", index)
+	switch {
+	case index == "_":
+		return Segment{Kind: SegmentCapture}, after, nil
+	case regoNumber.MatchString(index):
+		return Segment{Kind: SegmentLiteral, Name: index}, after, nil
 	}
-	return Segment{Kind: SegmentCapture}, after, nil
+	// The engine writes every other term as _, so anything else was written by
+	// hand: a name, for one, is a capture meant as {name} or a key that lost
+	// its quotes.
+	return Segment{}, "", fmt.Errorf("index [%s]: a bracket holds _, a number or a quoted key", index)
 }
+
+// regoNumber is a number the way OPA's parser takes one, which is JSON's
+// grammar plus a fraction with no integer part, as in .5 (parseNumber,
+// v1/ast/parser.go:2563 at v1.20.2). The segment keeps the number as written,
+// the way the store does.
+var regoNumber = regexp.MustCompile(`^-?(\.[0-9]+|(0|[1-9][0-9]*)(\.[0-9]+)?)([eE][+-]?[0-9]+)?$`)
 
 // closingQuote returns where the double quote that ends a string sits in s,
 // which starts right after the opening one, or -1 when nothing ends it.
