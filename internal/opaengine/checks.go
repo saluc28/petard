@@ -103,12 +103,8 @@ type CheckedDecision struct {
 
 // foundTruth is a part of the request met as an expression of its own.
 type foundTruth struct {
-	rule     *ast.Rule
-	term     *ast.Term
-	bindings map[ast.Var]binding
-	negated  bool
-	location *ast.Location
-	top      int
+	exprSite
+	term *ast.Term
 }
 
 // markTruth records an expression that is one term, for the checks: when the
@@ -120,14 +116,7 @@ func (r *refReader) markTruth(term *ast.Term, sc scope) {
 	default:
 		return
 	}
-	r.foundTruths = append(r.foundTruths, foundTruth{
-		rule:     r.current,
-		term:     term,
-		bindings: sc.bindings,
-		negated:  sc.negated,
-		location: term.Loc(),
-		top:      r.top,
-	})
+	r.foundTruths = append(r.foundTruths, foundTruth{exprSite: r.site(sc, term.Loc()), term: term})
 }
 
 // checks judges every comparison and every lone term met while walking, and
@@ -136,13 +125,13 @@ func (r *refReader) markTruth(term *ast.Term, sc scope) {
 func (r *refReader) checks(limits Limits) ([]Check, []string) {
 	var checks []Check
 	var warnings []string
-	keep := func(rule *ast.Rule, request string, value *ast.Term, operator CheckOperator, negated bool, location *ast.Location, top int) {
+	keep := func(at exprSite, request string, value *ast.Term, operator CheckOperator) {
 		check := Check{
 			Request:       request,
 			Operator:      operator,
-			Rule:          rulePath(rule).String(),
-			UnderNegation: negated,
-			Decisions:     r.checkedDecisions(rule, top, negated),
+			Rule:          rulePath(at.rule).String(),
+			UnderNegation: at.negated,
+			Decisions:     r.checkedDecisions(at),
 		}
 		if len(check.Decisions) == 0 {
 			return
@@ -150,8 +139,9 @@ func (r *refReader) checks(limits Limits) ([]Check, []string) {
 		if value != nil {
 			check.Value = value.String()
 		}
+		location := at.location
 		if location == nil {
-			location = rule.Loc()
+			location = at.rule.Loc()
 		}
 		if location != nil {
 			check.File, check.Line = location.File, location.Row
@@ -184,7 +174,7 @@ func (r *refReader) checks(limits Limits) ([]Check, []string) {
 			if !isConstant {
 				continue
 			}
-			keep(compared.rule, request, value, oriented.operator, compared.negated, compared.location, compared.top)
+			keep(compared.exprSite, request, value, oriented.operator)
 		}
 		warnings = append(warnings, budget.warnings...)
 	}
@@ -192,7 +182,7 @@ func (r *refReader) checks(limits Limits) ([]Check, []string) {
 	for _, truth := range r.foundTruths {
 		budget := &callBudget{limits: limits}
 		if request, isRequest := r.requestOf(truth.rule, truth.term, truth.bindings, budget); isRequest {
-			keep(truth.rule, request, nil, CheckTrue, truth.negated, truth.location, truth.top)
+			keep(truth.exprSite, request, nil, CheckTrue)
 		}
 		warnings = append(warnings, budget.warnings...)
 	}
@@ -235,20 +225,20 @@ func constantOf(term *ast.Term, bindings map[ast.Var]binding) (*ast.Term, bool) 
 	return term, constant
 }
 
-// checkedDecisions says which decisions reach a check in a rule, and what the
-// check holding does to each.
-func (r *refReader) checkedDecisions(rule *ast.Rule, top int, negated bool) []CheckedDecision {
-	fields := r.within[rule]
+// checkedDecisions says which decisions reach a check where the walk met it,
+// and what the check holding does to each.
+func (r *refReader) checkedDecisions(at exprSite) []CheckedDecision {
+	fields := r.within[at.rule]
 	var decisions []CheckedDecision
-	for name, ways := range r.ways[rule] {
-		if kept, sliced := fields[name]; sliced && !kept[top] {
+	for name, ways := range r.ways[at.rule] {
+		if kept, sliced := fields[name]; sliced && !kept[at.top] {
 			// The expression only builds another field of what the rule
 			// returns, and this decision is not asked about it.
 			continue
 		}
 		decision := CheckedDecision{Name: name}
 		for way := range ways {
-			if way.grants == negated {
+			if way.grants == at.negated {
 				// Holding lands on the side that refuses on this way.
 				continue
 			}

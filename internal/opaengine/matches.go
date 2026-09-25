@@ -53,14 +53,7 @@ type comparison struct {
 // only all known once the walk is over.
 type foundComparison struct {
 	comparison
-	rule     *ast.Rule
-	bindings map[ast.Var]binding
-
-	// negated, location and top are where the comparison sits, for the checks
-	// on the request, which report it on its own rather than on a read.
-	negated  bool
-	location *ast.Location
-	top      int
+	exprSite
 }
 
 // paramSide is one side of a comparison a function makes, as its callers see
@@ -83,14 +76,7 @@ type paramComparison struct {
 // markComparisons records the comparisons an expression makes.
 func (r *refReader) markComparisons(expr *ast.Expr, sc scope) {
 	for _, found := range r.comparisonsIn(r.current, expr, sc.bindings) {
-		r.foundComparisons = append(r.foundComparisons, foundComparison{
-			comparison: found,
-			rule:       r.current,
-			bindings:   sc.bindings,
-			negated:    sc.negated,
-			location:   expr.Loc(),
-			top:        r.top,
-		})
+		r.foundComparisons = append(r.foundComparisons, foundComparison{comparison: found, exprSite: r.site(sc, expr.Loc())})
 	}
 }
 

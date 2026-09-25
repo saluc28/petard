@@ -186,6 +186,23 @@ type scope struct {
 	empty map[*ast.Term]bool
 }
 
+// exprSite is where the walk met an expression, and what it knew there: the
+// rule, the bindings of the body, the side the negations put the expression
+// on, and which expression of the rule's own body holds it. Judging the
+// expression waits for the walk to be over, and by then none of it is at hand.
+type exprSite struct {
+	rule     *ast.Rule
+	bindings map[ast.Var]binding
+	negated  bool
+	location *ast.Location
+	top      int
+}
+
+// site is where the walk stands, for an expression written at location.
+func (r *refReader) site(sc scope, location *ast.Location) exprSite {
+	return exprSite{rule: r.current, bindings: sc.bindings, negated: sc.negated, location: location, top: r.top}
+}
+
 // foundRef is a data reference met while walking, before the reads of a rule
 // are pruned of the paths that only lead to other paths.
 type foundRef struct {
