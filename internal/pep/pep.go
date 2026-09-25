@@ -233,34 +233,42 @@ func (p *EnforcementPoint) validate() error {
 	}
 
 	for i := range p.Fields {
-		field := &p.Fields[i]
-		if !strings.HasPrefix(field.Path, "input.") {
-			return fmt.Errorf("field %q is not a part of the request", field.Path)
-		}
-		parsed, err := writemodel.ParsePath(field.Path)
-		if err != nil {
+		if err := p.Fields[i].validate(); err != nil {
 			return err
 		}
-		field.path = parsed
+	}
+	return nil
+}
 
-		switch field.SetBy {
-		case SetByCaller, SetByEnforcementPoint:
-			if field.Issuer != "" || field.Identifier != "" {
-				return fmt.Errorf("field %s: an issuer and an identifier belong to a part an issuer sets", field.Path)
-			}
-		case SetByIssuer:
-			if field.Issuer == "" {
-				return fmt.Errorf("field %s: set by an issuer, and the issuer is not named", field.Path)
-			}
-			if field.Identifier != "" && field.Identifier != IdentifierName && field.Identifier != IdentifierID {
-				return fmt.Errorf("field %s: identifier %q is neither %s nor %s", field.Path, field.Identifier, IdentifierName, IdentifierID)
-			}
-		default:
-			return fmt.Errorf("field %s: set_by %q is none of %s, %s, %s", field.Path, field.SetBy, SetByCaller, SetByEnforcementPoint, SetByIssuer)
+// validate checks one field and parses its path, which FieldFor then matches
+// against.
+func (f *Field) validate() error {
+	if !strings.HasPrefix(f.Path, "input.") {
+		return fmt.Errorf("field %q is not a part of the request", f.Path)
+	}
+	parsed, err := writemodel.ParsePath(f.Path)
+	if err != nil {
+		return err
+	}
+	f.path = parsed
+
+	switch f.SetBy {
+	case SetByCaller, SetByEnforcementPoint:
+		if f.Issuer != "" || f.Identifier != "" {
+			return fmt.Errorf("field %s: an issuer and an identifier belong to a part an issuer sets", f.Path)
 		}
-		if len(field.Evidence) == 0 {
-			return fmt.Errorf("field %s: no evidence, and every field says where it was read", field.Path)
+	case SetByIssuer:
+		if f.Issuer == "" {
+			return fmt.Errorf("field %s: set by an issuer, and the issuer is not named", f.Path)
 		}
+		if f.Identifier != "" && f.Identifier != IdentifierName && f.Identifier != IdentifierID {
+			return fmt.Errorf("field %s: identifier %q is neither %s nor %s", f.Path, f.Identifier, IdentifierName, IdentifierID)
+		}
+	default:
+		return fmt.Errorf("field %s: set_by %q is none of %s, %s, %s", f.Path, f.SetBy, SetByCaller, SetByEnforcementPoint, SetByIssuer)
+	}
+	if len(f.Evidence) == 0 {
+		return fmt.Errorf("field %s: no evidence, and every field says where it was read", f.Path)
 	}
 	return nil
 }
