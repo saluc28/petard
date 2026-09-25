@@ -52,11 +52,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		fmt.Fprintf(stdout, "bundle written to %s\n", root)
-		fmt.Fprintf(stdout, "analyze it with: petard analyze -pep %s -write-model %s -data %s %s\n",
-			filepath.Join(root, "pep.yaml"),
-			filepath.Join(root, "write-model.yaml"),
-			filepath.Join(root, "data"),
-			filepath.Join(root, "policy-v1"))
+		fmt.Fprintf(stdout, "analyze it with: petard analyze %s\n", strings.Join(bundleArguments(root), " "))
 		return exitOK
 	}
 
@@ -76,16 +72,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// A demonstration is not a gate: the bundle is built to be full of
 	// findings, and exiting 3 over the ones it was written to have would say
 	// something about the fixture rather than about the tool.
-	analysis := []string{
-		"-fail-on", "none",
-		"-pep", filepath.Join(root, "pep.yaml"),
-		"-write-model", filepath.Join(root, "write-model.yaml"),
-		"-data", filepath.Join(root, "data"),
-	}
+	analysis := []string{"-fail-on", "none"}
 	if *verbose {
 		analysis = append(analysis, "-v")
 	}
-	analysis = append(analysis, filepath.Join(root, "policy-v1"))
+	analysis = append(analysis, bundleArguments(root)...)
 
 	// The analysis names every file it read, and here those names are a
 	// temporary directory nobody asked about. The report is held and the
@@ -103,6 +94,18 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		"escalations in it.\nRun petard demo -extract <dir> to get the files, edit them, and "+
 		"analyze them again.\n")
 	return exitOK
+}
+
+// bundleArguments hand petard analyze the bundle unpacked at root: what the
+// bundle declares next to its policy, then the policy. The demo runs with them
+// and prints them for a run of one's own, so the two say the same thing.
+func bundleArguments(root string) []string {
+	return []string{
+		"-pep", filepath.Join(root, "pep.yaml"),
+		"-write-model", filepath.Join(root, "write-model.yaml"),
+		"-data", filepath.Join(root, "data"),
+		filepath.Join(root, "policy-v1"),
+	}
 }
 
 // shorten replaces the directory the bundle was unpacked into with the name it
