@@ -67,13 +67,10 @@ type foundComparison struct {
 // it: one of its parameters, or a part of the request the function reads on its
 // own.
 type paramSide struct {
-	// param is the position of the parameter, or -1 when the side is request.
-	param   int
+	// request is the part of the request, and nil when the side is a
+	// parameter, which place then says where to find in the arguments.
 	request ast.Ref
-
-	// within are the keys to the variable inside an argument the head takes
-	// apart, as parameterPlace keeps them.
-	within []*ast.Term
+	place   parameterPlace
 }
 
 // paramComparison is a comparison a function makes that its callers can map
@@ -152,10 +149,10 @@ func (r *refReader) comparisonsIn(rule *ast.Rule, expr *ast.Expr, bindings map[a
 // at puts the side of a function's comparison into the terms of a call, the
 // bindings being those of the body that makes it.
 func (s paramSide) at(operands []*ast.Term, bindings map[ast.Var]binding) *ast.Term {
-	if s.param < 0 {
+	if s.request != nil {
 		return ast.NewTerm(s.request)
 	}
-	term, passed := parameterPlace{position: s.param, within: s.within}.pick(operands, bindings)
+	term, passed := s.place.pick(operands, bindings)
 	if !passed {
 		return nil
 	}
@@ -209,7 +206,7 @@ func (r *refReader) summary(rules []*ast.Rule) []paramComparison {
 			for _, compared := range r.comparisonsIn(rule, expr, bindings) {
 				left, leftOK := sideOf(rule, compared.left, bindings)
 				right, rightOK := sideOf(rule, compared.right, bindings)
-				if !leftOK || !rightOK || (left.param < 0 && right.param < 0) {
+				if !leftOK || !rightOK || (left.request != nil && right.request != nil) {
 					continue
 				}
 				entry := paramComparison{left: left, right: right, member: compared.member}
@@ -237,7 +234,7 @@ func (r *refReader) summary(rules []*ast.Rule) []paramComparison {
 func sideOf(rule *ast.Rule, term *ast.Term, bindings map[ast.Var]binding) (paramSide, bool) {
 	if v, isVar := varOf(term); isVar {
 		if place, isParam := parameterPlaceOf(rule, v); isParam {
-			return paramSide{param: place.position, within: place.within}, true
+			return paramSide{place: place}, true
 		}
 		if resolved := resolveVar(v, bindings); resolved.status == resolvedTerm {
 			return sideOf(rule, resolved.term, bindings)
@@ -252,7 +249,7 @@ func sideOf(rule *ast.Rule, term *ast.Term, bindings map[ast.Var]binding) (param
 	if resolved.root != nil || !isInputRooted(resolved.ref) {
 		return paramSide{}, false
 	}
-	return paramSide{param: -1, request: resolved.ref}, true
+	return paramSide{request: resolved.ref}, true
 }
 
 func (c paramComparison) equal(other paramComparison) bool {
@@ -260,8 +257,7 @@ func (c paramComparison) equal(other paramComparison) bool {
 }
 
 func (s paramSide) equal(other paramSide) bool {
-	return s.param == other.param && s.request.Equal(other.request) &&
-		slices.EqualFunc(s.within, other.within, (*ast.Term).Equal)
+	return s.request.Equal(other.request) && s.place.equal(other.place)
 }
 
 // ElementPath is the path of the value a match compares: the read itself, and

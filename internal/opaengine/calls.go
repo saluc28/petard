@@ -2,6 +2,7 @@ package opaengine
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/open-policy-agent/opa/v1/ast"
 )
@@ -373,6 +374,10 @@ func (p parameterPlace) pick(args []*ast.Term, bindings map[ast.Var]binding) (*a
 		term = element
 	}
 	return term, true
+}
+
+func (p parameterPlace) equal(other parameterPlace) bool {
+	return p.position == other.position && slices.EqualFunc(p.within, other.within, (*ast.Term).Equal)
 }
 
 // better reports whether a says more than b about who chooses the document.
