@@ -32,8 +32,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- The extension schema describes `PTD-OPA-009` and `PTD-OPA-010` in the Entity Panel, and two
-  saved queries ask for each: `petard export -install` puts them in place.
+- The extension schema, now `v0.2.3`, describes `PTD-OPA-009` and `PTD-OPA-010` in the Entity
+  Panel, and two saved queries ask for each: `petard export -install` puts them in place.
 
 ### Fixed
 
