@@ -102,11 +102,16 @@ func TestLoadRejects(t *testing.T) {
 		content string
 	}{
 		{"another version", "schema_version: 2\nid: x\ndecisions:\n  - rule: allow\n    side: grants\n"},
+		{"no id", "schema_version: 1\ndecisions:\n  - rule: allow\n    side: grants\n"},
 		{"no decision", "schema_version: 1\nid: x\n"},
 		{"a decision that is a path", "schema_version: 1\nid: x\ndecisions:\n  - rule: authz/allow\n    side: grants\n"},
 		{"a side that is neither", "schema_version: 1\nid: x\ndecisions:\n  - rule: allow\n    side: maybe\n"},
+		{"a subject outside the request", header + "subject: data.user\n"},
 		{"a field outside the request", header + "fields:\n  - path: data.users\n    set_by: caller\n    evidence: [x]\n"},
+		{"a field that is not a path", header + "fields:\n  - path: input.team[\n    set_by: caller\n    evidence: [x]\n"},
+		{"a setter that is none of the three", header + "fields:\n  - path: input.team\n    set_by: somebody\n    evidence: [x]\n"},
 		{"an issuer nobody names", header + "fields:\n  - path: input.token.sub\n    set_by: issuer\n    evidence: [x]\n"},
+		{"an identifier that is neither", header + "fields:\n  - path: input.token.sub\n    set_by: issuer\n    issuer: idp\n    identifier: email\n    evidence: [x]\n"},
 		{"an identifier on a part the caller sets", header + "fields:\n  - path: input.team\n    set_by: caller\n    identifier: name\n    evidence: [x]\n"},
 		{"a field with no evidence", header + "fields:\n  - path: input.team\n    set_by: caller\n"},
 	}
