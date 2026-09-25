@@ -360,26 +360,17 @@ func (p parameterPlace) pick(args []*ast.Term, bindings map[ast.Var]binding) (*a
 			}
 			term = resolved.term
 		}
+		var element *ast.Term
 		switch value := term.Value.(type) {
 		case *ast.Array:
-			index, isNumber := key.Value.(ast.Number)
-			if !isNumber {
-				return nil, false
-			}
-			i, isInt := index.Int()
-			if !isInt || i < 0 || i >= value.Len() {
-				return nil, false
-			}
-			term = value.Elem(i)
+			element = value.Get(key)
 		case ast.Object:
-			element := value.Get(key)
-			if element == nil {
-				return nil, false
-			}
-			term = element
-		default:
+			element = value.Get(key)
+		}
+		if element == nil {
 			return nil, false
 		}
+		term = element
 	}
 	return term, true
 }
