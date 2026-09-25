@@ -54,6 +54,39 @@ func TestDemoShowsTheEvidenceWhenAsked(t *testing.T) {
 	}
 }
 
+// The report lines file names up in columns, so a directory whose name changes
+// length from one run to the next would move them. Unpacked under two
+// directories of different lengths, the demo prints the same bytes.
+func TestDemoPrintsTheSameWhereverItUnpacks(t *testing.T) {
+	long := filepath.Join(t.TempDir(), "a-directory-with-a-name-long-enough-to-widen-a-column")
+	if err := os.Mkdir(long, 0o750); err != nil {
+		t.Fatalf("creating %s: %v", long, err)
+	}
+
+	var reports [][]string
+	for _, dir := range []string{t.TempDir(), long} {
+		// os.TempDir reads TMPDIR on Unix and TMP on Windows.
+		t.Setenv("TMPDIR", dir)
+		t.Setenv("TMP", dir)
+
+		var stdout, stderr bytes.Buffer
+		if code := Run([]string{"-v"}, &stdout, &stderr); code != exitOK {
+			t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+		}
+		reports = append(reports, strings.Split(stdout.String(), "\n"))
+	}
+
+	short, wide := reports[0], reports[1]
+	for i := range min(len(short), len(wide)) {
+		if short[i] != wide[i] {
+			t.Fatalf("line %d changes with the directory the bundle is in:\n%s\n%s", i+1, short[i], wide[i])
+		}
+	}
+	if len(short) != len(wide) {
+		t.Errorf("the report has %d lines under one directory and %d under the other", len(short), len(wide))
+	}
+}
+
 // The bundle is worth having on disk: it is the thing to edit to see what the
 // analysis says about a change.
 func TestExtractWritesTheBundleAndStops(t *testing.T) {

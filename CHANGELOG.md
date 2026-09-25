@@ -35,6 +35,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The extension schema describes `PTD-OPA-009` and `PTD-OPA-010` in the Entity Panel, and two
   saved queries ask for each: `petard export -install` puts them in place.
 
+### Fixed
+
+- `petard demo -v` prints the same report on every run. The header of the table of reads was
+  padded for the path of the temporary directory the bundle is unpacked into. That directory has a
+  random name, so the header sat out of line with the rows by a different amount each time.
+
 ## [0.2.1] - 2026-09-25
 
 ### Fixed

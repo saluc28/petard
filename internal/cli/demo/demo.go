@@ -2,7 +2,6 @@
 package demo
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -63,11 +62,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	root, err := fixtures.Unpack(dir)
+	if _, err := fixtures.Unpack(dir); err != nil {
+		fmt.Fprintf(stderr, "petard demo: %v\n", err)
+		return exitFailure
+	}
+
+	// The analysis names every file it read by the path it was handed, and
+	// lines the names up in columns. Handed from inside the temporary
+	// directory, the paths are the ones a checkout has: the directory's random
+	// name never reaches the report, so it cannot widen a column on one run
+	// and not on the next. go -C moves the same way before it runs anything
+	// (src/cmd/go/main.go:408 at go1.27.1).
+	leave, err := enter(dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard demo: %v\n", err)
 		return exitFailure
 	}
+	// Deferred after the removal, so it runs before it: Windows will not
+	// remove the directory a process is working in.
+	defer leave()
 
 	// A demonstration is not a gate: the bundle is built to be full of
 	// findings, and exiting 3 over the ones it was written to have would say
@@ -76,17 +89,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if *verbose {
 		analysis = append(analysis, "-v")
 	}
-	analysis = append(analysis, bundleArguments(root)...)
+	analysis = append(analysis, bundleArguments(fixtures.BundleDir)...)
 
-	// The analysis names every file it read, and here those names are a
-	// temporary directory nobody asked about. The report is held and the
-	// prefix taken off it, so it reads like a run against a checkout.
-	var report, problems bytes.Buffer
-	code := analyze.Run(analysis, &report, &problems)
-
-	fmt.Fprint(stdout, shorten(report.String(), root))
-	fmt.Fprint(stderr, shorten(problems.String(), root))
-	if code != exitOK {
+	if code := analyze.Run(analysis, stdout, stderr); code != exitOK {
 		return code
 	}
 
@@ -108,15 +113,15 @@ func bundleArguments(root string) []string {
 	}
 }
 
-// shorten replaces the directory the bundle was unpacked into with the name it
-// carries inside the binary.
-//
-// Both spellings are taken off: the analysis reports paths with forward
-// slashes, and the directory arrives from the operating system with whatever
-// separator it uses.
-func shorten(report, root string) string {
-	for _, spelling := range []string{filepath.ToSlash(root), root} {
-		report = strings.ReplaceAll(report, spelling, fixtures.BundleDir)
+// enter makes dir the working directory and returns what goes back to the one
+// before it.
+func enter(dir string) (func(), error) {
+	previous, err := os.Getwd()
+	if err != nil {
+		return nil, err
 	}
-	return report
+	if err := os.Chdir(dir); err != nil {
+		return nil, err
+	}
+	return func() { _ = os.Chdir(previous) }, nil
 }
