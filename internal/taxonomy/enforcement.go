@@ -6,23 +6,30 @@ import (
 
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/pep"
+	pepregistry "github.com/saluc28/petard/pep-registry"
 )
 
 // This file is where a declared enforcement point meets the analysis: the
 // decisions it asks for, the part of the request that names who asks, and how
 // much of what the decisions read of the request it speaks about.
 
-// DeclareEnforcementPoint adds to a bundle the decisions an enforcement point
-// asks for, on the side each of them lands on.
+// DeclareEnforcementPoint reads the enforcement point named on a command line,
+// the id of one in pep-registry or the path to a declaration of somebody's own,
+// and adds to a bundle the decisions it asks for, on the side each of them
+// lands on. With nothing named it declares nothing and returns nil.
 //
 // The product asks for rules by name, and which rules of the bundle carry the
 // name is a fact the bundle states: the same move measure makes with the
 // violation of Gatekeeper, made here from a declaration that says where it was
 // read. A bundle holding none of them is not a policy for that product, and
 // saying so beats reporting a policy nobody asked anything of.
-func DeclareEnforcementPoint(bundle *opaengine.Bundle, point *pep.EnforcementPoint) error {
-	if point == nil {
-		return nil
+func DeclareEnforcementPoint(bundle *opaengine.Bundle, named string) (*pep.EnforcementPoint, error) {
+	if named == "" {
+		return nil, nil
+	}
+	point, err := pep.Resolve(pepregistry.Files, named)
+	if err != nil {
+		return nil, err
 	}
 	grants, denies := point.Entrypoints(bundle.RulesNamed)
 	if len(grants)+len(denies) == 0 {
@@ -30,11 +37,11 @@ func DeclareEnforcementPoint(bundle *opaengine.Bundle, point *pep.EnforcementPoi
 		for _, decision := range point.Decisions {
 			names = append(names, decision.Rule)
 		}
-		return fmt.Errorf("taxonomy: %s asks for %v, and the bundle has no rule by any of those names", point.ID, names)
+		return nil, fmt.Errorf("taxonomy: %s asks for %v, and the bundle has no rule by any of those names", point.ID, names)
 	}
 	bundle.Entrypoints = append(bundle.Entrypoints, grants...)
 	bundle.DenyEntrypoints = append(bundle.DenyEntrypoints, denies...)
-	return nil
+	return point, nil
 }
 
 // ShapeOf recognizes the shape of the request, taking the subject from where it

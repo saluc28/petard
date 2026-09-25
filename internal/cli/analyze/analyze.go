@@ -20,10 +20,8 @@ import (
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
-	"github.com/saluc28/petard/internal/pep"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/writemodel"
-	pepregistry "github.com/saluc28/petard/pep-registry"
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
@@ -125,16 +123,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	bundle.Entrypoints = entrypoints
 	bundle.DenyEntrypoints = denyEntrypoints
 
-	var point *pep.EnforcementPoint
-	if *enforcementPoint != "" {
-		if point, err = pep.Resolve(pepregistry.Files, *enforcementPoint); err != nil {
-			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
-			return exitFailure
-		}
-		if err := taxonomy.DeclareEnforcementPoint(bundle, point); err != nil {
-			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
-			return exitFailure
-		}
+	point, err := taxonomy.DeclareEnforcementPoint(bundle, *enforcementPoint)
+	if err != nil {
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+		return exitFailure
 	}
 
 	limits := opaengine.Limits{
