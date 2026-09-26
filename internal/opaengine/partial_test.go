@@ -945,6 +945,89 @@ func TestDataWithRefusesACollection(t *testing.T) {
 	}
 }
 
+// A write to one element of a list lands on that element and leaves the rest of
+// the list in place. It is what the sibling attribute pattern rests on: the role
+// of one collaborator is set without rewriting the list of collaborators. The
+// map-only version of set turned the list into an object keyed by the index and
+// dropped every other element.
+func TestDataWithSetsOneElementOfAList(t *testing.T) {
+	data := writeData(t, `{"col": {"items": [{"id": "a", "role": "x"}, {"id": "b", "role": "y"}]}}`)
+
+	written, err := data.With(t.Context(), "data.col.items[0].role", "z")
+	if err != nil {
+		t.Fatalf("With() error = %v", err)
+	}
+
+	after, found, err := written.Value(t.Context(), "data.col.items[0].role")
+	if err != nil || !found {
+		t.Fatalf("Value() on the written element = %v, %t", err, found)
+	}
+	if after != "z" {
+		t.Errorf("the write did not take: items[0].role = %v, want z", after)
+	}
+
+	sibling, found, err := written.Value(t.Context(), "data.col.items[1].role")
+	if err != nil || !found {
+		t.Fatalf("the sibling element was lost: found = %t, err = %v", found, err)
+	}
+	if sibling != "y" {
+		t.Errorf("the sibling changed: items[1].role = %v, want y", sibling)
+	}
+
+	before, _, _ := data.Value(t.Context(), "data.col.items[0].role")
+	if before != "x" {
+		t.Errorf("the original changed under us: items[0].role = %v, want x", before)
+	}
+}
+
+// Holds answers a decision for a request with nothing left unknown, where
+// Residuals would read the empty set of unknowns as the whole request being
+// unknown and answer about anybody. A boolean decision is yes or no by its
+// value, and a collected one by whether it holds any element.
+func TestHolds(t *testing.T) {
+	const policy = `package t
+
+import rego.v1
+
+default allow := false
+
+allow if input.role == "admin"
+
+granted contains p if {
+	p := input.project
+	input.role == "admin"
+}
+`
+	bundle, err := Load([]string{writeSources(t, map[string]string{"policy.rego": policy})}, ParseModeV1)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	data := writeData(t, `{"unused": true}`)
+
+	tests := []struct {
+		name     string
+		decision string
+		input    map[string]any
+		want     bool
+	}{
+		{name: "boolean holds", decision: "data.t.allow", input: map[string]any{"role": "admin"}, want: true},
+		{name: "boolean does not hold", decision: "data.t.allow", input: map[string]any{"role": "user"}, want: false},
+		{name: "collected holds", decision: "data.t.granted", input: map[string]any{"role": "admin", "project": "p1"}, want: true},
+		{name: "collected empty", decision: "data.t.granted", input: map[string]any{"role": "user", "project": "p1"}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			holds, err := Holds(t.Context(), bundle, data, tt.decision, tt.input)
+			if err != nil {
+				t.Fatalf("Holds() error = %v", err)
+			}
+			if holds != tt.want {
+				t.Errorf("Holds() = %t, want %t", holds, tt.want)
+			}
+		})
+	}
+}
+
 // writeData writes one JSON document and loads it.
 func writeData(t *testing.T, content string) *Data {
 	t.Helper()

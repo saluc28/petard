@@ -844,6 +844,48 @@ func DocumentPath(path string, at int, key string) (string, error) {
 	return document.String(), nil
 }
 
+// ListElementField splits a read of a field of a list element into the list and
+// the field: data.x.y[_].role comes back as data.x.y and role.
+//
+// The element is the last dynamic segment, and the field is the named segments
+// after it, so a role read next to a matched user_id resolves to the same list
+// and a different field. It reports false when there is no dynamic segment, when
+// the dynamic segment is last so there is no field after it, or when the list
+// itself is not one document (a dynamic segment sits before the element): a
+// write has to land on a named record, and a resolution against the concrete
+// data needs the list named.
+func ListElementField(path string) (collection, field string, ok bool) {
+	ref, err := ast.ParseRef(path)
+	if err != nil {
+		return "", "", false
+	}
+
+	element := -1
+	for i := 1; i < len(ref); i++ {
+		if _, isVar := ref[i].Value.(ast.Var); isVar {
+			element = i
+		}
+	}
+	if element < 1 || element == len(ref)-1 {
+		return "", "", false
+	}
+	for i := 1; i < element; i++ {
+		if _, isVar := ref[i].Value.(ast.Var); isVar {
+			return "", "", false
+		}
+	}
+
+	parts := make([]string, 0, len(ref)-element-1)
+	for _, term := range ref[element+1:] {
+		name, named := namedSegment(term)
+		if !named {
+			return "", "", false
+		}
+		parts = append(parts, name)
+	}
+	return ref[:element].String(), strings.Join(parts, "."), true
+}
+
 // normalize writes a reference as a path, with every dynamic segment replaced
 // by [_].
 //

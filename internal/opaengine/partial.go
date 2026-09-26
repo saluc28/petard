@@ -464,21 +464,46 @@ func concretePath(ref ast.Ref) (storage.Path, error) {
 	return at, nil
 }
 
-// set writes a value into a tree, creating the objects the path passes through.
+// set writes a value into a tree, following objects and arrays, and creating
+// the objects a missing path passes through.
+//
+// An array is followed by its index rather than replaced, so that setting one
+// element of a list leaves the others in place: a write to a collaborator's role
+// is a write to one record of the list, not a rewrite of the list. A segment
+// that stands where the path expects a document but finds a scalar becomes an
+// object, the way it always did for maps.
 func set(documents map[string]any, at storage.Path, value any) {
 	if len(at) == 0 {
 		return
 	}
-	holder := documents
+	var holder any = documents
 	for _, segment := range at[:len(at)-1] {
-		next, isObject := holder[segment].(map[string]any)
-		if !isObject {
+		next := child(holder, segment)
+		switch next.(type) {
+		case map[string]any, []any:
+			// Descend into the document that is there.
+		default:
 			next = map[string]any{}
-			holder[segment] = next
+			setChild(holder, segment, next)
 		}
 		holder = next
 	}
-	holder[at[len(at)-1]] = value
+	setChild(holder, at[len(at)-1], value)
+}
+
+// setChild writes a value under one segment of a holder, following an object by
+// its key and an array by its index. An index out of range, or a segment that
+// names no place a value can go, is left alone: the write was to a document that
+// is not there.
+func setChild(holder any, segment string, value any) {
+	switch document := holder.(type) {
+	case map[string]any:
+		document[segment] = value
+	case []any:
+		if i, err := strconv.Atoi(segment); err == nil && i >= 0 && i < len(document) {
+			document[i] = value
+		}
+	}
 }
 
 // clone deep copies a document.
@@ -763,6 +788,44 @@ func Residuals(ctx context.Context, bundle *Bundle, data *Data, ask Request, lim
 	result.Conditions, result.Default, result.Always = conditionsOf(ctx, queries)
 	result.bound(limits.maxResiduals())
 	return result, nil
+}
+
+// Holds reports whether a decision holds for a request with nothing left
+// unknown.
+//
+// It is Residuals when there is no unknown to leave: every part of the request
+// the decision reads is given, so partial evaluation would have nothing to
+// return, and the honest question is a plain yes or no. Asking Residuals instead
+// would trip its convenience that an empty set of unknowns means the whole
+// request is unknown, and answer about anybody rather than about this request.
+func Holds(ctx context.Context, bundle *Bundle, data *Data, decision string, input map[string]any) (bool, error) {
+	if data == nil {
+		return false, ErrNoData
+	}
+	compiler, err := bundle.forPartial()
+	if err != nil {
+		return false, err
+	}
+
+	results, err := rego.New(
+		rego.Query(bundle.query(decision)),
+		rego.Compiler(compiler),
+		rego.Store(data.store),
+		rego.Input(input),
+	).Eval(ctx)
+	if err != nil {
+		return false, fmt.Errorf("%w: %s: %w", ErrPartial, decision, err)
+	}
+
+	// A collected decision answers with one result per element and none when it
+	// grants nothing; a boolean one always answers, with true or false. Both hold
+	// only on a result whose expressions are not false.
+	for _, result := range results {
+		if !slices.ContainsFunc(result.Expressions, func(expr *rego.ExpressionValue) bool { return expr.Value == false }) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // partial runs partial evaluation and returns what OPA left of the decision.

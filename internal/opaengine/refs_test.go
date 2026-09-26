@@ -1185,3 +1185,52 @@ func TestDocumentPathRefusesAPositionThatIsNotThere(t *testing.T) {
 		t.Error("DocumentPath() accepted a path that does not parse")
 	}
 }
+
+func TestListElementField(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		collection string
+		field      string
+		ok         bool
+	}{
+		{
+			name:       "a field of a list element",
+			path:       "data.team.members[_].role",
+			collection: "data.team.members",
+			field:      "role",
+			ok:         true,
+		},
+		{
+			name:       "a nested field of a list element",
+			path:       "data.teams[_].profile.tier",
+			collection: "data.teams",
+			field:      "profile.tier",
+			ok:         true,
+		},
+		{
+			name: "the element itself has no field",
+			path: "data.teams[_]",
+			ok:   false,
+		},
+		{
+			name: "a read with no dynamic segment",
+			path: "data.teams.a.role",
+			ok:   false,
+		},
+		{
+			name: "a list under a list is not one document",
+			path: "data.teams[_].members[_].role",
+			ok:   false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			collection, field, ok := ListElementField(tt.path)
+			if ok != tt.ok || collection != tt.collection || field != tt.field {
+				t.Errorf("ListElementField() = (%q, %q, %t), want (%q, %q, %t)",
+					collection, field, ok, tt.collection, tt.field, tt.ok)
+			}
+		})
+	}
+}

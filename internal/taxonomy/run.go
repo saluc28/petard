@@ -37,7 +37,9 @@ type Findings struct {
 
 	// SplitGrant holds the escalations that come from one decision governing a
 	// write another decision grants on. Like the chain, each is a
-	// PTD_CanEscalateTo between two principals.
+	// PTD_CanEscalateTo between two principals. Its three shapes are here
+	// together, the value and the join of splitgrant.go and the sibling attribute
+	// of siblinggrant.go, since all three are PTD-OPA-006.
 	SplitGrant []Finding
 
 	// GlobalSwitch holds the documents every request shares that decide for a
@@ -119,9 +121,15 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		}
 		found.Transitive = append(escalations, positions...)
 
-		if found.SplitGrant, err = SplitGrant(ctx, a); err != nil {
+		splitGrant, err := SplitGrant(ctx, a)
+		if err != nil {
 			return Findings{}, err
 		}
+		siblingGrant, err := SiblingGrant(ctx, a)
+		if err != nil {
+			return Findings{}, err
+		}
+		found.SplitGrant = sortedFindings(append(splitGrant, siblingGrant...))
 		if found.GlobalSwitch, err = GlobalSwitch(ctx, a); err != nil {
 			return Findings{}, err
 		}
