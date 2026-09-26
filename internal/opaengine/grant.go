@@ -1,6 +1,7 @@
 package opaengine
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -130,8 +131,9 @@ func (c *grantCondition) apply(expr *ast.Expr) {
 }
 
 // bind records what an equality says one field of the request may be: a value,
-// a membership, or anything at all when the other side is a variable. An input
-// field pinned to a computed value this cannot name is recorded opaque.
+// a membership, anything at all when the other side is a variable, or, for a
+// list, a constraint on each of its elements. An input field pinned to a
+// computed value this cannot name is recorded opaque.
 func (c *grantCondition) bind(field string, member bool, other *ast.Term) {
 	constraint := c.fields[field]
 	constraint.member = constraint.member || member
@@ -149,7 +151,45 @@ func (c *grantCondition) bind(field string, member bool, other *ast.Term) {
 		c.fields[field] = constraint
 		return
 	}
+	if array, isArray := other.Value.(*ast.Array); isArray && !member {
+		// A request field held against a list, input.path against
+		// ["api", "v1", "projects", p], is a constraint on each element, and each
+		// element is a field of its own: input.path[0] is "api". Reading it that
+		// way tells two paths apart when they differ at a fixed position and one
+		// of them ends in a wildcard, which a whole list compared as one opaque
+		// value cannot. The length is a constraint too, so a path is not covered
+		// by a prefix of it: deleting a project is not deleting one of its
+		// collaborators.
+		c.bindValue(lengthField(field), strconv.Itoa(array.Len()))
+		for i := range array.Len() {
+			c.bind(indexField(field, i), false, array.Elem(i))
+		}
+		return
+	}
 	c.opaque[field] = true
+}
+
+// bindValue records that a field equals one exact value.
+func (c *grantCondition) bindValue(field, value string) {
+	constraint := c.fields[field]
+	if constraint.values == nil {
+		constraint.values = map[string]bool{}
+	}
+	constraint.values[value] = true
+	c.fields[field] = constraint
+}
+
+// indexField names one element of a list field the way the read of that element
+// is normalized: input.path becomes input.path[0], so a decomposed list and a
+// direct read of one of its elements meet on the same field.
+func indexField(field string, index int) string {
+	return field + "[" + strconv.Itoa(index) + "]"
+}
+
+// lengthField names the length of a list field. The bracket holds no index a
+// path can carry, so it never collides with an element.
+func lengthField(field string) string {
+	return field + "[#]"
 }
 
 // bindPrefix records a wildcard match on a field. The empty prefix, which a

@@ -142,6 +142,33 @@ func TestGrantContentBeyond(t *testing.T) {
 			wantBeyond:  false,
 			wantCertain: true,
 		},
+		{
+			// A request path held against a list is read element by element, so
+			// two paths that differ at a fixed segment are told apart even when
+			// one ends in a wildcard: deleting a team is not deleting one of its
+			// members, whatever the member's id.
+			name:        "a path differing at a fixed segment is a gain",
+			grant:       []string{`input.path = ["api", "v1", "teams", "t-1"]`},
+			other:       []string{`input.path = ["api", "v1", "users", "u-1", "tokens", _]`},
+			wantBeyond:  true,
+			wantCertain: true,
+		},
+		{
+			name:        "the same path is no gain",
+			grant:       []string{`input.path = ["api", "v1", "teams", "t-1"]`},
+			other:       []string{`input.path = ["api", "v1", "teams", "t-1"]`},
+			wantBeyond:  false,
+			wantCertain: true,
+		},
+		{
+			// A shorter path leaves the segments past its end open, so a longer
+			// path under it reaches a request the shorter one does not name.
+			name:        "a longer path escapes a shorter one",
+			grant:       []string{`input.path = ["api", "v1", "teams", "t-1", "members"]`},
+			other:       []string{`input.path = ["api", "v1", "teams", "t-1"]`},
+			wantBeyond:  true,
+			wantCertain: true,
+		},
 	}
 
 	for _, tt := range tests {
