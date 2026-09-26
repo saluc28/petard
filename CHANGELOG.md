@@ -14,6 +14,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   only when that policy grants a request they could not already make, so one who already grants
   everything is no longer reported joining a narrower policy. A gain that depends on a condition
   the comparison cannot read, a builtin or a truth test, is a candidate rather than a finding.
+- `PTD-OPA-006` reaches a third shape: a decision that grants on a field of a list element the
+  requester is matched to by value on another field of the same element, such as the role of the
+  member whose user is the requester. When one decision authorizes setting that field below the
+  threshold another reads to grant, a member sets their own to the granting value and reaches the
+  position of whoever holds it. The comparison of a request field against a list is read element by
+  element, so two paths that differ at a fixed segment are told apart.
 
 ## [0.3.0] - 2026-09-25
 

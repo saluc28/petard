@@ -173,12 +173,37 @@ BloodHound keeps the two apart for the same reason, `AddSelf` next to `AddMember
 an endpoint with a decision behind it, and joining is what that decision authorizes. What varies
 is then the collection rather than the value, since the value added is the subject.
 
-Two limits come with all this, and each is a false negative rather than noise: a lookup marks the
-read that holds the value and not the other fields of the same document, so a role read next to a
-matched member is not reported; and a match on a prefix, as Chef's `team:*` members are, is not a
-lookup by value. The chain of `PTD-OPA-001` into `PTD-OPA-003` leaves a join alone as well: it
-writes a document of the subject's own and lets partial evaluation find the value, and an element
-added to a list is neither.
+A lookup marks the read that holds the value and not the other fields of the same element, but a
+grant on one of those other fields is the third shape of `PTD-OPA-006` below, so a role read next
+to a matched user is reached after all. One limit stays a false negative rather than noise: a
+match on a prefix, as Chef's `team:*` members are, is not a lookup by value. The chain of
+`PTD-OPA-001` into `PTD-OPA-003` leaves a join alone as well: it writes a document of the
+subject's own and lets partial evaluation find the value, and an element added to a list is
+neither.
+
+### An element a list names the subject in is the subject's record
+
+A list of records, each with a field that says which principal it is about, is a document keyed by
+that field. A grant that reads `data.members[i].role` where `data.members[i].user` is the
+requester reads the role of one document, the requester's, found by matching the field that names
+them rather than by a key. Changing that role is writing a field of the subject's own record, the
+value form of `PTD-OPA-006`, and the only thing new is how the record is located: by a matched
+field instead of by a segment of the path. So the engine resolves the element against the concrete
+data, and its finding comes out under `PTD-OPA-006` like the other two shapes.
+
+It is not a fourth pattern, because the cause is the split grant already there: one decision
+governs who may set the field, another grants on it, and the second instance the registry keeps is
+for a disjoint cause, not a new shape of the same one. BloodHound draws a membership as an edge
+and a role on it as a property of that edge, kept apart from the member; here there is no type to
+lean on, so the engine reads the record's field the way the policy does, straight from the list,
+and tells one member's record from another by the field that names them.
+
+The values the write could set the field to are read off the data, the roles other members hold,
+rather than off the residual, because the grant reaches the field through a lookup,
+`roles[member.role] >= 3`, and a lookup leaves no constant to compare against. The write is a step
+up only where the decision that authorizes it asks for less than the one that grants: an editor
+who may assign roles setting their own to owner, while removing the team needs owner. Where the
+two thresholds meet, no lower privilege reaches the value, and the file carries that counter case.
 
 ### A declared subject is level A, whoever declares it
 
@@ -292,7 +317,7 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-003` | TRANSITIVE-GRANT | opa | candidate | B | `verified`, and it chains with 001, which is where a route comes from |
 | `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `verified`, and the one that exercises taint |
 | `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, and it needs no attacker and nothing wrong beforehand: a slow endpoint is enough |
-| `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `verified`, the second edge that means escalation, from a write a decision authorizes rather than a position: a value in the subject's record, or the subject added to a collection |
+| `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `verified`, the second edge that means escalation, from a write a decision authorizes rather than a position: a value in the subject's record, the subject added to a collection, or a field of a record a list names them in |
 | `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, the third instance of the category: an `every` over a domain the request can empty |
 | `PTD-OPA-008` | GLOBAL-SWITCH | opa | finding | C | `verified`, a document every request shares, and the question asked about somebody no document names |
 | `PTD-OPA-009` | SELF-ASSERTED-EXEMPTION | opa | finding | A | `implemented`, the first to read the request instead of the data, for a check the caller lifts by writing a part of it |

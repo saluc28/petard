@@ -83,14 +83,18 @@ detection:
         A decision reads a path in `data` whose index derives from the subject, in granting
         position: the first two signals of `PTD-OPA-001`, with the side added, for the reason the
         notes give. A decision that searches a collection for the subject by value counts too,
-        and then the collection is what a write adds to.
+        and then the collection is what a write adds to. So does a decision that reads a field of
+        a list element the subject is matched to by value on a different field of the same
+        element, and then that field is what the write sets.
       rationale: >
         The read is where the grant depends on a document, and it is the same read 001 starts
         from. What differs is who the write model says writes it.
-        The two forms are the same fact reached from different ends. A field of the subject's own
-        record is written by putting a value in it, and a membership is written by adding the
-        subject to a list, so the search form fixes the value and varies the document while the
-        other fixes the document and varies the value.
+        The three forms are the same fact reached from different ends. A field of the subject's
+        own record is written by putting a value in it; a membership is written by adding the
+        subject to a list; and a field of a record a list names the subject in is written by
+        setting that one field, the record found by matching the subject rather than by a key.
+        The first and third fix a document and vary the value, the second fixes the value, the
+        subject, and varies the document.
     - order: 2
       check: >
         The write model covers that path with a writer that is not a capture of the path, and
@@ -108,10 +112,16 @@ detection:
         document left unknown, and collect the constant values the residual conditions compare
         the document against. In the search form there is nothing to collect: the value added is
         the subject, and the documents of the collection are what the principal is asked about.
+        In the sibling form the values are read off the concrete data instead, the ones the field
+        already holds elsewhere in the list, each held by the principal a write of it would reach.
       rationale: >
         These are the values that would grant, taken from OPA's answer rather than from reading
         the policy: on the fixture, "editor" for publish and "admin" for withdraw. Collecting the
         constants of a residual is structural; it does not interpret what the condition means.
+        The sibling form reads the values from the data because the grant reaches the field
+        through a lookup, `roles[member.role] >= 3` rather than a comparison with a literal, so
+        there is no constant in the residual to collect; the roles that grant are the ones other
+        members already hold.
     - order: 4
       check: >
         Ask the first decision, for the same principal, whether writing each of those values into
@@ -309,6 +319,70 @@ false_positives:
         still does not, because she is not in the press office. The engine writes the value,
         evaluates the whole decision, and stays quiet. Without the department condition the same
         case reports carol reaching the position of alice.
+  - condition: >
+      In the sibling form, the decision that authorizes the write requires as much as the one
+      that grants, so no lower privilege can reach the granting value.
+    discriminator: >
+      Signal 4 answers no: the member is asked whether they may set the value, and the authorizing
+      decision holds only for a member who already holds it. The gap opens when the authorizing
+      threshold sits below the granting one, and then a member below the grant can write their way
+      up to it.
+    measurement: case
+    case:
+      policy: |
+        package sibling_case
+
+        import rego.v1
+
+        roles := {"viewer": 1, "editor": 2, "owner": 3}
+
+        # METADATA
+        # scope: document
+        # title: The decision the API asks about every request
+        # entrypoint: true
+        default authz := false
+
+        authz if { allow }
+
+        allow if {
+            input.action == "remove"
+            some i
+            data.team.members[i].user == input.user
+            roles[data.team.members[i].role] >= 3
+        }
+
+        allow if {
+            input.action == "assign"
+            some i
+            data.team.members[i].user == input.user
+            roles[data.team.members[i].role] >= 3
+        }
+      data: |
+        {
+          "team": {
+            "members": [
+              {"user": "alice", "role": "editor"},
+              {"user": "bob", "role": "owner"}
+            ]
+          }
+        }
+      write_model: |
+        schema_version: 1
+        model: write-paths
+        entries:
+          - path: data.team.members[_].role
+            writable_by:
+              - principal: role:owner
+                via: "PUT /api/v1/teams/{team}/members/{user}"
+                authorized_by:
+                  decision: data.sibling_case.authz
+                  request:
+                    input.action: "assign"
+      reports: false
+      note: >
+        Run with opa 1.20.2: assigning a role needs owner here, the same as removing the team, so
+        the editor cannot set their own role and the owner has nothing to gain. Lowering the
+        assign threshold to editor reports the editor reaching the owner.
 
 not_a_lint_rule: >
   Each file is correct and idiomatic on its own, and a linter reads one file at a time. The defect
@@ -366,13 +440,23 @@ verified:
     with nothing, because the decision behind the endpoint refuses them the write. Taking the
     parts the endpoint fills in out of the write model reports that reader as a writer, which is
     what those parts are for, and a test holds that too.
-    The six declared false positives are settled as the status requires. Three are
-    `out-of-band`: an approval outside OPA, a refusal of self-assignment that only the endpoint
-    makes, and a combination that is meant. The other three carry a case with its own data and
-    write model that runs on every build. The engine stays quiet on two of them, a decision that
-    refuses self-assignment and a granting decision with a condition the write does not meet, and
-    reports the third, an administrator joining a policy that grants them nothing they did not
-    already have.
+    The sibling form is measured on a bundle shaped like a team roster, where the members are a
+    list and each holds the user it names and the role it grants, and one decision reads the role
+    of the member whose user is the requester. An editor may assign roles and sets their own to
+    owner, which the same decision authorizes at the lower threshold, and the engine reports the
+    editor reaching the owner; the viewer, who may not assign, is asked and comes out with nothing,
+    and the owner, who already holds it, gains nothing by writing a lower role. The values the
+    write could set are read off the data rather than the residual, since the grant reaches the
+    role through a lookup and leaves no constant to collect. A test holds this on an inline bundle,
+    since the fixture keeps its two escalations.
+    The six declared false positives are settled as the status requires. Three are `out-of-band`:
+    an approval outside OPA, a refusal of self-assignment that only the endpoint makes, and a
+    combination that is meant. The other three carry a case with its own data and write model that
+    runs on every build, and the engine stays quiet on each: a decision that refuses
+    self-assignment, a granting decision with a condition the write does not meet, and a sibling
+    form whose write is authorized at the granting threshold. The join that grants nothing new,
+    an administrator adding themselves to a policy they already cover, is held quiet by a test
+    rather than a declared case.
 
 related:
   - id: PTD-OPA-001
