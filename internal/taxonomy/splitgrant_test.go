@@ -274,6 +274,24 @@ func TestSplitGrantNarrowsTheJoinToTheRequestTheEndpointSends(t *testing.T) {
 	}
 }
 
+// The administrators already grant everything, so joining any policy adds a way
+// of granting and no access. The join is not reported for them, because the
+// comparison reads what a position grants and not how many conditions write it.
+func TestSplitGrantDoesNotReportAJoinThatGrantsNothingNew(t *testing.T) {
+	a := analysisOf(t, &FalsePositiveCase{Policy: joinPolicyBundle, Data: joinData, WriteModel: joinModel})
+
+	findings, err := SplitGrant(t.Context(), a)
+	if err != nil {
+		t.Fatalf("SplitGrant() error = %v", err)
+	}
+
+	for _, f := range findings {
+		if f.Principal == "team:admins" {
+			t.Errorf("the administrators, who already grant everything, are reported joining %s: %s", f.Target, f)
+		}
+	}
+}
+
 // modelWithoutAuthorization declares the same roles field as writable by
 // support, but says nothing about which decision bounds the write.
 func modelWithoutAuthorization(t *testing.T) *writemodel.Model {

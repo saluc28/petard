@@ -218,6 +218,11 @@ func writablePaths(selfWrite []Finding) []Finding {
 // That is exactly the crossing the whole project is about.
 func AddEscalations(g *graph.Graph, findings []Finding) error {
 	for _, finding := range findings {
+		if finding.Verdict != VerdictFinding {
+			// A candidate names a principal and a target but has not proven the
+			// one can reach the other, so it is not an edge somebody can walk.
+			continue
+		}
 		if finding.Principal == "" || finding.Target == "" {
 			continue
 		}

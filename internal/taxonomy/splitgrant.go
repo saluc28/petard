@@ -456,16 +456,24 @@ func joinsOpenedBy(ctx context.Context, a Analysis, join authorizedJoin, princip
 		}
 
 		for _, subject := range principals {
-			opened, err := joinOpens(ctx, a, join, document, members, fields, unknowns, subject, now[subject])
+			opened, certain, err := joinOpens(ctx, a, join, document, members, fields, unknowns, subject, now[subject])
 			if err != nil {
 				return nil, err
 			}
 			if !opened {
 				continue
 			}
+			verdict := VerdictFinding
+			if !certain {
+				// The join grants more ways, but whether any of them is a
+				// request the principal could not already make could not be
+				// read from the conditions. A gain that cannot be proven is a
+				// candidate, not a finding.
+				verdict = VerdictCandidate
+			}
 			for _, target := range members {
 				if name, isName := target.(string); isName && name != subject {
-					findings = append(findings, joinFinding(a, join, document, subject, name))
+					findings = append(findings, joinFinding(a, join, document, subject, name, verdict))
 				}
 			}
 		}
@@ -477,28 +485,34 @@ func joinsOpenedBy(ctx context.Context, a Analysis, join authorizedJoin, princip
 // endpoint lets this principal add an element to this document, and the
 // granting decision gives them more once they are in it.
 func joinOpens(ctx context.Context, a Analysis, join authorizedJoin, document string, members []any,
-	fields subjectFields, unknowns []string, subject string, now reach) (bool, error) {
+	fields subjectFields, unknowns []string, subject string, now reach) (opened, certain bool, err error) {
 
 	if slices.Contains(members, any(subject)) {
 		// Already an element: there is no join to make, and what it grants
 		// they hold already.
-		return false, nil
+		return false, true, nil
 	}
 
 	allowed, err := writeAllowed(ctx, a, join, document, fields, subject)
-	if err != nil || !allowed {
-		return false, err
+	if err != nil {
+		return false, false, err
+	}
+	if !allowed {
+		return false, true, nil
 	}
 
 	written, err := a.Data.With(ctx, document, append(slices.Clone(members), subject))
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	opened, err := reachOf(ctx, a.Bundle, written, join.Decision, requestNaming(fields, subject), unknowns, a.Limits)
+	after, err := reachOf(ctx, a.Bundle, written, join.Decision, requestNaming(fields, subject), unknowns, a.Limits)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	return opened.beyond(now), nil
+	beyond, sure := after.beyond(now)
+	// Report a proven gain as a finding and an unproven one as a candidate; a
+	// join that grants nothing new is not reported at all.
+	return beyond || !sure, sure, nil
 }
 
 // writeAllowed asks the decision the endpoint consumes whether one principal
@@ -556,10 +570,10 @@ func elementsOf(ctx context.Context, data *opaengine.Data, document string) ([]a
 // joinFinding says what was measured: who can add themselves where, the
 // decision that allows it, the decision that grants on the membership, and the
 // principal whose position that reaches.
-func joinFinding(a Analysis, join authorizedJoin, document, subject, target string) Finding {
+func joinFinding(a Analysis, join authorizedJoin, document, subject, target string, verdict Verdict) Finding {
 	return Finding{
 		PatternID: WriteAllowedByAnotherDecision,
-		Verdict:   VerdictFinding,
+		Verdict:   verdict,
 		Summary: fmt.Sprintf("%s can add themselves to %s, which %s allows, and %s then grants the position %s holds",
 			subject, document, join.Auth.Decision, join.Decision, target),
 		Principal:    subject,

@@ -63,8 +63,9 @@ func summarize(findings taxonomy.Findings, patterns []taxonomy.Pattern) summary 
 
 		// The same rule the graph uses for a PTD_CanEscalateTo, so that the
 		// terminal and BloodHound cannot come to different conclusions about
-		// who can take whose place.
-		if finding.Principal != "" && finding.Target != "" {
+		// who can take whose place. A candidate has a target but has not proven
+		// the reach, so it is a candidate below rather than an escalation here.
+		if finding.Verdict == taxonomy.VerdictFinding && finding.Principal != "" && finding.Target != "" {
 			s.escalations = append(s.escalations, finding)
 		}
 	}

@@ -232,6 +232,11 @@ type reach struct {
 	// turns out to be. It is not a large number of ways, it is the absence of a
 	// question, and the two must not be added together.
 	always bool
+
+	// content is what the decision grants read as the constraint each way puts
+	// on the request, which is what tells a real gain from a wider count when
+	// one reach is compared with another.
+	content opaengine.GrantContent
 }
 
 // waysOf writes a number of ways the way a sentence says it, so that one way
@@ -248,21 +253,18 @@ func (r reach) nothing() bool {
 	return !r.always && r.ways == 0
 }
 
-// beyond reports whether one reach grants more than another.
+// beyond reports whether one reach grants a request another does not, and
+// whether the answer is certain.
 //
-// A decision that already holds whatever it is asked cannot grant more, and one
-// that comes to hold that way grants more than any number of conditions: the
-// absence of a question is not a large count, so the two are compared before the
-// counts are.
-func (r reach) beyond(other reach) bool {
-	switch {
-	case other.always:
-		return false
-	case r.always:
-		return true
-	default:
-		return r.ways > other.ways
-	}
+// It reads the content of the two grants rather than counting their conditions.
+// A count cannot tell a real gain from a wider one: joining a decision that
+// grants a single action adds a condition to a principal who already grants
+// every action, and the count rises while nothing new is reached. Comparing
+// what each grants, the single action is covered by the every, and the gain is
+// seen for what it is. When a condition cannot be read the answer is not
+// certain, and the caller reports a candidate rather than a finding.
+func (r reach) beyond(other reach) (bool, bool) {
+	return r.content.Beyond(other.content)
 }
 
 // reachOf asks how much of a decision one principal can get, with the rest of
@@ -276,7 +278,11 @@ func reachOf(ctx context.Context, bundle *opaengine.Bundle, data *opaengine.Data
 	if err != nil {
 		return reach{}, err
 	}
-	return reach{ways: len(residuals.Conditions), always: residuals.Always}, nil
+	return reach{
+		ways:    len(residuals.Conditions),
+		always:  residuals.Always,
+		content: opaengine.GrantContentOf(residuals),
+	}, nil
 }
 
 // subjectFields is where a request names a principal: the fields that lead

@@ -169,14 +169,18 @@ func TestGlobalSwitchNeedsData(t *testing.T) {
 
 // The sentence a finding carries is read by a person, and one way is one way.
 func TestDescribeTodayCountsTheWays(t *testing.T) {
-	for granted, expected := range map[reach]string{
-		{}:             "today it grants them nothing",
-		{ways: 1}:      "today it grants them in 1 way",
-		{ways: 3}:      "today it grants them in 3 ways",
-		{always: true}: "today it grants them whatever they ask",
-	} {
-		if got := describeToday(granted); got != expected {
-			t.Errorf("describeToday(%+v) = %q, want %q", granted, got, expected)
+	tests := []struct {
+		granted  reach
+		expected string
+	}{
+		{reach{}, "today it grants them nothing"},
+		{reach{ways: 1}, "today it grants them in 1 way"},
+		{reach{ways: 3}, "today it grants them in 3 ways"},
+		{reach{always: true}, "today it grants them whatever they ask"},
+	}
+	for _, tt := range tests {
+		if got := describeToday(tt.granted); got != tt.expected {
+			t.Errorf("describeToday(%+v) = %q, want %q", tt.granted, got, tt.expected)
 		}
 	}
 }
