@@ -5,6 +5,16 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- A `PTD_CanEscalateTo` edge is drawn by comparing what each position grants, not by counting the
+  residual conditions of a decision. A principal who can add themselves to a policy reaches another
+  only when that policy grants a request they could not already make, so one who already grants
+  everything is no longer reported joining a narrower policy. A gain that depends on a condition
+  the comparison cannot read, a builtin or a truth test, is a candidate rather than a finding.
+
 ## [0.3.0] - 2026-09-25
 
 ### Added

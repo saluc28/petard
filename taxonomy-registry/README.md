@@ -217,6 +217,30 @@ that measure access with it, `PTD-OPA-003` and `PTD-OPA-006`, leave such a decis
 do the capability edges of the graph: an edge somebody walks is a way in, and the complement of a
 residual condition is a negation no edge can carry.
 
+### An escalation edge goes towards a gain, read by content
+
+A principal who can add themselves to a policy, or write a value a decision grants on, reaches
+somebody else's position only when that position grants a request they could not already make.
+Counting how many ways a decision has of granting cannot tell that: joining a policy that grants
+one action adds a way to a principal who already grants every action, and the count rises while
+nothing new is reached.
+
+So the edge is drawn by reading what each side grants, not by counting it. Partial evaluation
+leaves each way of granting as a condition on the request, and each condition reads as the
+constraint it puts on the fields of the request: a value, a membership, a prefix from a wildcard
+match, or nothing, which is any value. One grant covers another when it is at least as permissive
+on every field, and a principal gains only when the position they reach grants a request none of
+theirs covers.
+
+When two positions can each add the other, the edge goes to the one that gains and not back. When
+a condition constrains the request in a way the comparison cannot read, a builtin it does not
+model or a truth test, the gain cannot be proven, and the match is a candidate rather than a
+finding: an edge somebody walks is a claim, and a claim that cannot be proven is not made.
+
+BloodHound draws the capability edge and leaves whether it gains anything to Tier Zero and the
+pathfinding towards it. This registry marks no such target, so the edge carries the judgement
+instead.
+
 ---
 
 ## 4. Format
