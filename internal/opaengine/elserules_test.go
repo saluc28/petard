@@ -9,9 +9,10 @@ import (
 )
 
 // elsePolicy holds the forms an else takes: a chain of three, a default next to
-// one, a head that is a reference, a branch that binds a variable, two
-// definitions of one rule that can disagree, and a function, which is left as
-// it is.
+// one, a head that is a reference, a branch that binds a variable, a value that
+// can be undefined where the body of its branch holds, first and in the middle
+// of a chain, two definitions of one rule that can disagree, and a function,
+// which is left as it is.
 const elsePolicy = `package t
 
 tier := "gold" if input.points > 100 else := "silver" if input.points > 10 else := "bronze"
@@ -26,6 +27,10 @@ grade := g if {
 	g := input.score
 	g > 50
 } else := 0
+
+region := input.region if input.verified else := "unknown"
+
+zone := input.zone if input.zoned else := data.settings.zone if input.b else := "none"
 
 conflict := 1 if input.a else := 2
 
@@ -53,7 +58,7 @@ func TestExclusiveElseKeepsTheAnswers(t *testing.T) {
 		t.Fatal("the policy has rules with an else and nothing was rewritten")
 	}
 
-	queries := []string{"data.t.tier", "data.t.open", "data.t.limits", "data.t.grade", "data.t.conflict", "data.t.stepped"}
+	queries := []string{"data.t.tier", "data.t.open", "data.t.limits", "data.t.grade", "data.t.region", "data.t.zone", "data.t.conflict", "data.t.stepped"}
 	inputs := []map[string]any{
 		{},
 		{"points": 5},
@@ -62,6 +67,10 @@ func TestExclusiveElseKeepsTheAnswers(t *testing.T) {
 		{"closed": true},
 		{"score": 70},
 		{"score": 20},
+		{"verified": true},
+		{"verified": true, "region": "eu"},
+		{"zoned": true},
+		{"zoned": true, "zone": "west"},
 		{"a": true},
 		{"b": true},
 		{"a": true, "b": true},

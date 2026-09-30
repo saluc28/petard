@@ -27,6 +27,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   negation it cannot inline, was read as if that part were not there, and a gain or a coverage that
   rested on it was reported as certain. Such a condition now counts as unreadable, and the
   comparison ends in a candidate.
+- A rule with an `else` moves on to the next branch when a branch's condition holds but its value is
+  undefined, as OPA does. In `region := input.region if input.verified else := "unknown"`, a
+  verified request without a region got an undefined `region` instead of `"unknown"`, and a
+  decision behind such a rule missed the way through the `else`.
 
 ## [0.3.0] - 2026-09-25
 

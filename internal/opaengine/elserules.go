@@ -31,7 +31,18 @@ import (
 //
 //	p := v0 if B0
 //	p := v1 if { not h0; B1 }
-//	h0 if B0
+//	h0 if { B0; _ = v0 }
+//
+// A branch fails when its body fails or its value is undefined. The compiler
+// moves a value that needs evaluating into the body of its branch
+// (rewriteRefsInHead, v1/ast/compile.go:2970 at v1.20.2, which reaches every
+// else), so in
+//
+//	region := input.region if input.verified else := "unknown"
+//
+// a verified request with no region gets "unknown". The rewrite runs before
+// compiling, so the helper checks the value itself and holds only where it is
+// defined. A constant is always defined and needs no check.
 //
 // Functions keep their else. A function is evaluated against the value it is
 // asked for (v1/topdown/eval.go:2291 and 2308), so a branch whose value does
@@ -91,9 +102,18 @@ func exclusiveBranches(root *ast.Rule, helpers func() ast.Var) []*ast.Rule {
 		helper := helpers()
 		head := ast.NewHead(helper, nil, ast.BooleanTerm(true))
 		head.Location = branch.Location
+		helperBody := branch.Body.Copy()
+		if value := branch.Head.Value; value != nil && !ast.IsConstant(value.Value) {
+			// The parser turns every _ into $ and a number
+			// (v1/ast/parser.go:3234 at v1.20.2), so $value cannot collide
+			// with one.
+			defined := ast.Equality.Expr(ast.VarTerm(ast.WildcardPrefix+"value"), value.Copy())
+			defined.Location = branch.Location
+			helperBody.Append(defined)
+		}
 		rules = append(rules, &ast.Rule{
 			Head:     head,
-			Body:     branch.Body.Copy(),
+			Body:     helperBody,
 			Module:   root.Module,
 			Location: branch.Location,
 		})
