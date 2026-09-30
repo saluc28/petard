@@ -330,6 +330,26 @@ func (r reach) witness(ctx context.Context, other reach) (map[string]any, error)
 	return nil, nil
 }
 
+// example returns one request this reach grants, found by asking the decision
+// about the requests its conditions name, or nil when none of them is granted.
+// A reach that holds always grants the part of the request it was asked with.
+func (r reach) example(ctx context.Context) (map[string]any, error) {
+	candidates := r.content.Witnesses(opaengine.GrantContent{}, r.request)
+	if r.always {
+		candidates = []map[string]any{r.request}
+	}
+	for _, request := range candidates {
+		granted, err := opaengine.Holds(ctx, r.bundle, r.data, r.decision, request)
+		if err != nil {
+			return nil, err
+		}
+		if granted {
+			return request, nil
+		}
+	}
+	return nil, nil
+}
+
 // witnessOf is the witness of a finding: the request a gain found, with the
 // write that makes the difference. It is nil when the gain found no request.
 func witnessOf(found gain, decision, document string, value any) *Witness {
@@ -337,6 +357,19 @@ func witnessOf(found gain, decision, document string, value any) *Witness {
 		return nil
 	}
 	return &Witness{Decision: decision, Request: found.request, Document: document, Value: value}
+}
+
+// authorizedBy adds to a witness the decision that lets the principal make the
+// write and a request it allows the write on. A witness without one, or a
+// write no request was found for, is left as it is: its test then checks the
+// grant alone.
+func (w *Witness) authorizedBy(decision string, request map[string]any) *Witness {
+	if w == nil || request == nil {
+		return w
+	}
+	w.AuthorizedBy = decision
+	w.WriteRequest = request
+	return w
 }
 
 // reachOf asks how much of a decision one principal can get, with the rest of

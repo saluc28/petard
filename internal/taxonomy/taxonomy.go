@@ -380,6 +380,14 @@ type Witness struct {
 	Request  map[string]any
 	Document string
 	Value    any
+
+	// AuthorizedBy is the decision that lets the principal make the write, and
+	// WriteRequest a request it allows the write on, when the policy itself
+	// authorizes the write. They are what the fix PTD-OPA-006 names changes: the
+	// decision that allows the write refusing the value. A write the write model
+	// declares through an endpoint no decision guards leaves both empty.
+	AuthorizedBy string
+	WriteRequest map[string]any
 }
 
 // String renders a finding as one line, for a report.

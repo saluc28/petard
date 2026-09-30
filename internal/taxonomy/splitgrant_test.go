@@ -56,13 +56,15 @@ func TestSplitGrantOnFixture(t *testing.T) {
 		t.Error("the finding points at no line of policy to check it against")
 	}
 
-	// The request of verify/measure.rego without the document, which the
-	// publishing decision does not read: editor added to the roles carol holds.
+	// The requests of verify/measure.rego without the parts the two decisions
+	// do not read: the document to publish, and whom editor is assigned to.
 	want := &Witness{
-		Decision: "data.quill.publish.allow",
-		Request:  map[string]any{"user": "carol", "action": "publish"},
-		Document: "data.users.carol.roles",
-		Value:    []any{"support", "editor"},
+		Decision:     "data.quill.publish.allow",
+		Request:      map[string]any{"user": "carol", "action": "publish"},
+		Document:     "data.users.carol.roles",
+		Value:        []any{"support", "editor"},
+		AuthorizedBy: "data.quill.admin.allow",
+		WriteRequest: map[string]any{"user": "carol", "action": "assign_role", "role": "editor"},
 	}
 	if !reflect.DeepEqual(f.Witness, want) {
 		t.Errorf("witness = %+v, want %+v", f.Witness, want)
@@ -249,6 +251,9 @@ func TestSplitGrantFindsAJoin(t *testing.T) {
 		t.Error("the finding points at no line of policy to check it against")
 	}
 	witnessHolds(t, a, f.Witness)
+	if f.Witness.AuthorizedBy != "data.authz.authorized_project" {
+		t.Errorf("the write is authorized by %q, want the decision that allows adding a member", f.Witness.AuthorizedBy)
+	}
 }
 
 // A principal already in the collection has no join to make, and the pattern

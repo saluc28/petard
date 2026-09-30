@@ -75,6 +75,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	quiet := flags.Bool("quiet", false, "print the escalations and the findings alone, and nothing at all when there are none")
 	failOn := flags.String("fail-on", failOnFindings, "exit 3 on findings, on any match including candidates, or on neither: findings|any|none")
 	noColor := flags.Bool("no-color", false, "never use escape sequences, whatever the terminal says")
+	testsPath := flags.String("tests", "", "write an opa test for each escalation proven by a request to this file; it fails while the escalation is open")
 
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
@@ -208,6 +209,17 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if err := reportGraph(ctx, stdout, analyzed, findings); err != nil {
 			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 			return exitFailure
+		}
+	}
+
+	if *testsPath != "" {
+		written, err := writeTests(ctx, *testsPath, analyzed, found.escalations)
+		if err != nil {
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+			return exitFailure
+		}
+		if !*quiet {
+			fmt.Fprintf(stdout, "\n%s written to %s\n", count(written, "test"), *testsPath)
 		}
 	}
 	return exitCode(found, *failOn)
@@ -442,6 +454,9 @@ func reportPattern(out io.Writer, patterns []taxonomy.Pattern, id string, findin
 			fmt.Fprintf(out, "    proven by %s\n", asJSON(w.Request))
 			render.Print(out, fmt.Sprintf("refused today, granted once %s holds %s",
 				w.Document, asJSON(w.Value)), "      ")
+			if w.AuthorizedBy != "" {
+				render.Print(out, fmt.Sprintf("%s allows the write on %s", w.AuthorizedBy, asJSON(w.WriteRequest)), "      ")
+			}
 		}
 		if len(finding.UncoveredKeys) > 0 {
 			fmt.Fprintf(out, "    absent for: %s\n", strings.Join(finding.UncoveredKeys, ", "))

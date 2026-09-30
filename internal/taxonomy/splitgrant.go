@@ -293,7 +293,14 @@ func valueOpensTheGrant(ctx context.Context, a Analysis, grant authorizedGrant, 
 	if err != nil {
 		return opening{}, err
 	}
-	return opening{opens: true, certain: true, witness: witnessOf(found, grant.Decision, document, written)}, nil
+	write, err := openingOf(ctx, found, witnessOf(found, grant.Decision, document, written), allowed)
+	if err != nil {
+		return opening{}, err
+	}
+	// The subject got nothing before the write, so the gain is proven whatever
+	// the comparison of the conditions says.
+	write.opens, write.certain = true, true
+	return write, nil
 }
 
 // held is the document once the value is written: appended to the collection
@@ -498,13 +505,21 @@ type opening struct {
 
 // openingOf reads a gain as what a write opens. A proven gain is reported as a
 // finding and an unproven one as a candidate; a write that grants nothing new is
-// not reported at all.
-func openingOf(found gain, decision, document string, written any) opening {
+// not reported at all. A witness gets a request the authorizing decision allows
+// the write on, so that it holds the whole escalation and not the grant alone.
+func openingOf(ctx context.Context, found gain, witness *Witness, allowed reach) (opening, error) {
+	if witness != nil {
+		writeRequest, err := allowed.example(ctx)
+		if err != nil {
+			return opening{}, err
+		}
+		witness = witness.authorizedBy(allowed.decision, writeRequest)
+	}
 	return opening{
 		opens:   found.beyond || !found.certain,
 		certain: found.certain,
-		witness: witnessOf(found, decision, document, written),
-	}
+		witness: witness,
+	}, nil
 }
 
 // verdict is how a write that opens something is reported: a finding when the
@@ -533,7 +548,7 @@ func joinOpens(ctx context.Context, a Analysis, join authorizedJoin, document st
 	if err != nil {
 		return opening{}, err
 	}
-	if !allowed {
+	if allowed.nothing() {
 		return opening{certain: true}, nil
 	}
 
@@ -550,7 +565,7 @@ func joinOpens(ctx context.Context, a Analysis, join authorizedJoin, document st
 	if err != nil {
 		return opening{}, err
 	}
-	return openingOf(found, join.Decision, document, written), nil
+	return openingOf(ctx, found, witnessOf(found, join.Decision, document, written), allowed)
 }
 
 // writeAllowed asks the decision the endpoint consumes whether one principal
@@ -560,10 +575,10 @@ func joinOpens(ctx context.Context, a Analysis, join authorizedJoin, document st
 // question narrow. Without them the answer would be "this principal can make
 // some request about that resource", which anybody allowed to read it answers
 // yes to, and the finding would claim a write on the strength of a read.
-func writeAllowed(ctx context.Context, a Analysis, join authorizedJoin, document string, fields subjectFields, subject string) (bool, error) {
+func writeAllowed(ctx context.Context, a Analysis, join authorizedJoin, document string, fields subjectFields, subject string) (reach, error) {
 	segments, err := opaengine.Segments(document)
 	if err != nil {
-		return false, err
+		return reach{}, err
 	}
 
 	request := requestNaming(fields, subject)
@@ -571,7 +586,7 @@ func writeAllowed(ctx context.Context, a Analysis, join authorizedJoin, document
 	for field, sent := range join.Auth.Request {
 		filled, err := join.Entry.Path.Fill(sent, segments)
 		if err != nil {
-			return false, err
+			return reach{}, err
 		}
 		setInput(request, field, filled)
 		fixed = append(fixed, field)
@@ -583,12 +598,8 @@ func writeAllowed(ctx context.Context, a Analysis, join authorizedJoin, document
 		fixed = append(fixed, join.Auth.Value)
 	}
 
-	allowed, err := reachOf(ctx, a.Bundle, a.Data, join.Auth.Decision, request,
+	return reachOf(ctx, a.Bundle, a.Data, join.Auth.Decision, request,
 		unknownsExcept(a.Reads.InputPaths, fixed...), a.Limits)
-	if err != nil {
-		return false, err
-	}
-	return !allowed.nothing(), nil
 }
 
 // elementsOf returns what a collection holds, and nothing when it holds no

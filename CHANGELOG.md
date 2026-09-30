@@ -11,8 +11,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - An escalation comes with a request that proves it, when asking the decision finds one: the
   decision refuses it as the data stands and grants it once the write is made. `petard analyze`
-  prints it under the escalation as `proven by`, and `-v` adds the document the write changes and
-  the value it puts there.
+  prints it under the escalation as `proven by`, and `-v` adds the document the write changes, the
+  value it puts there and, when a decision of the policy allows the write, the request it allows.
+- `petard analyze -tests <file>` writes each of those proofs as an opa test. A test fails while
+  its escalation is open and passes once it is closed, so it can stay in the suite afterwards.
+  When a decision of the policy allows the write, the test asks that decision too, and refusing
+  the write, which is how `PTD-OPA-006` is closed, makes it pass.
 
 ### Fixed
 

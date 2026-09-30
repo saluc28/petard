@@ -109,6 +109,9 @@ func TestSiblingGrantFindsTheAttributeEscalation(t *testing.T) {
 		t.Error("the finding points at no line of policy to check it against")
 	}
 	witnessHolds(t, a, f.Witness)
+	if f.Witness.AuthorizedBy != "data.roster.authz" {
+		t.Errorf("the write is authorized by %q, want the decision that allows assigning a role", f.Witness.AuthorizedBy)
+	}
 }
 
 // The one who already holds the granting value has nothing to gain by writing a

@@ -279,7 +279,7 @@ func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fiel
 	if err != nil {
 		return opening{}, err
 	}
-	if !allowed {
+	if allowed.nothing() {
 		return opening{certain: true}, nil
 	}
 
@@ -295,7 +295,7 @@ func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fiel
 	if err != nil {
 		return opening{}, err
 	}
-	return openingOf(found, start.Decision, document, value), nil
+	return openingOf(ctx, found, witnessOf(found, start.Decision, document, value), allowed)
 }
 
 // siblingWriteAllowed asks the decision the endpoint consumes whether the subject
@@ -304,10 +304,10 @@ func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fiel
 // The parts the endpoint fills in keep the question about a write, as they do for
 // the join of PTD-OPA-006: without them the answer is "this principal can make
 // some request about that resource", which a reader answers yes to.
-func siblingWriteAllowed(ctx context.Context, a Analysis, start siblingStart, fields subjectFields, subject, document, value string) (bool, error) {
+func siblingWriteAllowed(ctx context.Context, a Analysis, start siblingStart, fields subjectFields, subject, document, value string) (reach, error) {
 	segments, err := opaengine.Segments(document)
 	if err != nil {
-		return false, err
+		return reach{}, err
 	}
 
 	request := requestNaming(fields, subject)
@@ -315,7 +315,7 @@ func siblingWriteAllowed(ctx context.Context, a Analysis, start siblingStart, fi
 	for field, sent := range start.Auth.Request {
 		filled, err := start.Entry.Path.Fill(sent, segments)
 		if err != nil {
-			return false, err
+			return reach{}, err
 		}
 		setInput(request, field, filled)
 		fixed = append(fixed, field)
@@ -334,14 +334,15 @@ func siblingWriteAllowed(ctx context.Context, a Analysis, start siblingStart, fi
 		// Every request part the decision reads is fixed, so there is no request
 		// to search over: the question is whether it holds for this one, which
 		// Residuals cannot answer, since it reads an empty set of unknowns as the
-		// whole request being unknown.
-		return opaengine.Holds(ctx, a.Bundle, a.Data, start.Auth.Decision, request)
+		// whole request being unknown. A request it allows is a reach that holds
+		// always, with nothing left to ask.
+		allowed, err := opaengine.Holds(ctx, a.Bundle, a.Data, start.Auth.Decision, request)
+		if err != nil || !allowed {
+			return reach{}, err
+		}
+		return reach{always: true, bundle: a.Bundle, data: a.Data, decision: start.Auth.Decision, request: request}, nil
 	}
-	allowed, err := reachOf(ctx, a.Bundle, a.Data, start.Auth.Decision, request, unknowns, a.Limits)
-	if err != nil {
-		return false, err
-	}
-	return !allowed.nothing(), nil
+	return reachOf(ctx, a.Bundle, a.Data, start.Auth.Decision, request, unknowns, a.Limits)
 }
 
 // valueHolders returns the values the granting field takes elsewhere in the list

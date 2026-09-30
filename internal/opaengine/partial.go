@@ -347,6 +347,36 @@ func (d *Data) With(ctx context.Context, path string, value any) (*Data, error) 
 	return &Data{store: inmem.NewFromObject(documents), Files: slices.Clone(d.Files)}, nil
 }
 
+// WithTarget returns what a with modifier replaces to repeat a write of value
+// into path: the path itself when it is made of names, or else the nearest
+// document above it that is, holding the write. A with modifier takes a path of
+// names only (IsValidImportPath, v1/topdown/input.go:22 at v1.20.2), so a write
+// into data.team.members[0].role is repeated by replacing data.team.members.
+func (d *Data) WithTarget(ctx context.Context, path string, value any) (string, any, error) {
+	ref, err := ast.ParseRef(path)
+	if err != nil {
+		return "", nil, fmt.Errorf("opaengine: reading the path %s: %w", path, err)
+	}
+	named := len(ref)
+	for named > 1 && ast.IsValidImportPath(ref[:named]) != nil {
+		named--
+	}
+	if named == len(ref) {
+		return ref.String(), value, nil
+	}
+
+	written, err := d.With(ctx, path, value)
+	if err != nil {
+		return "", nil, err
+	}
+	target := ref[:named].String()
+	held, _, err := written.Value(ctx, target)
+	if err != nil {
+		return "", nil, err
+	}
+	return target, held, nil
+}
+
 // Value returns the document a concrete path names, and whether it is there.
 // A path that is not concrete, or names nothing, is not a value: the first is
 // an error, the second is the false the caller asked about.
@@ -885,16 +915,32 @@ func (b *Bundle) query(decision string) string {
 // asks: Chef Automate queries data.authz.authorized_project[project] and reads
 // the bindings (components/authz-service/engine/opa/opa.go:36 at 61ca031).
 func queryFor(compiler *ast.Compiler, decision string) string {
+	if collects(compiler, decision) {
+		return decision + "[_]"
+	}
+	return decision
+}
+
+// Collects reports whether a decision collects a set or an object rather than
+// answering with one value. Such a decision grants when what it collected is not
+// empty, which a test has to write as a count: not data.authz.grants[_] is not
+// a valid Rego expression.
+func (b *Bundle) Collects(decision string) bool {
+	return collects(b.Compiler, decision)
+}
+
+// collects is Collects for a compiler.
+func collects(compiler *ast.Compiler, decision string) bool {
 	ref, err := ast.ParseRef(decision)
 	if err != nil {
-		return decision
+		return false
 	}
 	for _, rule := range compiler.GetRulesExact(ref) {
 		if rule.Head.Key != nil {
-			return decision + "[_]"
+			return true
 		}
 	}
-	return decision
+	return false
 }
 
 // GrantingValue is a constant a residual condition compares an unknown document

@@ -124,6 +124,14 @@ write is made. `-v` adds the evidence under it: every read with its file and lin
 each write changes and the value it puts there, what each decision is left to check once the data
 is concrete, and every place to go and look.
 
+`-tests` writes each of those proofs as an opa test, which fails while its escalation is open and
+passes once it is closed:
+
+```
+petard analyze -write-model model.yaml -data data -tests escalations_test.rego policy
+opa test policy data escalations_test.rego
+```
+
 The patterns travel in the binary, so the two commands that read them work without a checkout:
 
 ```

@@ -106,13 +106,23 @@ func TestEscalationsOnFixture(t *testing.T) {
 }
 
 // witnessHolds checks a witness the way anybody could without Petard: the
-// decision refuses the request with the data as it stands, and grants it with
-// the one document replaced.
+// decision that authorizes the write allows it, when the policy authorizes it,
+// and the granting decision refuses the request with the data as it stands and
+// grants it with the one document replaced.
 func witnessHolds(t *testing.T, a Analysis, w *Witness) {
 	t.Helper()
 
 	if w == nil {
 		t.Fatal("the escalation comes with no request that shows it")
+	}
+	if w.AuthorizedBy != "" {
+		allowed, err := opaengine.Holds(t.Context(), a.Bundle, a.Data, w.AuthorizedBy, w.WriteRequest)
+		if err != nil {
+			t.Fatalf("Holds() on the write error = %v", err)
+		}
+		if !allowed {
+			t.Errorf("%s refuses the write %v", w.AuthorizedBy, w.WriteRequest)
+		}
 	}
 	before, err := opaengine.Holds(t.Context(), a.Bundle, a.Data, w.Decision, w.Request)
 	if err != nil {

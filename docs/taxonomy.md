@@ -44,6 +44,11 @@ through the hierarchy, and CAROL asks to publish, granted once their roles hold 
 are the requests `fixtures/vulnerable-bundle/verify/measure.rego` writes by hand, and `opa eval`
 repeats either one with a `with` on that one document.
 
+`petard analyze -tests` writes each witness as an opa test that says the escalation is closed, so
+it fails until it is. When a decision of the policy allows the write, as `data.quill.admin.allow`
+allows CAROL's, the test asks it too, so it passes once the write is refused, which is how the
+registry closes `PTD-OPA-006`, or once the granting decision stops granting.
+
 ## What holds the claim up
 
 Who can write what is not in the policy. It lives in deployment, in an API, in a pipeline, in
