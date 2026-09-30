@@ -234,7 +234,7 @@ func chainWitness(ctx context.Context, a Analysis, cut *opaengine.Data, decision
 			return nil, err
 		}
 
-		found, err := after.over(ctx, withoutRelation)
+		found, err := after.over(ctx, withoutRelation, identityClaims(a.Shape, a.EnforcementPoint))
 		if err != nil {
 			return nil, err
 		}

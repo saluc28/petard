@@ -295,6 +295,56 @@ func TestSiblingGrantLeavesAWriteThatNeedsAClaimACandidate(t *testing.T) {
 	}
 }
 
+// siblingGainClaimPolicy lets an editor assign roles without any claim, and lets
+// an owner remove the team only with a clearance the provider puts next to the
+// subject. alice can become an owner, and gets what that opens only by also
+// holding the clearance, which nothing in the data says alice holds.
+const siblingGainClaimPolicy = `package roster
+
+import rego.v1
+
+roles := {"viewer": 1, "editor": 2, "owner": 3}
+
+# METADATA
+# scope: document
+# entrypoint: true
+default authz := false
+
+authz if {
+	input.action == "remove"
+	some i
+	data.team.members[i].user == input.subject.id
+	roles[data.team.members[i].role] >= 3
+	input.subject.clearance == "high"
+}
+` + siblingClaimEditors
+
+// What the write opens can ask for a claim too, and then it is a gain only for a
+// requester who holds it. The escalation stays a candidate, and its witness
+// shows the claim.
+func TestSiblingGrantLeavesAGainThatNeedsAClaimACandidate(t *testing.T) {
+	a := analysisOf(t, &FalsePositiveCase{Policy: siblingGainClaimPolicy, Data: siblingData, WriteModel: siblingModel})
+	shape, err := opaengine.ShapeOf(a.Reads, "input.subject.id")
+	if err != nil {
+		t.Fatalf("ShapeOf() error = %v", err)
+	}
+	a.Shape = shape
+
+	f := siblingOf(t, a, "alice", "bob")
+	if f.Verdict != VerdictCandidate {
+		t.Errorf("verdict = %s, want a candidate: the gain needs a clearance", f.Verdict)
+	}
+	if !strings.Contains(f.Note, "what the write opens") {
+		t.Errorf("note = %q, want it to say the gain rests on a claim", f.Note)
+	}
+	if f.Witness == nil {
+		t.Fatal("the escalation comes with no request that shows the gain")
+	}
+	if subject, _ := f.Witness.Request["subject"].(map[string]any); subject["clearance"] != "high" {
+		t.Errorf("witness request = %v, want the one that shows the gain, clearance included", f.Witness.Request)
+	}
+}
+
 // With the subject at the top of the request, nothing sits next to it, and
 // only the enforcement point can say that a part is a claim: here the groups,
 // which the single sign-on sets.

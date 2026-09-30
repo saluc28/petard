@@ -293,3 +293,51 @@ func TestGrantContentGrantsWithoutClaim(t *testing.T) {
 		})
 	}
 }
+
+// A gain reached without a claim is a way into this decision that escapes every
+// way into the other and constrains no claim. One that escapes only by asking
+// for a claim is a gain for a principal the provider describes that way.
+func TestGrantContentBeyondWithoutClaim(t *testing.T) {
+	claim := func(field string) bool {
+		return strings.HasPrefix(field, "input.subject.") && field != "input.subject.id"
+	}
+	tests := []struct {
+		name  string
+		grant []string
+		other []string
+		want  bool
+	}{
+		{
+			name:  "a new action that asks for no claim",
+			grant: []string{`"remove" = input.action`},
+			other: []string{`"assign" = input.action`},
+			want:  true,
+		},
+		{
+			name:  "a new action only with a clearance",
+			grant: []string{`"remove" = input.action; "high" = input.subject.clearance`},
+			other: []string{`"assign" = input.action`},
+			want:  false,
+		},
+		{
+			name:  "a way without the claim the other already covers",
+			grant: []string{`"assign" = input.action`, `"remove" = input.action; "high" = input.subject.clearance`},
+			other: []string{`"assign" = input.action`},
+			want:  false,
+		},
+		{
+			name:  "nothing before",
+			grant: []string{`"remove" = input.action`},
+			want:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			grant := GrantContentOf(residual(tt.grant...))
+			other := GrantContentOf(residual(tt.other...))
+			if got := grant.BeyondWithoutClaim(other, claim); got != tt.want {
+				t.Errorf("BeyondWithoutClaim() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}

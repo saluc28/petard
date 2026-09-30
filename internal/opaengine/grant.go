@@ -395,19 +395,8 @@ func (g GrantContent) Beyond(other GrantContent) (beyond, certain bool) {
 
 	uncertain := !g.whole || !other.whole
 	for _, condition := range g.conditions {
-		escaped := true
-		for _, o := range other.conditions {
-			switch coverageOf(o, condition) {
-			case covers:
-				escaped = false
-			case unknownCoverage:
-				escaped = false
-				uncertain = true
-			}
-			if !escaped {
-				break
-			}
-		}
+		escaped, unknown := escapesEvery(condition, other.conditions)
+		uncertain = uncertain || unknown
 		// Escapes every one of the other's conditions, and the other is all in
 		// hand: a bound that cut them short may have dropped the one that covers
 		// this.
@@ -416,6 +405,44 @@ func (g GrantContent) Beyond(other GrantContent) (beyond, certain bool) {
 		}
 	}
 	return false, !uncertain
+}
+
+// BeyondWithoutClaim reports whether some way this decision grants escapes
+// every way of the other, as Beyond reads it, while constraining none of the
+// fields claim names: a gain the requester reaches without claiming anything
+// about who they are (see GrantsWithoutClaim). False says nothing about a gain
+// Beyond could not settle.
+func (g GrantContent) BeyondWithoutClaim(other GrantContent, claim func(field string) bool) bool {
+	if other.always || !other.whole {
+		return false
+	}
+	if g.always {
+		return true
+	}
+	for _, condition := range g.conditions {
+		if condition.constrainsAny(claim) {
+			continue
+		}
+		if escaped, _ := escapesEvery(condition, other.conditions); escaped {
+			return true
+		}
+	}
+	return false
+}
+
+// escapesEvery reports whether a condition escapes every one of the others, and
+// when it does not, whether that is because a comparison could not be made
+// rather than because one of them covers it.
+func escapesEvery(condition grantCondition, others []grantCondition) (escaped, unknown bool) {
+	for _, other := range others {
+		switch coverageOf(other, condition) {
+		case covers:
+			return false, false
+		case unknownCoverage:
+			return false, true
+		}
+	}
+	return true, false
 }
 
 // coverageOf reports how the covering condition stands to the covered one:

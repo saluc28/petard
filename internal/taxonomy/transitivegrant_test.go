@@ -204,7 +204,7 @@ allow if {
 				t.Fatalf("reachOf(after) error = %v", err)
 			}
 
-			found, err := then.over(t.Context(), now)
+			found, err := then.over(t.Context(), now, nil)
 			if err != nil {
 				t.Fatalf("over() error = %v", err)
 			}

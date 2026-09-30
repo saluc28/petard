@@ -270,6 +270,11 @@ type gain struct {
 	// request is one the reach grants and the other refuses, found by asking the
 	// decision, or nil when none of the requests the conditions name was.
 	request map[string]any
+
+	// claimed is true when the gain is there only for a requester who claims
+	// something an issuer sets, which leaves it unproven for the principal the
+	// question named.
+	claimed bool
 }
 
 // over reports what one reach grants beyond another.
@@ -291,43 +296,99 @@ type gain struct {
 // inline it, and a deny can refuse exactly what a write seems to open. With no
 // request to prove it the answer is not certain, and the caller reports a
 // candidate rather than a finding.
-func (r reach) over(ctx context.Context, other reach) (gain, error) {
+//
+// With claim, a gain counts as proven only when it holds without the requester
+// claiming anything claim names (see identityClaims): a way in that escapes the
+// other and constrains no claim, or a request that proves the gain and sets
+// none. A gain that asks for a clearance nothing says the principal has is a
+// gain for whoever has it. Without claim every part of the request is the
+// requester's to choose.
+func (r reach) over(ctx context.Context, other reach, claim func(string) bool) (gain, error) {
 	beyond, certain := r.content.Beyond(other.content)
-	noGain := certain && !beyond
-	if noGain || r.data == nil || other.data == nil {
-		return gain{beyond: beyond, certain: certain}, nil
+	if certain && !beyond {
+		return gain{certain: true}, nil
+	}
+	found := gain{beyond: beyond, certain: certain}
+	if certain && claim != nil && !r.content.BeyondWithoutClaim(other.content, claim) {
+		found.certain, found.claimed = false, true
+	}
+	if r.data == nil || other.data == nil {
+		return found, nil
 	}
 
-	request, err := r.witness(ctx, other)
+	request, claimed, err := r.witness(ctx, other, claim)
 	if err != nil {
 		return gain{}, err
 	}
+	found.request = request
 	if !certain {
-		beyond, certain = request != nil, request != nil
+		found.beyond = request != nil
+		found.certain = request != nil && !claimed
+		found.claimed = claimed
 	}
-	return gain{beyond: beyond, certain: certain, request: request}, nil
+	return found, nil
 }
 
 // witness returns the first request this reach grants and the other refuses,
-// among the ones the conditions of this reach name, or nil when none is.
-func (r reach) witness(ctx context.Context, other reach) (map[string]any, error) {
-	for _, request := range r.content.Witnesses(other.content, r.request) {
+// among the ones the conditions of this reach name, or nil when none is, and
+// whether it sets a part claim names. The requests that set none are asked
+// first, so a claim is in the witness only when the gain needs one.
+func (r reach) witness(ctx context.Context, other reach, claim func(string) bool) (map[string]any, bool, error) {
+	candidates := r.content.Witnesses(other.content, r.request)
+	claims := func(request map[string]any) bool {
+		return claim != nil && setsPart(request, "input", claim)
+	}
+	slices.SortStableFunc(candidates, func(a, b map[string]any) int {
+		switch claimsA, claimsB := claims(a), claims(b); {
+		case claimsA == claimsB:
+			return 0
+		case claimsB:
+			return -1
+		default:
+			return 1
+		}
+	})
+
+	for _, request := range candidates {
 		before, err := opaengine.Holds(ctx, other.bundle, other.data, other.decision, request)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if before {
 			continue
 		}
 		after, err := opaengine.Holds(ctx, r.bundle, r.data, r.decision, request)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if after {
-			return request, nil
+			return request, claims(request), nil
 		}
 	}
-	return nil, nil
+	return nil, false, nil
+}
+
+// setsPart reports whether a value of a request, found at a path, sets a part
+// the predicate names, itself or anywhere below it.
+func setsPart(value any, at string, named func(string) bool) bool {
+	switch value := value.(type) {
+	case map[string]any:
+		for key, child := range value {
+			if setsPart(child, at+"."+key, named) {
+				return true
+			}
+		}
+		return false
+	case []any:
+		for i, child := range value {
+			if setsPart(child, fmt.Sprintf("%s[%d]", at, i), named) {
+				return true
+			}
+		}
+		return false
+	default:
+		return named(at)
+	}
 }
 
 // example returns one request this reach grants, found by asking the decision

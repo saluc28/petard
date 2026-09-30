@@ -151,8 +151,12 @@ detection:
         The whole decision is evaluated, not the branch, so any other condition the decision
         imposes still applies. On the value side a principal who already held the grant is not
         reported, since for them the write changes nothing; on the search side what is compared
-        is how many ways the decision has of granting, before and after, and a principal already
-        in the collection is left alone because there is no join to make.
+        is what the decision grants, before and after, read as the constraint each way in puts on
+        the request, and a principal already in the collection is left alone because there is no
+        join to make.
+        What the write opens is read like the write. A gain granted only through a claim about
+        the requester, a clearance next to the subject or a group an issuer sets, is a gain only
+        for a principal the issuer describes that way, and the escalation is then a candidate.
   confidence: C
   confidence_note: >
     As for `PTD-OPA-001`, the claim rests on the recognition of the subject, which on the fixture

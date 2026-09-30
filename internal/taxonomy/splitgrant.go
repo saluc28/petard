@@ -290,7 +290,7 @@ func valueOpensTheGrant(ctx context.Context, a Analysis, grant authorizedGrant, 
 		return opening{certain: true}, nil
 	}
 
-	found, err := granted.over(ctx, now)
+	found, err := granted.over(ctx, now, identityClaims(a.Shape, a.EnforcementPoint))
 	if err != nil {
 		return opening{}, err
 	}
@@ -299,9 +299,9 @@ func valueOpensTheGrant(ctx context.Context, a Analysis, grant authorizedGrant, 
 		return opening{}, err
 	}
 	// The subject got nothing before the write, so the gain is proven whatever
-	// the comparison of the conditions says, and only a write that asks for a
-	// claim leaves it open.
-	write.opens, write.certain = true, !write.claimed
+	// the comparison of the conditions says, and only a claim, asked for the
+	// write or for what it opens, leaves it open.
+	write.opens, write.certain = true, !write.claimed()
 	return write, nil
 }
 
@@ -502,10 +502,12 @@ type opening struct {
 	opens   bool
 	certain bool
 
-	// claimed is true when the decision that authorizes the write allows it
-	// only to a requester who claims something an issuer sets, which makes the
-	// write, and so the gain, unproven.
-	claimed bool
+	// writeClaimed is true when the decision that authorizes the write allows
+	// it only to a requester who claims something an issuer sets, and
+	// gainClaimed when what the write opens is granted only to such a
+	// requester. Either leaves the escalation unproven.
+	writeClaimed bool
+	gainClaimed  bool
 
 	// witness is the request that showed it, when one did.
 	witness *Witness
@@ -523,22 +525,34 @@ func openingOf(ctx context.Context, a Analysis, found gain, witness *Witness, al
 		}
 		witness = witness.authorizedBy(allowed.decision, writeRequest)
 	}
-	claimed := !allowedWithoutClaim(a, allowed)
+	writeClaimed := !allowedWithoutClaim(a, allowed)
 	return opening{
-		opens:   found.beyond || !found.certain,
-		certain: found.certain && !claimed,
-		claimed: claimed,
-		witness: witness,
+		opens:        found.beyond || !found.certain,
+		certain:      found.certain && !writeClaimed,
+		writeClaimed: writeClaimed,
+		gainClaimed:  found.claimed,
+		witness:      witness,
 	}, nil
 }
 
-// note says why a write the decision allows only on a claim is a candidate.
+// claimed reports whether the write or what it opens rests on a claim.
+func (o opening) claimed() bool {
+	return o.writeClaimed || o.gainClaimed
+}
+
+// note says why an escalation that rests on a claim is a candidate.
 func (o opening) note() string {
-	if !o.claimed {
+	var reasons []string
+	if o.writeClaimed {
+		reasons = append(reasons, "the decision that allows the write asks the requester for a claim an issuer sets")
+	}
+	if o.gainClaimed {
+		reasons = append(reasons, "what the write opens is granted only to a requester who claims something an issuer sets")
+	}
+	if len(reasons) == 0 {
 		return ""
 	}
-	return "the decision that allows the write asks the requester for a claim an issuer sets, " +
-		"which neither the data nor the write model says this principal holds"
+	return strings.Join(reasons, ", and ") + ", which neither the data nor the write model says this principal holds"
 }
 
 // allowedWithoutClaim reports whether the decision that authorizes a write
@@ -616,7 +630,7 @@ func joinOpens(ctx context.Context, a Analysis, join authorizedJoin, document st
 	if err != nil {
 		return opening{}, err
 	}
-	found, err := after.over(ctx, now)
+	found, err := after.over(ctx, now, identityClaims(a.Shape, a.EnforcementPoint))
 	if err != nil {
 		return opening{}, err
 	}

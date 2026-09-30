@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/writemodel"
 )
 
@@ -70,6 +71,97 @@ func TestSplitGrantOnFixture(t *testing.T) {
 		t.Errorf("witness = %+v, want %+v", f.Witness, want)
 	}
 	witnessHolds(t, fixtureAnalysis(t), f.Witness)
+}
+
+// valueClaimPolicy is the case of the fixture in one module: support assigns
+// editor, and editors publish, here only with a clearance the provider puts next
+// to the subject.
+const valueClaimPolicy = `package app
+
+import rego.v1
+
+# METADATA
+# scope: document
+# entrypoint: true
+default publish := false
+
+publish if {
+	input.action == "publish"
+	"editor" in data.users[input.subject.id].roles
+	input.subject.clearance == "high"
+}
+
+# METADATA
+# scope: document
+# entrypoint: true
+default assign := false
+
+assign if {
+	input.action == "assign_role"
+	"support" in data.users[input.subject.id].roles
+	input.role == "editor"
+}
+`
+
+const valueClaimData = `{"users": {"carol": {"roles": ["support"]}, "alice": {"roles": ["editor"]}}}`
+
+const valueClaimModel = `schema_version: 1
+model: write-paths
+entries:
+  - path: data.users.{owner}.roles
+    writable_by:
+      - principal: role:support
+        via: "PUT /users/{owner}/roles"
+        authorized_by:
+          decision: data.app.assign
+          value: input.role
+          request:
+            input.action: assign_role
+`
+
+// carol can write editor into their own roles, and gets nothing out of it
+// without the clearance publishing asks for, which nothing in the data says
+// carol holds. Without that clearance in the policy, the same write is a
+// finding.
+func TestSplitGrantLeavesAValueThatOpensOnlyWithAClaimACandidate(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		policy  string
+		verdict Verdict
+	}{
+		{name: "publishing asks for a clearance", policy: valueClaimPolicy, verdict: VerdictCandidate},
+		{
+			name:    "publishing asks for none",
+			policy:  strings.Replace(valueClaimPolicy, "\tinput.subject.clearance == \"high\"\n", "", 1),
+			verdict: VerdictFinding,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			a := analysisOf(t, &FalsePositiveCase{Policy: tt.policy, Data: valueClaimData, WriteModel: valueClaimModel})
+			shape, err := opaengine.ShapeOf(a.Reads, "input.subject.id")
+			if err != nil {
+				t.Fatalf("ShapeOf() error = %v", err)
+			}
+			a.Shape = shape
+
+			findings, err := SplitGrant(t.Context(), a)
+			if err != nil {
+				t.Fatalf("SplitGrant() error = %v", err)
+			}
+			var carolToAlice *Finding
+			for i, f := range findings {
+				if f.Principal == "carol" && f.Target == "alice" {
+					carolToAlice = &findings[i]
+				}
+			}
+			if carolToAlice == nil {
+				t.Fatalf("the escalation from carol to alice is missing:\n%v", findings)
+			}
+			if carolToAlice.Verdict != tt.verdict {
+				t.Errorf("verdict = %s, want %s", carolToAlice.Verdict, tt.verdict)
+			}
+		})
+	}
 }
 
 // The counter case is the withdraw branch, which grants on admin. The

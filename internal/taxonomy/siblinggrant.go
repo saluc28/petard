@@ -301,7 +301,7 @@ func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fiel
 	if err != nil {
 		return opening{}, err
 	}
-	found, err := after.over(ctx, now)
+	found, err := after.over(ctx, now, identityClaims(a.Shape, a.EnforcementPoint))
 	if err != nil {
 		return opening{}, err
 	}
