@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -381,12 +382,60 @@ entries:
 		t.Fatalf("authorized_by = %+v, want one that reads no value", auth)
 	}
 
-	filled, err := entry.Path.Fill(auth.Request["input.resource"], []string{"data", "policies", "administrator-access", "members"})
+	filled, err := auth.Request["input.resource"].Fill(entry.Path, []string{"data", "policies", "administrator-access", "members"}, nil)
 	if err != nil {
 		t.Fatalf("Fill() error = %v", err)
 	}
 	if filled != "iam:policies:administrator-access:members" {
-		t.Errorf("Fill() = %q, want the resource of that one policy", filled)
+		t.Errorf("Fill() = %v, want the resource of that one policy", filled)
+	}
+}
+
+// A gateway that splits the path of a call into segments sends the path as a
+// list, and an endpoint addressed by the fields of the record it writes, the
+// team and the user of a member, names them as captures: through an element of
+// a list the path has no segment for them, so they are fields of the element.
+func TestLoadReadsARequestSentAsAList(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "write-model.yaml")
+	content := `schema_version: 1
+model: write-paths
+entries:
+  - path: data.team.members[_].role
+    writable_by:
+      - principal: role:editor
+        via: "PUT /teams/{team_id}/members/{user_id}"
+        authorized_by:
+          decision: data.roster.authz
+          request:
+            input.method: PUT
+            input.path: [teams, "{team_id}", members, "{user_id}"]
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing the file: %v", err)
+	}
+	model, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	entry := model.Entries[0]
+	auth := entry.WritableBy[0].AuthorizedBy
+	segments := []string{"data", "team", "members", "0", "role"}
+	member := map[string]any{"team_id": "t-1", "user_id": "alice", "role": "editor"}
+
+	method, err := auth.Request["input.method"].Fill(entry.Path, segments, member)
+	if err != nil || method != "PUT" {
+		t.Errorf("input.method = %v (error %v), want PUT", method, err)
+	}
+	filled, err := auth.Request["input.path"].Fill(entry.Path, segments, member)
+	if err != nil {
+		t.Fatalf("Fill() error = %v", err)
+	}
+	if want := []any{"teams", "t-1", "members", "alice"}; !reflect.DeepEqual(filled, want) {
+		t.Errorf("input.path = %v, want %v", filled, want)
+	}
+
+	if _, err := auth.Request["input.path"].Fill(entry.Path, segments, map[string]any{"role": "editor"}); err == nil {
+		t.Error("Fill() error = nil for an element with neither field, want a refusal")
 	}
 }
 
@@ -438,6 +487,11 @@ func TestLoadRejects(t *testing.T) {
 		{
 			name:        "a request naming a capture the path has not got",
 			content:     "schema_version: 1\nmodel: write-paths\nentries:\n  - path: data.policies.{policy}.members.{member}\n    writable_by:\n      - principal: role:editor\n        via: POST /members\n        authorized_by:\n          decision: data.authz.authorized_project\n          request:\n            input.resource: \"iam:policies:{id}:members\"\n",
+			expectedErr: ErrInvalid,
+		},
+		{
+			name:        "a list sent in a request that holds something other than values",
+			content:     "schema_version: 1\nmodel: write-paths\nentries:\n  - path: data.team.members[_].role\n    writable_by:\n      - principal: role:editor\n        via: PUT /members\n        authorized_by:\n          decision: data.roster.authz\n          request:\n            input.path: [teams, {id: x}]\n",
 			expectedErr: ErrInvalid,
 		},
 		{

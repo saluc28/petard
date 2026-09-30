@@ -584,7 +584,7 @@ func writeAllowed(ctx context.Context, a Analysis, join authorizedJoin, document
 	request := requestNaming(fields, subject)
 	fixed := []string{subjectRoot(a.Shape)}
 	for field, sent := range join.Auth.Request {
-		filled, err := join.Entry.Path.Fill(sent, segments)
+		filled, err := sent.Fill(join.Entry.Path, segments, nil)
 		if err != nil {
 			return reach{}, err
 		}

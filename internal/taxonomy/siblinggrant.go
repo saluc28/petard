@@ -250,7 +250,8 @@ func siblingWritesOf(ctx context.Context, a Analysis, start siblingStart, elemen
 	var findings []Finding
 	for _, value := range slices.Sorted(maps.Keys(holdersByValue)) {
 		holders := holdersByValue[value]
-		write, err := siblingWriteOpens(ctx, a, start, fields, unknowns, subject, document, value, now)
+		written := siblingWrite{document: document, value: value, element: elements[index]}
+		write, err := siblingWriteOpens(ctx, a, start, fields, unknowns, subject, written, now)
 		if err != nil {
 			return nil, err
 		}
@@ -269,13 +270,22 @@ func siblingWritesOf(ctx context.Context, a Analysis, start siblingStart, elemen
 	return findings, nil
 }
 
+// siblingWrite is one write the sibling form measures: a value into the
+// granting field of the subject's own element, and the element as it stands,
+// whose fields may address the endpoint that writes it.
+type siblingWrite struct {
+	document string
+	value    string
+	element  any
+}
+
 // siblingWriteOpens answers signals 4 and 5 for one value: the authorizing
 // decision lets the subject write it, and writing it into their record grants
 // them a request none of theirs covered before.
 func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fields subjectFields, unknowns []string,
-	subject, document, value string, now reach) (opening, error) {
+	subject string, written siblingWrite, now reach) (opening, error) {
 
-	allowed, err := siblingWriteAllowed(ctx, a, start, fields, subject, document, value)
+	allowed, err := siblingWriteAllowed(ctx, a, start, fields, subject, written)
 	if err != nil {
 		return opening{}, err
 	}
@@ -283,7 +293,7 @@ func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fiel
 		return opening{certain: true}, nil
 	}
 
-	withWrite, err := a.Data.With(ctx, document, value)
+	withWrite, err := a.Data.With(ctx, written.document, written.value)
 	if err != nil {
 		return opening{}, err
 	}
@@ -295,7 +305,7 @@ func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fiel
 	if err != nil {
 		return opening{}, err
 	}
-	return openingOf(ctx, found, witnessOf(found, start.Decision, document, value), allowed)
+	return openingOf(ctx, found, witnessOf(found, start.Decision, written.document, written.value), allowed)
 }
 
 // siblingWriteAllowed asks the decision the endpoint consumes whether the subject
@@ -304,8 +314,8 @@ func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fiel
 // The parts the endpoint fills in keep the question about a write, as they do for
 // the join of PTD-OPA-006: without them the answer is "this principal can make
 // some request about that resource", which a reader answers yes to.
-func siblingWriteAllowed(ctx context.Context, a Analysis, start siblingStart, fields subjectFields, subject, document, value string) (reach, error) {
-	segments, err := opaengine.Segments(document)
+func siblingWriteAllowed(ctx context.Context, a Analysis, start siblingStart, fields subjectFields, subject string, written siblingWrite) (reach, error) {
+	segments, err := opaengine.Segments(written.document)
 	if err != nil {
 		return reach{}, err
 	}
@@ -313,7 +323,7 @@ func siblingWriteAllowed(ctx context.Context, a Analysis, start siblingStart, fi
 	request := requestNaming(fields, subject)
 	fixed := []string{subjectRoot(a.Shape)}
 	for field, sent := range start.Auth.Request {
-		filled, err := start.Entry.Path.Fill(sent, segments)
+		filled, err := sent.Fill(start.Entry.Path, segments, written.element)
 		if err != nil {
 			return reach{}, err
 		}
@@ -321,7 +331,7 @@ func siblingWriteAllowed(ctx context.Context, a Analysis, start siblingStart, fi
 		fixed = append(fixed, field)
 	}
 	if start.Auth.Value != "" {
-		setInput(request, start.Auth.Value, value)
+		setInput(request, start.Auth.Value, written.value)
 		fixed = append(fixed, start.Auth.Value)
 	}
 	if start.Auth.Target != "" {

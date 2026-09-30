@@ -134,7 +134,10 @@ detection:
         would report every branch that reads a field somebody can write.
         The parts the endpoint fills in are what keeps the question about a write. Asked without
         them, it becomes "may this principal make some request about that resource", and anybody
-        allowed to read it answers yes.
+        allowed to read it answers yes. Declared by its method alone, a write addressed by the path
+        of the call becomes "may this principal make some PUT", which a decision that lets anybody
+        call its health check answers yes to. Declaring the path as the list the gateway sends
+        keeps the question on the record written.
     - order: 5
       check: >
         Evaluate the granting decision again with the document holding an allowed value, or with
@@ -486,7 +489,10 @@ notes:
     the world describe themselves: Chef Automate annotates AddPolicyMembers with the action
     `iam:policyMembers:create` and the resource `iam:policies:{id}:members`
     (api/external/iam/v2/policy.proto:373 at 61ca031), and its gateway sends those two to the
-    decision.
+    decision. A part the request carries as a list, such as the path of the call split into
+    segments, is declared as a list, and for a write into an element of a list a capture the path
+    does not have is a field of that element:
+    `input.path: [teams, "{team_id}", members, "{user_id}"]`.
   - >
     A decision that collects is asked for what it holds. `data.authz.authorized_project` builds a
     set of projects, and an empty set is a defined value, so in Rego the query naming it holds

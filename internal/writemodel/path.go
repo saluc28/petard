@@ -278,19 +278,57 @@ func (p Path) Matches(other Path) bool {
 // The segments are counted from the data root, the way a capture position is:
 // data.policies.{policy}.members against the segments of
 // data.policies.readers.members puts readers where {policy} stands.
-func (p Path) Fill(template string, segments []string) (string, error) {
+//
+// A path through an element of a list, data.team.members[_].role, has no
+// segment that names the record: the element is found by its position. There
+// a name the path does not capture is a field of the element the write lands
+// in, given as element, so an endpoint addressed by the record's own fields,
+// PUT /teams/{team_id}/members/{user_id}, is declared with those fields.
+func (p Path) Fill(template string, segments []string, element any) (string, error) {
 	filled := template
 	for _, capture := range capturesIn(template) {
-		position, found := p.CapturePosition(capture)
-		if !found {
-			return "", fmt.Errorf("writemodel: %q names {%s}, and the path has no such capture", template, capture)
+		value, err := p.captured(capture, segments, element)
+		if err != nil {
+			return "", fmt.Errorf("writemodel: %q: %w", template, err)
 		}
-		if position >= len(segments) {
-			return "", fmt.Errorf("writemodel: {%s} sits at segment %d, past the end of the document", capture, position)
-		}
-		filled = strings.ReplaceAll(filled, "{"+capture+"}", segments[position])
+		filled = strings.ReplaceAll(filled, "{"+capture+"}", value)
 	}
 	return filled, nil
+}
+
+// captured is what one capture stands for in one document: the segment at a
+// named capture, or else a field of the element written.
+func (p Path) captured(name string, segments []string, element any) (string, error) {
+	if position, found := p.CapturePosition(name); found {
+		if position >= len(segments) {
+			return "", fmt.Errorf("{%s} sits at segment %d, past the end of the document", name, position)
+		}
+		return segments[position], nil
+	}
+	if !p.ThroughElement() {
+		return "", fmt.Errorf("the path has no capture {%s}", name)
+	}
+	record, _ := element.(map[string]any)
+	switch field := record[name].(type) {
+	case string:
+		return field, nil
+	case json.Number:
+		return field.String(), nil
+	case bool:
+		return fmt.Sprint(field), nil
+	}
+	return "", fmt.Errorf("{%s} is neither a capture of the path nor a field of the element written that holds a value", name)
+}
+
+// ThroughElement reports whether the path goes through an element it does not
+// name, written [_]: an element of a list, found by its position.
+func (p Path) ThroughElement() bool {
+	for _, segment := range p.Segments {
+		if segment.Kind == SegmentCapture && segment.Name == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // capturesIn returns the captures a template names, in the order they appear.

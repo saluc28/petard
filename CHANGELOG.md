@@ -17,6 +17,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   its escalation is open and passes once it is closed, so it can stay in the suite afterwards.
   When a decision of the policy allows the write, the test asks that decision too, and refusing
   the write, which is how `PTD-OPA-006` is closed, makes it pass.
+- The write model declares a part of the request as a list, the way a gateway sends the path of a
+  call split into segments: `input.path: [teams, "{team_id}", members, "{user_id}"]`. For a write
+  into an element of a list, a capture the path does not have names a field of that element.
+  Declared by its method alone, such a write was asked about as any call with that method, which
+  a decision that lets anybody call its health check allows.
 
 ### Fixed
 

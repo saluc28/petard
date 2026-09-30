@@ -131,7 +131,58 @@ type Authorization struct {
 	// exactly those two to the decision. Without them the analysis would ask
 	// whether the principal may make some request about that resource, which a
 	// reader with the right to look at it would answer yes to.
-	Request map[string]string `yaml:"request"`
+	//
+	// A part the request carries as a list is sent as a list, as a gateway
+	// that splits the path of the call into segments sends it:
+	// input.path: [teams, "{team_id}", members, "{user_id}"]. For a
+	// path through an element of a list, {team_id} and {user_id} are fields of
+	// the element written (see Path.Fill).
+	Request map[string]Sent `yaml:"request"`
+}
+
+// Sent is what an endpoint puts in one part of the request: one value, or, for
+// a part the request carries as a list, one value for each element.
+type Sent struct {
+	Values []string
+	List   bool
+}
+
+// UnmarshalYAML reads a part of a request as a value or a list of values.
+func (s *Sent) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		*s = Sent{Values: []string{node.Value}}
+		return nil
+	case yaml.SequenceNode:
+		values := make([]string, 0, len(node.Content))
+		for _, element := range node.Content {
+			if element.Kind != yaml.ScalarNode {
+				return fmt.Errorf("%w: line %d: a list sent in a request holds values, and this element is not one", ErrInvalid, element.Line)
+			}
+			values = append(values, element.Value)
+		}
+		*s = Sent{Values: values, List: true}
+		return nil
+	default:
+		return fmt.Errorf("%w: line %d: a part of a request is sent as a value or a list of values", ErrInvalid, node.Line)
+	}
+}
+
+// Fill writes the part for one document, with its captures filled (see
+// Path.Fill): a string, or a list of strings for a part sent as a list.
+func (s Sent) Fill(path Path, segments []string, element any) (any, error) {
+	if !s.List {
+		return path.Fill(s.Values[0], segments, element)
+	}
+	filled := make([]any, 0, len(s.Values))
+	for _, value := range s.Values {
+		one, err := path.Fill(value, segments, element)
+		if err != nil {
+			return nil, err
+		}
+		filled = append(filled, one)
+	}
+	return filled, nil
 }
 
 // IsCapture reports whether this writer is one of the path's own captures,
@@ -219,9 +270,13 @@ func (a *Authorization) validate(rawPath, principal string, path Path) error {
 		if !strings.HasPrefix(field, "input.") {
 			return fmt.Errorf("%w: %s: writer %s sends %q to a decision, and a request is filled in at a path into input", ErrInvalid, rawPath, principal, field)
 		}
-		for _, capture := range capturesIn(sent) {
-			if _, found := path.CapturePosition(capture); !found {
-				return fmt.Errorf("%w: %s: writer %s sends {%s}, and the path has no such capture", ErrInvalid, rawPath, principal, capture)
+		for _, value := range sent.Values {
+			for _, capture := range capturesIn(value) {
+				// Through an element of a list, a name the path does not capture
+				// is a field of the element, which only the data can say it has.
+				if _, found := path.CapturePosition(capture); !found && !path.ThroughElement() {
+					return fmt.Errorf("%w: %s: writer %s sends {%s}, and the path has no such capture", ErrInvalid, rawPath, principal, capture)
+				}
 			}
 		}
 	}

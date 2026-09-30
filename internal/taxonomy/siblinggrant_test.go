@@ -2,6 +2,7 @@ package taxonomy
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 )
 
@@ -111,6 +112,92 @@ func TestSiblingGrantFindsTheAttributeEscalation(t *testing.T) {
 	witnessHolds(t, a, f.Witness)
 	if f.Witness.AuthorizedBy != "data.roster.authz" {
 		t.Errorf("the write is authorized by %q, want the decision that allows assigning a role", f.Witness.AuthorizedBy)
+	}
+}
+
+// siblingPathPolicy is the sibling form behind an API that addresses a member by
+// the path of the call, sent split into segments: assigning a role is
+// PUT /teams/{team}/members/{user}, allowed to an editor of that team, removing
+// the team takes an owner, and the health check is open to anybody.
+const siblingPathPolicy = `package roster
+
+import rego.v1
+
+roles := {"viewer": 1, "editor": 2, "owner": 3}
+
+# METADATA
+# scope: document
+# entrypoint: true
+default authz := false
+
+authz if input.path == ["health"]
+
+authz if {
+	input.method == "DELETE"
+	some i
+	data.team.members[i].user == input.user
+	roles[data.team.members[i].role] >= 3
+}
+
+authz if {
+	input.method == "PUT"
+	input.path = ["teams", team, "members", _]
+	some i
+	data.team.members[i].team == team
+	data.team.members[i].user == input.user
+	roles[data.team.members[i].role] >= 2
+}
+`
+
+const siblingPathData = `{
+  "team": {
+    "members": [
+      {"team": "t-1", "user": "alice", "role": "editor"},
+      {"team": "t-1", "user": "bob", "role": "owner"}
+    ]
+  }
+}`
+
+// siblingPathModel declares the path the endpoint sends, with the team and the
+// user of the member written, which are fields of the element.
+const siblingPathModel = `schema_version: 1
+model: write-paths
+entries:
+  - path: data.team.members[_].role
+    writable_by:
+      - principal: role:editor
+        via: "PUT /teams/{team}/members/{user}"
+        authorized_by:
+          decision: data.roster.authz
+          request:
+            input.method: PUT
+            input.path: [teams, "{team}", members, "{user}"]
+`
+
+// With the path declared, the decision is asked about the write the endpoint
+// makes, on alice's own member. Declared by its method alone, the request would
+// settle for the health check, which the same decision allows to anybody.
+func TestSiblingGrantAsksAboutThePathTheEndpointSends(t *testing.T) {
+	a := analysisOf(t, &FalsePositiveCase{Policy: siblingPathPolicy, Data: siblingPathData, WriteModel: siblingPathModel})
+
+	findings, err := SiblingGrant(t.Context(), a)
+	if err != nil {
+		t.Fatalf("SiblingGrant() error = %v", err)
+	}
+	var aliceToBob *Finding
+	for i, f := range findings {
+		if f.Principal == "alice" && f.Target == "bob" {
+			aliceToBob = &findings[i]
+		}
+	}
+	if aliceToBob == nil {
+		t.Fatalf("the escalation from alice to bob is missing:\n%v", findings)
+	}
+
+	witnessHolds(t, a, aliceToBob.Witness)
+	path := aliceToBob.Witness.WriteRequest["path"]
+	if want := []any{"teams", "t-1", "members", "alice"}; !reflect.DeepEqual(path, want) {
+		t.Errorf("the write is asked about %v, want the path of alice's member %v", path, want)
 	}
 }
 
