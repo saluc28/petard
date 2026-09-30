@@ -123,7 +123,7 @@ func (r *refReader) comparisonsIn(rule *ast.Rule, expr *ast.Expr, bindings map[a
 		return nil
 	}
 	var found []comparison
-	for _, compared := range r.summary(callees) {
+	for _, compared := range r.summary(withElse(callees)) {
 		left, right := compared.left.at(operands, bindings), compared.right.at(operands, bindings)
 		if left != nil && right != nil {
 			found = append(found, comparison{left: left, right: right, member: compared.member})

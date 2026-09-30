@@ -104,6 +104,30 @@ member(p) if data.projects[p].members
 	}
 }
 
+// What a function hands back is what any leg of its else answers with. The
+// caller passes a constant and the first leg returns it, but the else returns a
+// field of the request, so the request can choose the document.
+func TestReadsFollowWhatAnElseReturns(t *testing.T) {
+	reads := readsOf(t, `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+default allow := false
+
+allow if {
+	doc := pick("welcome")
+	data.docs[doc].public
+}
+
+pick(preferred) := preferred if data.flags.pinned else := input.doc
+`, Limits{})
+
+	if read := readOfRule(t, reads, "data.t.allow"); read.Provenance != ProvenanceInput {
+		t.Errorf("provenance = %s, want input: the else hands back what the request asks for", read.Provenance)
+	}
+}
+
 // Reaching a limit is not an answer, and it must not look like one. The read
 // stays unresolved and the run says which bound stopped it and how to raise
 // it.

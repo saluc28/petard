@@ -26,6 +26,24 @@ func rulePath(rule *ast.Rule) ast.Ref {
 	return rule.Module.Package.Path.Extend(rule.Head.Ref().GroundPrefix())
 }
 
+// withElse returns the rules, each followed by the legs of its else.
+//
+// Looking up a document's rules gives the first leg of each. The others hang
+// off it (Rule.Else) as rules of their own, with the same head and their own
+// body, and the compiler moves into that body whatever the leg's value needs
+// evaluated (rewriteRefsInHead, v1/ast/compile.go:2970 at v1.20.2, reaches every
+// leg). Walking the bodies of all the legs covers everything a rule reads,
+// calls and returns.
+func withElse(rules []*ast.Rule) []*ast.Rule {
+	var all []*ast.Rule
+	for _, rule := range rules {
+		for leg := rule; leg != nil; leg = leg.Else {
+			all = append(all, leg)
+		}
+	}
+	return all
+}
+
 // refReader walks the rules that make up the decisions, collecting the data
 // references of each and the calls between them.
 type refReader struct {
@@ -231,10 +249,14 @@ func (r *refReader) walk() {
 
 		// The head is not walked: the compiler moves whatever needs evaluating
 		// in a head key, value or argument into the body, so the body has it.
-		r.current = rule
-		var found []foundRef
-		r.walkBody(rule.Body, scope{}, &found)
-		r.found = append(r.found, ruleRefs{rule: rule, refs: found})
+		// Each leg of an else is walked as a rule of its own, and the taint
+		// reaches it through the rule it follows (see decisionReach).
+		for leg := rule; leg != nil; leg = leg.Else {
+			r.current = leg
+			var found []foundRef
+			r.walkBody(leg.Body, scope{}, &found)
+			r.found = append(r.found, ruleRefs{rule: leg, refs: found})
+		}
 	}
 }
 

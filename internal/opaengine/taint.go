@@ -274,6 +274,12 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 			}
 			r.ways[at.rule][name][at.way] = true
 
+			// The next leg of an else is the same rule answering when this leg
+			// does not, so it is reached the same way.
+			if at.rule.Else != nil {
+				queue = append(queue, state{rule: at.rule.Else, way: at.way})
+			}
+
 			for _, edge := range r.edges[at.rule] {
 				if at.rule == decision.rule && decision.within != nil && !decision.within[edge.top] {
 					// The expression only builds another field of what the
@@ -328,7 +334,7 @@ func (r *refReader) externalOrigin(b binding, bindings map[ast.Var]binding, budg
 		if source, found := r.externalOfTerms(b.args, bindings, budget, depth+1); found {
 			return source, true
 		}
-		for _, rule := range r.compiler.GetRulesForVirtualDocument(b.origin) {
+		for _, rule := range withElse(r.compiler.GetRulesForVirtualDocument(b.origin)) {
 			if !budget.spend(rule) {
 				break
 			}

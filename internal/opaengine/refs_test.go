@@ -230,6 +230,35 @@ banned if data.bans[input.user]
 	}
 }
 
+// An else is part of the rule it follows, so what a later leg reads, in its
+// body, in its value or through a rule it calls, reaches the same decisions as
+// what the first leg reads.
+func TestReadsGoIntoTheLegsOfAnElse(t *testing.T) {
+	reads := readsOf(t, `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+default allow := false
+
+allow if role == "admin"
+
+role := data.overrides[input.user] if input.override else := data.roles[input.user] if data.flags.fallback else := level(input.user)
+
+level(u) := data.levels[u]
+`, Limits{})
+
+	for _, path := range []string{"data.overrides[_]", "data.roles[_]", "data.flags.fallback", "data.levels[_]"} {
+		t.Run(path, func(t *testing.T) {
+			read := readOfPath(t, reads, path)
+			expected := []ReachedDecision{{Name: "data.t.allow"}}
+			if !slices.Equal(read.Decisions, expected) {
+				t.Errorf("decisions = %v, want %v", read.Decisions, expected)
+			}
+		})
+	}
+}
+
 // A count of the domain guards an every only where it has to hold. Next to the
 // every, or in an operand of an and, it does; under a not it asks for the
 // opposite, and in an operand of an or the other operand can hold instead.

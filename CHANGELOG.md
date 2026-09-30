@@ -31,6 +31,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   undefined, as OPA does. In `region := input.region if input.verified else := "unknown"`, a
   verified request without a region got an undefined `region` instead of `"unknown"`, and a
   decision behind such a rule missed the way through the `else`.
+- The analysis reads every leg of an `else`, where it used to stop at the first. A document read
+  only in a later leg, or a value from an external source that only the `else` returns, went
+  unreported; both now reach the decisions behind the rule.
 
 ## [0.3.0] - 2026-09-25
 

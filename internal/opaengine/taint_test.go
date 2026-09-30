@@ -390,6 +390,37 @@ allow if {
 	}
 }
 
+// What a rule returns is what any leg of its else answers with, so a value that
+// only a later leg fetches is followed back to where it comes from.
+func TestTaintsFollowWhatAnElseReturns(t *testing.T) {
+	reads := readsOf(t, `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+default allow := false
+
+enrich(kind) := data.cached[kind] if data.cached.fresh else := http.send({
+	"method": "GET",
+	"url": "https://idp.invalid/attrs",
+	"headers": {"kind": kind},
+})
+
+allow if {
+	enrichment := enrich("clearance")
+	enrichment.body.clearance == "high"
+}
+`, Limits{})
+
+	taint := taintOfRule(t, reads, "data.t.allow")
+	if taint.Origin != "http.send" {
+		t.Errorf("origin = %q, want http.send", taint.Origin)
+	}
+	if taint.Endpoint != "https://idp.invalid/attrs" {
+		t.Errorf("endpoint = %q, want the url the else calls", taint.Endpoint)
+	}
+}
+
 // A destination the request steers is the worse case of the two, so it must not
 // come out looking like a destination nobody managed to read. It is reported
 // empty, deliberately, and the report says the policy computes it.

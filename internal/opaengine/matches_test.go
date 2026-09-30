@@ -52,6 +52,23 @@ matches(value, stored) if value == stored
 			expected: []Match{{Term: "input.subjects[_]", Position: 4}},
 		},
 		{
+			// The same comparison in the leg of an else, which answers when
+			// the first leg does not, still belongs to the function.
+			name: "a comparison a function makes in the leg of an else",
+			body: `allow if has_member[_]
+
+has_member contains policy if {
+	member := data.policies[policy].members[_]
+	subject := input.subjects[_]
+	matches(subject, member)
+}
+
+matches(value, stored) if data.flags.everyone else if value == stored
+`,
+			path:     "data.policies[_].members[_]",
+			expected: []Match{{Term: "input.subjects[_]", Position: 4}},
+		},
+		{
 			// The shape of the fixture: the search is inside the function, and
 			// only the call site knows the element is the requester.
 			name: "the request reaches the comparison through the caller",

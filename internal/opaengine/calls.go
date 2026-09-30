@@ -247,7 +247,7 @@ func (r *refReader) bindingProvenance(b binding, bindings map[ast.Var]binding, b
 		// that hands back one of its arguments has the provenance of that
 		// argument.
 		best := r.bestOfTerms(b.args, bindings, budget, depth+1)
-		for _, rule := range r.compiler.GetRulesForVirtualDocument(b.origin) {
+		for _, rule := range withElse(r.compiler.GetRulesForVirtualDocument(b.origin)) {
 			if !budget.spend(rule) {
 				break
 			}
