@@ -333,11 +333,20 @@ func (r reach) witness(ctx context.Context, other reach) (map[string]any, error)
 // example returns one request this reach grants, found by asking the decision
 // about the requests its conditions name, or nil when none of them is granted.
 // A reach that holds always grants the part of the request it was asked with.
+//
+// Among them it asks first about the requests that set the fewest parts. Every
+// part a condition adds is something the request claims, and a request that also
+// claims a role that grants everything speaks about a different principal than
+// the one the question named. When such a claim is the only way the decision
+// grants, the example carries it, and the report shows it.
 func (r reach) example(ctx context.Context) (map[string]any, error) {
 	candidates := r.content.Witnesses(opaengine.GrantContent{}, r.request)
 	if r.always {
 		candidates = []map[string]any{r.request}
 	}
+	slices.SortStableFunc(candidates, func(a, b map[string]any) int {
+		return leaves(a) - leaves(b)
+	})
 	for _, request := range candidates {
 		granted, err := opaengine.Holds(ctx, r.bundle, r.data, r.decision, request)
 		if err != nil {
@@ -348,6 +357,26 @@ func (r reach) example(ctx context.Context) (map[string]any, error) {
 		}
 	}
 	return nil, nil
+}
+
+// leaves counts the values a request sets: the leaves of its objects and lists.
+func leaves(value any) int {
+	switch value := value.(type) {
+	case map[string]any:
+		n := 0
+		for _, child := range value {
+			n += leaves(child)
+		}
+		return n
+	case []any:
+		n := 0
+		for _, child := range value {
+			n += leaves(child)
+		}
+		return n
+	default:
+		return 1
+	}
 }
 
 // witnessOf is the witness of a finding: the request a gain found, with the

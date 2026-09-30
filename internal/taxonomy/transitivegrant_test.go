@@ -3,6 +3,7 @@ package taxonomy
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -214,6 +215,53 @@ allow if {
 				t.Error("over() found no request that shows the gain")
 			}
 		})
+	}
+}
+
+// A decision that lets an administrator do anything, and an editor put, grants
+// alice's put either way. The example is alice's put as an editor. The other
+// request also claims alice is an administrator, which the question never said.
+func TestReachExampleClaimsTheFewestParts(t *testing.T) {
+	const policy = `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+default authz := false
+
+authz if {
+	input.role == "admin"
+	input.scope == "all"
+}
+
+authz if {
+	input.method == "PUT"
+	data.roles[input.user] == "editor"
+}
+`
+	bundle, _, data := analyze(t, policy, `{"roles": {"alice": "editor"}}`)
+
+	// The conditions come in the order that puts the administrator first, which
+	// is the order partial evaluation is free to return them in.
+	residuals := &opaengine.ResidualSet{Conditions: []opaengine.Condition{
+		{Query: `input.role = "admin"; input.scope = "all"`, Value: "true"},
+		{Query: `input.method = "PUT"`, Value: "true"},
+	}}
+	allowed := reach{
+		ways:     2,
+		content:  opaengine.GrantContentOf(residuals),
+		bundle:   bundle,
+		data:     data,
+		decision: "data.t.authz",
+		request:  map[string]any{"user": "alice"},
+	}
+
+	request, err := allowed.example(t.Context())
+	if err != nil {
+		t.Fatalf("example() error = %v", err)
+	}
+	if want := map[string]any{"user": "alice", "method": "PUT"}; !reflect.DeepEqual(request, want) {
+		t.Errorf("example() = %v, want %v", request, want)
 	}
 }
 
