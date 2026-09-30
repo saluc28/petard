@@ -170,6 +170,17 @@ func TestGrantContentBeyond(t *testing.T) {
 			wantCertain: true,
 		},
 		{
+			// A negated equality refuses one value and leaves the field open to
+			// every other. Every action but delete includes read, so a grant of
+			// read reaches nothing past it. The comparison cannot turn a refusal
+			// into values to show that, so it leaves the answer open.
+			name:        "a negated equality does not pin the value it refuses",
+			grant:       []string{`"read" = input.action`},
+			other:       []string{`not input.action = "delete"`},
+			wantBeyond:  false,
+			wantCertain: false,
+		},
+		{
 			// A negation partial evaluation could not inline comes back as a
 			// rule of its own, which may rule out every request with this
 			// action, so the gain is not proven.

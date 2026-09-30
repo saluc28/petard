@@ -113,7 +113,10 @@ func (c *grantCondition) apply(expr *ast.Expr) {
 		return
 	}
 
-	if expr.IsEquality() {
+	// IsEquality looks at the operator alone, negated or not
+	// (v1/ast/policy.go:1245 at v1.20.2). Without the check, not
+	// input.action = "delete" would pin the action to the one value it refuses.
+	if expr.IsEquality() && !expr.Negated {
 		if operands := expr.Operands(); len(operands) == 2 {
 			if field, member, isInput := inputField(operands[0]); isInput {
 				c.bind(field, member, operands[1])

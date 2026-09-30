@@ -5,6 +5,16 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A residual condition that negates an equality, such as `not input.action = "delete"`, was read
+  as the equality it negates, as if it granted delete alone. Comparing two grants through such a
+  condition could report a gain that is not there, or miss one that is. The negated field now
+  counts as one the comparison cannot turn into values, so the gain is settled by evaluating the
+  decision on concrete requests, as for a negation OPA could not inline.
+
 ## [0.4.0] - 2026-09-30
 
 ### Changed
