@@ -928,6 +928,43 @@ type GrantingValue struct {
 // condition means: a comparison against a value computed from other data leaves
 // nothing to collect, and that is a declared false negative rather than a guess.
 func ValuesComparedWith(ctx context.Context, bundle *Bundle, data *Data, ask Request, document string) ([]GrantingValue, error) {
+	return valuesComparedWith(ctx, bundle, data, ask, document, nil)
+}
+
+// ValuesToWrite is ValuesComparedWith for a witness: it also reads a document
+// of the data the residual compares the unknown one with as the value that
+// document holds. Partial evaluation keeps such a comparison as it is written,
+// data.users.mallory.profile.department = data.projects.div1.department, so the
+// value that grants is in the data rather than in the condition.
+//
+// A witness is checked by evaluating the decision, so a value that does not
+// grant costs a question and nothing else. The patterns that report on the
+// values themselves keep to the constants, where what grants is written in the
+// residual.
+func ValuesToWrite(ctx context.Context, bundle *Bundle, data *Data, ask Request, document string) ([]GrantingValue, error) {
+	resolve := func(ref ast.Ref) (ast.Value, bool, error) {
+		if !ref.IsGround() || !ref.HasPrefix(ast.DefaultRootRef) {
+			return nil, false, nil
+		}
+		held, found, err := data.Value(ctx, ref.String())
+		if err != nil || !found {
+			return nil, false, err
+		}
+		value, err := ast.InterfaceToValue(held)
+		if err != nil {
+			return nil, false, fmt.Errorf("opaengine: reading %s: %w", ref, err)
+		}
+		return value, true, nil
+	}
+	return valuesComparedWith(ctx, bundle, data, ask, document, resolve)
+}
+
+// valuesComparedWith collects the values the residual conditions compare the
+// document against, resolving a reference to another document when resolve is
+// given.
+func valuesComparedWith(ctx context.Context, bundle *Bundle, data *Data, ask Request, document string,
+	resolve func(ast.Ref) (ast.Value, bool, error)) ([]GrantingValue, error) {
+
 	docRef, err := ast.ParseRef(document)
 	if err != nil {
 		return nil, fmt.Errorf("opaengine: reading the path %s: %w", document, err)
@@ -944,7 +981,9 @@ func ValuesComparedWith(ctx context.Context, bundle *Bundle, data *Data, ask Req
 	var values []GrantingValue
 	seen := map[string]bool{}
 	for _, body := range residualBodies(queries) {
-		collectConstants(body, docRef, &values, seen)
+		if err := collectConstants(body, docRef, resolve, &values, seen); err != nil {
+			return nil, err
+		}
 	}
 	return values, nil
 }
@@ -1045,8 +1084,13 @@ func generatedRuleRef(query ast.Body) (ast.Ref, bool) {
 }
 
 // collectConstants gathers the literal operands of every builtin call in a body
-// that also names the document, once each.
-func collectConstants(body ast.Body, document ast.Ref, values *[]GrantingValue, seen map[string]bool) {
+// that also names the document, once each. With resolve, an operand that refers
+// to another document counts as the value resolve reads for it; the document
+// itself never does, since what it holds now is not what a write would put
+// there.
+func collectConstants(body ast.Body, document ast.Ref, resolve func(ast.Ref) (ast.Value, bool, error),
+	values *[]GrantingValue, seen map[string]bool) error {
+
 	for _, expr := range body {
 		if !expr.IsCall() {
 			continue
@@ -1057,18 +1101,29 @@ func collectConstants(body ast.Body, document ast.Ref, values *[]GrantingValue, 
 		}
 		membership := isMembership(expr.Operator())
 		for _, operand := range operands {
-			native, ok := constantValue(operand.Value)
+			value := operand.Value
+			if ref, isRef := value.(ast.Ref); isRef && resolve != nil && !operandsName([]*ast.Term{operand}, document) {
+				resolved, found, err := resolve(ref)
+				if err != nil {
+					return err
+				}
+				if found {
+					value = resolved
+				}
+			}
+			native, ok := constantValue(value)
 			if !ok {
 				continue
 			}
-			key := operand.Value.String()
+			key := value.String()
 			if seen[key] {
 				continue
 			}
 			seen[key] = true
-			*values = append(*values, GrantingValue{Value: native, Text: constantText(operand.Value), Membership: membership})
+			*values = append(*values, GrantingValue{Value: native, Text: constantText(value), Membership: membership})
 		}
 	}
+	return nil
 }
 
 // operandsName reports whether any operand is the document, or a path into it.

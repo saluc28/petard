@@ -108,6 +108,7 @@ func TestSiblingGrantFindsTheAttributeEscalation(t *testing.T) {
 	if len(f.Reads) == 0 {
 		t.Error("the finding points at no line of policy to check it against")
 	}
+	witnessHolds(t, a, f.Witness)
 }
 
 // The one who already holds the granting value has nothing to gain by writing a

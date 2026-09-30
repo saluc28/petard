@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- An escalation comes with a request that proves it, when asking the decision finds one: the
+  decision refuses it as the data stands and grants it once the write is made. `petard analyze`
+  prints it under the escalation as `proven by`, and `-v` adds the document the write changes and
+  the value it puts there.
+
 ### Fixed
 
 - A residual condition that negates an equality, such as `not input.action = "delete"`, was read

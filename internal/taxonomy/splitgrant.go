@@ -187,18 +187,18 @@ func splitGrantsOf(ctx context.Context, a Analysis, grant authorizedGrant, princ
 	// Who the decision grants as the data stands. The subject has to gain, so it
 	// must get nothing now; the target has to hold the position, so it must get
 	// something now. Both readings come from the same measurement.
-	grantsNow := make(map[string]bool, len(principals))
+	now := make(map[string]reach, len(principals))
 	for _, principal := range principals {
-		reach, err := reachOf(ctx, a.Bundle, a.Data, grant.Decision, requestNaming(fields, principal), unknowns, a.Limits)
+		measured, err := reachOf(ctx, a.Bundle, a.Data, grant.Decision, requestNaming(fields, principal), unknowns, a.Limits)
 		if err != nil {
 			return nil, err
 		}
-		grantsNow[principal] = !reach.nothing()
+		now[principal] = measured
 	}
 
 	var findings []Finding
 	for _, subject := range principals {
-		if grantsNow[subject] {
+		if !now[subject].nothing() {
 			// Already gets something out of the decision, so a write would widen
 			// what it holds rather than let it in. That is the open question the
 			// transitive pattern declares, and this pattern leaves it there.
@@ -219,15 +219,15 @@ func splitGrantsOf(ctx context.Context, a Analysis, grant authorizedGrant, princ
 		}
 
 		for _, value := range values {
-			opens, err := valueOpensTheGrant(ctx, a, grant, fields, unknowns, subject, document, value)
+			write, err := valueOpensTheGrant(ctx, a, grant, fields, unknowns, subject, document, value, now[subject])
 			if err != nil {
 				return nil, err
 			}
-			if !opens {
+			if !write.opens {
 				continue
 			}
 			for _, target := range principals {
-				if target == subject || !grantsNow[target] {
+				if target == subject || now[target].nothing() {
 					continue
 				}
 				holds, err := holdsValue(ctx, a.Data, grant.Path, grant.SubjectPosition, target, value.Value)
@@ -235,7 +235,7 @@ func splitGrantsOf(ctx context.Context, a Analysis, grant authorizedGrant, princ
 					return nil, err
 				}
 				if holds {
-					findings = append(findings, splitGrantFinding(a, grant, subject, target, value))
+					findings = append(findings, splitGrantFinding(a, grant, subject, target, value, write))
 				}
 			}
 		}
@@ -244,9 +244,11 @@ func splitGrantsOf(ctx context.Context, a Analysis, grant authorizedGrant, princ
 }
 
 // valueOpensTheGrant answers signals 4 and 5 for one value: the first decision
-// allows the subject to write it, and writing it turns the grant on.
+// allows the subject to write it, and writing it turns the grant on. The subject
+// gets nothing before the write, so whatever it gets after is a gain, and the
+// witness is looked for against what it gets now.
 func valueOpensTheGrant(ctx context.Context, a Analysis, grant authorizedGrant, fields subjectFields, unknowns []string,
-	subject, document string, value opaengine.GrantingValue) (bool, error) {
+	subject, document string, value opaengine.GrantingValue, now reach) (opening, error) {
 
 	// Signal 4: does the first decision allow this principal to write this
 	// value? The value and the target are fixed, the rest of the request is
@@ -261,10 +263,10 @@ func valueOpensTheGrant(ctx context.Context, a Analysis, grant authorizedGrant, 
 
 	allowed, err := reachOf(ctx, a.Bundle, a.Data, grant.Auth.Decision, request, authUnknowns, a.Limits)
 	if err != nil {
-		return false, err
+		return opening{}, err
 	}
 	if allowed.nothing() {
-		return false, nil
+		return opening{certain: true}, nil
 	}
 
 	// Signal 5: evaluate the whole granting decision with the document holding
@@ -272,17 +274,26 @@ func valueOpensTheGrant(ctx context.Context, a Analysis, grant authorizedGrant, 
 	// the write does not actually let through is not reported.
 	current, _, err := a.Data.Value(ctx, document)
 	if err != nil {
-		return false, err
+		return opening{}, err
 	}
-	written, err := a.Data.With(ctx, document, held(current, value))
+	written := held(current, value)
+	withWrite, err := a.Data.With(ctx, document, written)
 	if err != nil {
-		return false, err
+		return opening{}, err
 	}
-	granted, err := reachOf(ctx, a.Bundle, written, grant.Decision, requestNaming(fields, subject), unknowns, a.Limits)
+	granted, err := reachOf(ctx, a.Bundle, withWrite, grant.Decision, requestNaming(fields, subject), unknowns, a.Limits)
 	if err != nil {
-		return false, err
+		return opening{}, err
 	}
-	return !granted.nothing(), nil
+	if granted.nothing() {
+		return opening{certain: true}, nil
+	}
+
+	found, err := granted.over(ctx, now)
+	if err != nil {
+		return opening{}, err
+	}
+	return opening{opens: true, certain: true, witness: witnessOf(found, grant.Decision, document, written)}, nil
 }
 
 // held is the document once the value is written: appended to the collection
@@ -325,10 +336,10 @@ func holdsValue(ctx context.Context, data *opaengine.Data, path string, position
 // splitGrantFinding says what was measured: who can write which value, the
 // decision that allows the write, the decision that grants on it, and the
 // principal whose position that reaches.
-func splitGrantFinding(a Analysis, grant authorizedGrant, subject, target string, value opaengine.GrantingValue) Finding {
+func splitGrantFinding(a Analysis, grant authorizedGrant, subject, target string, value opaengine.GrantingValue, write opening) Finding {
 	return Finding{
 		PatternID: WriteAllowedByAnotherDecision,
-		Verdict:   VerdictFinding,
+		Verdict:   write.verdict(),
 		Summary: fmt.Sprintf("%s can write %s into %s, which %s allows, and %s then grants the position %s holds",
 			subject, value.Text, grant.Path, grant.Auth.Decision, grant.Decision, target),
 		Principal:    subject,
@@ -342,6 +353,7 @@ func splitGrantFinding(a Analysis, grant authorizedGrant, subject, target string
 		Reads:        slices.Clone(grant.Sites),
 		Subject:      a.Shape.Subject,
 		Confidence:   a.Shape.Confidence.String(),
+		Witness:      write.witness,
 	}
 }
 
@@ -456,24 +468,16 @@ func joinsOpenedBy(ctx context.Context, a Analysis, join authorizedJoin, princip
 		}
 
 		for _, subject := range principals {
-			opened, certain, err := joinOpens(ctx, a, join, document, members, fields, unknowns, subject, now[subject])
+			write, err := joinOpens(ctx, a, join, document, members, fields, unknowns, subject, now[subject])
 			if err != nil {
 				return nil, err
 			}
-			if !opened {
+			if !write.opens {
 				continue
-			}
-			verdict := VerdictFinding
-			if !certain {
-				// The join grants more ways, but whether any of them is a
-				// request the principal could not already make could not be
-				// read from the conditions. A gain that cannot be proven is a
-				// candidate, not a finding.
-				verdict = VerdictCandidate
 			}
 			for _, target := range members {
 				if name, isName := target.(string); isName && name != subject {
-					findings = append(findings, joinFinding(a, join, document, subject, name, verdict))
+					findings = append(findings, joinFinding(a, join, document, subject, name, write))
 				}
 			}
 		}
@@ -481,41 +485,72 @@ func joinsOpenedBy(ctx context.Context, a Analysis, join authorizedJoin, princip
 	return findings, nil
 }
 
+// opening is what one write opens for the principal who makes it.
+type opening struct {
+	// opens is whether the write grants the principal something new, or may,
+	// and certain whether that was proven.
+	opens   bool
+	certain bool
+
+	// witness is the request that showed it, when one did.
+	witness *Witness
+}
+
+// openingOf reads a gain as what a write opens. A proven gain is reported as a
+// finding and an unproven one as a candidate; a write that grants nothing new is
+// not reported at all.
+func openingOf(found gain, decision, document string, written any) opening {
+	return opening{
+		opens:   found.beyond || !found.certain,
+		certain: found.certain,
+		witness: witnessOf(found, decision, document, written),
+	}
+}
+
+// verdict is how a write that opens something is reported: a finding when the
+// gain was proven, from the conditions or by asking the decision, and a
+// candidate when it was not.
+func (o opening) verdict() Verdict {
+	if o.certain {
+		return VerdictFinding
+	}
+	return VerdictCandidate
+}
+
 // joinOpens answers the two signals a join turns on: the decision behind the
 // endpoint lets this principal add an element to this document, and the
 // granting decision gives them more once they are in it.
 func joinOpens(ctx context.Context, a Analysis, join authorizedJoin, document string, members []any,
-	fields subjectFields, unknowns []string, subject string, now reach) (opened, certain bool, err error) {
+	fields subjectFields, unknowns []string, subject string, now reach) (opening, error) {
 
 	if slices.Contains(members, any(subject)) {
 		// Already an element: there is no join to make, and what it grants
 		// they hold already.
-		return false, true, nil
+		return opening{certain: true}, nil
 	}
 
 	allowed, err := writeAllowed(ctx, a, join, document, fields, subject)
 	if err != nil {
-		return false, false, err
+		return opening{}, err
 	}
 	if !allowed {
-		return false, true, nil
+		return opening{certain: true}, nil
 	}
 
-	written, err := a.Data.With(ctx, document, append(slices.Clone(members), subject))
+	written := append(slices.Clone(members), subject)
+	withWrite, err := a.Data.With(ctx, document, written)
 	if err != nil {
-		return false, false, err
+		return opening{}, err
 	}
-	after, err := reachOf(ctx, a.Bundle, written, join.Decision, requestNaming(fields, subject), unknowns, a.Limits)
+	after, err := reachOf(ctx, a.Bundle, withWrite, join.Decision, requestNaming(fields, subject), unknowns, a.Limits)
 	if err != nil {
-		return false, false, err
+		return opening{}, err
 	}
-	beyond, sure, err := after.beyond(ctx, now)
+	found, err := after.over(ctx, now)
 	if err != nil {
-		return false, false, err
+		return opening{}, err
 	}
-	// Report a proven gain as a finding and an unproven one as a candidate; a
-	// join that grants nothing new is not reported at all.
-	return beyond || !sure, sure, nil
+	return openingOf(found, join.Decision, document, written), nil
 }
 
 // writeAllowed asks the decision the endpoint consumes whether one principal
@@ -573,10 +608,10 @@ func elementsOf(ctx context.Context, data *opaengine.Data, document string) ([]a
 // joinFinding says what was measured: who can add themselves where, the
 // decision that allows it, the decision that grants on the membership, and the
 // principal whose position that reaches.
-func joinFinding(a Analysis, join authorizedJoin, document, subject, target string, verdict Verdict) Finding {
+func joinFinding(a Analysis, join authorizedJoin, document, subject, target string, write opening) Finding {
 	return Finding{
 		PatternID: WriteAllowedByAnotherDecision,
-		Verdict:   verdict,
+		Verdict:   write.verdict(),
 		Summary: fmt.Sprintf("%s can add themselves to %s, which %s allows, and %s then grants the position %s holds",
 			subject, document, join.Auth.Decision, join.Decision, target),
 		Principal:    subject,
@@ -590,6 +625,7 @@ func joinFinding(a Analysis, join authorizedJoin, document, subject, target stri
 		Reads:        slices.Clone(join.Sites),
 		Subject:      a.Shape.Subject,
 		Confidence:   a.Shape.Confidence.String(),
+		Witness:      write.witness,
 	}
 }
 

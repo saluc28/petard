@@ -380,6 +380,8 @@ func TestRunReportsTheEscalation(t *testing.T) {
 		"PTD-OPA-003 finding: mallory can reach what the position of dave reaches",
 		"by writing data.users.mallory.profile.department",
 		"written via PATCH /api/v1/me/profile",
+		`proven by {"action":"read","doc":"d-t11-1","user":"mallory"}`,
+		`refused today, granted once data.users.mallory.profile.department holds "platform"`,
 	} {
 		if !strings.Contains(out, expected) {
 			t.Errorf("the report does not contain %q:\n%s", expected, out)
@@ -409,6 +411,8 @@ func TestRunReportsTheSplitGrant(t *testing.T) {
 	out := stdout.String()
 	for _, expected := range []string{
 		"PTD-OPA-006 finding: carol can write editor into data.users[_].roles",
+		`proven by {"action":"publish","user":"carol"}`,
+		`refused today, granted once data.users.carol.roles holds ["support","editor"]`,
 		"which data.quill.admin.allow allows, and data.quill.publish.allow then grants the position alice holds",
 	} {
 		if !strings.Contains(out, expected) {

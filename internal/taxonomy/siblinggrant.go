@@ -250,16 +250,12 @@ func siblingWritesOf(ctx context.Context, a Analysis, start siblingStart, elemen
 	var findings []Finding
 	for _, value := range slices.Sorted(maps.Keys(holdersByValue)) {
 		holders := holdersByValue[value]
-		opened, certain, err := siblingWriteOpens(ctx, a, start, fields, unknowns, subject, document, value, now)
+		write, err := siblingWriteOpens(ctx, a, start, fields, unknowns, subject, document, value, now)
 		if err != nil {
 			return nil, err
 		}
-		if !opened {
+		if !write.opens {
 			continue
-		}
-		verdict := VerdictFinding
-		if !certain {
-			verdict = VerdictCandidate
 		}
 		for _, target := range holders {
 			key := subject + "\x00" + target + "\x00" + value
@@ -267,7 +263,7 @@ func siblingWritesOf(ctx context.Context, a Analysis, start siblingStart, elemen
 				continue
 			}
 			seen[key] = true
-			findings = append(findings, siblingFinding(a, start, subject, target, value, verdict))
+			findings = append(findings, siblingFinding(a, start, subject, target, value, write))
 		}
 	}
 	return findings, nil
@@ -277,29 +273,29 @@ func siblingWritesOf(ctx context.Context, a Analysis, start siblingStart, elemen
 // decision lets the subject write it, and writing it into their record grants
 // them a request none of theirs covered before.
 func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fields subjectFields, unknowns []string,
-	subject, document, value string, now reach) (opened, certain bool, err error) {
+	subject, document, value string, now reach) (opening, error) {
 
 	allowed, err := siblingWriteAllowed(ctx, a, start, fields, subject, document, value)
 	if err != nil {
-		return false, false, err
+		return opening{}, err
 	}
 	if !allowed {
-		return false, true, nil
+		return opening{certain: true}, nil
 	}
 
-	written, err := a.Data.With(ctx, document, value)
+	withWrite, err := a.Data.With(ctx, document, value)
 	if err != nil {
-		return false, false, err
+		return opening{}, err
 	}
-	after, err := reachOf(ctx, a.Bundle, written, start.Decision, requestNaming(fields, subject), unknowns, a.Limits)
+	after, err := reachOf(ctx, a.Bundle, withWrite, start.Decision, requestNaming(fields, subject), unknowns, a.Limits)
 	if err != nil {
-		return false, false, err
+		return opening{}, err
 	}
-	beyond, sure, err := after.beyond(ctx, now)
+	found, err := after.over(ctx, now)
 	if err != nil {
-		return false, false, err
+		return opening{}, err
 	}
-	return beyond || !sure, sure, nil
+	return openingOf(found, start.Decision, document, value), nil
 }
 
 // siblingWriteAllowed asks the decision the endpoint consumes whether the subject
@@ -369,10 +365,10 @@ func valueHolders(elements []any, matchField, grantField, subject, current strin
 // siblingFinding says what was measured: who can set which value into their
 // record, the decision that allows the write, the decision that grants on the
 // value, and the principal whose position that reaches.
-func siblingFinding(a Analysis, start siblingStart, subject, target, value string, verdict Verdict) Finding {
+func siblingFinding(a Analysis, start siblingStart, subject, target, value string, write opening) Finding {
 	return Finding{
 		PatternID: WriteAllowedByAnotherDecision,
-		Verdict:   verdict,
+		Verdict:   write.verdict(),
 		Summary: fmt.Sprintf("%s can set their %s in %s to %s, which %s allows, and %s then grants the position %s holds",
 			subject, start.GrantField, start.Collection, value, start.Auth.Decision, start.Decision, target),
 		Principal:    subject,
@@ -386,6 +382,7 @@ func siblingFinding(a Analysis, start siblingStart, subject, target, value strin
 		Reads:        slices.Clone(start.Sites),
 		Subject:      a.Shape.Subject,
 		Confidence:   a.Shape.Confidence.String(),
+		Witness:      write.witness,
 	}
 }
 

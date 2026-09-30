@@ -130,7 +130,7 @@ func TestTransitiveGrantNeedsTheData(t *testing.T) {
 // back as a rule of its own that the comparison cannot read, and whether a
 // write that makes alice an owner opens the delete it seems to open is settled
 // by asking the decision about that delete, before the write and after it.
-func TestReachBeyondAskedAboutTheRequestPastADeny(t *testing.T) {
+func TestReachOverAsksAboutTheRequestPastADeny(t *testing.T) {
 	const policy = `package t
 
 # METADATA
@@ -203,12 +203,15 @@ allow if {
 				t.Fatalf("reachOf(after) error = %v", err)
 			}
 
-			beyond, certain, err := then.beyond(t.Context(), now)
+			found, err := then.over(t.Context(), now)
 			if err != nil {
-				t.Fatalf("beyond() error = %v", err)
+				t.Fatalf("over() error = %v", err)
 			}
-			if beyond != tt.beyond || certain != tt.certain {
-				t.Errorf("beyond() = (%t, %t), want (%t, %t)", beyond, certain, tt.beyond, tt.certain)
+			if found.beyond != tt.beyond || found.certain != tt.certain {
+				t.Errorf("over() = (%t, %t), want (%t, %t)", found.beyond, found.certain, tt.beyond, tt.certain)
+			}
+			if tt.beyond && found.request == nil {
+				t.Error("over() found no request that shows the gain")
 			}
 		})
 	}

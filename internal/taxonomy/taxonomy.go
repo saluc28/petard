@@ -358,6 +358,28 @@ type Finding struct {
 	// on one decision governing what another decision reads.
 	AuthorizedBy string
 	Value        string
+
+	// Witness is a request that shows an escalation by asking the decision, when
+	// one was found. Without it the escalation rests on reading the residual
+	// conditions alone.
+	Witness *Witness
+}
+
+// Witness is one request that proves an escalation: Decision refuses it with the
+// data as it stands and grants it once Document holds Value.
+//
+// It is what lets anybody check the claim without Petard. Evaluating the
+// decision on Request twice, the second time with the one document replaced,
+// repeats the argument with OPA alone, the way the fixture's measuring
+// instrument does with a with modifier (verify/measure.rego). A with modifier
+// takes a path of names only (IsValidImportPath, v1/topdown/input.go:22 at
+// v1.20.2), so a Document inside a list, data.team.members[0].role, is repeated
+// by replacing the whole list.
+type Witness struct {
+	Decision string
+	Request  map[string]any
+	Document string
+	Value    any
 }
 
 // String renders a finding as one line, for a report.

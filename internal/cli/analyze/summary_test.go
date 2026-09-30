@@ -49,6 +49,8 @@ func TestTheSummaryLeadsWithTheEscalations(t *testing.T) {
 		"carol -> alice  (PTD-OPA-006, confidence D)",
 		"editor into data.users.{owner}.roles",
 		"PUT /api/v1/users/{id}/roles",
+		`proven by  {"action":"read","doc":"d-t11-1","user":"mallory"}`,
+		`proven by  {"action":"publish","user":"carol"}`,
 		"Findings",
 		"5  PTD-OPA-004  A decision depends on an external source",
 		"Candidates, which need a write model to become findings",

@@ -438,6 +438,11 @@ func reportPattern(out io.Writer, patterns []taxonomy.Pattern, id string, findin
 		if finding.ViaWritePath != "" {
 			fmt.Fprintf(out, "    declared writable at %s\n", finding.ViaWritePath)
 		}
+		if w := finding.Witness; w != nil {
+			fmt.Fprintf(out, "    proven by %s\n", asJSON(w.Request))
+			render.Print(out, fmt.Sprintf("refused today, granted once %s holds %s",
+				w.Document, asJSON(w.Value)), "      ")
+		}
 		if len(finding.UncoveredKeys) > 0 {
 			fmt.Fprintf(out, "    absent for: %s\n", strings.Join(finding.UncoveredKeys, ", "))
 			fmt.Fprintf(out, "    side that applies the check: %s\n", finding.EnforcingSide)

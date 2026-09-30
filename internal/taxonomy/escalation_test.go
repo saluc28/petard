@@ -2,6 +2,7 @@ package taxonomy
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/saluc28/petard/internal/graph"
@@ -86,6 +87,51 @@ func TestEscalationsOnFixture(t *testing.T) {
 	}
 	if len(finding.Reads) != 3 {
 		t.Errorf("places to look = %d, want the two reads and the call that follows the relation", len(finding.Reads))
+	}
+
+	// The same request and the same value the fixture's measuring instrument
+	// writes by hand (verify/measure.rego, chain_decision_after): with platform
+	// written, mallory reads a document of a team below the division, which she
+	// reaches only through the hierarchy.
+	want := &Witness{
+		Decision: "data.quill.authz.allow",
+		Request:  map[string]any{"user": "mallory", "action": "read", "doc": "d-t11-1"},
+		Document: "data.users.mallory.profile.department",
+		Value:    "platform",
+	}
+	if !reflect.DeepEqual(finding.Witness, want) {
+		t.Errorf("witness = %+v, want %+v", finding.Witness, want)
+	}
+	witnessHolds(t, fixtureAnalysis(t), finding.Witness)
+}
+
+// witnessHolds checks a witness the way anybody could without Petard: the
+// decision refuses the request with the data as it stands, and grants it with
+// the one document replaced.
+func witnessHolds(t *testing.T, a Analysis, w *Witness) {
+	t.Helper()
+
+	if w == nil {
+		t.Fatal("the escalation comes with no request that shows it")
+	}
+	before, err := opaengine.Holds(t.Context(), a.Bundle, a.Data, w.Decision, w.Request)
+	if err != nil {
+		t.Fatalf("Holds() before the write error = %v", err)
+	}
+	if before {
+		t.Errorf("%s grants %v before the write, so the request shows nothing", w.Decision, w.Request)
+	}
+
+	written, err := a.Data.With(t.Context(), w.Document, w.Value)
+	if err != nil {
+		t.Fatalf("With(%s) error = %v", w.Document, err)
+	}
+	after, err := opaengine.Holds(t.Context(), a.Bundle, written, w.Decision, w.Request)
+	if err != nil {
+		t.Fatalf("Holds() after the write error = %v", err)
+	}
+	if !after {
+		t.Errorf("%s refuses %v with %s as %v", w.Decision, w.Request, w.Document, w.Value)
 	}
 }
 

@@ -37,6 +37,13 @@ the decision, so "some value here works" is an answer from the policy rather tha
 it. The same partial evaluation is what puts a number on a position: how many ways into the
 decision the relation adds, and how many remain without it.
 
+An escalation also carries a request that proves it by evaluation, when asking the decision finds
+one: refused as the data stands, granted once the document holds the value written. On the
+fixture MALLORY asks to read `d-t11-1`, granted once their department is `platform` and only
+through the hierarchy, and CAROL asks to publish, granted once their roles hold `editor`. These
+are the requests `fixtures/vulnerable-bundle/verify/measure.rego` writes by hand, and `opa eval`
+repeats either one with a `with` on that one document.
+
 ## What holds the claim up
 
 Who can write what is not in the policy. It lives in deployment, in an API, in a pipeline, in

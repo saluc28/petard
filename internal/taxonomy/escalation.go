@@ -164,6 +164,11 @@ func escalationBy(ctx context.Context, a Analysis, cut *opaengine.Data, position
 		return nil, nil
 	}
 
+	witness, err := chainWitness(ctx, a, cut, position.Decision, document, request, unknowns)
+	if err != nil {
+		return nil, err
+	}
+
 	// The sentence says what was measured and no more: the principal ends up
 	// reaching through the relation that makes the other one's position worth
 	// having, which is not the same claim as becoming that person.
@@ -184,7 +189,67 @@ func escalationBy(ctx context.Context, a Analysis, cut *opaengine.Data, position
 		Reads:           slices.Concat(entry.Reads, position.Reads),
 		Subject:         a.Shape.Subject,
 		Confidence:      entry.Confidence,
+		Witness:         witness,
 	}, nil
+}
+
+// chainWitness looks for the request that shows a chain: refused as the data
+// stands, granted once the principal writes into their document one of the
+// values partial evaluation compares it with, and refused again with the same
+// value written and the relation cut. The last makes it the position of the
+// other principal, since a request the value opens without the relation is
+// access alone, which the self write pattern already reports.
+func chainWitness(ctx context.Context, a Analysis, cut *opaengine.Data, decision, document string,
+	request map[string]any, unknowns []string) (*Witness, error) {
+
+	values, err := opaengine.ValuesToWrite(ctx, a.Bundle, a.Data, opaengine.Request{
+		Decision: decision,
+		Unknowns: unknowns,
+		Input:    request,
+	}, document)
+	if err != nil {
+		return nil, err
+	}
+	current, _, err := a.Data.Value(ctx, document)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, value := range values {
+		written := held(current, value)
+		withWrite, err := a.Data.With(ctx, document, written)
+		if err != nil {
+			return nil, err
+		}
+		cutWithWrite, err := cut.With(ctx, document, written)
+		if err != nil {
+			return nil, err
+		}
+		after, err := reachOf(ctx, a.Bundle, withWrite, decision, request, unknowns, a.Limits)
+		if err != nil {
+			return nil, err
+		}
+		withoutRelation, err := reachOf(ctx, a.Bundle, cutWithWrite, decision, request, unknowns, a.Limits)
+		if err != nil {
+			return nil, err
+		}
+
+		found, err := after.over(ctx, withoutRelation)
+		if err != nil {
+			return nil, err
+		}
+		if found.request == nil {
+			continue
+		}
+		today, err := opaengine.Holds(ctx, a.Bundle, a.Data, decision, found.request)
+		if err != nil {
+			return nil, err
+		}
+		if !today {
+			return witnessOf(found, decision, document, written), nil
+		}
+	}
+	return nil, nil
 }
 
 // writablePaths keeps the self write results the write model stood behind.

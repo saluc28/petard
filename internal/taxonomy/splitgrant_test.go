@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -54,6 +55,19 @@ func TestSplitGrantOnFixture(t *testing.T) {
 	if len(f.Reads) == 0 {
 		t.Error("the finding points at no line of policy to check it against")
 	}
+
+	// The request of verify/measure.rego without the document, which the
+	// publishing decision does not read: editor added to the roles carol holds.
+	want := &Witness{
+		Decision: "data.quill.publish.allow",
+		Request:  map[string]any{"user": "carol", "action": "publish"},
+		Document: "data.users.carol.roles",
+		Value:    []any{"support", "editor"},
+	}
+	if !reflect.DeepEqual(f.Witness, want) {
+		t.Errorf("witness = %+v, want %+v", f.Witness, want)
+	}
+	witnessHolds(t, fixtureAnalysis(t), f.Witness)
 }
 
 // The counter case is the withdraw branch, which grants on admin. The
@@ -234,6 +248,7 @@ func TestSplitGrantFindsAJoin(t *testing.T) {
 	if len(f.Reads) == 0 {
 		t.Error("the finding points at no line of policy to check it against")
 	}
+	witnessHolds(t, a, f.Witness)
 }
 
 // A principal already in the collection has no join to make, and the pattern

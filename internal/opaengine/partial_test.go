@@ -908,6 +908,50 @@ func TestValuesComparedWithCollectsTheGrantingConstants(t *testing.T) {
 	}
 }
 
+// A comparison with another document of the data stays a comparison in the
+// residual, data.users.mallory.profile.department =
+// data.projects.div1.department, so the value that grants is in the data.
+// ValuesComparedWith leaves it alone, which is the false negative PTD-OPA-006
+// declares. ValuesToWrite reads it, and never reads the document itself: sales,
+// what mallory holds now, is not a value a write would put there.
+func TestValuesToWriteReadsTheDocumentsTheResidualComparesWith(t *testing.T) {
+	bundle, err := Load([]string{fixtureDir(t, "policy-v1")}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	ask := Request{
+		Decision: "data.quill.authz.allow",
+		Unknowns: []string{"input.action", "input.doc"},
+		Input:    map[string]any{"user": "mallory"},
+	}
+	const document = "data.users.mallory.profile.department"
+
+	texts := func(values []GrantingValue) []string {
+		var out []string
+		for _, value := range values {
+			out = append(out, value.Text)
+		}
+		slices.Sort(out)
+		return out
+	}
+
+	constants, err := ValuesComparedWith(t.Context(), bundle, fixtureData(t), ask, document)
+	if err != nil {
+		t.Fatalf("ValuesComparedWith() error = %v", err)
+	}
+	if got := texts(constants); !reflect.DeepEqual(got, []string{"security"}) {
+		t.Errorf("ValuesComparedWith() = %v, want the one literal, security", got)
+	}
+
+	toWrite, err := ValuesToWrite(t.Context(), bundle, fixtureData(t), ask, document)
+	if err != nil {
+		t.Fatalf("ValuesToWrite() error = %v", err)
+	}
+	if got := texts(toWrite); !reflect.DeepEqual(got, []string{"platform", "security"}) {
+		t.Errorf("ValuesToWrite() = %v, want platform, which a project holds, and security", got)
+	}
+}
+
 // The document written for the counter case has to leave the original data
 // alone: the pattern evaluates the decision against the world as it stands and
 // against a world where the write happened, and the two must not be the same

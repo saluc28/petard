@@ -88,12 +88,14 @@ Escalations
     writes     data.users.{owner}.profile.department
     through    PATCH /api/v1/me/profile
     in         data.quill.authz.allow
+    proven by  {"action":"read","doc":"d-t11-1","user":"mallory"}
 
   carol -> alice  (PTD-OPA-006, confidence D)
     writes     editor into data.users.{owner}.roles
     through    PUT /api/v1/users/{id}/roles
     allowed by data.quill.admin.allow
     in         data.quill.publish.allow
+    proven by  {"action":"publish","user":"carol"}
 
 Findings
     1  PTD-OPA-001  The subject writes an attribute the policy reads to decide about them
@@ -117,8 +119,10 @@ How much to trust this
   The write model covers 6 of 11 paths read (54%).
 ```
 
-`-v` adds the evidence under it: every read with its file and line, what each decision is left
-to check once the data is concrete, and every place to go and look.
+The `proven by` line is a request the decision refuses as the data stands and grants once the
+write is made. `-v` adds the evidence under it: every read with its file and line, the document
+each write changes and the value it puts there, what each decision is left to check once the data
+is concrete, and every place to go and look.
 
 The patterns travel in the binary, so the two commands that read them work without a checkout:
 

@@ -260,8 +260,19 @@ func (r reach) nothing() bool {
 	return !r.always && r.ways == 0
 }
 
-// beyond reports whether one reach grants a request another does not, and
-// whether the answer is certain.
+// gain is what one reach grants beyond another.
+type gain struct {
+	// beyond is whether the reach grants a request the other does not, and
+	// certain whether that answer was proven rather than left open.
+	beyond  bool
+	certain bool
+
+	// request is one the reach grants and the other refuses, found by asking the
+	// decision, or nil when none of the requests the conditions name was.
+	request map[string]any
+}
+
+// over reports what one reach grants beyond another.
 //
 // It reads the content of the two grants rather than counting their conditions.
 // A count cannot tell a real gain from a wider one: joining a decision that
@@ -270,36 +281,62 @@ func (r reach) nothing() bool {
 // what each grants, the single action is covered by the every, and the gain is
 // seen for what it is.
 //
-// When the content cannot settle it, because a condition negates a rule partial
-// evaluation generated, reads a field that cannot be turned into values, or was
-// cut short by a bound, the decision is asked about the requests the readable
-// fields let through, one at a time. A request this reach grants and the other
-// refuses proves the gain. A policy written allow and not deny carries its deny into every condition
-// as such a rule when partial evaluation cannot inline it, and a deny can refuse
-// exactly what a write seems to open. With no request to prove it the answer is
-// not certain, and the caller reports a candidate rather than a finding.
-func (r reach) beyond(ctx context.Context, other reach) (bool, bool, error) {
+// A gain is then asked of the decision, about the requests the readable fields
+// let through, one at a time: a request this reach grants and the other refuses
+// is the witness a report shows. When the content cannot settle the gain,
+// because a condition negates a rule partial evaluation generated, reads a
+// field that cannot be turned into values, or was cut short by a bound, that
+// request is also what proves it. A policy written allow and not deny carries
+// its deny into every condition as such a rule when partial evaluation cannot
+// inline it, and a deny can refuse exactly what a write seems to open. With no
+// request to prove it the answer is not certain, and the caller reports a
+// candidate rather than a finding.
+func (r reach) over(ctx context.Context, other reach) (gain, error) {
 	beyond, certain := r.content.Beyond(other.content)
-	if certain || r.data == nil || other.data == nil {
-		return beyond, certain, nil
+	noGain := certain && !beyond
+	if noGain || r.data == nil || other.data == nil {
+		return gain{beyond: beyond, certain: certain}, nil
 	}
+
+	request, err := r.witness(ctx, other)
+	if err != nil {
+		return gain{}, err
+	}
+	if !certain {
+		beyond, certain = request != nil, request != nil
+	}
+	return gain{beyond: beyond, certain: certain, request: request}, nil
+}
+
+// witness returns the first request this reach grants and the other refuses,
+// among the ones the conditions of this reach name, or nil when none is.
+func (r reach) witness(ctx context.Context, other reach) (map[string]any, error) {
 	for _, request := range r.content.Witnesses(other.content, r.request) {
 		before, err := opaengine.Holds(ctx, other.bundle, other.data, other.decision, request)
 		if err != nil {
-			return false, false, err
+			return nil, err
 		}
 		if before {
 			continue
 		}
 		after, err := opaengine.Holds(ctx, r.bundle, r.data, r.decision, request)
 		if err != nil {
-			return false, false, err
+			return nil, err
 		}
 		if after {
-			return true, true, nil
+			return request, nil
 		}
 	}
-	return false, false, nil
+	return nil, nil
+}
+
+// witnessOf is the witness of a finding: the request a gain found, with the
+// write that makes the difference. It is nil when the gain found no request.
+func witnessOf(found gain, decision, document string, value any) *Witness {
+	if found.request == nil {
+		return nil
+	}
+	return &Witness{Decision: decision, Request: found.request, Document: document, Value: value}
 }
 
 // reachOf asks how much of a decision one principal can get, with the rest of
