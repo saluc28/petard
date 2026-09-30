@@ -509,7 +509,10 @@ func joinOpens(ctx context.Context, a Analysis, join authorizedJoin, document st
 	if err != nil {
 		return false, false, err
 	}
-	beyond, sure := after.beyond(now)
+	beyond, sure, err := after.beyond(ctx, now)
+	if err != nil {
+		return false, false, err
+	}
 	// Report a proven gain as a finding and an unproven one as a candidate; a
 	// join that grants nothing new is not reported at all.
 	return beyond || !sure, sure, nil

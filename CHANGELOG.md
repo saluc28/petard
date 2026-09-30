@@ -25,8 +25,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - A residual condition holding `not data.partial.__not1_0_2__`, the rule OPA generates for a
   negation it cannot inline, was read as if that part were not there, and a gain or a coverage that
-  rested on it was reported as certain. Such a condition now counts as unreadable, and the
-  comparison ends in a candidate.
+  rested on it was reported as certain. A policy written `allow` and `not deny` carries its deny in
+  that form into every condition when the deny cannot be inlined. Petard now checks such a gain by
+  evaluating the decision, before and after the write, on the requests the rest of the condition
+  names. A request granted after and refused before makes it a finding; without one it stays a
+  candidate, and a coverage through such a condition is no longer taken as certain.
 - A rule with an `else` moves on to the next branch when a branch's condition holds but its value is
   undefined, as OPA does. In `region := input.region if input.verified else := "unknown"`, a
   verified request without a region got an undefined `region` instead of `"unknown"`, and a

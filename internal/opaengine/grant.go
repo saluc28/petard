@@ -44,6 +44,15 @@ type grantCondition struct {
 	// opaqueOther is true when the condition constrains the request somewhere
 	// this could not attribute to a field, so no coverage through it is certain.
 	opaqueOther bool
+
+	// negatesGenerated is true when the condition negates a rule partial
+	// evaluation generated, the one it writes for a negation it cannot inline.
+	// That negation can rule out any request in a body this does not read, so
+	// no coverage through the condition is certain either. It is kept apart
+	// from opaqueOther because the fields the condition does read can still
+	// name the requests that settle the question by evaluation (see
+	// Witnesses).
+	negatesGenerated bool
 }
 
 // fieldConstraint is what one condition allows one field of the request to be.
@@ -53,8 +62,10 @@ type fieldConstraint struct {
 	any bool
 
 	// values are the values an equality pins the field to, or, when member is
-	// true, the values a collection must contain.
+	// true, the values a collection must contain. terms keeps each value as it
+	// was written, 10 apart from "10", for writing it into a request.
 	values map[string]bool
+	terms  map[string]*ast.Term
 	member bool
 
 	// prefixes are the prefixes the field must start with, from a wildcard
@@ -98,7 +109,7 @@ func (c *grantCondition) apply(expr *ast.Expr) {
 	// condition does not show: not data.partial.__not1_0_2__ can narrow any
 	// field of it.
 	if namesGeneratedRule(expr) {
-		c.opaqueOther = true
+		c.negatesGenerated = true
 		return
 	}
 
@@ -155,8 +166,10 @@ func (c *grantCondition) bind(field string, member bool, other *ast.Term) {
 	if scalar, isScalar := scalarOf(other); isScalar {
 		if constraint.values == nil {
 			constraint.values = map[string]bool{}
+			constraint.terms = map[string]*ast.Term{}
 		}
 		constraint.values[scalar] = true
+		constraint.terms[scalar] = other
 		c.fields[field] = constraint
 		return
 	}
@@ -370,8 +383,18 @@ func (g GrantContent) Beyond(other GrantContent) (beyond, certain bool) {
 // pins: a field it leaves open covers any value, and a field it pins covers only
 // a covered condition that pins the same field no wider. A field either reads
 // opaquely stops the comparison, unless the covered condition already escapes on
-// a field both read.
+// a field both read. A generated negation on either side stops it too.
 func coverageOf(covering, covered grantCondition) coverage {
+	if covering.negatesGenerated || covered.negatesGenerated {
+		return unknownCoverage
+	}
+	return readableCoverage(covering, covered)
+}
+
+// readableCoverage is coverageOf on the fields the two conditions read, as if
+// neither negated a generated rule. When one does, Witnesses uses it to find the
+// requests whose evaluation settles the comparison.
+func readableCoverage(covering, covered grantCondition) coverage {
 	if covered.opaqueOther {
 		return unknownCoverage
 	}

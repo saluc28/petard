@@ -295,7 +295,10 @@ func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fiel
 	if err != nil {
 		return false, false, err
 	}
-	beyond, sure := after.beyond(now)
+	beyond, sure, err := after.beyond(ctx, now)
+	if err != nil {
+		return false, false, err
+	}
 	return beyond || !sure, sure, nil
 }
 

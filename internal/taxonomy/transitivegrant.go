@@ -237,6 +237,13 @@ type reach struct {
 	// on the request, which is what tells a real gain from a wider count when
 	// one reach is compared with another.
 	content opaengine.GrantContent
+
+	// The question the reach answers, kept to ask the decision about one
+	// concrete request when content alone cannot settle a comparison.
+	bundle   *opaengine.Bundle
+	data     *opaengine.Data
+	decision string
+	request  map[string]any
 }
 
 // waysOf writes a number of ways the way a sentence says it, so that one way
@@ -261,10 +268,38 @@ func (r reach) nothing() bool {
 // grants a single action adds a condition to a principal who already grants
 // every action, and the count rises while nothing new is reached. Comparing
 // what each grants, the single action is covered by the every, and the gain is
-// seen for what it is. When a condition cannot be read the answer is not
-// certain, and the caller reports a candidate rather than a finding.
-func (r reach) beyond(other reach) (bool, bool) {
-	return r.content.Beyond(other.content)
+// seen for what it is.
+//
+// When the content cannot settle it, because a condition negates a rule partial
+// evaluation generated, reads a field that cannot be turned into values, or was
+// cut short by a bound, the decision is asked about the requests the readable
+// fields let through, one at a time. A request this reach grants and the other
+// refuses proves the gain. A policy written allow and not deny carries its deny into every condition
+// as such a rule when partial evaluation cannot inline it, and a deny can refuse
+// exactly what a write seems to open. With no request to prove it the answer is
+// not certain, and the caller reports a candidate rather than a finding.
+func (r reach) beyond(ctx context.Context, other reach) (bool, bool, error) {
+	beyond, certain := r.content.Beyond(other.content)
+	if certain || r.data == nil || other.data == nil {
+		return beyond, certain, nil
+	}
+	for _, request := range r.content.Witnesses(other.content, r.request) {
+		before, err := opaengine.Holds(ctx, other.bundle, other.data, other.decision, request)
+		if err != nil {
+			return false, false, err
+		}
+		if before {
+			continue
+		}
+		after, err := opaengine.Holds(ctx, r.bundle, r.data, r.decision, request)
+		if err != nil {
+			return false, false, err
+		}
+		if after {
+			return true, true, nil
+		}
+	}
+	return false, false, nil
 }
 
 // reachOf asks how much of a decision one principal can get, with the rest of
@@ -279,9 +314,13 @@ func reachOf(ctx context.Context, bundle *opaengine.Bundle, data *opaengine.Data
 		return reach{}, err
 	}
 	return reach{
-		ways:    len(residuals.Conditions),
-		always:  residuals.Always,
-		content: opaengine.GrantContentOf(residuals),
+		ways:     len(residuals.Conditions),
+		always:   residuals.Always,
+		content:  opaengine.GrantContentOf(residuals),
+		bundle:   bundle,
+		data:     data,
+		decision: decision,
+		request:  request,
 	}, nil
 }
 

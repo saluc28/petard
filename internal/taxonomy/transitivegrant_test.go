@@ -125,6 +125,95 @@ func TestTransitiveGrantNeedsTheData(t *testing.T) {
 	}
 }
 
+// A policy written allow and not deny carries its deny into every residual
+// condition. When partial evaluation cannot inline the negation, the deny comes
+// back as a rule of its own that the comparison cannot read, and whether a
+// write that makes alice an owner opens the delete it seems to open is settled
+// by asking the decision about that delete, before the write and after it.
+func TestReachBeyondAskedAboutTheRequestPastADeny(t *testing.T) {
+	const policy = `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+default authz := false
+
+authz if {
+	allow
+	not deny
+}
+
+allow if input.action == "read"
+
+allow if {
+	input.action == "delete"
+	data.roles[input.user] == "owner"
+}
+
+`
+	tests := []struct {
+		name    string
+		deny    string
+		beyond  bool
+		certain bool
+	}{
+		{
+			// Inlined, the deny is read like any other condition.
+			name:    "a deny partial evaluation inlines",
+			deny:    `deny if input.blocked == true`,
+			beyond:  true,
+			certain: true,
+		},
+		{
+			// The deny refuses other requests, so the delete gets through.
+			name:    "a deny on other requests",
+			deny:    `deny if { lower(input.action) == "create"; input.level != "admin" }`,
+			beyond:  true,
+			certain: true,
+		},
+		{
+			name:    "a deny on the resources it names",
+			deny:    `deny if { some tag in input.tags; tag == "frozen" }`,
+			beyond:  true,
+			certain: true,
+		},
+		{
+			// Deletes are switched off for everybody, so the owner gains
+			// nothing and no request proves otherwise.
+			name:    "a deny on every delete",
+			deny:    `deny if lower(input.action) == "delete"`,
+			beyond:  false,
+			certain: false,
+		},
+	}
+
+	request := map[string]any{"user": "alice"}
+	unknowns := []string{"input.action", "input.blocked", "input.level", "input.tags"}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bundle, _, before := analyze(t, policy+tt.deny+"\n", `{"roles": {"alice": "viewer"}}`)
+			_, _, after := analyze(t, policy+tt.deny+"\n", `{"roles": {"alice": "owner"}}`)
+
+			now, err := reachOf(t.Context(), bundle, before, "data.t.authz", request, unknowns, opaengine.Limits{})
+			if err != nil {
+				t.Fatalf("reachOf(before) error = %v", err)
+			}
+			then, err := reachOf(t.Context(), bundle, after, "data.t.authz", request, unknowns, opaengine.Limits{})
+			if err != nil {
+				t.Fatalf("reachOf(after) error = %v", err)
+			}
+
+			beyond, certain, err := then.beyond(t.Context(), now)
+			if err != nil {
+				t.Fatalf("beyond() error = %v", err)
+			}
+			if beyond != tt.beyond || certain != tt.certain {
+				t.Errorf("beyond() = (%t, %t), want (%t, %t)", beyond, certain, tt.beyond, tt.certain)
+			}
+		})
+	}
+}
+
 // hierarchyPolicy is the shape of a policy that grants through a hierarchy,
 // with the adjacency rule left to the caller: it is the line the trap lives on.
 func hierarchyPolicy(adjacency string) string {
