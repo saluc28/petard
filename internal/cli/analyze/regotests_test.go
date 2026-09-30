@@ -102,8 +102,8 @@ func TestRunWritesATestThatFailsWhileTheEscalationIsOpen(t *testing.T) {
 
 // A decision that collects grants when what it collected is not empty, which a
 // test writes as a count, and a write into an element of a list is repeated by
-// replacing the list, since a with modifier cannot name the element.
-func TestRegoTestsCountACollectedDecisionAndReplaceAList(t *testing.T) {
+// patching the list, since a with modifier cannot name the element.
+func TestRegoTestsCountACollectedDecisionAndPatchAList(t *testing.T) {
 	dir := t.TempDir()
 	policy := `package roster
 
@@ -143,7 +143,7 @@ grants contains "remove" if {
 		},
 	}
 
-	module, written, err := regoTests(t.Context(), taxonomy.Analysis{Bundle: bundle, Data: data}, []taxonomy.Finding{escalation})
+	module, written, err := regoTests(taxonomy.Analysis{Bundle: bundle, Data: data}, []taxonomy.Finding{escalation})
 	if err != nil {
 		t.Fatalf("regoTests() error = %v", err)
 	}
@@ -151,9 +151,11 @@ grants contains "remove" if {
 		t.Errorf("tests written = %d, want 1", written)
 	}
 	for _, want := range []string{
-		`count(data.roster.grants) == 0 with input as {"user": "alice"}`,
-		`count(data.roster.grants) > 0 with input as {"user": "alice"}`,
-		`with data.team.members as [{"role": "owner", "user": "alice"}, {"role": "owner", "user": "bob"}]`,
+		`request := {"user": "alice"}`,
+		`written := json.patch(data.team.members, [{"op": "add", "path": "/0/role", "value": "owner"}])`,
+		"count(data.roster.grants) == 0 with input as request",
+		"count(data.roster.grants) > 0 with input as request",
+		"with data.team.members as written",
 	} {
 		if !strings.Contains(module, want) {
 			t.Errorf("the module does not say %q:\n%s", want, module)
@@ -165,6 +167,35 @@ grants contains "remove" if {
 	}
 	if passes(t, dir, dataDir, "test_alice_cannot_reach_bob") {
 		t.Errorf("the test passes, and alice reaches bob:\n%s", module)
+	}
+}
+
+// A request that would run past regal's line length is written one key to a
+// line, the form opa fmt keeps, and a short one stays on its line.
+func TestBindBreaksALongObject(t *testing.T) {
+	var short, long strings.Builder
+	if err := bind(&short, "request", map[string]any{"user": "alice"}); err != nil {
+		t.Fatalf("bind() error = %v", err)
+	}
+	if got := short.String(); got != "\trequest := {\"user\": \"alice\"}\n" {
+		t.Errorf("short request = %q", got)
+	}
+
+	request := map[string]any{
+		"method":  "DELETE",
+		"path":    []any{"teams", "a-team-with-a-rather-long-name", "members", "alice", "roles"},
+		"subject": map[string]any{"groups": []any{"editors", "reviewers"}, "id": "alice"},
+	}
+	if err := bind(&long, "request", request); err != nil {
+		t.Fatalf("bind() error = %v", err)
+	}
+	want := "\trequest := {\n" +
+		"\t\t\"method\": \"DELETE\",\n" +
+		"\t\t\"path\": [\"teams\", \"a-team-with-a-rather-long-name\", \"members\", \"alice\", \"roles\"],\n" +
+		"\t\t\"subject\": {\"groups\": [\"editors\", \"reviewers\"], \"id\": \"alice\"},\n" +
+		"\t}\n"
+	if got := long.String(); got != want {
+		t.Errorf("long request =\n%s\nwant\n%s", got, want)
 	}
 }
 

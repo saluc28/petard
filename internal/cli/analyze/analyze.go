@@ -213,7 +213,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *testsPath != "" {
-		written, err := writeTests(ctx, *testsPath, analyzed, found.escalations)
+		written, err := writeTests(*testsPath, analyzed, found.escalations)
 		if err != nil {
 			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 			return exitFailure

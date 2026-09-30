@@ -1025,41 +1025,41 @@ func TestDataWithSetsOneElementOfAList(t *testing.T) {
 }
 
 // A with modifier cannot name an element of a list, so a write there is
-// repeated by replacing the list, holding the write and every other element as
-// it was. A path of names is replaced as it is.
-func TestDataWithTargetRisesToTheNearestNamedDocument(t *testing.T) {
-	data := writeData(t, `{"col": {"items": [{"id": "a", "role": "x"}, {"id": "b", "role": "y"}]}, "users": {"c": {"roles": ["s"]}}}`)
-
+// repeated by patching the list at the place written. A path of names is
+// replaced as it is, and a key that holds a slash is escaped in the pointer.
+func TestWithTargetRisesToTheNearestNamedDocument(t *testing.T) {
 	tests := []struct {
-		name       string
-		path       string
-		value      any
-		wantTarget string
-		wantValue  any
+		name        string
+		path        string
+		wantTarget  string
+		wantPointer string
 	}{
 		{
 			name:       "a path of names",
 			path:       "data.users.c.roles",
-			value:      []any{"s", "e"},
 			wantTarget: "data.users.c.roles",
-			wantValue:  []any{"s", "e"},
 		},
 		{
-			name:       "an element of a list",
-			path:       "data.col.items[0].role",
-			value:      "z",
-			wantTarget: "data.col.items",
-			wantValue:  []any{map[string]any{"id": "a", "role": "z"}, map[string]any{"id": "b", "role": "y"}},
+			name:        "an element of a list",
+			path:        "data.col.items[0].role",
+			wantTarget:  "data.col.items",
+			wantPointer: "/0/role",
+		},
+		{
+			name:        "a key with a slash under an element",
+			path:        `data.col.items[1]["a/b"]`,
+			wantTarget:  "data.col.items",
+			wantPointer: "/1/a~1b",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			target, value, err := data.WithTarget(t.Context(), tt.path, tt.value)
+			target, pointer, err := WithTarget(tt.path)
 			if err != nil {
 				t.Fatalf("WithTarget() error = %v", err)
 			}
-			if target != tt.wantTarget || !reflect.DeepEqual(value, tt.wantValue) {
-				t.Errorf("WithTarget() = %s as %v, want %s as %v", target, value, tt.wantTarget, tt.wantValue)
+			if target != tt.wantTarget || pointer != tt.wantPointer {
+				t.Errorf("WithTarget() = %s at %q, want %s at %q", target, pointer, tt.wantTarget, tt.wantPointer)
 			}
 		})
 	}

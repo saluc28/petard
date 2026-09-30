@@ -347,35 +347,42 @@ func (d *Data) With(ctx context.Context, path string, value any) (*Data, error) 
 	return &Data{store: inmem.NewFromObject(documents), Files: slices.Clone(d.Files)}, nil
 }
 
-// WithTarget returns what a with modifier replaces to repeat a write of value
-// into path: the path itself when it is made of names, or else the nearest
-// document above it that is, holding the write. A with modifier takes a path of
-// names only (IsValidImportPath, v1/topdown/input.go:22 at v1.20.2), so a write
-// into data.team.members[0].role is repeated by replacing data.team.members.
-func (d *Data) WithTarget(ctx context.Context, path string, value any) (string, any, error) {
+// WithTarget splits a write into what a with modifier can replace and where the
+// write lands inside it: the path itself and no pointer when the path is made
+// of names, or else the nearest document above it that is, with the JSON
+// pointer (RFC 6901) from there to the place written. A with modifier takes a
+// path of names only (IsValidImportPath, v1/topdown/input.go:22 at v1.20.2), so
+// a write into data.team.members[0].role is repeated by patching
+// data.team.members at /0/role.
+func WithTarget(path string) (target, pointer string, err error) {
 	ref, err := ast.ParseRef(path)
 	if err != nil {
-		return "", nil, fmt.Errorf("opaengine: reading the path %s: %w", path, err)
+		return "", "", fmt.Errorf("opaengine: reading the path %s: %w", path, err)
 	}
 	named := len(ref)
 	for named > 1 && ast.IsValidImportPath(ref[:named]) != nil {
 		named--
 	}
-	if named == len(ref) {
-		return ref.String(), value, nil
-	}
 
-	written, err := d.With(ctx, path, value)
-	if err != nil {
-		return "", nil, err
+	var tokens []string
+	for _, term := range ref[named:] {
+		switch key := term.Value.(type) {
+		case ast.String:
+			tokens = append(tokens, pointerEscaper.Replace(string(key)))
+		case ast.Number:
+			tokens = append(tokens, key.String())
+		default:
+			return "", "", fmt.Errorf("opaengine: %s is not a concrete path", path)
+		}
 	}
-	target := ref[:named].String()
-	held, _, err := written.Value(ctx, target)
-	if err != nil {
-		return "", nil, err
+	if len(tokens) == 0 {
+		return ref.String(), "", nil
 	}
-	return target, held, nil
+	return ref[:named].String(), "/" + strings.Join(tokens, "/"), nil
 }
+
+// pointerEscaper escapes a key for a JSON pointer, ~ before / as RFC 6901 says.
+var pointerEscaper = strings.NewReplacer("~", "~0", "/", "~1")
 
 // Value returns the document a concrete path names, and whether it is there.
 // A path that is not concrete, or names nothing, is not a value: the first is

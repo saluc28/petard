@@ -1,10 +1,12 @@
 package analyze
 
 import (
-	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -30,9 +32,14 @@ import (
 // is where regal wants a test (test-outside-test-package).
 const testsPackage = "petard.escalations_test"
 
+// regalLineLength is where regal's line-length rule starts to complain by
+// default. A test that would run past it gets its long lines broken the way
+// opa fmt keeps them, one key or one argument to a line.
+const regalLineLength = 120
+
 // writeTests writes the tests to path, and returns how many it wrote.
-func writeTests(ctx context.Context, path string, a taxonomy.Analysis, escalations []taxonomy.Finding) (int, error) {
-	module, written, err := regoTests(ctx, a, escalations)
+func writeTests(path string, a taxonomy.Analysis, escalations []taxonomy.Finding) (int, error) {
+	module, written, err := regoTests(a, escalations)
 	if err != nil {
 		return 0, err
 	}
@@ -61,7 +68,7 @@ func writeTests(ctx context.Context, path string, a taxonomy.Analysis, escalatio
 //
 // The module imports rego.v1, which Rego v1 accepts and Rego v0 needs for if,
 // so it loads next to a policy in either syntax.
-func regoTests(ctx context.Context, a taxonomy.Analysis, escalations []taxonomy.Finding) (string, int, error) {
+func regoTests(a taxonomy.Analysis, escalations []taxonomy.Finding) (string, int, error) {
 	var b strings.Builder
 	b.WriteString(testsHeader(a.Bundle))
 
@@ -69,10 +76,10 @@ func regoTests(ctx context.Context, a taxonomy.Analysis, escalations []taxonomy.
 	written := 0
 	for _, escalation := range escalations {
 		w := escalation.Witness
-		if w == nil || a.Data == nil {
+		if w == nil {
 			continue
 		}
-		body, err := escalationBody(ctx, a, w)
+		test, err := escalationTest(a.Bundle, w, testName(taken, escalation.Principal, escalation.Target))
 		if err != nil {
 			return "", 0, err
 		}
@@ -83,8 +90,7 @@ func regoTests(ctx context.Context, a taxonomy.Analysis, escalations []taxonomy.
 			comment(&b, "The write goes through "+escalation.Via+", which no decision of this policy "+
 				"guards, so the test passes only once the policy stops granting on what is written.")
 		}
-		fmt.Fprintf(&b, "%s if {\n\topen := {true |\n%s\t}\n\tcount(open) == 0\n}\n",
-			testName(taken, escalation.Principal, escalation.Target), body)
+		b.WriteString(test)
 		written++
 	}
 	if written == 0 {
@@ -93,33 +99,91 @@ func regoTests(ctx context.Context, a taxonomy.Analysis, escalations []taxonomy.
 	return b.String(), written, nil
 }
 
-// escalationBody writes the expressions that hold together while the
-// escalation is open, one per line, indented for the set they go in.
-func escalationBody(ctx context.Context, a taxonomy.Analysis, w *taxonomy.Witness) (string, error) {
-	target, held, err := a.Data.WithTarget(ctx, w.Document, w.Value)
+// escalationTest writes the test of one escalation. The requests are bound
+// first, and the lines of the set refer to them by name.
+//
+// A write into an element of a list cannot be named by a with modifier, so the
+// list is patched at the place written, with json.patch on the list as it
+// stands, and the test shows only the change.
+func escalationTest(bundle *opaengine.Bundle, w *taxonomy.Witness, name string) (string, error) {
+	target, pointer, err := opaengine.WithTarget(w.Document)
 	if err != nil {
 		return "", err
 	}
-	request, err := regoValue(w.Request)
-	if err != nil {
-		return "", err
-	}
-	value, err := regoValue(held)
+	// value is what the with modifier puts in place of the target.
+	value, err := regoValue(w.Value)
 	if err != nil {
 		return "", err
 	}
 
 	var b strings.Builder
+	fmt.Fprintf(&b, "%s if {\n", name)
 	if w.AuthorizedBy != "" {
-		writeRequest, err := regoValue(w.WriteRequest)
+		if err := bind(&b, "write", w.WriteRequest); err != nil {
+			return "", err
+		}
+	}
+	if err := bind(&b, "request", w.Request); err != nil {
+		return "", err
+	}
+	if pointer != "" {
+		patch, err := regoValue([]any{map[string]any{"op": patchOp(pointer), "path": pointer, "value": w.Value}})
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "\t\t%s with input as %s\n", grants(a.Bundle, w.AuthorizedBy), writeRequest)
+		call := fmt.Sprintf("\twritten := json.patch(%s, %s)\n", target, patch)
+		if len(call) > regalLineLength {
+			call = fmt.Sprintf("\twritten := json.patch(\n\t\t%s,\n\t\t%s,\n\t)\n", target, patch)
+		}
+		b.WriteString(call)
+		value = "written"
 	}
-	fmt.Fprintf(&b, "\t\t%s with input as %s\n", refuses(a.Bundle, w.Decision), request)
-	fmt.Fprintf(&b, "\t\t%s with input as %s\n\t\t\twith %s as %s\n", grants(a.Bundle, w.Decision), request, target, value)
+
+	b.WriteString("\topen := {true |\n")
+	if w.AuthorizedBy != "" {
+		fmt.Fprintf(&b, "\t\t%s with input as write\n", grants(bundle, w.AuthorizedBy))
+	}
+	fmt.Fprintf(&b, "\t\t%s with input as request\n", refuses(bundle, w.Decision))
+	fmt.Fprintf(&b, "\t\t%s with input as request\n\t\t\twith %s as %s\n", grants(bundle, w.Decision), target, value)
+	b.WriteString("\t}\n\tcount(open) == 0\n}\n")
 	return b.String(), nil
+}
+
+// bind writes one binding of a test, name := value, with an object that would
+// run past regalLineLength broken into one key to a line.
+func bind(b *strings.Builder, name string, value any) error {
+	text, err := regoValue(value)
+	if err != nil {
+		return err
+	}
+	line := "\t" + name + " := " + text
+	object, isObject := value.(map[string]any)
+	if len(line) <= regalLineLength || !isObject {
+		b.WriteString(line + "\n")
+		return nil
+	}
+
+	b.WriteString("\t" + name + " := {\n")
+	for _, key := range slices.Sorted(maps.Keys(object)) {
+		element, err := regoValue(object[key])
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(b, "\t\t%s: %s,\n", strconv.Quote(key), element)
+	}
+	b.WriteString("\t}\n")
+	return nil
+}
+
+// patchOp is the JSON Patch operation that writes at a pointer: replace for an
+// element of a list, which add would insert before, and add for a key of an
+// object, which sets it whether it was there or not (RFC 6902, 4.1).
+func patchOp(pointer string) string {
+	last := pointer[strings.LastIndex(pointer, "/")+1:]
+	if _, err := strconv.Atoi(last); err == nil {
+		return "replace"
+	}
+	return "add"
 }
 
 // testsHeader says what the file is and how to run it.
