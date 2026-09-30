@@ -2,8 +2,14 @@ package taxonomy
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/saluc28/petard/internal/opaengine"
+	"github.com/saluc28/petard/internal/pep"
 )
 
 // siblingPolicyBundle is the shape the sibling form needs: a list of team
@@ -198,6 +204,144 @@ func TestSiblingGrantAsksAboutThePathTheEndpointSends(t *testing.T) {
 	path := aliceToBob.Witness.WriteRequest["path"]
 	if want := []any{"teams", "t-1", "members", "alice"}; !reflect.DeepEqual(path, want) {
 		t.Errorf("the write is asked about %v, want the path of alice's member %v", path, want)
+	}
+}
+
+// siblingClaimPolicy lets a member assign roles only as an administrator, a
+// role the identity provider puts next to the subject, and removing the team
+// takes an owner. Nothing in the data says alice is an administrator.
+const siblingClaimPolicy = `package roster
+
+import rego.v1
+
+roles := {"viewer": 1, "editor": 2, "owner": 3}
+
+# METADATA
+# scope: document
+# entrypoint: true
+default authz := false
+
+authz if {
+	input.action == "remove"
+	some i
+	data.team.members[i].user == input.subject.id
+	roles[data.team.members[i].role] >= 3
+}
+
+authz if {
+	input.action == "assign"
+	input.subject.role == "admin"
+}
+`
+
+// siblingClaimEditors adds the ordinary way in: an editor of the team assigns
+// roles, whatever the provider says about them.
+const siblingClaimEditors = `
+authz if {
+	input.action == "assign"
+	some i
+	data.team.members[i].user == input.subject.id
+	roles[data.team.members[i].role] >= 2
+}
+`
+
+// siblingOf finds the escalation from one principal to another.
+func siblingOf(t *testing.T, a Analysis, principal, target string) Finding {
+	t.Helper()
+
+	findings, err := SiblingGrant(t.Context(), a)
+	if err != nil {
+		t.Fatalf("SiblingGrant() error = %v", err)
+	}
+	for _, f := range findings {
+		if f.Principal == principal && f.Target == target {
+			return f
+		}
+	}
+	t.Fatalf("the escalation from %s to %s is missing:\n%v", principal, target, findings)
+	return Finding{}
+}
+
+// A write the decision allows only to a requester who claims a role, which
+// sits next to the subject in the request, is allowed to a principal only if
+// the provider says so, which the data cannot tell. The escalation stays a
+// candidate and says why; with a way in that asks for no claim it is a finding.
+func TestSiblingGrantLeavesAWriteThatNeedsAClaimACandidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		policy  string
+		verdict Verdict
+	}{
+		{name: "the write needs the claim", policy: siblingClaimPolicy, verdict: VerdictCandidate},
+		{name: "an editor writes without it", policy: siblingClaimPolicy + siblingClaimEditors, verdict: VerdictFinding},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := analysisOf(t, &FalsePositiveCase{Policy: tt.policy, Data: siblingData, WriteModel: siblingModel})
+			shape, err := opaengine.ShapeOf(a.Reads, "input.subject.id")
+			if err != nil {
+				t.Fatalf("ShapeOf() error = %v", err)
+			}
+			a.Shape = shape
+
+			f := siblingOf(t, a, "alice", "bob")
+			if f.Verdict != tt.verdict {
+				t.Errorf("verdict = %s, want %s", f.Verdict, tt.verdict)
+			}
+			if tt.verdict == VerdictCandidate && f.Note == "" {
+				t.Error("the candidate does not say it rests on a claim")
+			}
+		})
+	}
+}
+
+// With the subject at the top of the request, nothing sits next to it, and
+// only the enforcement point can say that a part is a claim: here the groups,
+// which the single sign-on sets.
+func TestSiblingGrantReadsTheClaimsTheEnforcementPointDeclares(t *testing.T) {
+	policy := strings.NewReplacer("input.subject.id", "input.user", `input.subject.role == "admin"`, `"admins" in input.groups`).
+		Replace(siblingClaimPolicy)
+	gateway := `schema_version: 1
+id: roster-gateway
+title: The gateway in front of the roster
+engine: opa
+source:
+  kind: documentation
+  note: Written for this test.
+decisions:
+  - rule: authz
+    side: grants
+fields:
+  - path: input.groups
+    set_by: issuer
+    issuer: the single sign-on of the roster
+    evidence:
+      - this test
+`
+	file := filepath.Join(t.TempDir(), "pep.yaml")
+	if err := os.WriteFile(file, []byte(gateway), 0o600); err != nil {
+		t.Fatalf("writing the declaration: %v", err)
+	}
+	point, err := pep.Load(file)
+	if err != nil {
+		t.Fatalf("pep.Load() error = %v", err)
+	}
+
+	for _, tt := range []struct {
+		name    string
+		point   *pep.EnforcementPoint
+		verdict Verdict
+	}{
+		{name: "declared", point: point, verdict: VerdictCandidate},
+		{name: "not declared", point: nil, verdict: VerdictFinding},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			a := analysisOf(t, &FalsePositiveCase{Policy: policy, Data: siblingData, WriteModel: siblingModel})
+			a.EnforcementPoint = tt.point
+			if f := siblingOf(t, a, "alice", "bob"); f.Verdict != tt.verdict {
+				t.Errorf("verdict = %s, want %s", f.Verdict, tt.verdict)
+			}
+		})
 	}
 }
 

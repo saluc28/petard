@@ -337,6 +337,46 @@ const (
 	escapes
 )
 
+// GrantsWithoutClaim reports whether some way the decision grants holds
+// whatever the claims about the requester say: a condition that constrains none
+// of the fields claim names. A decision that holds always does.
+//
+// A claim is a part of the request that says who is asking rather than what
+// they ask, such as a role or a group an identity provider vouches for. The
+// requester does not choose it, so a grant that holds only for some value of a
+// claim holds only for a principal the provider describes that way, which the
+// data cannot say the principal is. A constraint this cannot attribute to a
+// field is not taken for a claim.
+func (g GrantContent) GrantsWithoutClaim(claim func(field string) bool) bool {
+	if g.always {
+		return true
+	}
+	for _, condition := range g.conditions {
+		if !condition.constrainsAny(claim) {
+			return true
+		}
+	}
+	return false
+}
+
+// constrainsAny reports whether a condition constrains a field the predicate
+// names: pins it to values, matches it against a prefix, or reads it in a way
+// that cannot be turned into values. A field read and pinned to nothing is not
+// constrained.
+func (c grantCondition) constrainsAny(named func(field string) bool) bool {
+	for field, constraint := range c.fields {
+		if named(field) && !constraint.any {
+			return true
+		}
+	}
+	for field := range c.opaque {
+		if named(field) {
+			return true
+		}
+	}
+	return false
+}
+
 // Beyond reports whether this decision grants a request the other does not, and
 // whether the answer is certain.
 //

@@ -305,7 +305,7 @@ func siblingWriteOpens(ctx context.Context, a Analysis, start siblingStart, fiel
 	if err != nil {
 		return opening{}, err
 	}
-	return openingOf(ctx, found, witnessOf(found, start.Decision, written.document, written.value), allowed)
+	return openingOf(ctx, a, found, witnessOf(found, start.Decision, written.document, written.value), allowed)
 }
 
 // siblingWriteAllowed asks the decision the endpoint consumes whether the subject
@@ -394,6 +394,7 @@ func siblingFinding(a Analysis, start siblingStart, subject, target, value strin
 		Subject:      a.Shape.Subject,
 		Confidence:   a.Shape.Confidence.String(),
 		Witness:      write.witness,
+		Note:         write.note(),
 	}
 }
 

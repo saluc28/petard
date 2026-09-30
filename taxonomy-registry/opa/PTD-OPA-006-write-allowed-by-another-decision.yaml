@@ -138,6 +138,10 @@ detection:
         of the call becomes "may this principal make some PUT", which a decision that lets anybody
         call its health check answers yes to. Declaring the path as the list the gateway sends
         keeps the question on the record written.
+        The parts the endpoint does not fill in are left open, and a write allowed only through
+        one that says who is asking, a role next to the subject or a group an issuer sets, is
+        allowed only to a principal the issuer describes that way. The data cannot say the
+        principal is one, so the escalation is then a candidate.
     - order: 5
       check: >
         Evaluate the granting decision again with the document holding an allowed value, or with

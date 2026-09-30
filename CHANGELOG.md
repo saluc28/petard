@@ -25,6 +25,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A write that the decision behind the endpoint allows only to a requester who claims something an
+  issuer sets was taken as allowed to every principal, and `PTD-OPA-006` reported an escalation
+  on it. A claim is a part of the request next to the subject, as `input.subject.role` sits next
+  to `input.subject.id`, or one `-pep` declares an issuer sets. Such a write is now a candidate,
+  and the report says why.
 - A residual condition that negates an equality, such as `not input.action = "delete"`, was read
   as the equality it negates, as if it granted delete alone. Comparing two grants through such a
   condition could report a gain that is not there, or miss one that is. The negated field now

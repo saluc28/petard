@@ -1,6 +1,9 @@
 package opaengine
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // residual builds a residual set from the queries of its conditions, the way
 // partial evaluation leaves them, so the tests read one decision against
@@ -229,5 +232,64 @@ func TestGrantContentTruncatedIsNotCertain(t *testing.T) {
 	_, certain := GrantContentOf(residual(`"write" = input.action`)).Beyond(GrantContentOf(other))
 	if certain {
 		t.Error("a gain measured against a truncated residual is reported certain")
+	}
+}
+
+// A grant holds without a claim when some way into it constrains none: a
+// grant whose every way asks for a role or a group the provider vouches for
+// holds only for a principal it describes that way.
+func TestGrantContentGrantsWithoutClaim(t *testing.T) {
+	claim := func(field string) bool {
+		return strings.HasPrefix(field, "input.subject.") && field != "input.subject.id"
+	}
+	tests := []struct {
+		name   string
+		grant  []string
+		always bool
+		want   bool
+	}{
+		{
+			name:  "a way that asks for no claim",
+			grant: []string{`"admin" = input.subject.role`, `"PUT" = input.method`},
+			want:  true,
+		},
+		{
+			name:  "every way asks for a claim",
+			grant: []string{`"admin" = input.subject.role`, `"editors" = input.subject.groups[_]`},
+			want:  false,
+		},
+		{
+			name:  "a claim read and pinned to nothing",
+			grant: []string{`__r__ = input.subject.role; "PUT" = input.method`},
+			want:  true,
+		},
+		{
+			name:  "a claim matched against a prefix",
+			grant: []string{`startswith(input.subject.email, "ops@")`},
+			want:  false,
+		},
+		{
+			name:  "a claim read as a truth test",
+			grant: []string{`input.subject.verified`},
+			want:  false,
+		},
+		{
+			name:   "a decision that holds always",
+			always: true,
+			want:   true,
+		},
+		{
+			name: "a decision that grants nothing",
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			grant := GrantContentOf(residual(tt.grant...))
+			grant.always = tt.always
+			if got := grant.GrantsWithoutClaim(claim); got != tt.want {
+				t.Errorf("GrantsWithoutClaim() = %t, want %t", got, tt.want)
+			}
+		})
 	}
 }

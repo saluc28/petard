@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/saluc28/petard/internal/opaengine"
+	"github.com/saluc28/petard/internal/pep"
 	"github.com/saluc28/petard/internal/writemodel"
 )
 
@@ -293,13 +294,14 @@ func valueOpensTheGrant(ctx context.Context, a Analysis, grant authorizedGrant, 
 	if err != nil {
 		return opening{}, err
 	}
-	write, err := openingOf(ctx, found, witnessOf(found, grant.Decision, document, written), allowed)
+	write, err := openingOf(ctx, a, found, witnessOf(found, grant.Decision, document, written), allowed)
 	if err != nil {
 		return opening{}, err
 	}
 	// The subject got nothing before the write, so the gain is proven whatever
-	// the comparison of the conditions says.
-	write.opens, write.certain = true, true
+	// the comparison of the conditions says, and only a write that asks for a
+	// claim leaves it open.
+	write.opens, write.certain = true, !write.claimed
 	return write, nil
 }
 
@@ -361,6 +363,7 @@ func splitGrantFinding(a Analysis, grant authorizedGrant, subject, target string
 		Subject:      a.Shape.Subject,
 		Confidence:   a.Shape.Confidence.String(),
 		Witness:      write.witness,
+		Note:         write.note(),
 	}
 }
 
@@ -499,6 +502,11 @@ type opening struct {
 	opens   bool
 	certain bool
 
+	// claimed is true when the decision that authorizes the write allows it
+	// only to a requester who claims something an issuer sets, which makes the
+	// write, and so the gain, unproven.
+	claimed bool
+
 	// witness is the request that showed it, when one did.
 	witness *Witness
 }
@@ -507,7 +515,7 @@ type opening struct {
 // finding and an unproven one as a candidate; a write that grants nothing new is
 // not reported at all. A witness gets a request the authorizing decision allows
 // the write on, so that it holds the whole escalation and not the grant alone.
-func openingOf(ctx context.Context, found gain, witness *Witness, allowed reach) (opening, error) {
+func openingOf(ctx context.Context, a Analysis, found gain, witness *Witness, allowed reach) (opening, error) {
 	if witness != nil {
 		writeRequest, err := allowed.example(ctx)
 		if err != nil {
@@ -515,11 +523,58 @@ func openingOf(ctx context.Context, found gain, witness *Witness, allowed reach)
 		}
 		witness = witness.authorizedBy(allowed.decision, writeRequest)
 	}
+	claimed := !allowedWithoutClaim(a, allowed)
 	return opening{
 		opens:   found.beyond || !found.certain,
-		certain: found.certain,
+		certain: found.certain && !claimed,
+		claimed: claimed,
 		witness: witness,
 	}, nil
+}
+
+// note says why a write the decision allows only on a claim is a candidate.
+func (o opening) note() string {
+	if !o.claimed {
+		return ""
+	}
+	return "the decision that allows the write asks the requester for a claim an issuer sets, " +
+		"which neither the data nor the write model says this principal holds"
+}
+
+// allowedWithoutClaim reports whether the decision that authorizes a write
+// allows it to the principal without their claiming anything an issuer sets.
+// A write asked about with every part of the request fixed was answered for
+// that request, which claims only what it carries.
+func allowedWithoutClaim(a Analysis, allowed reach) bool {
+	return allowed.always || allowed.content.GrantsWithoutClaim(identityClaims(a.Shape, a.EnforcementPoint))
+}
+
+// identityClaims returns the parts of the request that say who is asking rather
+// than what they ask for: the parts the enforcement point declares an issuer
+// sets, and, when the subject sits in an object of its own, as input.subject.id
+// does, the other parts of that object, which describe the same identity. The
+// subject itself is not a claim, since the question names it, and neither is a
+// part the enforcement point declares set by anybody but an issuer.
+func identityClaims(shape opaengine.Shape, point *pep.EnforcementPoint) func(string) bool {
+	subject := subjectRoot(shape)
+	identity := ""
+	if cut := strings.LastIndex(subject, "."); cut > len("input") {
+		identity = subject[:cut]
+	}
+	return func(field string) bool {
+		if within(field, subject) {
+			return false
+		}
+		if declared, found := point.FieldFor(field); found {
+			return declared.SetBy == pep.SetByIssuer
+		}
+		return identity != "" && within(field, identity)
+	}
+}
+
+// within reports whether a field of the request is a part or sits under it.
+func within(field, part string) bool {
+	return field == part || strings.HasPrefix(field, part+".") || strings.HasPrefix(field, part+"[")
 }
 
 // verdict is how a write that opens something is reported: a finding when the
@@ -565,7 +620,7 @@ func joinOpens(ctx context.Context, a Analysis, join authorizedJoin, document st
 	if err != nil {
 		return opening{}, err
 	}
-	return openingOf(ctx, found, witnessOf(found, join.Decision, document, written), allowed)
+	return openingOf(ctx, a, found, witnessOf(found, join.Decision, document, written), allowed)
 }
 
 // writeAllowed asks the decision the endpoint consumes whether one principal
@@ -637,6 +692,7 @@ func joinFinding(a Analysis, join authorizedJoin, document, subject, target stri
 		Subject:      a.Shape.Subject,
 		Confidence:   a.Shape.Confidence.String(),
 		Witness:      write.witness,
+		Note:         write.note(),
 	}
 }
 
