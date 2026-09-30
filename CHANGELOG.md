@@ -21,6 +21,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   position of whoever holds it. The comparison of a request field against a list is read element by
   element, so two paths that differ at a fixed segment are told apart.
 
+### Fixed
+
+- A residual condition holding `not data.partial.__not1_0_2__`, the rule OPA generates for a
+  negation it cannot inline, was read as if that part were not there, and a gain or a coverage that
+  rested on it was reported as certain. Such a condition now counts as unreadable, and the
+  comparison ends in a candidate.
+
 ## [0.3.0] - 2026-09-25
 
 ### Added

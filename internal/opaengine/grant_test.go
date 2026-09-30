@@ -169,6 +169,25 @@ func TestGrantContentBeyond(t *testing.T) {
 			wantBeyond:  true,
 			wantCertain: true,
 		},
+		{
+			// A negation partial evaluation could not inline comes back as a
+			// rule of its own, which may rule out every request with this
+			// action, so the gain is not proven.
+			name:        "a negated generated rule cannot prove a gain",
+			grant:       []string{`"write" = input.action; not data.partial.__not1_0_2__`},
+			other:       []string{`"read" = input.action`},
+			wantBeyond:  false,
+			wantCertain: false,
+		},
+		{
+			// The other grants read only where the generated rule does not
+			// hold, so it does not cover a grant of read everywhere.
+			name:        "a negated generated rule cannot cover",
+			grant:       []string{`"read" = input.action`},
+			other:       []string{`"read" = input.action; not data.partial.__not1_0_2__`},
+			wantBeyond:  false,
+			wantCertain: false,
+		},
 	}
 
 	for _, tt := range tests {

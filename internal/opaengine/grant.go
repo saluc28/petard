@@ -93,6 +93,15 @@ func readGrantCondition(query string) grantCondition {
 // the request as opaque on the fields it touches. An expression that does not
 // constrain the request is ignored.
 func (c *grantCondition) apply(expr *ast.Expr) {
+	// A reference to a rule partial evaluation generated, the one it writes
+	// for a negation it cannot inline, constrains the request in bodies this
+	// condition does not show: not data.partial.__not1_0_2__ can narrow any
+	// field of it.
+	if namesGeneratedRule(expr) {
+		c.opaqueOther = true
+		return
+	}
+
 	if expr.IsEquality() {
 		if operands := expr.Operands(); len(operands) == 2 {
 			if field, member, isInput := inputField(operands[0]); isInput {
@@ -276,6 +285,24 @@ func inputFieldsOf(expr *ast.Expr) []string {
 		return false
 	})
 	return fields
+}
+
+// generatedRoot is where partial evaluation writes the rules it generates.
+// Petard sets no namespace, so OPA uses its default, partial
+// (v1/rego/rego.go:43 at v1.20.2), under data.
+var generatedRoot = ast.MustParseRef("data.partial")
+
+// namesGeneratedRule reports whether an expression refers to a rule partial
+// evaluation generated.
+func namesGeneratedRule(expr *ast.Expr) bool {
+	found := false
+	ast.WalkRefs(expr, func(ref ast.Ref) bool {
+		if ref.HasPrefix(generatedRoot) {
+			found = true
+		}
+		return found
+	})
+	return found
 }
 
 func isVar(term *ast.Term) bool {
