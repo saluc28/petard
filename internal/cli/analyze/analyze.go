@@ -21,7 +21,6 @@ import (
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
-	"github.com/saluc28/petard/internal/writemodel"
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
@@ -59,7 +58,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	regoV0 := flags.Bool("rego-v0", false, "parse as Rego v0, like opa --v0-compatible")
 	regoV1 := flags.Bool("rego-v1", false, "parse as Rego v1 and do not fall back to v0")
 	var entrypoints repeatedString
-	flags.Var(&entrypoints, "entrypoint", "a rule the PEP queries, or a field of what it returns, as data.authz.allow or authz/allow; repeat for more")
+	flags.Var(&entrypoints, "entrypoint", "a rule the PEP queries, or a field of what it returns, as data.authz.allow or authz/allow; repeat for more; without one, the rules no other rule uses")
 	var denyEntrypoints repeatedString
 	flags.Var(&denyEntrypoints, "deny-entrypoint", "a rule the PEP queries to refuse the request when it holds or collects anything, as k8sallowedrepos/violation; repeat for more")
 	subject := flags.String("subject", "", "the part of the request that names who is asking, as input.user; without it, it is recognized")
@@ -116,71 +115,33 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
-	bundle, err := opaengine.Load(paths, mode)
+	analyzed, err := taxonomy.Load(taxonomy.Inputs{
+		Paths:            paths,
+		Mode:             mode,
+		Entrypoints:      entrypoints,
+		DenyEntrypoints:  denyEntrypoints,
+		Subject:          *subject,
+		EnforcementPoint: *enforcementPoint,
+		DataPath:         *dataPath,
+		WriteModelPath:   *writeModelPath,
+		Limits: opaengine.Limits{
+			MaxCallDepth: *maxCallDepth,
+			MaxCallPaths: *maxCallPaths,
+			MaxResiduals: *maxResiduals,
+		},
+	})
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
-	}
-	bundle.Entrypoints = entrypoints
-	bundle.DenyEntrypoints = denyEntrypoints
-
-	point, err := taxonomy.DeclareEnforcementPoint(bundle, *enforcementPoint)
-	if err != nil {
-		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
-		return exitFailure
-	}
-
-	limits := opaengine.Limits{
-		MaxCallDepth: *maxCallDepth,
-		MaxCallPaths: *maxCallPaths,
-		MaxResiduals: *maxResiduals,
-	}
-
-	reads, err := opaengine.Reads(bundle, limits)
-	if err != nil {
-		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
-		return exitFailure
-	}
-	shape, err := taxonomy.ShapeOf(reads, *subject, point)
-	if err != nil {
-		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
-		return exitFailure
-	}
-
-	var model *writemodel.Model
-	if *writeModelPath != "" {
-		model, err = writemodel.Load(*writeModelPath)
-		if err != nil {
-			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
-			return exitFailure
-		}
-	}
-
-	var data *opaengine.Data
-	if *dataPath != "" {
-		data, err = opaengine.LoadData([]string{*dataPath})
-		if err != nil {
-			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
-			return exitFailure
-		}
 	}
 
 	ctx := context.Background()
-	analyzed := taxonomy.Analysis{
-		Bundle:           bundle,
-		Reads:            reads,
-		Shape:            shape,
-		Model:            model,
-		Data:             data,
-		EnforcementPoint: point,
-		Limits:           limits,
-	}
 	findings, err := taxonomy.Run(ctx, analyzed)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
-	coverage, err := taxonomy.CoverageOf(reads, model)
+	coverage, err := taxonomy.CoverageOf(analyzed.Reads, analyzed.Model)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
@@ -195,9 +156,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	if *verbose {
 		fmt.Fprintln(stdout)
-		report(stdout, bundle, reads, shape)
-		if data != nil {
-			if err := reportResiduals(ctx, stdout, bundle, data, reads, limits); err != nil {
+		report(stdout, analyzed)
+		if analyzed.Data != nil {
+			if err := reportResiduals(ctx, stdout, analyzed); err != nil {
 				fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 				return exitFailure
 			}
@@ -385,15 +346,15 @@ func reportFindings(out io.Writer, a taxonomy.Analysis, findings taxonomy.Findin
 // get out of this decision, given these documents. Narrowing the unknown to one
 // part of the request is what turns the same call into a question about a
 // single principal, and that belongs to a pattern rather than to a summary.
-func reportResiduals(ctx context.Context, out io.Writer, bundle *opaengine.Bundle, data *opaengine.Data, reads *opaengine.ReadSet, limits opaengine.Limits) error {
-	fmt.Fprintf(out, "\nagainst %d data documents, with the request unknown:\n", len(data.Files))
+func reportResiduals(ctx context.Context, out io.Writer, a taxonomy.Analysis) error {
+	fmt.Fprintf(out, "\nagainst %d data documents, with the request unknown:\n", len(a.Data.Files))
 
 	table := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(table, "  DECISION\tRESIDUAL CONDITIONS\tDEFAULT")
 	var warnings []string
 
-	for _, decision := range reads.Decisions {
-		residuals, err := opaengine.Residuals(ctx, bundle, data, opaengine.Request{Decision: decision}, limits)
+	for _, decision := range a.Reads.Decisions {
+		residuals, err := opaengine.Residuals(ctx, a.Bundle, a.Data, opaengine.Request{Decision: decision}, a.Limits)
 		if err != nil {
 			return err
 		}
@@ -526,9 +487,14 @@ func describeShape(shape opaengine.Shape) string {
 	return strings.Join(parts, " ")
 }
 
-func report(out io.Writer, bundle *opaengine.Bundle, reads *opaengine.ReadSet, shape opaengine.Shape) {
+func report(out io.Writer, a taxonomy.Analysis) {
+	bundle, reads, shape := a.Bundle, a.Reads, a.Shape
 	fmt.Fprintf(out, "bundle:    %d files, parsed as rego %s\n", len(bundle.Files), bundle.RegoVersion)
-	fmt.Fprintf(out, "decisions: %d\n", len(reads.Decisions))
+	inferred := ""
+	if a.DecisionsInferred {
+		inferred = ", inferred as the rules no other rule uses"
+	}
+	fmt.Fprintf(out, "decisions: %d%s\n", len(reads.Decisions), inferred)
 	for _, decision := range reads.Decisions {
 		if reads.Denies(decision) {
 			fmt.Fprintf(out, "  %s, to deny\n", decision)

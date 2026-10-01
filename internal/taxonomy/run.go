@@ -2,7 +2,11 @@ package taxonomy
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
@@ -270,6 +274,15 @@ func Load(inputs Inputs) (Analysis, error) {
 	}
 
 	reads, err := opaengine.Reads(bundle, inputs.Limits)
+	inferred := errors.Is(err, opaengine.ErrNoDecisions)
+	if inferred {
+		inferDecisions(bundle)
+		reads, err = opaengine.Reads(bundle, inputs.Limits)
+		if errors.Is(err, opaengine.ErrNoDecisions) {
+			return Analysis{}, fmt.Errorf("%w; none can be inferred either, "+
+				"since every rule is a function, a test or used by another rule", err)
+		}
+	}
 	if err != nil {
 		return Analysis{}, err
 	}
@@ -279,11 +292,12 @@ func Load(inputs Inputs) (Analysis, error) {
 	}
 
 	analysis := Analysis{
-		Bundle:           bundle,
-		Reads:            reads,
-		Shape:            shape,
-		EnforcementPoint: point,
-		Limits:           inputs.Limits,
+		Bundle:            bundle,
+		Reads:             reads,
+		Shape:             shape,
+		EnforcementPoint:  point,
+		DecisionsInferred: inferred,
+		Limits:            inputs.Limits,
 	}
 
 	if inputs.WriteModelPath != "" {
@@ -298,3 +312,32 @@ func Load(inputs Inputs) (Analysis, error) {
 	}
 	return analysis, nil
 }
+
+// inferDecisions declares as decisions the rules no other rule uses, for a
+// bundle where nothing names them: no annotation, no flag, no enforcement point.
+// Whole families of Rego annotate none, gatekeeper-library among them, and
+// stopping there would leave them unanalyzed, while a rule nothing in the
+// policy uses is one only a caller outside can be asking for (see
+// opaengine.Bundle.Roots).
+//
+// Which side a root is on comes from its name, the way conftest reads one: deny
+// and violation fail a check, warn flags one, and so does each of them followed
+// by an underscore and a name, as deny_root (failureRegex and warningRegex in
+// policy/engine.go:47 and :48 at conftest v0.71.0). Gatekeeper queries
+// violation the same way. Such a rule refuses or flags the request when it
+// holds or collects anything, so it is declared to deny, and every other root
+// to grant.
+func inferDecisions(bundle *opaengine.Bundle) {
+	for _, root := range bundle.Roots() {
+		name := root[strings.LastIndex(root, ".")+1:]
+		if refusingName.MatchString(name) {
+			bundle.DenyEntrypoints = append(bundle.DenyEntrypoints, root)
+			continue
+		}
+		bundle.Entrypoints = append(bundle.Entrypoints, root)
+	}
+}
+
+// refusingName is the name of a rule conftest reports as a failure or a
+// warning.
+var refusingName = regexp.MustCompile(`^(deny|violation|warn)(_[a-zA-Z0-9]+)*$`)

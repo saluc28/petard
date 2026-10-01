@@ -30,8 +30,21 @@ each loads as neither, with an error naming every file involved.
 
 Its starting points are the decisions: the rules the policy annotates as entrypoints, plus any
 the caller declares. Whole families of Rego annotate nothing, and that same corpus has no
-`# METADATA` block at all across its 142 files. The alternative to declaring the decision is
-guessing which rule a policy engine happens to query, so Petard stops instead of guessing.
+`# METADATA` block at all across its 142 files. When nothing names a decision, the run takes the
+rules no other rule of the bundle uses (`Bundle.Roots`), since only something outside the policy
+can be asking for them. The uses are those of the rule graph OPA's compiler builds, which follows
+a reference with a variable in it to every rule it can reach, and a test neither uses a rule nor
+becomes a decision. On three products that query OPA from their own code, those rules are what
+the code queries: SPIRE queries `data.spire.result` (`pkg/server/authpolicy/policy.go:113` at
+e599ab8), Fleet `data.authz.allow` (`server/authz/authz.go:40` at e1a6883b), and Chef Automate
+three of the four rules its authorization policy leaves unused
+(`components/authz-service/engine/opa/opa.go:36` to `:38` at 61ca031). The fourth there,
+`data.authz.authorized`, and a constant Fleet declares and never reads become decisions nobody
+queries, and whatever the report says about them is about a rule the enforcement point does not
+ask. The report says the decisions were inferred, and `-entrypoint` replaces them. A rule called
+`deny`, `violation` or `warn`, alone or followed by an underscore and a name, is inferred to deny:
+those are the names conftest reads as a failure or a warning (`policy/engine.go:47` and `:48` at
+v0.71.0).
 
 A declared decision can also be the document that rules with a reference in their head build
 together, such as `authzen/allow` for rules written `allow["decision"]`, or one field of what a

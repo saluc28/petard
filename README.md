@@ -222,9 +222,11 @@ rewriting every query that mentions it.
 
 ## Running it on your own policy
 
-The decisions are the starting points. A policy that annotates its entrypoints needs nothing;
-one that does not has to be told, because the alternative is guessing which rule the enforcement
-point queries:
+The decisions are the starting points. A policy that annotates its entrypoints needs nothing. One
+that does not is analyzed from the rules no other rule uses, since only something outside the
+policy can be asking for those, and the report says the decisions were inferred. A rule called
+`deny`, `violation` or `warn`, alone or with a suffix such as `deny_root`, is taken to refuse the
+request, the way conftest reads it. When the enforcement point queries other rules, name them:
 
 ```
 petard analyze -entrypoint authz/allow path/to/policy

@@ -266,6 +266,12 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 	render.Print(out, fmt.Sprintf("Level %s (%s): %s. %d reads over %d data paths.",
 		a.Shape.Confidence, a.Shape.Recognizer, subject, len(a.Reads.Reads), len(coverage.Read)), "  ")
 
+	if a.DecisionsInferred {
+		render.Print(out, "No rule is annotated as an entrypoint and none was declared, so every rule no "+
+			"other rule uses is taken as a decision. If the enforcement point queries others, name them "+
+			"with -entrypoint.", "  ")
+	}
+
 	if point := a.EnforcementPoint; point != nil {
 		request := taxonomy.RequestCoverageOf(a.Reads, point)
 		render.Print(out, fmt.Sprintf("The enforcement point is %s: it says who sets %d of the %s of the "+

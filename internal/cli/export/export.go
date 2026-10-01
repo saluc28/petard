@@ -76,7 +76,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	regoV0 := flags.Bool("rego-v0", false, "parse as Rego v0, like opa --v0-compatible")
 	regoV1 := flags.Bool("rego-v1", false, "parse as Rego v1 and do not fall back to v0")
 	var entrypoints repeatedString
-	flags.Var(&entrypoints, "entrypoint", "a rule the PEP queries, or a field of what it returns, as data.authz.allow or authz/allow; repeat for more")
+	flags.Var(&entrypoints, "entrypoint", "a rule the PEP queries, or a field of what it returns, as data.authz.allow or authz/allow; repeat for more; without one, the rules no other rule uses")
 	var denyEntrypoints repeatedString
 	flags.Var(&denyEntrypoints, "deny-entrypoint", "a rule the PEP queries to refuse the request when it holds or collects anything, as k8sallowedrepos/violation; repeat for more")
 	subject := flags.String("subject", "", "the part of the request that names who is asking, as input.user; without it, it is recognized")
@@ -125,7 +125,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	ctx := context.Background()
-	payload, err := build(ctx, taxonomy.Inputs{
+	payload, analysis, err := build(ctx, taxonomy.Inputs{
 		Paths:            paths,
 		Mode:             mode,
 		Entrypoints:      entrypoints,
@@ -145,6 +145,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "graph: %d nodes, %d edges\n", len(payload.Nodes), len(payload.Edges))
+	if analysis.DecisionsInferred {
+		fmt.Fprintf(stdout, "decisions: %d, inferred as the rules no other rule uses (-entrypoint names them)\n",
+			len(analysis.Reads.Decisions))
+	}
 
 	if *out != "" {
 		if err := write(*out, payload); err != nil {
@@ -183,27 +187,30 @@ type remote struct {
 // describes nodes under ids the server will not have: the next lookup, the next
 // saved query and the next ingest would all miss. The readable form survives in
 // the name property, which is what the UI shows.
-func build(ctx context.Context, inputs taxonomy.Inputs) (bhgraph.Graph, error) {
+//
+// The analysis comes back with the payload, so that the run can say what the
+// graph rests on, the decisions above all.
+func build(ctx context.Context, inputs taxonomy.Inputs) (bhgraph.Graph, taxonomy.Analysis, error) {
 	analysis, err := taxonomy.Load(inputs)
 	if err != nil {
-		return bhgraph.Graph{}, err
+		return bhgraph.Graph{}, taxonomy.Analysis{}, err
 	}
 
 	findings, err := taxonomy.Run(ctx, analysis)
 	if err != nil {
-		return bhgraph.Graph{}, err
+		return bhgraph.Graph{}, taxonomy.Analysis{}, err
 	}
 	g, _, err := taxonomy.Assemble(ctx, analysis, findings)
 	if err != nil {
-		return bhgraph.Graph{}, err
+		return bhgraph.Graph{}, taxonomy.Analysis{}, err
 	}
 
 	payload := opengraph.Payload(g)
 	payload.UppercaseIDs()
 	if err := opengraph.Validate(payload); err != nil {
-		return bhgraph.Graph{}, err
+		return bhgraph.Graph{}, taxonomy.Analysis{}, err
 	}
-	return payload, nil
+	return payload, analysis, nil
 }
 
 // write puts the payload where it was asked for, indented, because a payload

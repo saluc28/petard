@@ -19,9 +19,9 @@ import (
 //
 // It is an error rather than an empty result on purpose. Without a decision
 // there is nothing to walk back from, and a run that reports zero reads would
-// be indistinguishable from a policy that reads nothing at all. Guessing which
-// rules are decisions is a separate job, with a confidence level of its own to
-// declare.
+// be indistinguishable from a policy that reads nothing at all. Inferring which
+// rules are decisions is a separate job, the caller's, and one it has to
+// declare: Roots states the fact it starts from.
 var ErrNoDecisions = errors.New("opaengine: no rule is annotated as an entrypoint, and none was declared")
 
 // ErrNoSuchEntrypoint is returned when a declared entrypoint names neither a
@@ -740,6 +740,77 @@ func (b *Bundle) RulesNamed(name string) []string {
 		})
 	}
 	return sortedUnique(paths)
+}
+
+// Roots returns the paths of the rules no other rule of a bundle uses, sorted.
+//
+// Like RulesNamed it states a fact and decides nothing. A rule nothing in the
+// policy uses matters only if something outside asks for it, so these are the
+// rules an enforcement point can be querying when the policy annotates none;
+// turning them into decisions is the caller's move.
+//
+// The uses are OPA's own, the rule graph the compiler builds, which resolves a
+// reference with a variable in it, data[name].allow, to every rule it can reach
+// (setGraph, v1/ast/compile.go:3640 at v1.20.2). A rule reached that way is
+// used.
+//
+// A function is left out, since an enforcement point asks for a document and a
+// function is not one, and so are the tests, which count neither as roots nor
+// as uses: a rule that only a test calls is a root. See testRule.
+func (b *Bundle) Roots() []string {
+	used := make(map[string]bool)
+	for _, module := range b.Compiler.Modules {
+		ast.WalkRules(module, func(rule *ast.Rule) bool {
+			if len(rule.Head.Args) > 0 || testRule(rule) {
+				return false
+			}
+			path := rulePath(rule).String()
+			used[path] = used[path] || usedOutsideTests(b.Compiler.Graph, rule)
+			return false
+		})
+	}
+
+	var roots []string
+	for path, isUsed := range used {
+		if !isUsed {
+			roots = append(roots, path)
+		}
+	}
+	slices.Sort(roots)
+	return roots
+}
+
+// The prefixes opa test runs a rule by and skips one by (TestPrefix and
+// SkipTestPrefix in v1/tester/runner.go:40 and :43 at v1.20.2), and the suffix
+// regal asks a file of tests to have (docs/rules/testing/
+// file-missing-test-suffix.md at v0.43.0).
+const (
+	testPrefix     = "test_"
+	skipTestPrefix = "todo_test_"
+	testFileSuffix = "_test.rego"
+)
+
+// testRule reports whether a rule is a test or lives with them. A file of tests
+// holds the data its tests share as well, and none of it is something an
+// enforcement point queries.
+func testRule(rule *ast.Rule) bool {
+	if rule.Location != nil && strings.HasSuffix(rule.Location.File, testFileSuffix) {
+		return true
+	}
+	path := rulePath(rule)
+	name, isString := path[len(path)-1].Value.(ast.String)
+	return isString && (strings.HasPrefix(string(name), testPrefix) ||
+		strings.HasPrefix(string(name), skipTestPrefix))
+}
+
+// usedOutsideTests reports whether any rule that is not a test depends on rule.
+func usedOutsideTests(graph *ast.Graph, rule *ast.Rule) bool {
+	for dependent := range graph.Dependents(rule) {
+		if user, isRule := dependent.(*ast.Rule); isRule && !testRule(user) {
+			return true
+		}
+	}
+	return false
 }
 
 // readable rewrites the generated variable names back to the ones the policy

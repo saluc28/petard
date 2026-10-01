@@ -1120,6 +1120,59 @@ is_exempt(name) {
 	}
 }
 
+// A decision built from two others, allow and not deny, is the one rule nothing
+// else uses. The tests next to it use all three, and a test counts neither as a
+// use nor as a root; neither does the data a file of tests keeps for itself, a
+// function nobody calls, or a rule reached through a reference with a variable
+// in it, the way a router dispatches to the package a request names.
+func TestBundleRoots(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"authz.rego": `package authz
+
+import rego.v1
+
+default authz := false
+
+authz if {
+	allow
+	not deny
+}
+
+allow if data.app[input.app].allow
+
+deny if input.user in data.blocked
+
+unused_helper(x) := x
+`,
+		"app.rego": `package app.reports
+
+import rego.v1
+
+allow if input.action == "read"
+`,
+		"authz_test.rego": `package authz_test
+
+import rego.v1
+
+mock_input := {"app": "reports", "action": "read"}
+
+test_authz if data.authz.authz with input as mock_input
+
+test_allow if data.authz.allow with input as mock_input
+
+todo_test_deny if data.authz.deny
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if roots := bundle.Roots(); !slices.Equal(roots, []string{"data.authz.authz"}) {
+		t.Errorf("Roots() = %v, want [data.authz.authz]", roots)
+	}
+}
+
 // A rule that only a with modifier reaches is test scaffolding wearing the
 // clothes of a policy. It is left out of the decisions, and listed, so that
 // leaving it out stays visible.

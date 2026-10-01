@@ -149,6 +149,28 @@ func TestTheSummarySaysWhichPatternsDidNotRun(t *testing.T) {
 	}
 }
 
+// A policy that annotates nothing is analyzed from the rules nothing else uses,
+// and every answer rests on that, so the summary says it and -v says it again
+// next to the list of decisions.
+func TestTheSummarySaysWhenTheDecisionsWereInferred(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-v", "-fail-on", failOnNone, clean(t)}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+
+	// The summary wraps its sentences to the terminal, so they are compared
+	// with the line breaks taken out.
+	out := strings.Join(strings.Fields(stdout.String()), " ")
+	for _, want := range []string{
+		"so every rule no other rule uses is taken as a decision",
+		"decisions: 1, inferred as the rules no other rule uses data.clean.allow",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the report does not say %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
 // Quiet is for the pipeline: a line in the log when there is something, and not
 // a byte when there is not.
 func TestQuietPrintsTheResultsAndNothingElse(t *testing.T) {

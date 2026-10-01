@@ -28,6 +28,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The extension schema, now `v0.2.4`, shows on a `PTD_CanEscalateTo` edge the request that proves
   it, which the payload carries as `witness_request`, `witness_document`, `witness_value` and
   `witness_write_request`. `petard export -install` puts the new schema in place.
+- `petard analyze` and `petard export` no longer stop at a policy that annotates no entrypoint
+  when no flag or `-pep` names one. The decisions are then the rules no other rule uses, and the
+  report says they were inferred. A rule called `deny`, `violation` or `warn`, alone or with a
+  suffix such as `deny_root`, is taken to deny, as conftest reads it. `-entrypoint` still names
+  them.
 
 ### Fixed
 

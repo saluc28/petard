@@ -34,6 +34,11 @@ type Analysis struct {
 	// request, which the policy cannot.
 	EnforcementPoint *pep.EnforcementPoint
 
+	// DecisionsInferred is set when nothing named the decisions, and they are
+	// the rules no other rule uses (see inferDecisions). Every answer rests on
+	// which rules are decisions, so a report has to say when they were inferred.
+	DecisionsInferred bool
+
 	Limits opaengine.Limits
 }
 
