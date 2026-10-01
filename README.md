@@ -181,8 +181,8 @@ The escalations are edges, so they show up the way any other attack path does.
 
 Select one and the Entity Panel says what was found on that edge: who takes whose position, in
 which decision, by writing what and through which endpoint, how many ways in the relation adds,
-at which level the request was recognized, and a link to the file of the pattern that reported
-it.
+the request that proves it, at which level the request was recognized, and a link to the file of
+the pattern that reported it.
 
 ![The Entity Panel of an escalation](docs/assets/escalation-panel.png)
 

@@ -175,11 +175,14 @@ graph:
     reports as candidates, and this pattern adds nothing to them.
   marks:
     - kind: PTD_CanEscalateTo
-      properties: [decision, authorized_by, value, via_write_path, via, confidence]
+      properties: [decision, authorized_by, value, via_write_path, via, confidence, witness_request,
+        witness_document, witness_value, witness_write_request]
   marks_note: >
     The pattern marks the escalation it draws: `via_write_path` is the entry of the write model
     the write goes through, `authorized_by` the decision the writing endpoint consumes, `value`
-    the value written, and `decision` the decision that grants after the write.
+    the value written, and `decision` the decision that grants after the write. The request that
+    proves it is `witness_request`, refused today and granted once `witness_document` holds
+    `witness_value`, and `witness_write_request` is a request `authorized_by` allows the write on.
   edge: PTD_CanEscalateTo
   from: PTD_Principal
   to: PTD_Principal

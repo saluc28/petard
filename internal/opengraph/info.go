@@ -242,6 +242,9 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 				"{{ with .Properties.via }} through `{{ . }}`{{ end }}.",
 			"{{ with .Properties.value }}The value written is `{{ . }}`{{ with $.Properties.authorized_by }}, which `{{ . }}` allows{{ end }}.{{ end }}",
 			"{{ with .Properties.relation }}Through `{{ . }}`: {{ $.Properties.reach_transitive }} ways in with it, {{ $.Properties.reach_direct }} without it.{{ end }}",
+			"{{ with .Properties.witness_request }}**Proven by** the request `{{ . }}`, which `{{ $.Properties.decision }}` "+
+				"refuses today and grants once `{{ $.Properties.witness_document }}` holds `{{ $.Properties.witness_value }}`.{{ end }}",
+			"{{ with .Properties.witness_write_request }}`{{ $.Properties.authorized_by }}` allows the write on `{{ . }}`.{{ end }}",
 			confidenceLine(),
 			patternsFound(),
 		)

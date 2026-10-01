@@ -223,6 +223,18 @@ const (
 	PropReachDirect     = "reach_direct"
 	PropRelation        = "relation"
 
+	// PropWitnessRequest is a request that proves an escalation: the decision
+	// refuses it as the data stands and grants it once PropWitnessDocument holds
+	// PropWitnessValue. PropWitnessWriteRequest is a request the decision that
+	// authorizes the write allows the write on, when one does. The requests and
+	// the value are JSON, as a request body carries them, because BloodHound
+	// takes no object as the value of a property
+	// (cmd/api/src/services/upload/jsonschema/edge.json:6 at v9.7.1).
+	PropWitnessRequest      = "witness_request"
+	PropWitnessDocument     = "witness_document"
+	PropWitnessValue        = "witness_value"
+	PropWitnessWriteRequest = "witness_write_request"
+
 	// PropPatterns lists the ids of the patterns that report a finding on a node
 	// or an edge, and PropCandidatePatterns the ones that report a candidate,
 	// sorted. They are what a saved query asks for: which pattern made an edge

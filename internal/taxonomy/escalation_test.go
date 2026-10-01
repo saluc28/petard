@@ -303,6 +303,18 @@ func TestAddEscalationsPutsThePathInTheGraph(t *testing.T) {
 		if edge.Source.File == "" || edge.Source.Line == 0 {
 			t.Errorf("the edge points at no line of policy: %+v", edge.Source)
 		}
+
+		// The proof travels on the edge as JSON, the way a request body
+		// carries it, since BloodHound takes no object as a property.
+		for property, want := range map[string]any{
+			graph.PropWitnessRequest:  `{"action":"read","doc":"d-t11-1","user":"mallory"}`,
+			graph.PropWitnessDocument: "data.users.mallory.profile.department",
+			graph.PropWitnessValue:    `"platform"`,
+		} {
+			if got := edge.Properties[property]; got != want {
+				t.Errorf("%s = %v, want %v", property, got, want)
+			}
+		}
 	}
 	if escalations != 1 {
 		t.Errorf("escalation edges = %d, want 1", escalations)

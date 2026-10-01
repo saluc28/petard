@@ -379,5 +379,13 @@ func escalationProperties(finding Finding) map[string]any {
 		properties[graph.PropReachTransitive] = finding.ReachTransitive
 		properties[graph.PropReachDirect] = finding.ReachDirect
 	}
+	if w := finding.Witness; w != nil {
+		properties[graph.PropWitnessRequest] = JSON(w.Request)
+		properties[graph.PropWitnessDocument] = w.Document
+		properties[graph.PropWitnessValue] = JSON(w.Value)
+		if w.WriteRequest != nil {
+			properties[graph.PropWitnessWriteRequest] = JSON(w.WriteRequest)
+		}
+	}
 	return properties
 }

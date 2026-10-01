@@ -179,12 +179,13 @@ graph:
       properties: [positions]
     - kind: PTD_CanEscalateTo
       properties: [decision, relation, reach_transitive, reach_direct, via_write_path, via,
-        confidence]
+        confidence, witness_request, witness_document, witness_value]
   marks_note: >
     A position is marked on the principal who holds it, as a candidate, with one line in
     `positions` for each decision: what it grants through the relation and what it grants
     without it. The chain marks the `PTD_CanEscalateTo` it draws, as a finding, with the two
-    counts, the relation and the write it goes through.
+    counts, the relation and the write it goes through, and with the request that proves it:
+    `witness_request`, refused today and granted once `witness_document` holds `witness_value`.
   edge: PTD_CanEscalateTo
   from: PTD_Principal
   to: PTD_Principal

@@ -23,6 +23,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Declared by its method alone, such a write was asked about as any call with that method, which
   a decision that lets anybody call its health check allows.
 
+### Changed
+
+- The extension schema, now `v0.2.4`, shows on a `PTD_CanEscalateTo` edge the request that proves
+  it, which the payload carries as `witness_request`, `witness_document`, `witness_value` and
+  `witness_write_request`. `petard export -install` puts the new schema in place.
+
 ### Fixed
 
 - An escalation was reported when the write, or what it opens, is allowed only to a requester who

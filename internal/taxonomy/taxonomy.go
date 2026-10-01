@@ -15,6 +15,8 @@
 package taxonomy
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -374,7 +376,7 @@ type Finding struct {
 // instrument does with a with modifier (verify/measure.rego). A with modifier
 // takes a path of names only (IsValidImportPath, v1/topdown/input.go:22 at
 // v1.20.2), so a Document inside a list, data.team.members[0].role, is repeated
-// by replacing the whole list.
+// by patching the list at that place.
 type Witness struct {
 	Decision string
 	Request  map[string]any
@@ -388,6 +390,21 @@ type Witness struct {
 	// declares through an endpoint no decision guards leaves both empty.
 	AuthorizedBy string
 	WriteRequest map[string]any
+}
+
+// JSON writes a request, or a value of one, the way a request body carries it:
+// keys in order and nothing escaped for HTML, so a witness can be pasted into
+// opa eval as it is printed, from a report or from the graph.
+func JSON(value any) string {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		// A request is decoded JSON and a written value comes out of the data,
+		// so this does not happen; if it did, the value still gets written.
+		return fmt.Sprint(value)
+	}
+	return strings.TrimSuffix(buf.String(), "\n")
 }
 
 // String renders a finding as one line, for a report.

@@ -1,8 +1,6 @@
 package analyze
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"slices"
@@ -215,22 +213,7 @@ func provenBy(escalation taxonomy.Finding) string {
 	if escalation.Witness == nil {
 		return ""
 	}
-	return asJSON(escalation.Witness.Request)
-}
-
-// asJSON writes a request, or a value of one, the way a request body carries it:
-// keys in order and nothing escaped for HTML, so a witness can be pasted into
-// opa eval as it is printed.
-func asJSON(value any) string {
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(value); err != nil {
-		// A request is decoded JSON and a written value comes out of the data,
-		// so this does not happen; if it did, the value still gets printed.
-		return fmt.Sprint(value)
-	}
-	return strings.TrimSuffix(buf.String(), "\n")
+	return taxonomy.JSON(escalation.Witness.Request)
 }
 
 // What an empty section does. A run that found no findings has to say so, since
