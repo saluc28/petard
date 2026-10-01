@@ -85,6 +85,11 @@ const needsData = "it reads the concrete data, and none was given"
 // request is missing when nobody declared the enforcement point.
 const needsEnforcementPoint = "it asks who sets each part of the request, and no enforcement point was declared"
 
+// needsWriteModel is what PTD-OPA-006 is missing without a write model. It
+// starts from a write the model says a decision of the bundle allows, and the
+// policy alone cannot say which decision governs which write.
+const needsWriteModel = "it asks which decision allows each write, and no write model was given"
+
 // Run applies every implemented pattern to one analysis.
 //
 // A pattern that cannot run is recorded in Skipped rather than returning an
@@ -121,15 +126,19 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		}
 		found.Transitive = append(escalations, positions...)
 
-		splitGrant, err := SplitGrant(ctx, a)
-		if err != nil {
-			return Findings{}, err
+		if a.Model == nil {
+			found.Skipped[WriteAllowedByAnotherDecision] = needsWriteModel
+		} else {
+			splitGrant, err := SplitGrant(ctx, a)
+			if err != nil {
+				return Findings{}, err
+			}
+			siblingGrant, err := SiblingGrant(ctx, a)
+			if err != nil {
+				return Findings{}, err
+			}
+			found.SplitGrant = sortedFindings(append(splitGrant, siblingGrant...))
 		}
-		siblingGrant, err := SiblingGrant(ctx, a)
-		if err != nil {
-			return Findings{}, err
-		}
-		found.SplitGrant = sortedFindings(append(splitGrant, siblingGrant...))
 		if found.GlobalSwitch, err = GlobalSwitch(ctx, a); err != nil {
 			return Findings{}, err
 		}

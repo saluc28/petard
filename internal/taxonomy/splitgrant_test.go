@@ -201,7 +201,9 @@ func TestSplitGrantNeedsTheAuthorization(t *testing.T) {
 	}
 }
 
-// Without any write model the pattern cannot run at all.
+// Without any write model the pattern cannot run at all, and the run says so:
+// with the data given, nothing else would tell a reader that the pattern
+// found nothing because it had nowhere to start.
 func TestSplitGrantNeedsTheWriteModel(t *testing.T) {
 	a := fixtureAnalysis(t)
 	a.Model = nil
@@ -212,6 +214,15 @@ func TestSplitGrantNeedsTheWriteModel(t *testing.T) {
 	}
 	if len(findings) != 0 {
 		t.Errorf("findings = %v, want none without a write model", findings)
+	}
+
+	found, err := Run(t.Context(), a)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if found.Skipped[WriteAllowedByAnotherDecision] != needsWriteModel {
+		t.Errorf("skipped = %q, want the pattern to say it needs the write model",
+			found.Skipped[WriteAllowedByAnotherDecision])
 	}
 }
 

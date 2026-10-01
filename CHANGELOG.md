@@ -41,6 +41,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   condition could report a gain that is not there, or miss one that is. The negated field now
   counts as one the comparison cannot turn into values, so the gain is settled by evaluating the
   decision on concrete requests, as for a negation OPA could not inline.
+- With data and no write model, `PTD-OPA-006` printed `nothing` under its title in `-v` and was
+  missing from the patterns that did not run, so it read as a pattern that ran and found nothing.
+  It is now listed among them, and says it needs a write model naming the decision that allows
+  each write.
 
 ## [0.4.0] - 2026-09-30
 
