@@ -266,6 +266,13 @@ the policy never says, and without it every match stays a candidate. The run rep
 the paths the decisions read the model covers, so an empty model is distinguishable from a clean
 result.
 
+A bundle archive, such as the `bundle.tar.gz` that `opa build` writes, can be given in place of
+the directory. The policies and the data inside it are read the same way:
+
+```
+petard analyze bundle.tar.gz
+```
+
 ## In a pipeline
 
 ```

@@ -64,7 +64,9 @@ type Data struct {
 var documentExts = []string{".json", ".yaml", ".yml"}
 
 // LoadData reads the JSON and YAML documents under paths into a store. A path
-// may be a file or a directory, and directories are walked recursively.
+// may be a file or a directory, and directories are walked recursively. A path
+// that is a bundle archive gives the data files inside it, as LoadBundleData
+// reads them.
 //
 // The mount point of a document is the directory it sits in, never its file
 // name: a users.json holding {"users": {...}} directly inside the directory
@@ -112,11 +114,18 @@ var bundleDataNames = []string{"data.json", "data.yaml", "data.yml"}
 // path of its directory below the one given, which is how OPA reads a bundle
 // (v1/bundle/bundle.go:716 and :736 at v1.20.2). The other JSON a repository
 // of policies holds, a package.json or the input of a test, is not data to OPA
-// and is left out here too. A path that is a file is a policy, and holds no
+// and is left out here too. A bundle archive is read the same way, from the
+// paths inside it. Any other path that is a file is a policy, and holds no
 // data.
 func LoadBundleData(paths []string) (*Data, error) {
 	reader := &dataReader{documents: map[string]any{}}
 	for _, root := range paths {
+		if isTarball(root) {
+			if err := reader.archive(root); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		info, err := os.Stat(root)
 		if err != nil {
 			return nil, fmt.Errorf("opaengine: reading %s: %w", root, err)
@@ -166,6 +175,9 @@ func (r *dataReader) read(path string, at []string) error {
 		return fmt.Errorf("opaengine: reading %s: %w", path, err)
 	}
 	if !info.IsDir() {
+		if isTarball(path) {
+			return r.archive(path)
+		}
 		return r.document(path, at)
 	}
 
@@ -194,13 +206,40 @@ func (r *dataReader) read(path string, at []string) error {
 	return nil
 }
 
+// archive reads the data files of a bundle archive, each at the path of its
+// directory inside the archive.
+func (r *dataReader) archive(path string) error {
+	files, err := readTarball(path)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if !slices.Contains(bundleDataNames, filepath.Base(file.inside)) {
+			continue
+		}
+		var at []string
+		if dir := filepath.ToSlash(filepath.Dir(file.inside)); dir != "." {
+			at = strings.Split(dir, "/")
+		}
+		if err := r.merge(file.name, file.content, at); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // document reads one file and merges it in.
 func (r *dataReader) document(path string, at []string) error {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("opaengine: reading %s: %w", path, err)
 	}
+	return r.merge(filepath.ToSlash(path), content, at)
+}
 
+// merge parses one document, named for the errors and the list of files, and
+// merges it in under the given segments.
+func (r *dataReader) merge(path string, content []byte, at []string) error {
 	// util.Unmarshal reads JSON and YAML alike, and reads numbers the way the
 	// evaluator will: a document loaded with the standard library would compare
 	// differently against the same literal in a policy.
@@ -217,7 +256,7 @@ func (r *dataReader) document(path string, at []string) error {
 		return fmt.Errorf("opaengine: %s overwrites a document already loaded under data.%s", path, strings.Join(at, "."))
 	}
 
-	r.files = append(r.files, filepath.ToSlash(path))
+	r.files = append(r.files, path)
 	return nil
 }
 

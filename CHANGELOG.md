@@ -26,6 +26,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   policies, the files called `data.json`, `data.yaml` or `data.yml`, each at the path of its
   directory as OPA reads a bundle. The report says the data came from the bundle, and `-data`
   names other documents in its place.
+- A bundle archive, such as the `bundle.tar.gz` that `opa build` writes, is read in place by
+  `petard analyze` and `petard export`, and by `-data`: the policies and the data files inside it,
+  with the size limit OPA applies to each file.
 
 ### Changed
 

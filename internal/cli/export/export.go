@@ -68,7 +68,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprint(stderr, "usage: petard export [flags] <path>...\n\n"+
-			"Paths are Rego files or directories holding them.\n"+
+			"Paths are Rego files, directories holding them, or bundle archives such as bundle.tar.gz.\n"+
 			"With -url, the credentials are read from "+envTokenID+" and "+envTokenKey+".\n\n")
 		flags.PrintDefaults()
 	}

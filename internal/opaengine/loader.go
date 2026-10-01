@@ -186,8 +186,8 @@ func (b *Bundle) forPartial() (*ast.Compiler, error) {
 }
 
 // Load reads every .rego file under paths, parses them together and compiles
-// them into a Bundle. A path may be a file or a directory, and directories are
-// walked recursively.
+// them into a Bundle. A path may be a file, a directory, walked recursively,
+// or a bundle archive, read in place (see readTarball).
 //
 // The whole bundle is parsed as one syntax, not file by file. A bundle that is
 // half v0 and half v1 therefore fails both attempts, and the error says so for
@@ -198,17 +198,12 @@ func (b *Bundle) forPartial() (*ast.Compiler, error) {
 // has something to return. That is where entrypoint declarations come from,
 // and they are what tells the analysis which rules are decisions.
 func Load(paths []string, mode ParseMode) (*Bundle, error) {
-	files, err := collectFiles(paths)
+	sources, err := collectSources(paths)
 	if err != nil {
 		return nil, err
 	}
-	if len(files) == 0 {
+	if len(sources) == 0 {
 		return nil, fmt.Errorf("%w under %s", ErrNoModules, strings.Join(paths, ", "))
-	}
-
-	sources, err := readSources(files)
-	if err != nil {
-		return nil, err
 	}
 
 	modules, version, err := parseSources(sources, mode)
@@ -236,6 +231,38 @@ func Load(paths []string, mode ParseMode) (*Bundle, error) {
 type source struct {
 	name string
 	text string
+}
+
+// collectSources reads the policies the paths hold: the .rego files on disk
+// first, then those inside each bundle archive, named after it.
+func collectSources(paths []string) ([]source, error) {
+	var onDisk []string
+	var archives []source
+	for _, path := range paths {
+		if !isTarball(path) {
+			onDisk = append(onDisk, path)
+			continue
+		}
+		files, err := readTarball(path)
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range files {
+			if filepath.Ext(file.inside) == regoExt {
+				archives = append(archives, source{name: file.name, text: string(file.content)})
+			}
+		}
+	}
+
+	files, err := collectFiles(onDisk)
+	if err != nil {
+		return nil, err
+	}
+	sources, err := readSources(files)
+	if err != nil {
+		return nil, err
+	}
+	return append(sources, archives...), nil
 }
 
 // collectFiles lists the .rego files under the given paths: in the order the
