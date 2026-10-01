@@ -73,6 +73,13 @@ type Pattern struct {
 	Engine        string `yaml:"engine"`
 	Status        string `yaml:"status"`
 
+	// Closes says, in one line, what structurally makes this pattern not fire:
+	// the shape the counter case of the fixture takes. It is a property of the
+	// pattern, not advice about a particular system, so a report prints it under
+	// a finding as the start of a fix and takes the rest from the system it
+	// analyzed (see SCHEMA.md).
+	Closes string `yaml:"closes"`
+
 	Category struct {
 		ID    string `yaml:"id"`
 		Title string `yaml:"title"`
@@ -182,6 +189,10 @@ func LoadRegistry(fsys fs.FS) ([]Pattern, error) {
 		}
 		if pattern.ID == "" {
 			return nil, fmt.Errorf("taxonomy: %s has no id, and the id is what the findings are filed under", file)
+		}
+		pattern.Closes = strings.TrimSpace(pattern.Closes)
+		if pattern.Closes == "" {
+			return nil, fmt.Errorf("taxonomy: %s has no closes, and a finding without how to close it is not actionable", file)
 		}
 		if err := checkFalsePositives(pattern); err != nil {
 			return nil, fmt.Errorf("taxonomy: %s: %w", file, err)

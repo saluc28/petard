@@ -310,3 +310,13 @@ func titleOf(patterns []taxonomy.Pattern, id string) string {
 	}
 	return id
 }
+
+// closesOf is the one line the registry holds about how a pattern is closed,
+// and the empty string when the registry could not be read, where a report
+// prints no closing line rather than inventing one.
+func closesOf(patterns []taxonomy.Pattern, id string) string {
+	if pattern, found := taxonomy.Find(patterns, id); found {
+		return pattern.Closes
+	}
+	return ""
+}

@@ -424,6 +424,10 @@ func TestRunReportsTheSplitGrant(t *testing.T) {
 	if strings.Contains(out, "the position bob holds") {
 		t.Errorf("an edge to bob, who holds admin support cannot write, was reported:\n%s", out)
 	}
+	// Under the pattern, what to change: the line the registry holds for it.
+	if want := "to close: The decision that allows the write refusing the value"; !strings.Contains(out, want) {
+		t.Errorf("the report does not say how to close PTD-OPA-006:\n%s", out)
+	}
 }
 
 // The reading room setting decides for somebody no document names, and the

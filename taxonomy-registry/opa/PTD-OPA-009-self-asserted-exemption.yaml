@@ -3,6 +3,8 @@ schema_version: 1
 id: PTD-OPA-009
 name: self-asserted-exemption
 title: A request lifts a check on itself by saying it is exempt
+closes: >
+  Taking the exemption from a part of the request the enforcement point sets, as it sets a second factor, closes it.
 engine: opa
 status: implemented
 

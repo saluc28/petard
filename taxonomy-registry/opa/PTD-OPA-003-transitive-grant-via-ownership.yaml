@@ -3,6 +3,8 @@ schema_version: 1
 id: PTD-OPA-003
 name: transitive-grant-via-ownership
 title: A position in a hierarchy grants everything below it, and nothing says so
+closes: >
+  A position is a target rather than a defect: what matters is who can take it.
 engine: opa
 status: verified
 

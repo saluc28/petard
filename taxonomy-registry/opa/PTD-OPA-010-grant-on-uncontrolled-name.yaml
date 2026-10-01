@@ -3,6 +3,8 @@ schema_version: 1
 id: PTD-OPA-010
 name: grant-on-uncontrolled-name
 title: A decision grants on a name somebody else picks
+closes: >
+  Granting on the id the issuer assigns, which nobody picks and nothing else is ever given, closes it.
 engine: opa
 status: implemented
 

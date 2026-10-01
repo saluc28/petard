@@ -16,6 +16,7 @@
 | `id` | string | `PTD-<ENGINE>-<NNN>`. Stable forever: it ends up in the properties of exported edges and in saved Cypher queries |
 | `name` | slug | kebab-case, used in logs and in test names |
 | `title` | string | one readable line |
+| `closes` | string | one line: what structurally makes the pattern not fire. See below |
 | `engine` | enum | `opa` \| `cedar` |
 | `status` | enum | `draft` → `implemented` → `verified`, see below |
 | `category` | object | the abstract level: `id`, `title`, `summary` |
@@ -29,6 +30,15 @@
 | `fixture` | object | the case in the vulnerable bundle |
 | `references` | list | sources, with the date each was consulted |
 | `verified` | object | `date` plus `tool_version` plus `how`. See below |
+
+### `closes`
+
+One line that says what structurally makes the pattern not fire: the shape the counter case of
+the fixture takes. It is a property of the pattern, verifiable against that counter case, not
+advice about a particular system, so it does not age with somebody's configuration and does not
+become a second source of truth against their documentation. That is why it belongs here and the
+system-specific `remediation` does not (see below): a report prints `closes` under a finding as
+the start of a fix and takes the rest from the bundle it analyzed.
 
 ### `status`
 
@@ -145,5 +155,5 @@ Something measured but still open goes in `notes`; something not measured at all
 | Absent | Why |
 |---|---|
 | `severity` or a score | False precision. How bad an escalation is depends on what it gives you, which is the client's context and not the pattern's. BloodHound itself assigns no severity to its edges: it assigns **traversability**, which is an objective property, and that is what `graph.traversable` holds |
-| `remediation` | It would be a second source of truth against the documentation of the system being analyzed, and it would age. Remediation belongs in the report, generated from the context |
+| `remediation` | The system-specific fix would be a second source of truth against the documentation of the system being analyzed, and it would age. It belongs in the report, generated from the context. The pattern-level line, what structurally closes the pattern, is the `closes` field above |
 | `cvss` or `cwe` | A pattern is not a vulnerability in a product. Forced mappings onto taxonomies built for something else make a thing look rigorous when it is not. If a mapping is useful it goes in `references` |

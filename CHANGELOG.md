@@ -9,6 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `petard analyze -v` prints, under each pattern that found something, the one line the registry
+  holds in its `closes` field: what structurally makes the pattern not fire, which is where a fix
+  starts. The line is a property of the pattern, not advice about a particular system.
 - An escalation comes with a request that proves it, when asking the decision finds one: the
   decision refuses it as the data stands and grants it once the write is made. `petard analyze`
   prints it under the escalation as `proven by`, and `-v` adds the document the write changes, the

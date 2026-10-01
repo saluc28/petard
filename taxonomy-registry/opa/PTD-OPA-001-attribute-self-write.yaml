@@ -3,6 +3,8 @@ schema_version: 1
 id: PTD-OPA-001
 name: attribute-self-write
 title: The subject writes an attribute the policy reads to decide about them
+closes: >
+  A field the subject cannot write, assigned by a role through an administration API, is the counter case.
 engine: opa
 status: verified
 

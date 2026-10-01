@@ -3,6 +3,8 @@ schema_version: 1
 id: PTD-OPA-002
 name: deny-undefined-on-missing-data
 title: A deny rule is silent for part of the data, so the check does not apply there
+closes: >
+  A default that denies on the rule that reads, or a second rule of the decision that denies when the path is missing, closes it.
 engine: opa
 status: verified
 

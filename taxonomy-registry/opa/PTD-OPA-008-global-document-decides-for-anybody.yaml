@@ -3,6 +3,8 @@ schema_version: 1
 id: PTD-OPA-008
 name: global-document-decides-for-anybody
 title: A document every request shares decides for anybody who asks
+closes: >
+  Reading the document next to the requester's own record closes it: somebody with no record gets nothing.
 engine: opa
 status: verified
 

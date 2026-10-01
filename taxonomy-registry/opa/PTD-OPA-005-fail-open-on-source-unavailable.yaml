@@ -3,6 +3,8 @@ schema_version: 1
 id: PTD-OPA-005
 name: fail-open-on-source-unavailable
 title: A check that needs an external source stops applying when it does not answer
+closes: >
+  Consuming the error closes it, by denying when the source does not answer.
 engine: opa
 status: verified
 

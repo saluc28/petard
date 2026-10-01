@@ -32,6 +32,9 @@ func TestPatternNotesFollowTheRegistry(t *testing.T) {
 			t.Errorf("note %d = %s %s %q, the registry says %s %s %q",
 				i, note.id, note.name, note.title, pattern.ID, pattern.Name, pattern.Title)
 		}
+		if note.closes != pattern.Closes {
+			t.Errorf("%s closes = %q, the registry says %q", note.id, note.closes, pattern.Closes)
+		}
 	}
 }
 

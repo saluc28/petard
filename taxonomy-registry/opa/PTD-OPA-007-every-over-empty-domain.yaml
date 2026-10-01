@@ -3,6 +3,8 @@ schema_version: 1
 id: PTD-OPA-007
 name: every-over-empty-domain
 title: A check written with every stops applying when its domain is empty
+closes: >
+  Requiring at least one element before the every closes it.
 engine: opa
 status: verified
 

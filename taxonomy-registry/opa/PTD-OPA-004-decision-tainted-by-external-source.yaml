@@ -3,6 +3,8 @@ schema_version: 1
 id: PTD-OPA-004
 name: decision-tainted-by-external-source
 title: A decision depends on an external source, so whoever controls it decides
+closes: >
+  Whoever controls the endpoint, or can steer where the call goes, decides in the policy's place.
 engine: opa
 status: verified
 

@@ -427,6 +427,9 @@ func reportPattern(out io.Writer, patterns []taxonomy.Pattern, id string, findin
 			fmt.Fprintf(out, "    %s\n", finding.Note)
 		}
 	}
+	if closes := closesOf(patterns, id); closes != "" {
+		render.Print(out, "to close: "+closes, "  ")
+	}
 }
 
 // reportSkipped prints a pattern the run could not apply, with what it would

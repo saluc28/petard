@@ -3,6 +3,8 @@ schema_version: 1
 id: PTD-OPA-006
 name: write-allowed-by-another-decision
 title: One decision lets a principal write the data another decision grants on
+closes: >
+  The decision that allows the write refusing the value the other one grants on closes it.
 engine: opa
 status: verified
 
