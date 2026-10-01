@@ -22,6 +22,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   into an element of a list, a capture the path does not have names a field of that element.
   Declared by its method alone, such a write was asked about as any call with that method, which
   a decision that lets anybody call its health check allows.
+- Without `-data`, `petard analyze` and `petard export` read the data a bundle keeps next to its
+  policies, the files called `data.json`, `data.yaml` or `data.yml`, each at the path of its
+  directory as OPA reads a bundle. The report says the data came from the bundle, and `-data`
+  names other documents in its place.
 
 ### Changed
 

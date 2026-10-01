@@ -853,6 +853,59 @@ func TestLoadDataWithoutDocuments(t *testing.T) {
 	}
 }
 
+// A bundle keeps its data in files with three names, each one landing at the
+// path of its directory. The rest of the JSON next to the policies is not data
+// to OPA: an input kept for a test would otherwise become a document that
+// grants.
+func TestLoadBundleData(t *testing.T) {
+	root := t.TempDir()
+	for path, content := range map[string]string{
+		"policy.rego":                           "package t\n",
+		"data.json":                             `{"settings": {"open": true}}`,
+		filepath.Join("users", "data.yaml"):     "alice:\n  roles: [admin]\n",
+		filepath.Join("eu", "berq", "data.yml"): "region: eu\n",
+		"input.json":                            `{"user": "alice"}`,
+		"package.json":                          `{"name": "policies"}`,
+	} {
+		if err := os.MkdirAll(filepath.Join(root, filepath.Dir(path)), 0o750); err != nil {
+			t.Fatalf("making the tree: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(root, path), []byte(content), 0o600); err != nil {
+			t.Fatalf("writing %s: %v", path, err)
+		}
+	}
+
+	data, err := LoadBundleData([]string{root, filepath.Join(root, "policy.rego")})
+	if err != nil {
+		t.Fatalf("LoadBundleData() error = %v", err)
+	}
+	if len(data.Files) != 3 {
+		t.Errorf("files = %v, want the three data files and nothing else", data.Files)
+	}
+	for path, want := range map[string]any{
+		"data.settings.open":     true,
+		"data.users.alice.roles": []any{"admin"},
+		"data.eu.berq.region":    "eu",
+	} {
+		got, found, err := data.Value(t.Context(), path)
+		if err != nil || !found || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s = %v (found %v, error %v), want %v", path, got, found, err, want)
+		}
+	}
+	for _, path := range []string{"data.user", "data.name"} {
+		if _, found, _ := data.Value(t.Context(), path); found {
+			t.Errorf("%s was loaded from a file that is not data to a bundle", path)
+		}
+	}
+}
+
+func TestLoadBundleDataWithoutData(t *testing.T) {
+	dir := writeSources(t, map[string]string{"policy.rego": "package t\n", "input.json": `{"user": "alice"}`})
+	if _, err := LoadBundleData([]string{dir}); !errors.Is(err, ErrNoData) {
+		t.Errorf("LoadBundleData() error = %v, want ErrNoData", err)
+	}
+}
+
 func TestResidualsWithoutData(t *testing.T) {
 	bundle, err := Load([]string{fixtureDir(t, "policy-v1")}, ParseModeAuto)
 	if err != nil {

@@ -257,9 +257,11 @@ and `-pep` names one:
 petard analyze -pep spacelift-login path/to/login.rego
 ```
 
-Two inputs decide how much of an answer you get. Concrete data under `-data` is what turns a
-pattern into a finding about named principals, since the engine evaluates each decision
-partially against it. The write model under `-write-model` says who can write which path, which
+Two inputs decide how much of an answer you get. Concrete data is what turns a pattern into a
+finding about named principals, since the engine evaluates each decision partially against it.
+A bundle that keeps its data in `data.json`, `data.yaml` or `data.yml` files next to the policies
+needs nothing more, since those are read the way OPA reads them; `-data` names other documents
+in their place. The write model under `-write-model` says who can write which path, which
 the policy never says, and without it every match stays a candidate. The run reports how many of
 the paths the decisions read the model covers, so an empty model is distinguishable from a clean
 result.

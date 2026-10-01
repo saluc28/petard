@@ -309,6 +309,17 @@ func Load(inputs Inputs) (Analysis, error) {
 		if analysis.Data, err = opaengine.LoadData([]string{inputs.DataPath}); err != nil {
 			return Analysis{}, err
 		}
+		return analysis, nil
+	}
+
+	// Without -data, the data is what the bundle carries, if anything, the way
+	// opa run reads a bundle. A bundle without data is an analysis without it.
+	analysis.Data, err = opaengine.LoadBundleData(inputs.Paths)
+	switch {
+	case err == nil:
+		analysis.DataFromBundle = true
+	case !errors.Is(err, opaengine.ErrNoData):
+		return Analysis{}, err
 	}
 	return analysis, nil
 }

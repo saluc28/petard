@@ -29,6 +29,11 @@ type Analysis struct {
 	Model *writemodel.Model
 	Data  *opaengine.Data
 
+	// DataFromBundle is set when nobody gave the data and it is what the bundle
+	// carries in its data.json and data.yaml files. A report says so, since the
+	// documents decide which patterns run and what they find.
+	DataFromBundle bool
+
 	// EnforcementPoint is the product that asks for the decisions, declared,
 	// and nil when nobody declared one. It says who sets each part of the
 	// request, which the policy cannot.

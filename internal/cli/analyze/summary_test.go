@@ -171,6 +171,27 @@ func TestTheSummarySaysWhenTheDecisionsWereInferred(t *testing.T) {
 	}
 }
 
+// The data a bundle carries is read without asking, and the documents decide
+// which patterns run, so the summary says where they came from.
+func TestTheSummarySaysTheDataCameFromTheBundle(t *testing.T) {
+	dir := clean(t)
+	if err := os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{"users": {}}`), 0o600); err != nil {
+		t.Fatalf("writing the data: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-fail-on", failOnNone, dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+	out := strings.Join(strings.Fields(stdout.String()), " ")
+	if want := "The data is what the bundle carries, 1 file called data.json"; !strings.Contains(out, want) {
+		t.Errorf("the summary does not say %q:\n%s", want, stdout.String())
+	}
+	if strings.Contains(out, "it reads the concrete data, and none was given") {
+		t.Errorf("a pattern still says no data was given:\n%s", stdout.String())
+	}
+}
+
 // Quiet is for the pipeline: a line in the log when there is something, and not
 // a byte when there is not.
 func TestQuietPrintsTheResultsAndNothingElse(t *testing.T) {

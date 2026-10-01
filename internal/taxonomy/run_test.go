@@ -105,3 +105,57 @@ is_admin(user) if "admin" in data.users[user].roles
 		t.Errorf("Load() error = %v, want opaengine.ErrNoDecisions", err)
 	}
 }
+
+// Without -data the run reads the data the bundle carries, and says so; -data
+// replaces it, as the documents somebody chose over the ones the bundle ships.
+func TestLoadTakesTheDataOfTheBundle(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range inferredPolicy {
+		writeCaseFile(t, filepath.Join(dir, name), content)
+	}
+	writeCaseFile(t, filepath.Join(dir, "users", "data.json"), `{"alice": {"roles": ["admin"]}}`)
+	other := t.TempDir()
+	writeCaseFile(t, filepath.Join(other, "users.json"), `{"users": {"bob": {"roles": []}}}`)
+
+	tests := []struct {
+		name     string
+		dataPath string
+		user     string
+		bundled  bool
+	}{
+		{name: "nothing given", user: "alice", bundled: true},
+		{name: "data given", dataPath: other, user: "bob"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, err := Load(Inputs{Paths: []string{dir}, DataPath: tt.dataPath})
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if a.Data == nil {
+				t.Fatal("the analysis has no data")
+			}
+			if a.DataFromBundle != tt.bundled {
+				t.Errorf("DataFromBundle = %v, want %v", a.DataFromBundle, tt.bundled)
+			}
+			if _, found, err := a.Data.Value(t.Context(), "data.users."+tt.user); err != nil || !found {
+				t.Errorf("data.users.%s is not in the data (error %v)", tt.user, err)
+			}
+		})
+	}
+}
+
+// A bundle without data is an analysis without it, as before.
+func TestLoadWithoutDataInTheBundle(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range inferredPolicy {
+		writeCaseFile(t, filepath.Join(dir, name), content)
+	}
+	a, err := Load(Inputs{Paths: []string{dir}})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if a.Data != nil || a.DataFromBundle {
+		t.Errorf("data = %v from the bundle %v, want none", a.Data, a.DataFromBundle)
+	}
+}

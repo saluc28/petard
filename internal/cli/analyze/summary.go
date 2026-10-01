@@ -271,6 +271,10 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 			"other rule uses is taken as a decision. If the enforcement point queries others, name them "+
 			"with -entrypoint.", "  ")
 	}
+	if a.DataFromBundle {
+		render.Print(out, fmt.Sprintf("The data is what the bundle carries, %s called data.json, data.yaml "+
+			"or data.yml. -data replaces it.", count(len(a.Data.Files), "file")), "  ")
+	}
 
 	if point := a.EnforcementPoint; point != nil {
 		request := taxonomy.RequestCoverageOf(a.Reads, point)

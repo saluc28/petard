@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -94,6 +95,58 @@ func LoadData(paths []string) (*Data, error) {
 	}
 	if len(reader.documents) == 0 {
 		return nil, fmt.Errorf("%w under %s", ErrNoData, strings.Join(paths, ", "))
+	}
+
+	slices.Sort(reader.files)
+	return &Data{store: inmem.NewFromObject(reader.documents), Files: reader.files}, nil
+}
+
+// bundleDataNames are the files a bundle keeps its data in (dataFile,
+// yamlDataFile and ymlDataFile, v1/bundle/bundle.go:49 to :51 at v1.20.2).
+var bundleDataNames = []string{"data.json", "data.yaml", "data.yml"}
+
+// LoadBundleData reads the data a bundle keeps next to its policies, and
+// returns ErrNoData when it keeps none.
+//
+// Only a file called data.json, data.yaml or data.yml counts, placed at the
+// path of its directory below the one given, which is how OPA reads a bundle
+// (v1/bundle/bundle.go:716 and :736 at v1.20.2). The other JSON a repository
+// of policies holds, a package.json or the input of a test, is not data to OPA
+// and is left out here too. A path that is a file is a policy, and holds no
+// data.
+func LoadBundleData(paths []string) (*Data, error) {
+	reader := &dataReader{documents: map[string]any{}}
+	for _, root := range paths {
+		info, err := os.Stat(root)
+		if err != nil {
+			return nil, fmt.Errorf("opaengine: reading %s: %w", root, err)
+		}
+		if !info.IsDir() {
+			continue
+		}
+		err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || !slices.Contains(bundleDataNames, entry.Name()) {
+				return nil
+			}
+			below, err := filepath.Rel(root, filepath.Dir(path))
+			if err != nil {
+				return err
+			}
+			var at []string
+			if below != "." {
+				at = strings.Split(filepath.ToSlash(below), "/")
+			}
+			return reader.document(path, at)
+		})
+		if err != nil {
+			return nil, fmt.Errorf("opaengine: reading the data of %s: %w", root, err)
+		}
+	}
+	if len(reader.files) == 0 {
+		return nil, fmt.Errorf("%w in a bundle under %s", ErrNoData, strings.Join(paths, ", "))
 	}
 
 	slices.Sort(reader.files)

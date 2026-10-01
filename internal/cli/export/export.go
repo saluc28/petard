@@ -81,7 +81,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	flags.Var(&denyEntrypoints, "deny-entrypoint", "a rule the PEP queries to refuse the request when it holds or collects anything, as k8sallowedrepos/violation; repeat for more")
 	subject := flags.String("subject", "", "the part of the request that names who is asking, as input.user; without it, it is recognized")
 	enforcementPoint := flags.String("pep", "", "the product that asks for the decisions: an id from pep-registry, as spacelift-login, or a declaration of your own ending in .yaml")
-	dataPath := flags.String("data", "", "path to the concrete data; without it there are no principals and no capabilities")
+	dataPath := flags.String("data", "", "path to the concrete data, in place of the data.json and data.yaml files of the bundle; without any there are no principals and no capabilities")
 	writeModelPath := flags.String("write-model", "", "path to the write model; without it every match stays a candidate")
 	maxCallDepth := flags.Int("max-call-depth", 0, "how many calls deep to follow an argument (0 for the default)")
 	maxCallPaths := flags.Int("max-call-paths", 0, "how many call paths to explore per reference (0 for the default)")
