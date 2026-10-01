@@ -25,11 +25,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- `PTD-OPA-006` reported an escalation when the write, or what it opens, is allowed only to a
-  requester who claims something an issuer sets, as if it were allowed to every principal. A
-  claim is a part of the request next to the subject, as `input.subject.role` sits next to
-  `input.subject.id`, or one `-pep` declares an issuer sets. Such an escalation is now a
-  candidate, and the report says which of the two rests on the claim.
+- An escalation was reported when the write, or what it opens, is allowed only to a requester who
+  claims something an issuer sets, as if it were allowed to every principal. A claim is a part of
+  the request next to the subject, as `input.subject.role` sits next to `input.subject.id`, or one
+  `-pep` declares an issuer sets. Such an escalation, of `PTD-OPA-006` or of the chain from
+  `PTD-OPA-001` to `PTD-OPA-003`, is now a candidate, and the report says what rests on the claim.
 - A residual condition that negates an equality, such as `not input.action = "delete"`, was read
   as the equality it negates, as if it granted delete alone. Comparing two grants through such a
   condition could report a gain that is not there, or miss one that is. The negated field now

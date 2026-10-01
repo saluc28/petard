@@ -164,9 +164,22 @@ func escalationBy(ctx context.Context, a Analysis, cut *opaengine.Data, position
 		return nil, nil
 	}
 
-	witness, err := chainWitness(ctx, a, cut, position.Decision, document, request, unknowns)
+	claims := identityClaims(a.Shape, a.EnforcementPoint)
+	witness, witnessClaims, err := chainWitness(ctx, a, cut, position.Decision, document, request, unknowns, claims)
 	if err != nil {
 		return nil, err
+	}
+
+	// What the relation opens is the chain for this principal only if some of it
+	// asks for no claim about who they are. With the document unknown the
+	// relation adds values that work rather than requests, so the question is
+	// asked of each value written, where chainWitness compares what it opens with
+	// and without the relation.
+	verdict, note := VerdictFinding, ""
+	if witnessClaims {
+		verdict = VerdictCandidate
+		note = "what the write opens through the relation is granted only to a requester who claims " +
+			"something an issuer sets, which neither the data nor the write model says this principal holds"
 	}
 
 	// The sentence says what was measured and no more: the principal ends up
@@ -174,7 +187,7 @@ func escalationBy(ctx context.Context, a Analysis, cut *opaengine.Data, position
 	// having, which is not the same claim as becoming that person.
 	return &Finding{
 		PatternID: TransitiveGrantViaOwnership,
-		Verdict:   VerdictFinding,
+		Verdict:   verdict,
 		Summary: fmt.Sprintf("%s can reach what the position of %s reaches in %s, by writing %s: nothing today, %s after, %d of them through %s",
 			principal, position.Principal, position.Decision, document, waysOf(opened.ways), through, strings.Join(position.Relation, ", ")),
 		Principal:       principal,
@@ -190,6 +203,7 @@ func escalationBy(ctx context.Context, a Analysis, cut *opaengine.Data, position
 		Subject:         a.Shape.Subject,
 		Confidence:      entry.Confidence,
 		Witness:         witness,
+		Note:            note,
 	}, nil
 }
 
@@ -199,8 +213,13 @@ func escalationBy(ctx context.Context, a Analysis, cut *opaengine.Data, position
 // value written and the relation cut. The last makes it the position of the
 // other principal, since a request the value opens without the relation is
 // access alone, which the self write pattern already reports.
+//
+// A witness that claims nothing about the requester is looked for across every
+// value before one that does is taken. The second result is true when none was
+// found and what some value opens through the relation asks for a claim (see
+// reach.over), which leaves the chain unproven for this principal.
 func chainWitness(ctx context.Context, a Analysis, cut *opaengine.Data, decision, document string,
-	request map[string]any, unknowns []string) (*Witness, error) {
+	request map[string]any, unknowns []string, claim func(string) bool) (*Witness, bool, error) {
 
 	values, err := opaengine.ValuesToWrite(ctx, a.Bundle, a.Data, opaengine.Request{
 		Decision: decision,
@@ -208,48 +227,58 @@ func chainWitness(ctx context.Context, a Analysis, cut *opaengine.Data, decision
 		Input:    request,
 	}, document)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	current, _, err := a.Data.Value(ctx, document)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
+	var fallback *Witness
+	claimed := false
 	for _, value := range values {
 		written := held(current, value)
 		withWrite, err := a.Data.With(ctx, document, written)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		cutWithWrite, err := cut.With(ctx, document, written)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		after, err := reachOf(ctx, a.Bundle, withWrite, decision, request, unknowns, a.Limits)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		withoutRelation, err := reachOf(ctx, a.Bundle, cutWithWrite, decision, request, unknowns, a.Limits)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
-		found, err := after.over(ctx, withoutRelation, identityClaims(a.Shape, a.EnforcementPoint))
+		found, err := after.over(ctx, withoutRelation, claim)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
+		claimed = claimed || found.claimed
 		if found.request == nil {
 			continue
 		}
 		today, err := opaengine.Holds(ctx, a.Bundle, a.Data, decision, found.request)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		if !today {
-			return witnessOf(found, decision, document, written), nil
+		if today {
+			continue
+		}
+		if !found.claimed && !setsPart(found.request, "input", claim) {
+			return witnessOf(found, decision, document, written), false, nil
+		}
+		claimed = true
+		if fallback == nil {
+			fallback = witnessOf(found, decision, document, written)
 		}
 	}
-	return nil, nil
+	return fallback, claimed, nil
 }
 
 // writablePaths keeps the self write results the write model stood behind.

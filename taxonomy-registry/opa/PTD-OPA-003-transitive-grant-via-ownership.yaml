@@ -170,6 +170,10 @@ graph:
     which is what ties the gain to **this** position rather than to some route or other.
     Without the third comparison the chain would report anybody who can write something that
     grants something, and would say escalation where the honest word is access.
+    What the relation opens is then asked of each value the write can put there, with the
+    relation and without it, and the chain holds only when some of it asks for no claim about
+    who the requester is. When everything it opens needs a clearance or a group an issuer sets,
+    the chain is a candidate: the data cannot say the principal holds one.
   marks:
     - kind: PTD_Principal
       properties: [positions]

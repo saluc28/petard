@@ -3,6 +3,7 @@ package taxonomy
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/saluc28/petard/internal/graph"
@@ -142,6 +143,97 @@ func witnessHolds(t *testing.T, a Analysis, w *Witness) {
 	}
 	if !after {
 		t.Errorf("%s refuses %v with %s as %v", w.Decision, w.Request, w.Document, w.Value)
+	}
+}
+
+// chainClaimPolicy is the chain of the fixture in a few lines: a document hangs
+// off a leaf, dave is a member of the root, and membership also follows the
+// department, which each user writes. Reading through the hierarchy asks for a
+// clearance the provider puts next to the subject.
+const chainClaimPolicy = `package chain
+
+import rego.v1
+
+# METADATA
+# scope: document
+# entrypoint: true
+default allow := false
+
+allow if {
+	input.action == "read"
+	doc := data.documents[input.doc]
+	some anc in ancestors_of(doc.project)
+	is_member(input.subject.id, anc)
+	input.subject.clearance == "high"
+}
+
+is_member(user, proj) if user in data.projects[proj].members
+
+is_member(user, proj) if data.users[user].department == data.projects[proj].department
+
+parent_of[child] := parents if {
+	some child, project in data.projects
+	parents := [p | p := project.parent]
+}
+
+ancestors_of(proj) := graph.reachable(parent_of, {proj})
+`
+
+const chainClaimData = `{
+  "users": {"dave": {"department": "ops"}, "mallory": {"department": "sales"}},
+  "projects": {
+    "root": {"members": ["dave"], "department": "platform"},
+    "leaf": {"parent": "root", "members": []}
+  },
+  "documents": {"d1": {"project": "leaf"}}
+}`
+
+const chainClaimModel = `schema_version: 1
+model: write-paths
+entries:
+  - path: data.users.{owner}.department
+    writable_by:
+      - principal: "{owner}"
+        via: "PATCH /me"
+`
+
+// mallory can write platform into their department and reach what dave's
+// position reaches, but reading through the hierarchy asks for a clearance
+// nothing says mallory holds. The chain is then a candidate that says so, and
+// without the clearance in the policy it is a finding.
+func TestEscalationsLeaveAChainThatNeedsAClaimACandidate(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		policy  string
+		verdict Verdict
+	}{
+		{name: "reading asks for a clearance", policy: chainClaimPolicy, verdict: VerdictCandidate},
+		{
+			name:    "reading asks for none",
+			policy:  strings.Replace(chainClaimPolicy, "\tinput.subject.clearance == \"high\"\n", "", 1),
+			verdict: VerdictFinding,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			a := analysisOf(t, &FalsePositiveCase{Policy: tt.policy, Data: chainClaimData, WriteModel: chainClaimModel})
+			shape, err := opaengine.ShapeOf(a.Reads, "input.subject.id")
+			if err != nil {
+				t.Fatalf("ShapeOf() error = %v", err)
+			}
+			a.Shape = shape
+
+			findings := chainOn(t, a)
+			if len(findings) != 1 || findings[0].Principal != "mallory" || findings[0].Target != "dave" {
+				t.Fatalf("chain = %v, want mallory reaching dave", findings)
+			}
+			f := findings[0]
+			if f.Verdict != tt.verdict {
+				t.Errorf("verdict = %s, want %s", f.Verdict, tt.verdict)
+			}
+			if tt.verdict == VerdictCandidate && f.Note == "" {
+				t.Error("the candidate does not say it rests on a claim")
+			}
+		})
 	}
 }
 
