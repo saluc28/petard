@@ -54,6 +54,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	entrypointRule := flags.String("entrypoint-rule", "violation",
 		"rule name to declare as the decision of each policy, for corpora whose policies annotate none")
+	infer := flags.Bool("infer", false,
+		"declare as decisions the rules no other rule uses, instead of the ones named by -entrypoint-rule; the uniform choice across corpora that name decisions differently")
 	regoV0 := flags.Bool("rego-v0", false, "parse as Rego v0, like opa --v0-compatible")
 	regoV1 := flags.Bool("rego-v1", false, "parse as Rego v1 and do not fall back to v0")
 	verbose := flags.Bool("verbose", false, "print one line per policy")
@@ -91,10 +93,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	results := make([]result, 0, len(policies))
 	for _, policy := range policies {
-		results = append(results, measure(policy, mode, *entrypointRule))
+		results = append(results, measure(policy, mode, *entrypointRule, *infer))
 	}
 
-	report(stdout, roots, *entrypointRule, results, *verbose)
+	report(stdout, roots, *entrypointRule, *infer, results, *verbose)
 	return exitOK
 }
 
@@ -126,7 +128,7 @@ type result struct {
 
 // measure loads one policy and asks the engine everything it can answer about
 // it, stopping at the first question that has no answer.
-func measure(p policy, mode opaengine.ParseMode, entrypointRule string) result {
+func measure(p policy, mode opaengine.ParseMode, entrypointRule string, infer bool) result {
 	measured := result{policy: p}
 
 	bundle, err := opaengine.Load(p.files, mode)
@@ -137,11 +139,16 @@ func measure(p policy, mode opaengine.ParseMode, entrypointRule string) result {
 	measured.version = bundle.RegoVersion.String()
 	measured.constructs = bundle.Constructs()
 
-	// The engine never decides that a rule with a given name is a decision.
-	// Which rules carry that name is a fact it can state, and turning that fact
-	// into a declaration is the caller's move, made here because the corpus
-	// runtime documents the convention.
-	bundle.Entrypoints = bundle.RulesNamed(entrypointRule)
+	// The engine never decides which rules are decisions, it states the fact the
+	// caller turns into a declaration. By name is what a corpus runtime
+	// documents; inferred as the rules no other rule uses is the uniform choice
+	// across corpora that name their decisions differently, and the one analyze
+	// falls back to.
+	if infer {
+		bundle.Entrypoints = bundle.Roots()
+	} else {
+		bundle.Entrypoints = bundle.RulesNamed(entrypointRule)
+	}
 	measured.decisions = bundle.Entrypoints
 
 	reads, err := opaengine.Reads(bundle, opaengine.Limits{})
@@ -210,12 +217,13 @@ func byName(a, b policy) int { return strings.Compare(a.name, b.name) }
 
 // report prints the measurement, from what happened to every policy down to
 // what the corpus is made of.
-func report(out io.Writer, roots []string, entrypointRule string, results []result, verbose bool) {
+func report(out io.Writer, roots []string, entrypointRule string, infer bool, results []result, verbose bool) {
 	fmt.Fprintf(out, "corpus: %d policies under %s\n", len(results), strings.Join(roots, ", "))
 
 	reportLoading(out, results)
-	reportDecisions(out, entrypointRule, results)
+	reportDecisions(out, entrypointRule, infer, results)
 	reportResolver(out, results)
+	reportCoverage(out, results)
 	reportPaths(out, results)
 	reportForms(out, results)
 	reportShapes(out, results)
@@ -270,7 +278,7 @@ func loadErrorClass(err error) string {
 	}
 }
 
-func reportDecisions(out io.Writer, entrypointRule string, results []result) {
+func reportDecisions(out io.Writer, entrypointRule string, infer bool, results []result) {
 	withDecisions, declared, none := 0, 0, 0
 	for _, measured := range results {
 		if measured.loadErr != nil {
@@ -284,10 +292,45 @@ func reportDecisions(out io.Writer, entrypointRule string, results []result) {
 		declared += len(measured.decisions)
 	}
 
-	fmt.Fprintf(out, "\ndecisions, declared as the rules named %q\n", entrypointRule)
+	heading := fmt.Sprintf("decisions, declared as the rules named %q", entrypointRule)
+	if infer {
+		heading = "decisions, inferred as the rules no other rule uses"
+	}
+	fmt.Fprintf(out, "\n%s\n", heading)
 	count(out, "policies with a decision", withDecisions)
 	count(out, "decisions declared", declared)
 	count(out, "policies with none", none)
+}
+
+// reportCoverage says, of the policies the walk finished, how many read a data
+// document and how many decide on the request alone.
+//
+// It is the one number that answers which policies this is for. The escalation
+// patterns ask who writes the data a decision reads, so a decision that reads a
+// data document is one they have something to weigh; a decision that reads only
+// the request, an admission or a config check, is one where the write model has
+// nothing to attach to. The split is only as honest as the decisions it counts
+// from, so it means what it says under -infer, where the decisions are the rules
+// no other rule uses rather than a single name that fits one corpus.
+func reportCoverage(out io.Writer, results []result) {
+	readsData, requestOnly := 0, 0
+	for _, measured := range results {
+		if measured.reads == nil {
+			continue
+		}
+		if len(measured.reads.Reads) > 0 {
+			readsData++
+			continue
+		}
+		requestOnly++
+	}
+	if readsData+requestOnly == 0 {
+		return
+	}
+
+	fmt.Fprintf(out, "\nreach of the escalation lens\n")
+	count(out, "decisions read data", readsData)
+	count(out, "decide on the request alone", requestOnly)
 }
 
 // resolverCounts are the edge cases the walk actually met, as opposed to the

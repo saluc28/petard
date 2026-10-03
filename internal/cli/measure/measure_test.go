@@ -135,6 +135,51 @@ func TestRunLeavesTestFilesOutOfThePolicy(t *testing.T) {
 	}
 }
 
+// With -infer the decision of each policy is the rule no other rule uses, which
+// is the uniform choice when a corpus names its decisions differently from the
+// one measure defaults to. The reach line then splits the policies the lens has
+// something to weigh, the ones that read a data document, from the ones that
+// decide on the request alone.
+func TestRunInfersDecisionsAndReportsReach(t *testing.T) {
+	root := writeCorpus(t, map[string]string{
+		"authz/authz.rego": `package authz
+
+import rego.v1
+
+default allow := false
+
+allow if data.users[input.user].admin
+`,
+		"admission/admission.rego": `package admission
+
+import rego.v1
+
+default allow := false
+
+allow if input.user == "root"
+`,
+	})
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-infer", root}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+
+	out := squeezed(stdout.String())
+	for _, expected := range []string{
+		"decisions, inferred as the rules no other rule uses",
+		"reach of the escalation lens",
+		// The authz policy reads data.users, the admission policy reads only the
+		// request, and the split is what says which one the patterns can weigh.
+		"decisions read data 1",
+		"decide on the request alone 1",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the report does not contain %q:\n%s", expected, stdout.String())
+		}
+	}
+}
+
 func TestRunRejectsAnEmptyCorpus(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
