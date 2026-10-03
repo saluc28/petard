@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/writemodel"
 )
@@ -24,7 +25,7 @@ func sampleQuestions() []taxonomy.Question {
 // one.
 func TestWriteQuestionsSkeleton(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "write-model.yaml")
-	written, err := writeQuestions(path, "input.user", sampleQuestions())
+	written, err := writeQuestions(path, "input.user", sampleQuestions(), nil)
 	if err != nil {
 		t.Fatalf("writeQuestions() error = %v", err)
 	}
@@ -51,6 +52,38 @@ func TestWriteQuestionsSkeleton(t *testing.T) {
 	}
 }
 
+// The writes a bundle authorizes are appended as commented authorized_by blocks,
+// each with the decision and the method, so declaring a write allowed by another
+// decision is attaching one rather than writing it from scratch. A branch whose
+// path fixes variables comes without one, pointing at the line to read it from.
+func TestWriteQuestionsListsTheWriteSurface(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "write-model.yaml")
+	endpoints := []opaengine.WriteEndpoint{
+		{Decision: "data.app.authz", Method: "POST", Path: `["users"]`, File: "app.rego", Line: 10},
+		{Decision: "data.app.authz", Method: "PUT", Path: "", File: "app.rego", Line: 20},
+	}
+	if _, err := writeQuestions(path, "input.user", sampleQuestions(), endpoints); err != nil {
+		t.Fatalf("writeQuestions() error = %v", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"# Writes this bundle authorizes.",
+		"decision: data.app.authz",
+		`input.method: "POST"`,
+		`input.path: ["users"]`,
+		`input.method: "PUT"`,
+		"input.path at app.rego:20 fixes variables",
+	} {
+		if !strings.Contains(string(content), want) {
+			t.Errorf("the skeleton does not list %q:\n%s", want, content)
+		}
+	}
+}
+
 // A write model somebody has filled in is the last thing to clobber, so the
 // skeleton refuses a path that already exists.
 func TestWriteQuestionsRefusesAnExistingFile(t *testing.T) {
@@ -59,7 +92,7 @@ func TestWriteQuestionsRefusesAnExistingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := writeQuestions(path, "input.user", sampleQuestions()); err == nil {
+	if _, err := writeQuestions(path, "input.user", sampleQuestions(), nil); err == nil {
 		t.Error("writeQuestions() overwrote an existing file")
 	}
 	content, _ := os.ReadFile(path)
@@ -72,7 +105,7 @@ func TestWriteQuestionsRefusesAnExistingFile(t *testing.T) {
 // answering the questions is editing this file and running again.
 func TestSkeletonLoadsOnceFilled(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "write-model.yaml")
-	if _, err := writeQuestions(path, "input.user", sampleQuestions()); err != nil {
+	if _, err := writeQuestions(path, "input.user", sampleQuestions(), nil); err != nil {
 		t.Fatalf("writeQuestions() error = %v", err)
 	}
 

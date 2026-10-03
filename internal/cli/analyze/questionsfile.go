@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/taxonomy"
 )
 
@@ -19,7 +20,7 @@ import (
 
 // writeQuestions writes the skeleton to path and returns how many entries it
 // holds. It refuses a path that already exists.
-func writeQuestions(path, subject string, questions []taxonomy.Question) (int, error) {
+func writeQuestions(path, subject string, questions []taxonomy.Question, endpoints []opaengine.WriteEndpoint) (int, error) {
 	if _, err := os.Stat(path); err == nil {
 		return 0, fmt.Errorf("%s already exists, and a write model is not something to overwrite", path)
 	} else if !os.IsNotExist(err) {
@@ -31,7 +32,7 @@ func writeQuestions(path, subject string, questions []taxonomy.Question) (int, e
 			return 0, fmt.Errorf("creating %s: %w", dir, err)
 		}
 	}
-	if err := os.WriteFile(path, []byte(skeleton(subject, questions)), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(skeleton(subject, questions, endpoints)), 0o600); err != nil {
 		return 0, fmt.Errorf("writing the write model: %w", err)
 	}
 	return len(questions), nil
@@ -39,8 +40,9 @@ func writeQuestions(path, subject string, questions []taxonomy.Question) (int, e
 
 // skeleton renders the write model: a header that says what to do with it, then
 // one entry per question with the path to declare, the principal to confirm, and
-// a via to fill in.
-func skeleton(subject string, questions []taxonomy.Question) string {
+// a via to fill in, and last the writes the bundle authorizes to attach where
+// one of them is what makes a write allowed.
+func skeleton(subject string, questions []taxonomy.Question, endpoints []opaengine.WriteEndpoint) string {
 	var b strings.Builder
 	b.WriteString("# Write model skeleton written by petard analyze -questions.\n")
 	b.WriteString("#\n")
@@ -61,5 +63,37 @@ func skeleton(subject string, questions []taxonomy.Question) string {
 		fmt.Fprintf(&b, "      - principal: %q\n", question.Writer)
 		b.WriteString("        via: \"\"\n")
 	}
+
+	writeEndpoints(&b, endpoints)
 	return b.String()
+}
+
+// writeEndpoints appends, as a comment, the writes the bundle authorizes, each as
+// an authorized_by block ready to attach to the writer of the document it changes.
+// It is how the write allowed by another decision (PTD-OPA-006) gets declared
+// without writing the block from scratch: uncomment one and move it under a
+// writer.
+func writeEndpoints(b *strings.Builder, endpoints []opaengine.WriteEndpoint) {
+	if len(endpoints) == 0 {
+		return
+	}
+	b.WriteString("\n# Writes this bundle authorizes. Attach one as an authorized_by to the writer of\n")
+	b.WriteString("# the document it changes, to declare a write allowed by another decision:\n")
+	for _, endpoint := range endpoints {
+		where := endpoint.Method
+		if endpoint.Path != "" {
+			where += " " + endpoint.Path
+		}
+		fmt.Fprintf(b, "#   # %s, at %s:%d\n", where, endpoint.File, endpoint.Line)
+		b.WriteString("#   authorized_by:\n")
+		fmt.Fprintf(b, "#     decision: %s\n", endpoint.Decision)
+		b.WriteString("#     request:\n")
+		fmt.Fprintf(b, "#       input.method: %q\n", endpoint.Method)
+		switch {
+		case endpoint.Path != "":
+			fmt.Fprintf(b, "#       input.path: %s\n", endpoint.Path)
+		default:
+			fmt.Fprintf(b, "#       # input.path at %s:%d fixes variables; fill it in, as [a, b, \"{id}\"]\n", endpoint.File, endpoint.Line)
+		}
+	}
 }

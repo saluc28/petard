@@ -274,6 +274,10 @@ open path. Answer each `via`, confirm the principal, and rerun with `-write-mode
 petard analyze -data data -questions write-model.yaml path/to/policy
 ```
 
+When a bundle authorizes its own writes, `-v` lists the branches of a decision that grant on a write
+method, and the skeleton appends each as a commented `authorized_by` block. Attaching one to a writer
+is how a write allowed by another decision gets declared without writing the block by hand.
+
 A bundle archive, such as the `bundle.tar.gz` that `opa build` writes, can be given in place of
 the directory. The policies and the data inside it are read the same way:
 

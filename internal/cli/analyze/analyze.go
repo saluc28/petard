@@ -192,7 +192,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *questionsPath != "" {
-		written, err := writeQuestions(*questionsPath, analyzed.Shape.Subject, found.questions)
+		written, err := writeQuestions(*questionsPath, analyzed.Shape.Subject, found.questions, opaengine.WriteEndpoints(analyzed.Reads))
 		if err != nil {
 			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 			return exitFailure
