@@ -1,0 +1,96 @@
+package analyze
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/saluc28/petard/internal/taxonomy"
+	"github.com/saluc28/petard/internal/writemodel"
+)
+
+func sampleQuestions() []taxonomy.Question {
+	return []taxonomy.Question{
+		{Path: "data.users[_].roles", Patterns: []string{"PTD-OPA-001"}, Writable: "data.users.{owner}.roles", Writer: "{owner}"},
+		{Path: "data.settings.open", Patterns: []string{"PTD-OPA-008"}, Shared: true, Writable: "data.settings.open", Writer: "role:CHANGEME"},
+		{Path: "data.projects[_].members", Patterns: []string{"PTD-OPA-001"}, LookedUp: true, Writable: "data.projects.{project}.members.{member}", Writer: "{member}"},
+	}
+}
+
+// The skeleton is a write model with one entry per question: the path to declare,
+// the principal to confirm, and an empty via to fill. The subject is named once
+// at the top so a reader can tell whether the questions started from the right
+// one.
+func TestWriteQuestionsSkeleton(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "write-model.yaml")
+	written, err := writeQuestions(path, "input.user", sampleQuestions())
+	if err != nil {
+		t.Fatalf("writeQuestions() error = %v", err)
+	}
+	if written != 3 {
+		t.Errorf("entries = %d, want 3", written)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the skeleton: %v", err)
+	}
+	for _, want := range []string{
+		"# The subject is input.user.",
+		"- path: data.users.{owner}.roles",
+		`principal: "{owner}"`,
+		"- path: data.projects.{project}.members.{member}",
+		`principal: "{member}"`,
+		`principal: "role:CHANGEME"`,
+		"via: \"\"",
+	} {
+		if !strings.Contains(string(content), want) {
+			t.Errorf("the skeleton does not contain %q:\n%s", want, content)
+		}
+	}
+}
+
+// A write model somebody has filled in is the last thing to clobber, so the
+// skeleton refuses a path that already exists.
+func TestWriteQuestionsRefusesAnExistingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "write-model.yaml")
+	if err := os.WriteFile(path, []byte("do not overwrite me\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := writeQuestions(path, "input.user", sampleQuestions()); err == nil {
+		t.Error("writeQuestions() overwrote an existing file")
+	}
+	content, _ := os.ReadFile(path)
+	if string(content) != "do not overwrite me\n" {
+		t.Errorf("the existing file was changed: %s", content)
+	}
+}
+
+// Once the vias are filled, the skeleton is a write model the loader accepts, so
+// answering the questions is editing this file and running again.
+func TestSkeletonLoadsOnceFilled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "write-model.yaml")
+	if _, err := writeQuestions(path, "input.user", sampleQuestions()); err != nil {
+		t.Fatalf("writeQuestions() error = %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filled := strings.ReplaceAll(string(raw), `via: ""`, `via: "PUT /filled"`)
+	filledPath := filepath.Join(t.TempDir(), "filled.yaml")
+	if err := os.WriteFile(filledPath, []byte(filled), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	model, err := writemodel.Load(filledPath)
+	if err != nil {
+		t.Fatalf("the filled skeleton does not load: %v", err)
+	}
+	if len(model.Entries) != 3 {
+		t.Errorf("entries = %d, want 3", len(model.Entries))
+	}
+}

@@ -13,6 +13,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   write or the global document reads that no write model covers, and what to find out about it, such
   as whether the subject can write it, add themselves to it, or who writes it at all. The self write
   questions come from the reads, so a partial write model still shows what it leaves open.
+- `petard analyze -questions <file>` writes those questions as a write model to fill in: one entry
+  per open path, with the subject's segment named and a principal to confirm, and an empty `via` to
+  complete. It refuses to overwrite an existing file. Fill it in and rerun with `-write-model`.
 - `petard analyze -v` prints, under each pattern that found something, the one line the registry
   holds in its `closes` field: what structurally makes the pattern not fire, which is where a fix
   starts. The line is a property of the pattern, not advice about a particular system.

@@ -77,6 +77,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	failOn := flags.String("fail-on", failOnFindings, "exit 3 on findings, on any match including candidates, or on neither: findings|any|none")
 	noColor := flags.Bool("no-color", false, "never use escape sequences, whatever the terminal says")
 	testsPath := flags.String("tests", "", "write an opa test for each escalation proven by a request to this file; it fails while the escalation is open")
+	questionsPath := flags.String("questions", "", "write a write model to this file, one entry per open question, to fill in and rerun with -write-model")
 
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
@@ -183,6 +184,21 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		if !*quiet {
 			fmt.Fprintf(stdout, "\n%s written to %s\n", count(written, "test"), *testsPath)
+		}
+	}
+
+	if *questionsPath != "" {
+		written, err := writeQuestions(*questionsPath, analyzed.Shape.Subject, found.questions)
+		if err != nil {
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+			return exitFailure
+		}
+		if !*quiet {
+			entries := "entries"
+			if written == 1 {
+				entries = "entry"
+			}
+			fmt.Fprintf(stdout, "\n%d %s written to %s\n", written, entries, *questionsPath)
 		}
 	}
 	return exitCode(found, *failOn)
