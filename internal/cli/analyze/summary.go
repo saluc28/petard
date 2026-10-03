@@ -149,6 +149,7 @@ func printSummary(out io.Writer, a taxonomy.Analysis, s summary, coverage taxono
 		return
 	}
 
+	printScopeNote(out, a, s, style)
 	printQuestions(out, s.questions, style)
 
 	if len(s.skipped) > 0 {
@@ -183,6 +184,41 @@ func printQuestions(out io.Writer, questions []taxonomy.Question, style render.S
 		fmt.Fprintf(table, "  %s\t%s\t(%s)\n", question.Path, question.Asks(), strings.Join(question.Patterns, ", "))
 	}
 	table.Flush()
+}
+
+// printScopeNote explains a result that comes from the shape of the policy
+// rather than from a clean bundle. When the decisions read no data document,
+// the patterns that ask who can write the data a decision trusts have nothing
+// to weigh, and a reader is owed the difference between that and a verdict that
+// the policy is safe. The common case is an admission or validation policy,
+// which decides on the request it is handed and consults no stored document.
+func printScopeNote(out io.Writer, a taxonomy.Analysis, s summary, style render.Style) {
+	if len(a.Reads.Reads) > 0 {
+		return
+	}
+
+	fmt.Fprintf(out, "\n%s\n", style.Bold("These decisions read no data"))
+	render.Print(out, "The patterns that ask who can write the data a decision trusts need a data "+
+		"document to work on, and these decisions read none.", "  ")
+
+	switch {
+	case len(a.Reads.Taints) > 0:
+		render.Print(out, "They do read values from outside the policy, which are the external-source "+
+			"patterns rather than the write model.", "  ")
+	case len(a.Reads.InputPaths) == 0:
+		render.Print(out, "They read neither the request nor any data.", "  ")
+	default:
+		render.Print(out, fmt.Sprintf("They decide on the request alone, over %s.",
+			count(len(a.Reads.InputPaths), "input path")), "  ")
+	}
+
+	if s.empty() {
+		render.Print(out, "An empty result here reflects the shape of the policy, not a verdict that it is safe.", "  ")
+	}
+	if a.EnforcementPoint == nil {
+		render.Print(out, "If the caller controls part of the request, name the enforcement point with -pep, "+
+			"and the request-side patterns can speak to it.", "  ")
+	}
 }
 
 // printEscalations puts who can take whose place at the top, because it is the

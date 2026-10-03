@@ -130,6 +130,40 @@ func TestWithoutAWriteModelTheSummarySaysWhy(t *testing.T) {
 	}
 }
 
+// A policy that decides on the request alone reads no data, so the patterns
+// that ask who writes the data a decision trusts have nothing to weigh. The
+// summary says so, because an empty result there is the shape of the policy and
+// not a verdict that it is safe.
+func TestTheSummarySaysWhenThereIsNoDataToAnalyze(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-fail-on", failOnNone, clean(t)}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+
+	out := strings.Join(strings.Fields(stdout.String()), " ")
+	for _, want := range []string{
+		"These decisions read no data",
+		"need a data document to work on, and these decisions read none",
+		"They decide on the request alone, over 1 input path",
+		"not a verdict that it is safe",
+		"name the enforcement point with -pep",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the summary does not say %q:\n%s", want, stdout.String())
+		}
+	}
+
+	// A policy that does read data is not in this shape, so the note stays out
+	// of its report.
+	stdout.Reset()
+	if code := Run(withFixtureData("-fail-on", failOnNone), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "These decisions read no data") {
+		t.Errorf("a data-reading policy got the no-data note:\n%s", stdout.String())
+	}
+}
+
 // With data but no write model, the candidates come with the questions that
 // settle them: the path to declare and what to find out about it. With the full
 // model those paths are answered, so no question is left to ask.
