@@ -167,6 +167,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 		reportFindings(stdout, analyzed, findings, patterns, coverage)
+		if err := reportSuppositions(ctx, stdout, analyzed, found.questions); err != nil {
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+			return exitFailure
+		}
 	}
 
 	if *showGraph {
@@ -448,6 +452,51 @@ func reportPattern(out io.Writer, patterns []taxonomy.Pattern, id string, findin
 	if closes := closesOf(patterns, id); closes != "" {
 		render.Print(out, "to close: "+closes, "  ")
 	}
+}
+
+// reportSuppositions runs the patterns against a model where every open question
+// is answered yes, and prints the escalations that answer would open, each with
+// the request that proves it. It is how the evidence view shows the consequence
+// of a question a reader has not answered yet.
+//
+// Only an escalation is shown, since that is what comes with a witness and is the
+// consequence worth weighing before declaring a writer. A question that would
+// open nothing but an ordinary finding is left to its line above.
+func reportSuppositions(ctx context.Context, out io.Writer, a taxonomy.Analysis, questions []taxonomy.Question) error {
+	if len(questions) == 0 {
+		return nil
+	}
+	findings, err := taxonomy.Run(ctx, taxonomy.Suppose(a, questions))
+	if err != nil {
+		return err
+	}
+
+	opened := map[string]taxonomy.Finding{}
+	for _, finding := range findings.All() {
+		if finding.Verdict == taxonomy.VerdictFinding && finding.Principal != "" && finding.ViaWritePath != "" {
+			if _, seen := opened[finding.ViaWritePath]; !seen {
+				opened[finding.ViaWritePath] = finding
+			}
+		}
+	}
+
+	printed := false
+	for _, question := range questions {
+		finding, ok := opened[question.Writable]
+		if !ok {
+			continue
+		}
+		if !printed {
+			fmt.Fprintf(out, "\nif the answers are yes\n")
+			printed = true
+		}
+		fmt.Fprintf(out, "  %s: %s reaches %s (%s)\n",
+			question.Writable, finding.Principal, finding.Target, finding.PatternID)
+		if w := finding.Witness; w != nil {
+			fmt.Fprintf(out, "    proven by %s\n", taxonomy.JSON(w.Request))
+		}
+	}
+	return nil
 }
 
 // reportSkipped prints a pattern the run could not apply, with what it would

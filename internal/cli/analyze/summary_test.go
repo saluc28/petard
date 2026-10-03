@@ -165,6 +165,28 @@ func TestTheSummaryAsksTheOpenQuestions(t *testing.T) {
 	}
 }
 
+// Under -v, a question that would open an escalation shows it: what the yes would
+// cost, with the request that proves it, before anyone has declared the writer.
+func TestTheEvidenceShowsWhatAYesWouldOpen(t *testing.T) {
+	bundle := filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle")
+	args := []string{"-v", "-fail-on", failOnNone, "-subject", "input.user", "-data", filepath.Join(bundle, "data"), fixture("policy-v1")}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run(args, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"if the answers are yes",
+		"data.users.{owner}.profile.department: mallory reaches dave",
+		`proven by {"action":"read","doc":"d-t11-1","user":"mallory"}`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the evidence does not show %q:\n%s", want, out)
+		}
+	}
+}
+
 // A pattern that could not run is not a pattern that found nothing, and the
 // summary has to keep the difference the long report keeps.
 func TestTheSummarySaysWhichPatternsDidNotRun(t *testing.T) {

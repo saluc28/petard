@@ -97,3 +97,36 @@ entries:
 	}
 	return model
 }
+
+// Suppose answers the questions yes and runs the patterns, so what the questions
+// would open can be shown before anyone fills a write model. Here answering the
+// department question opens the chain mallory reaches dave, with its witness.
+func TestSupposeOpensWhatTheQuestionsWouldOpen(t *testing.T) {
+	a := fixtureAnalysis(t)
+	a.Model = nil
+
+	found, err := Run(t.Context(), a)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	supposed, err := Run(t.Context(), Suppose(a, OpenQuestions(a, found)))
+	if err != nil {
+		t.Fatalf("Run(Suppose) error = %v", err)
+	}
+
+	var opened bool
+	for _, finding := range supposed.All() {
+		if finding.Principal == "mallory" && finding.Target == "dave" && finding.Verdict == VerdictFinding {
+			opened = true
+			if finding.ViaWritePath != "data.users.{owner}.profile.department" {
+				t.Errorf("via write path = %q, want the department the question is about", finding.ViaWritePath)
+			}
+			if finding.Witness == nil {
+				t.Error("the supposed escalation comes with no witness")
+			}
+		}
+	}
+	if !opened {
+		t.Error("answering the questions yes did not open the chain mallory reaches dave")
+	}
+}

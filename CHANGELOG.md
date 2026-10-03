@@ -16,6 +16,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `petard analyze -questions <file>` writes those questions as a write model to fill in: one entry
   per open path, with the subject's segment named and a principal to confirm, and an empty `via` to
   complete. It refuses to overwrite an existing file. Fill it in and rerun with `-write-model`.
+- `petard analyze -v` shows, for a question that would open an escalation, who reaches whom and the
+  request that proves it, run against a model where every open question is answered yes. It is what
+  a yes would cost, shown before anyone declares the writer.
 - `petard analyze -v` prints, under each pattern that found something, the one line the registry
   holds in its `closes` field: what structurally makes the pattern not fire, which is where a fix
   starts. The line is a property of the pattern, not advice about a particular system.

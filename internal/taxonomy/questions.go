@@ -223,6 +223,40 @@ func singular(name string) string {
 	return name
 }
 
+// Suppose returns the analysis as it would be if every open question were
+// answered yes in the most permissive way: the subject writes their own, a
+// member joins, somebody writes the shared document. It is how a report shows
+// what answering yes would open, by running the patterns against the supposed
+// model and reporting what they find.
+//
+// The supposed model is the real one plus an entry per question, so a partial
+// model keeps what it declared and the questions fill the rest. The entries use
+// the writer the skeleton suggests, which is the worst case for the question.
+func Suppose(a Analysis, questions []Question) Analysis {
+	entries := []writemodel.Entry{}
+	if a.Model != nil {
+		entries = append(entries, a.Model.Entries...)
+	}
+	for _, question := range questions {
+		if question.Writer == "" {
+			continue
+		}
+		path, err := writemodel.ParsePath(question.Writable)
+		if err != nil {
+			continue
+		}
+		entries = append(entries, writemodel.Entry{
+			RawPath:    question.Writable,
+			Path:       path,
+			WritableBy: []writemodel.Writer{{Principal: question.Writer, Via: "(supposed writable)"}},
+		})
+	}
+
+	supposed := a
+	supposed.Model = &writemodel.Model{SchemaVersion: writemodel.SchemaVersion, Kind: "write-paths", Entries: entries}
+	return supposed
+}
+
 // Asks is the one line a report prints for a question: what to find out about
 // the path.
 func (q Question) Asks() string {
