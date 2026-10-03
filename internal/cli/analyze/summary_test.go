@@ -147,6 +147,7 @@ func TestTheSummarySaysWhenThereIsNoDataToAnalyze(t *testing.T) {
 		"They decide on the request alone, over 1 input path",
 		"not a verdict that it is safe",
 		"name the enforcement point with -pep",
+		"docs/ten-minutes.md",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the summary does not say %q:\n%s", want, stdout.String())

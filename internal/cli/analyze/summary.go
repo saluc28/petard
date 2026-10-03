@@ -219,6 +219,7 @@ func printScopeNote(out io.Writer, a taxonomy.Analysis, s summary, style render.
 		render.Print(out, "If the caller controls part of the request, name the enforcement point with -pep, "+
 			"and the request-side patterns can speak to it.", "  ")
 	}
+	render.Print(out, "See docs/ten-minutes.md for a policy Petard is built for, worked end to end.", "  ")
 }
 
 // printEscalations puts who can take whose place at the top, because it is the
