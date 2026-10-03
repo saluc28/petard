@@ -129,9 +129,10 @@ func (r *refReader) markTruth(term *ast.Term, sc scope) {
 // checks judges every comparison and every lone term met while walking, and
 // keeps the ones that hold a part of the request against a value the policy
 // writes, with the decisions each reaches.
-func (r *refReader) checks(limits Limits) ([]Check, []string) {
+func (r *refReader) checks(limits Limits) ([]Check, map[string]string, []string) {
 	var checks []Check
 	var warnings []string
+	pathShapes := map[string]string{}
 	keep := func(at exprSite, request string, value *ast.Term, operator CheckOperator) {
 		check := Check{
 			Request:       request,
@@ -153,9 +154,7 @@ func (r *refReader) checks(limits Limits) ([]Check, []string) {
 		if location != nil {
 			check.File, check.Line = location.File, location.Row
 		}
-		if head := at.rule.Loc(); head != nil {
-			check.Block = fmt.Sprintf("%s:%d", head.File, head.Row)
-		}
+		check.Block = blockID(at.rule)
 		checks = append(checks, check)
 	}
 
@@ -180,6 +179,18 @@ func (r *refReader) checks(limits Limits) ([]Check, []string) {
 			if !isRequest {
 				continue
 			}
+			// A request path held against an array is the shape of an endpoint,
+			// even when the array holds variables and so is no constant: the
+			// literals are the fixed segments and the variables the ones the
+			// request fills. It is what a write endpoint's path is, so it is kept
+			// apart from the constant checks, by the block it sits in.
+			if strings.HasSuffix(request, ".path") {
+				if array, isArray := oriented.value.Value.(*ast.Array); isArray {
+					if shape, ok := r.pathShape(array, compared.bindings); ok {
+						pathShapes[blockID(compared.rule)] = shape
+					}
+				}
+			}
 			value, isConstant := constantOf(oriented.value, compared.bindings)
 			if !isConstant {
 				continue
@@ -198,7 +209,59 @@ func (r *refReader) checks(limits Limits) ([]Check, []string) {
 	}
 
 	slices.SortFunc(checks, compareChecks)
-	return slices.CompactFunc(checks, func(a, b Check) bool { return compareChecks(a, b) == 0 }), warnings
+	return slices.CompactFunc(checks, func(a, b Check) bool { return compareChecks(a, b) == 0 }), pathShapes, warnings
+}
+
+// blockID identifies a physical rule by its head's file and line, so two allow
+// blocks that share a rule path can be told apart.
+func blockID(rule *ast.Rule) string {
+	if rule == nil {
+		return ""
+	}
+	if head := rule.Loc(); head != nil {
+		return fmt.Sprintf("%s:%d", head.File, head.Row)
+	}
+	return ""
+}
+
+// pathShape renders a request path held against an array as the segments the
+// endpoint fixes: a literal is kept as written, a variable becomes a {name}
+// placeholder, in the write model's notation. It gives up, returning false, on
+// an element that is neither, since a shape it cannot read in full would mislead.
+func (r *refReader) pathShape(array *ast.Array, bindings map[ast.Var]binding) (string, bool) {
+	parts := make([]string, 0, array.Len())
+	for i := 0; i < array.Len(); i++ {
+		element := array.Elem(i)
+		if constant, ok := constantOf(element, bindings); ok {
+			parts = append(parts, constant.String())
+			continue
+		}
+		variable, isVar := varOf(element)
+		if !isVar {
+			return "", false
+		}
+		name, named := r.varName(variable)
+		if !named {
+			return "", false
+		}
+		parts = append(parts, `"{`+name+`}"`)
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	return "[" + strings.Join(parts, ", ") + "]", true
+}
+
+// varName is the name the author gave a variable, through the table the compiler
+// keeps of the names it rewrote, and false for one the author never wrote.
+func (r *refReader) varName(variable ast.Var) (string, bool) {
+	if original, found := r.compiler.RewrittenVars[variable]; found {
+		return original.String(), true
+	}
+	if variable.IsGenerated() {
+		return "", false
+	}
+	return variable.String(), true
 }
 
 // compareChecks orders checks the way they are reported, by where they are and

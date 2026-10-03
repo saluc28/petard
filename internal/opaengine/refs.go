@@ -278,6 +278,12 @@ type ReadSet struct {
 	// value the policy writes. See checks.go.
 	Checks []Check
 
+	// pathShapes is the shape of a request path held against an array, by the
+	// block it sits in: the fixed segments and the variable ones as placeholders.
+	// It is kept apart from Checks because an array with a variable in it is no
+	// constant, so it is not a check, but it is the path of a write endpoint.
+	pathShapes map[string]string
+
 	// Taints are the values the decisions read that the policy did not
 	// compute, with the decisions each of them reaches.
 	//
@@ -393,8 +399,9 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 	result.Taints = taints
 	result.Closures = reader.closures(result.Reads, reach)
 	result.Quantifiers = reader.quantifiers(reach)
-	checks, checkWarnings := reader.checks(limits)
+	checks, pathShapes, checkWarnings := reader.checks(limits)
 	result.Checks = checks
+	result.pathShapes = pathShapes
 	result.Warnings = sortedUnique(append(append(result.Warnings, warnings...), checkWarnings...))
 
 	for _, decision := range decisions {

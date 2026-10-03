@@ -21,10 +21,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a yes would cost, shown before anyone declares the writer.
 - `petard analyze -v` lists the writes a bundle authorizes: each branch of a decision that grants on
   a write method, PUT, POST, PATCH or DELETE, with the path it fixes and the decision that lets it
-  through. It is where a write model's `authorized_by` points, so declaring the write behind
-  `PTD-OPA-006` starts from what the policy already describes. `-questions` writes those same
-  endpoints into the skeleton as commented `authorized_by` blocks, to attach to the writer of the
-  document each one changes.
+  through. A path segment the branch holds to a variable is shown as a `{name}` placeholder, so an
+  endpoint addressed by record, `PUT /teams/{team}/members/{user}`, comes out whole. It
+  is where a write model's `authorized_by` points, so declaring the write behind `PTD-OPA-006` starts
+  from what the policy already describes. `-questions` writes those same endpoints into the skeleton
+  as commented `authorized_by` blocks, to attach to the writer of the document each one changes.
 - `petard analyze -v` prints, under each pattern that found something, the one line the registry
   holds in its `closes` field: what structurally makes the pattern not fire, which is where a fix
   starts. The line is a property of the pattern, not advice about a particular system.

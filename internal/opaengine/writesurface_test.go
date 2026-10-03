@@ -66,6 +66,43 @@ allow if {
 	}
 }
 
+// A path that holds variables is no constant, so it is no check, but it is still
+// the shape of the endpoint: the literals are the fixed segments, the variables
+// the ones the request fills, as {name} placeholders.
+func TestWriteEndpointsShapesAVariablePath(t *testing.T) {
+	policy := `package authz
+
+import rego.v1
+
+default allow := false
+
+allow if {
+	input.method = "PUT"
+	input.path = ["teams", team, "members", member]
+}
+`
+	dir := writeSources(t, map[string]string{"policy.rego": policy})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	bundle.Entrypoints = []string{"authz/allow"}
+
+	reads, err := Reads(bundle, Limits{})
+	if err != nil {
+		t.Fatalf("Reads() error = %v", err)
+	}
+
+	endpoints := WriteEndpoints(reads)
+	if len(endpoints) != 1 {
+		t.Fatalf("endpoints = %v, want one", endpoints)
+	}
+	want := `["teams", "{team}", "members", "{member}"]`
+	if endpoints[0].Path != want {
+		t.Errorf("path = %q, want %q", endpoints[0].Path, want)
+	}
+}
+
 // A branch that refuses on the method, under a negation, is no write surface: it
 // is the method being ruled out, not granted.
 func TestWriteEndpointsSkipsANegatedMethod(t *testing.T) {

@@ -61,6 +61,11 @@ func WriteEndpoints(reads *ReadSet) []WriteEndpoint {
 			continue
 		}
 		path := pathOf(byBlock[block])
+		if path == "" {
+			// No constant path, but the branch may still fix a path that holds
+			// variables, kept as a shape rather than a check.
+			path = reads.pathShapes[block]
+		}
 		for _, decision := range methodCheck.Decisions {
 			if !decision.Grants {
 				continue
