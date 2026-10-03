@@ -19,6 +19,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `petard analyze -v` shows, for a question that would open an escalation, who reaches whom and the
   request that proves it, run against a model where every open question is answered yes. It is what
   a yes would cost, shown before anyone declares the writer.
+- `petard analyze -v` lists the writes a bundle authorizes: each branch of a decision that grants on
+  a write method, PUT, POST, PATCH or DELETE, with the path it fixes and the decision that lets it
+  through. It is where a write model's `authorized_by` points, so declaring the write behind
+  `PTD-OPA-006` starts from what the policy already describes.
 - `petard analyze -v` prints, under each pattern that found something, the one line the registry
   holds in its `closes` field: what structurally makes the pattern not fire, which is where a fix
   starts. The line is a property of the pattern, not advice about a particular system.

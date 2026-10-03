@@ -639,6 +639,16 @@ func report(out io.Writer, a taxonomy.Analysis) {
 		}
 	}
 
+	if endpoints := opaengine.WriteEndpoints(reads); len(endpoints) > 0 {
+		fmt.Fprintf(out, "\nwrites the bundle authorizes, to point a write model's authorized_by at:\n")
+		table := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+		for _, endpoint := range endpoints {
+			fmt.Fprintf(table, "  %s\t%s\t%s:%d\n", endpoint.Method+" "+endpoint.Path, endpoint.Decision, endpoint.File, endpoint.Line)
+		}
+		table.Flush()
+		fmt.Fprintln(out, "  which document each writes is not in the policy, and the write model is where to say it.")
+	}
+
 	if indexed := opaengine.SubjectIndexedReads(shape, reads); len(indexed) > 0 {
 		fmt.Fprintf(out, "\nreads the subject (%s) indexes itself:\n", shape.Subject)
 		subjectTable := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)

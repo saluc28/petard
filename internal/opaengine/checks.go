@@ -2,6 +2,7 @@ package opaengine
 
 import (
 	"cmp"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -34,6 +35,12 @@ type Check struct {
 	Rule string
 	File string
 	Line int
+
+	// Block identifies the physical rule the expression sits in, as the file and
+	// line of that rule's head. Two allow blocks in one package share a Rule
+	// path, so Block is what tells the checks of one write endpoint from the
+	// checks of another written just below it.
+	Block string
 
 	// UnderNegation is true when the expression sits under an odd number of
 	// negations inside its rule, as not input.emergency does.
@@ -145,6 +152,9 @@ func (r *refReader) checks(limits Limits) ([]Check, []string) {
 		}
 		if location != nil {
 			check.File, check.Line = location.File, location.Row
+		}
+		if head := at.rule.Loc(); head != nil {
+			check.Block = fmt.Sprintf("%s:%d", head.File, head.Row)
 		}
 		checks = append(checks, check)
 	}
