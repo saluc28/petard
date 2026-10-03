@@ -5,6 +5,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/saluc28/petard/internal/cli/render"
 	"github.com/saluc28/petard/internal/taxonomy"
@@ -27,6 +28,10 @@ type summary struct {
 	escalations []taxonomy.Finding
 	byPattern   []patternCount
 	skipped     []skippedPattern
+
+	// questions are the paths a candidate rests on that nobody declared a writer
+	// for, which is what a reader does next to settle them.
+	questions []taxonomy.Question
 }
 
 // patternCount is one pattern and what it made of this bundle.
@@ -45,7 +50,7 @@ type skippedPattern struct {
 // Everything is ordered by the id of the pattern, because two runs of the same
 // bundle have to print the same bytes: the counts and the skipped patterns come
 // out of maps, and Go walks a map in a different order every time.
-func summarize(findings taxonomy.Findings, patterns []taxonomy.Pattern) summary {
+func summarize(a taxonomy.Analysis, findings taxonomy.Findings, patterns []taxonomy.Pattern) summary {
 	var s summary
 
 	counts := map[string]*patternCount{}
@@ -83,6 +88,8 @@ func summarize(findings taxonomy.Findings, patterns []taxonomy.Pattern) summary 
 		s.skipped = append(s.skipped, skippedPattern{id: id, why: why})
 	}
 	slices.SortFunc(s.skipped, func(a, b skippedPattern) int { return strings.Compare(a.id, b.id) })
+
+	s.questions = taxonomy.OpenQuestions(a, findings)
 	return s
 }
 
@@ -142,6 +149,8 @@ func printSummary(out io.Writer, a taxonomy.Analysis, s summary, coverage taxono
 		return
 	}
 
+	printQuestions(out, s.questions, style)
+
 	if len(s.skipped) > 0 {
 		fmt.Fprintf(out, "\n%s\n", style.Bold("Patterns that did not run"))
 		for _, skipped := range s.skipped {
@@ -156,6 +165,24 @@ func printSummary(out io.Writer, a taxonomy.Analysis, s summary, coverage taxono
 		fmt.Fprint(out, "Run with -v for the reads behind this, and every place to look.\n")
 	}
 	fmt.Fprint(out, "Run petard explain <id> for what a pattern looks for and what it will not report.\n")
+}
+
+// printQuestions names the paths a candidate rests on that nobody declared a
+// writer for, so a reader sees what to find out next instead of a bare count of
+// candidates. Each line is the path, what to ask about it, and the patterns it
+// would settle.
+func printQuestions(out io.Writer, questions []taxonomy.Question, style render.Style) {
+	if len(questions) == 0 {
+		return
+	}
+
+	fmt.Fprintf(out, "\n%s\n", style.Bold("Questions, which turn candidates into findings"))
+	fmt.Fprintln(out, "  Declare who writes each path in a write model, or write one to fill in with -questions <file>.")
+	table := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	for _, question := range questions {
+		fmt.Fprintf(table, "  %s\t%s\t(%s)\n", question.Path, question.Asks(), strings.Join(question.Patterns, ", "))
+	}
+	table.Flush()
 }
 
 // printEscalations puts who can take whose place at the top, because it is the

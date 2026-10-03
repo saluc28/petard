@@ -130,6 +130,41 @@ func TestWithoutAWriteModelTheSummarySaysWhy(t *testing.T) {
 	}
 }
 
+// With data but no write model, the candidates come with the questions that
+// settle them: the path to declare and what to find out about it. With the full
+// model those paths are answered, so no question is left to ask.
+func TestTheSummaryAsksTheOpenQuestions(t *testing.T) {
+	bundle := filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle")
+	noModel := []string{"-fail-on", failOnNone, "-subject", "input.user", "-data", filepath.Join(bundle, "data"), fixture("policy-v1")}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run(noModel, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"Questions, which turn candidates into findings",
+		"data.users[_].roles",
+		"can the subject write their own?",
+		"data.settings.reading_room.open",
+		"who can write it?",
+		"data.projects[_].members",
+		"can the subject add themselves to it?",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the summary does not ask %q:\n%s", want, out)
+		}
+	}
+
+	stdout.Reset()
+	if code := Run(withFixtureData("-fail-on", failOnNone), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Questions, which turn candidates") {
+		t.Errorf("the full model leaves no question, but the summary asks one:\n%s", stdout.String())
+	}
+}
+
 // A pattern that could not run is not a pattern that found nothing, and the
 // summary has to keep the difference the long report keeps.
 func TestTheSummarySaysWhichPatternsDidNotRun(t *testing.T) {

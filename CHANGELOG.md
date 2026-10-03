@@ -9,6 +9,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `petard analyze` lists, under the candidates, the questions that settle them: each path the self
+  write or the global document reads that no write model covers, and what to find out about it, such
+  as whether the subject can write it, add themselves to it, or who writes it at all. The self write
+  questions come from the reads, so a partial write model still shows what it leaves open.
 - `petard analyze -v` prints, under each pattern that found something, the one line the registry
   holds in its `closes` field: what structurally makes the pattern not fire, which is where a fix
   starts. The line is a property of the pattern, not advice about a particular system.

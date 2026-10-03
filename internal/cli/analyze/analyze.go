@@ -149,7 +149,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
-	found := summarize(findings, patterns)
+	found := summarize(analyzed, findings, patterns)
 	printSummary(stdout, analyzed, found, coverage, printing{
 		style:   render.StyleFor(stdout, *noColor),
 		quiet:   *quiet,
