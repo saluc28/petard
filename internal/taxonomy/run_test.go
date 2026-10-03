@@ -1,9 +1,13 @@
 package taxonomy
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/saluc28/petard/internal/opaengine"
@@ -74,7 +78,7 @@ func TestLoadInfersDecisions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a, err := Load(tt.inputs)
+			a, err := Load(t.Context(), tt.inputs)
 			if err != nil {
 				t.Fatalf("Load() error = %v", err)
 			}
@@ -101,7 +105,7 @@ import rego.v1
 
 is_admin(user) if "admin" in data.users[user].roles
 `)
-	if _, err := Load(Inputs{Paths: []string{dir}}); !errors.Is(err, opaengine.ErrNoDecisions) {
+	if _, err := Load(t.Context(), Inputs{Paths: []string{dir}}); !errors.Is(err, opaengine.ErrNoDecisions) {
 		t.Errorf("Load() error = %v, want opaengine.ErrNoDecisions", err)
 	}
 }
@@ -128,7 +132,7 @@ func TestLoadTakesTheDataOfTheBundle(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a, err := Load(Inputs{Paths: []string{dir}, DataPath: tt.dataPath})
+			a, err := Load(t.Context(), Inputs{Paths: []string{dir}, DataPath: tt.dataPath})
 			if err != nil {
 				t.Fatalf("Load() error = %v", err)
 			}
@@ -151,11 +155,69 @@ func TestLoadWithoutDataInTheBundle(t *testing.T) {
 	for name, content := range inferredPolicy {
 		writeCaseFile(t, filepath.Join(dir, name), content)
 	}
-	a, err := Load(Inputs{Paths: []string{dir}})
+	a, err := Load(t.Context(), Inputs{Paths: []string{dir}})
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if a.Data != nil || a.DataFromBundle {
 		t.Errorf("data = %v from the bundle %v, want none", a.Data, a.DataFromBundle)
+	}
+}
+
+// A URL is analyzed by reading the running OPA's policies, with the bearer token
+// taken from the environment, so it never sits on the command line.
+func TestLoadFromARunningOPA(t *testing.T) {
+	const policy = `package authz
+
+import rego.v1
+
+# METADATA
+# entrypoint: true
+allow if "admin" in data.users[input.user].roles
+`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tok" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": []map[string]string{{"id": "authz/policy.rego", "raw": policy}},
+		})
+	}))
+	defer server.Close()
+
+	t.Setenv(TokenEnv, "tok")
+	a, err := Load(t.Context(), Inputs{Paths: []string{server.URL}})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !slices.Equal(a.Reads.Decisions, []string{"data.authz.allow"}) {
+		t.Errorf("Decisions = %v, want the policy the server runs", a.Reads.Decisions)
+	}
+	if a.Data != nil {
+		t.Errorf("Data = %v, want none: a live analysis has no data until it is read over the API", a.Data)
+	}
+}
+
+// A missing token is the ordinary first run, and the error names the variable
+// to set rather than the raw rejection.
+func TestLoadFromARunningOPAWithoutTheToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	_, err := Load(t.Context(), Inputs{Paths: []string{server.URL}})
+	if !errors.Is(err, opaengine.ErrUnauthorized) || !strings.Contains(err.Error(), TokenEnv) {
+		t.Errorf("Load() error = %v, want ErrUnauthorized naming %s", err, TokenEnv)
+	}
+}
+
+// A URL is analyzed on its own. Mixed with a file, there is no single bundle to
+// compile, and the run says so instead of guessing which to use.
+func TestLoadRefusesAURLWithFiles(t *testing.T) {
+	_, err := Load(t.Context(), Inputs{Paths: []string{"http://localhost:8181", "policy.rego"}})
+	if err == nil || !strings.Contains(err.Error(), "on its own") {
+		t.Errorf("Load() error = %v, want a refusal to mix a URL with files", err)
 	}
 }

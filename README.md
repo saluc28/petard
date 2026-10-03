@@ -273,6 +273,14 @@ the directory. The policies and the data inside it are read the same way:
 petard analyze bundle.tar.gz
 ```
 
+A running OPA can be given in place of a path. Petard reads its policies over the API, read only,
+and analyzes what the server runs rather than a checkout that may have moved on. A bearer token,
+if the server needs one, is read from `$PETARD_OPA_TOKEN`:
+
+```
+petard analyze http://localhost:8181
+```
+
 ## In a pipeline
 
 ```

@@ -51,7 +51,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprint(stderr, "usage: petard analyze [flags] <path>...\n\n"+
-			"Paths are Rego files, directories holding them, or bundle archives such as bundle.tar.gz.\n\n")
+			"Paths are Rego files, directories holding them, bundle archives such as bundle.tar.gz,\n"+
+			"or the URL of a running OPA, whose policies are read over its API; a bearer token for it\n"+
+			"is read from $"+taxonomy.TokenEnv+".\n\n")
 		flags.PrintDefaults()
 	}
 
@@ -115,7 +117,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
-	analyzed, err := taxonomy.Load(taxonomy.Inputs{
+	ctx := context.Background()
+	analyzed, err := taxonomy.Load(ctx, taxonomy.Inputs{
 		Paths:            paths,
 		Mode:             mode,
 		Entrypoints:      entrypoints,
@@ -135,7 +138,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
-	ctx := context.Background()
 	findings, err := taxonomy.Run(ctx, analyzed)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)

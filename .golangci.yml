@@ -62,6 +62,14 @@ linters:
           - errcheck
         text: 'fmt\.Fprint|\.Flush'
 
+      # TokenEnv holds the name of an environment variable, not a credential.
+      # G101 matches the "Token" in the identifier; the value is an env var name,
+      # and the token itself is only ever read from the environment at runtime.
+      - path: internal/taxonomy/run\.go
+        linters:
+          - gosec
+        source: PETARD_OPA_TOKEN
+
 issues:
   # Nothing is hidden. The defaults cap a repeated finding at three, which turns
   # a deprecation used in ten places into a list of three and an unfixed rest.

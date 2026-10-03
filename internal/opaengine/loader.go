@@ -205,7 +205,13 @@ func Load(paths []string, mode ParseMode) (*Bundle, error) {
 	if len(sources) == 0 {
 		return nil, fmt.Errorf("%w under %s", ErrNoModules, strings.Join(paths, ", "))
 	}
+	return bundleFrom(sources, mode)
+}
 
+// bundleFrom parses and compiles sources that have already been read, whether
+// from disk or from a running OPA, so the two ways in agree on how a bundle is
+// built.
+func bundleFrom(sources []source, mode ParseMode) (*Bundle, error) {
 	modules, version, err := parseSources(sources, mode)
 	if err != nil {
 		return nil, err

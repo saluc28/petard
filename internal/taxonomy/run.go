@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -259,9 +260,30 @@ type Inputs struct {
 	Limits opaengine.Limits
 }
 
+// TokenEnv is the environment variable a running OPA's bearer token is read
+// from, so the token stays out of the command line and the shell history.
+const TokenEnv = "PETARD_OPA_TOKEN"
+
 // Load reads everything the inputs name and builds the analysis over it.
-func Load(inputs Inputs) (Analysis, error) {
-	bundle, err := opaengine.Load(inputs.Paths, inputs.Mode)
+//
+// The paths are files, directories or bundle archives, or a single URL of a
+// running OPA, whose policies are read over its API (see opaengine.LoadRemote).
+// The context bounds the requests to a running OPA and is otherwise unused.
+func Load(ctx context.Context, inputs Inputs) (Analysis, error) {
+	remote, err := remoteSource(inputs.Paths)
+	if err != nil {
+		return Analysis{}, err
+	}
+
+	var bundle *opaengine.Bundle
+	if remote != "" {
+		bundle, err = opaengine.LoadRemote(ctx, remote, os.Getenv(TokenEnv), inputs.Mode)
+		if errors.Is(err, opaengine.ErrUnauthorized) {
+			err = fmt.Errorf("%w; set %s to the bearer token", err, TokenEnv)
+		}
+	} else {
+		bundle, err = opaengine.Load(inputs.Paths, inputs.Mode)
+	}
 	if err != nil {
 		return Analysis{}, err
 	}
@@ -311,6 +333,11 @@ func Load(inputs Inputs) (Analysis, error) {
 		}
 		return analysis, nil
 	}
+	if remote != "" {
+		// The data of a running OPA is read over its API, which a later change
+		// adds. Until then a live analysis has no data unless -data gives it.
+		return analysis, nil
+	}
 
 	// Without -data, the data is what the bundle carries, if anything, the way
 	// opa run reads a bundle. A bundle without data is an analysis without it.
@@ -322,6 +349,30 @@ func Load(inputs Inputs) (Analysis, error) {
 		return Analysis{}, err
 	}
 	return analysis, nil
+}
+
+// remoteSource returns the URL of a running OPA when the paths name one, and the
+// empty string when they are files. A URL is analyzed on its own: mixing it with
+// files, or with a second server, has no single bundle to compile.
+func remoteSource(paths []string) (string, error) {
+	var urls, files int
+	var url string
+	for _, path := range paths {
+		if opaengine.IsRemote(path) {
+			urls++
+			url = path
+			continue
+		}
+		files++
+	}
+	switch {
+	case urls == 0:
+		return "", nil
+	case urls == 1 && files == 0:
+		return url, nil
+	default:
+		return "", errors.New("taxonomy: a running OPA is analyzed on its own, not alongside files or another server")
+	}
 }
 
 // inferDecisions declares as decisions the rules no other rule uses, for a

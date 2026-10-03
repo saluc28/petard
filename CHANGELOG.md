@@ -32,6 +32,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A bundle archive, such as the `bundle.tar.gz` that `opa build` writes, is read in place by
   `petard analyze` and `petard export`, and by `-data`: the policies and the data files inside it,
   with the size limit OPA applies to each file.
+- `petard analyze` and `petard export` take the URL of a running OPA in place of a path, and read
+  its policies over `GET /v1/policies`, read only, so the analysis is of what the server runs. A
+  bearer token is read from `$PETARD_OPA_TOKEN`. The data still comes from `-data`.
 
 ### Changed
 

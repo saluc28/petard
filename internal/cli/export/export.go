@@ -68,8 +68,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprint(stderr, "usage: petard export [flags] <path>...\n\n"+
-			"Paths are Rego files, directories holding them, or bundle archives such as bundle.tar.gz.\n"+
-			"With -url, the credentials are read from "+envTokenID+" and "+envTokenKey+".\n\n")
+			"Paths are Rego files, directories holding them, bundle archives such as bundle.tar.gz,\n"+
+			"or the URL of a running OPA, whose policies are read over its API with a token from $"+taxonomy.TokenEnv+".\n"+
+			"With -url, the BloodHound credentials are read from "+envTokenID+" and "+envTokenKey+".\n\n")
 		flags.PrintDefaults()
 	}
 
@@ -191,7 +192,7 @@ type remote struct {
 // The analysis comes back with the payload, so that the run can say what the
 // graph rests on, the decisions above all.
 func build(ctx context.Context, inputs taxonomy.Inputs) (bhgraph.Graph, taxonomy.Analysis, error) {
-	analysis, err := taxonomy.Load(inputs)
+	analysis, err := taxonomy.Load(ctx, inputs)
 	if err != nil {
 		return bhgraph.Graph{}, taxonomy.Analysis{}, err
 	}
