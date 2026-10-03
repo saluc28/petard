@@ -7,8 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/open-policy-agent/opa/v1/storage/inmem"
 )
 
 // Petard reads a running OPA the way a collector reads a directory service: over
@@ -121,4 +125,39 @@ func LoadRemote(ctx context.Context, base, token string, mode ParseMode) (*Bundl
 		return nil, fmt.Errorf("%w at %s", ErrNoModules, base)
 	}
 	return bundleFrom(sources, mode)
+}
+
+// FetchData reads the base data a running OPA holds under each of the given
+// roots, and returns ErrNoData when none of them resolves.
+//
+// Each root is one top-level segment the decisions read, fetched with GET
+// /v1/data/<root>, which returns the document at that path (v1/server/server.go
+// at v1.20.2). A root the server has nothing under comes back with no result,
+// and is skipped rather than stored as an empty document. Only the roots the
+// decisions read are fetched, so a live analysis reads the least of the data it
+// can, and never asks the server to decide anything.
+func FetchData(ctx context.Context, base, token string, roots []string) (*Data, error) {
+	client := newClient(base, token)
+	documents := map[string]any{}
+	var files []string
+	for _, root := range roots {
+		var response struct {
+			Result *any `json:"result"`
+		}
+		path := "/v1/data/" + url.PathEscape(root)
+		if err := client.get(ctx, path, &response); err != nil {
+			return nil, err
+		}
+		if response.Result == nil {
+			continue
+		}
+		documents[root] = *response.Result
+		files = append(files, client.base+path)
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("%w from %s", ErrNoData, base)
+	}
+
+	slices.Sort(files)
+	return &Data{store: inmem.NewFromObject(documents), Files: files}, nil
 }

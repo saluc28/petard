@@ -273,9 +273,10 @@ the directory. The policies and the data inside it are read the same way:
 petard analyze bundle.tar.gz
 ```
 
-A running OPA can be given in place of a path. Petard reads its policies over the API, read only,
-and analyzes what the server runs rather than a checkout that may have moved on. A bearer token,
-if the server needs one, is read from `$PETARD_OPA_TOKEN`:
+A running OPA can be given in place of a path. Petard reads it over the API, read only, and
+analyzes what the server runs rather than a checkout that may have moved on: the policies, and the
+data under each document the decisions read. It never asks the server to decide anything. A bearer
+token, if the server needs one, is read from `$PETARD_OPA_TOKEN`:
 
 ```
 petard analyze http://localhost:8181

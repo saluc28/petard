@@ -276,8 +276,10 @@ func Load(ctx context.Context, inputs Inputs) (Analysis, error) {
 	}
 
 	var bundle *opaengine.Bundle
+	var token string
 	if remote != "" {
-		bundle, err = opaengine.LoadRemote(ctx, remote, os.Getenv(TokenEnv), inputs.Mode)
+		token = os.Getenv(TokenEnv)
+		bundle, err = opaengine.LoadRemote(ctx, remote, token, inputs.Mode)
 		if errors.Is(err, opaengine.ErrUnauthorized) {
 			err = fmt.Errorf("%w; set %s to the bearer token", err, TokenEnv)
 		}
@@ -334,8 +336,17 @@ func Load(ctx context.Context, inputs Inputs) (Analysis, error) {
 		return analysis, nil
 	}
 	if remote != "" {
-		// The data of a running OPA is read over its API, which a later change
-		// adds. Until then a live analysis has no data unless -data gives it.
+		// The data is what the running OPA holds, read over its API for the
+		// roots the decisions read, the same way the bundle's data is read from
+		// disk. A server with nothing under those roots is an analysis without
+		// data.
+		analysis.Data, err = opaengine.FetchData(ctx, remote, token, dataRoots(reads))
+		switch {
+		case err == nil:
+			analysis.DataFromLive = true
+		case !errors.Is(err, opaengine.ErrNoData):
+			return Analysis{}, err
+		}
 		return analysis, nil
 	}
 
@@ -349,6 +360,27 @@ func Load(ctx context.Context, inputs Inputs) (Analysis, error) {
 		return Analysis{}, err
 	}
 	return analysis, nil
+}
+
+// dataRoots returns the distinct top-level documents the decisions read, as the
+// segment right after data: data.users[_].roles and data.users.alice both sit
+// under users. They are what a running OPA is asked for, one GET per root, so a
+// live analysis reads the whole of each document a decision touches and no more.
+func dataRoots(reads *opaengine.ReadSet) []string {
+	seen := map[string]bool{}
+	var roots []string
+	for _, path := range reads.Paths() {
+		root := strings.TrimPrefix(path, "data.")
+		if i := strings.IndexAny(root, ".["); i >= 0 {
+			root = root[:i]
+		}
+		if root != "" && !seen[root] {
+			seen[root] = true
+			roots = append(roots, root)
+		}
+	}
+	slices.Sort(roots)
+	return roots
 }
 
 // remoteSource returns the URL of a running OPA when the paths name one, and the

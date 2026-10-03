@@ -103,6 +103,53 @@ func TestLoadRemoteOnABadStatus(t *testing.T) {
 	}
 }
 
+// The data of a running OPA is read one root at a time, over GET /v1/data/<root>.
+// A root the server has nothing under comes back with no result and is skipped,
+// not stored as an empty document.
+func TestFetchData(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/data/users":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"result": map[string]any{"alice": map[string]any{"roles": []string{"admin"}}},
+			})
+		case "/v1/data/missing":
+			_ = json.NewEncoder(w).Encode(map[string]any{}) // undefined: no result
+		default:
+			t.Errorf("unexpected request to %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	data, err := FetchData(t.Context(), server.URL, "", []string{"missing", "users"})
+	if err != nil {
+		t.Fatalf("FetchData() error = %v", err)
+	}
+	if !slices.Equal(data.Files, []string{server.URL + "/v1/data/users"}) {
+		t.Errorf("Files = %v, want only the root that resolved", data.Files)
+	}
+	value, found, err := data.Value(t.Context(), "data.users.alice.roles")
+	if err != nil || !found {
+		t.Fatalf("data.users.alice.roles not read (found %v, error %v)", found, err)
+	}
+	if roles, ok := value.([]any); !ok || len(roles) != 1 || roles[0] != "admin" {
+		t.Errorf("roles = %v, want [admin] mounted under the root", value)
+	}
+}
+
+// A server with nothing under any root the decisions read is an analysis without
+// data, which says so rather than coming back empty.
+func TestFetchDataNoneResolved(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{})
+	}))
+	defer server.Close()
+
+	if _, err := FetchData(t.Context(), server.URL, "", []string{"users"}); !errors.Is(err, ErrNoData) {
+		t.Errorf("FetchData() error = %v, want ErrNoData", err)
+	}
+}
+
 func TestIsRemote(t *testing.T) {
 	for path, want := range map[string]bool{
 		"http://localhost:8181": true,

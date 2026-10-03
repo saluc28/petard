@@ -34,6 +34,11 @@ type Analysis struct {
 	// documents decide which patterns run and what they find.
 	DataFromBundle bool
 
+	// DataFromLive is set when the data was read from a running OPA over its
+	// API, for the roots the decisions read. A report says so for the same
+	// reason as DataFromBundle.
+	DataFromLive bool
+
 	// EnforcementPoint is the product that asks for the decisions, declared,
 	// and nil when nobody declared one. It says who sets each part of the
 	// request, which the policy cannot.

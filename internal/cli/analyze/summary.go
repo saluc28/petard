@@ -275,6 +275,10 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 		render.Print(out, fmt.Sprintf("The data is what the bundle carries, %s called data.json, data.yaml "+
 			"or data.yml. -data replaces it.", count(len(a.Data.Files), "file")), "  ")
 	}
+	if a.DataFromLive {
+		render.Print(out, fmt.Sprintf("The data is what the running OPA holds, read over its API for the %s "+
+			"the decisions read. -data replaces it.", count(len(a.Data.Files), "root")), "  ")
+	}
 
 	if point := a.EnforcementPoint; point != nil {
 		request := taxonomy.RequestCoverageOf(a.Reads, point)

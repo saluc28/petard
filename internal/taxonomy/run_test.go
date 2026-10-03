@@ -164,8 +164,9 @@ func TestLoadWithoutDataInTheBundle(t *testing.T) {
 	}
 }
 
-// A URL is analyzed by reading the running OPA's policies, with the bearer token
-// taken from the environment, so it never sits on the command line.
+// A URL is analyzed by reading the running OPA's policies and the data under the
+// roots they read, with the bearer token taken from the environment so it never
+// sits on the command line.
 func TestLoadFromARunningOPA(t *testing.T) {
 	const policy = `package authz
 
@@ -180,9 +181,18 @@ allow if "admin" in data.users[input.user].roles
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"result": []map[string]string{{"id": "authz/policy.rego", "raw": policy}},
-		})
+		switch r.URL.Path {
+		case "/v1/policies":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"result": []map[string]string{{"id": "authz/policy.rego", "raw": policy}},
+			})
+		case "/v1/data/users":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"result": map[string]any{"alice": map[string]any{"roles": []string{"admin"}}},
+			})
+		default:
+			t.Errorf("unexpected request to %s", r.URL.Path)
+		}
 	}))
 	defer server.Close()
 
@@ -194,8 +204,11 @@ allow if "admin" in data.users[input.user].roles
 	if !slices.Equal(a.Reads.Decisions, []string{"data.authz.allow"}) {
 		t.Errorf("Decisions = %v, want the policy the server runs", a.Reads.Decisions)
 	}
-	if a.Data != nil {
-		t.Errorf("Data = %v, want none: a live analysis has no data until it is read over the API", a.Data)
+	if !a.DataFromLive || a.Data == nil {
+		t.Fatalf("DataFromLive = %v with data %v, want the data read over the API", a.DataFromLive, a.Data)
+	}
+	if _, found, err := a.Data.Value(t.Context(), "data.users.alice.roles"); err != nil || !found {
+		t.Errorf("data.users.alice.roles was not read from the running OPA (found %v, error %v)", found, err)
 	}
 }
 
