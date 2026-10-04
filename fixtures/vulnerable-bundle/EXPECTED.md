@@ -411,6 +411,35 @@ bob, in the security group, by its id         allow_audit_log = true
 Without `-pep` the pattern does not run, and without the write model the case stays a candidate:
 the declaration says the value is a name, and only the write model says who can pick it.
 
+### PTD-OPA-011, a grant on an identity somebody can assume
+
+`mesh.rego` opens the internal sync to the SPIFFE id of the sync service account. The mesh proves the
+identity of the calling workload from its mTLS certificate, so the caller cannot write it, but
+anyone who can deploy a workload under that service account becomes it, and who can deploy into the
+namespace is a fact about the orchestrator. The same decision also grants on an agent identity the
+mesh binds to a verified credential, written the same way: `input.caller.spiffe ==
+"spiffe://.../sa/sync"` and `input.caller.attested == "agent:indexer"`. `pep.yaml` declares the
+first a runtime identity assumable by `role:deployer` and the second a pinned one.
+
+| | where | expected |
+|---|---|---|
+| **case** | `mesh.rego`, `allow_sync`, `input.caller.spiffe == "spiffe://.../sa/sync"` | **finding**, `role:deployer` can assume it, at confidence A |
+| **counter case** | the same decision, `input.caller.attested == "agent:indexer"` | **nothing**, the mesh pins it to a verified credential |
+
+Measured with `data.quill.verify.assumable_identity`:
+
+```
+sync by another workload                       allow_sync = false
+sync by the sync service account               allow_sync = TRUE   ← the identity is assumable
+sync by the attested agent                     allow_sync = TRUE   ← pinned, read the same way
+```
+
+The attested agent grants too, and that is the point: the policy reads the two identities the same
+way, and only the declaration says the first is assumed by deploying the service account while the
+second is pinned. Without `-pep` the pattern does not run, and without an `assumable_by` entry the
+case stays a candidate: the declaration says the value is an identity, and only the declaration says
+who can assume it.
+
 ---
 
 ## 4. What the engine must not report
@@ -436,16 +465,17 @@ legitimate finding for another.
 | 13 | `allow_console` | 008 | the setting is just as global, but it only decides for somebody with a record |
 | 14 | `not input.mfa`, in `allow_export` and in `allow` | 009 | the gateway sets it from the session |
 | 15 | `"grp-5821" in input.group_ids` | 010 | an id the directory assigns, which nobody picks |
+| 16 | `input.caller.attested` | 011 | an identity the mesh pins to a verified credential |
 
 Expected precision, with the gateway declared: **two `PTD_CanEscalateTo`** (mallory and carol),
-**fifteen findings and one candidate**, and none of the rows above under the pattern they belong
+**sixteen findings and one candidate**, and none of the rows above under the pattern they belong
 to.
 
-The fifteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
+The sixteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
 `allow_unguarded`, mallory's escalation, which comes out under the id of 003 because that is where
 the registry says a candidate turns into a finding, carol's escalation under 006, the reading room
-under 008, the scheduled export under 009, and the group called security under 010. The two
-escalations are the two findings that are also `PTD_CanEscalateTo` edges.
+under 008, the scheduled export under 009, the group called security under 010, and the internal
+sync under 011. The two escalations are the two findings that are also `PTD_CanEscalateTo` edges.
 
 ---
 
@@ -552,10 +582,10 @@ Readable with `opa inspect -a`. They serve three purposes:
 There are no `schemas:`, and that is deliberate: they would raise the confidence of a finding
 artificially. The realistic case is that nobody writes them.
 
-**Fifteen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
+**Sixteen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
 of the split grant, `admin` and `publish`, the guarded and unguarded merge decisions of `review`,
-the reading room, the console and the audit log of `platform`, and the export of
-`tenant_policy`. A rule
+the reading room, the console and the audit log of `platform`, the export of `tenant_policy`, and
+the internal sync of `mesh`. A rule
 without the annotation is a rule the engine never looks at, and leaving the three counter cases
 of `risk.rego` unannotated would break the fixture in two directions at once: *"the engine must
 not report `allow_defensive`"* would be satisfied for the wrong reason, because that rule would
@@ -674,6 +704,10 @@ opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy
 
 ```bash
 opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.uncontrolled_name'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.assumable_identity'
 ```
 
 Dual parsing, where the first has to pass and the second has to fail:

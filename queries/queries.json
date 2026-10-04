@@ -448,6 +448,38 @@
     "acknowledgements": []
   },
   {
+    "name": "PTD-OPA-011: grants on an identity nobody declared an assumer for",
+    "guid": "3d909d01-6be8-432f-ba22-05db1939df5d",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Assumable identity",
+    "description": "The same checks, where no declaration says who can assume the identity the grant trusts. Whoever can deploy the workload it names, or obtain its credential, may be able to.",
+    "query": "MATCH (r:PTD_Rule)\nWHERE 'PTD-OPA-011' IN r.candidate_patterns\nRETURN r",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-011-grant-on-assumable-identity.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-011: rules that grant on an identity somebody can assume",
+    "guid": "065599f3-56cc-4bd3-b3df-37ce13e0394d",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Assumable identity",
+    "description": "Rules holding a check that grants on a runtime identity the enforcement point asserts, where the declaration says who can assume it in another layer.",
+    "query": "MATCH (r:PTD_Rule)\nWHERE 'PTD-OPA-011' IN r.patterns\nRETURN r",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-011-grant-on-assumable-identity.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
     "name": "Petard: every escalation",
     "guid": "add3eff5-92cc-47fa-9e23-d29f03dfe870",
     "prebuilt": false,

@@ -38,6 +38,8 @@ decisions:
     side: grants
   - rule: allow_audit_log
     side: grants
+  - rule: allow_sync
+    side: grants
 
 fields:
   - path: input.user
@@ -80,6 +82,28 @@ fields:
     note: The ids of the groups of the user, which the directory assigns and never reuses.
     evidence:
       - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-010"
+  # THE PTD-OPA-011 CASE. The mesh proves the SPIFFE identity of the calling
+  # workload from its mTLS certificate, so the caller cannot write it. Who can
+  # BECOME that service account is a question about who can deploy into the
+  # namespace, which lives in another layer.
+  - path: input.caller.spiffe
+    set_by: enforcement-point
+    identity: true
+    assumable_by:
+      - principal: role:deployer
+        via: deploy a workload under the service account in ns/platform
+    note: The SPIFFE identity of the calling workload, from its mTLS certificate.
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-011"
+  # THE PTD-OPA-011 COUNTER CASE. The same kind of identity, which the mesh binds
+  # to a verified credential: no deploy makes somebody it.
+  - path: input.caller.attested
+    set_by: enforcement-point
+    identity: true
+    pinned: true
+    note: An agent identity the mesh binds to a verified credential.
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-011"
   # THE PTD-OPA-009 CASE falls here: input.scheduled is in the body of the
   # request, with what the caller asks for.
   - path: input.*

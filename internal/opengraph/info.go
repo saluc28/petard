@@ -81,6 +81,11 @@ var patternNotes = []patternNote{
 		title:  "A decision grants on a name somebody else picks",
 		closes: "Granting on the id the issuer assigns, which nobody picks and nothing else is ever given, closes it.",
 	},
+	{
+		id: "PTD-OPA-011", name: "grant-on-assumable-identity",
+		title:  "A decision grants on an identity somebody can assume",
+		closes: "Pinning the identity to a credential the enforcement point verifies, which nobody below the grant can assume, closes it.",
+	},
 }
 
 // patternLines renders, for a list of pattern ids held under key, one line per

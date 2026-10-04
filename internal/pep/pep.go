@@ -123,6 +123,26 @@ type Decision struct {
 	Note string `yaml:"note"`
 }
 
+// Assumption is one principal that can assume or mint an identity, and how.
+//
+// It is to an identity what a writer is to a document: who, declared outside the
+// policy, can bring themselves into the identity a decision trusts. Who can
+// deploy the service account a SPIFFE id names, or obtain the credential an
+// agent principal rests on, is a fact about another layer, and the policy that
+// grants on the identity cannot see it.
+type Assumption struct {
+	// Principal is who can become the identity, in the terms of the system
+	// around OPA: a role, a group, a service account with the right to deploy.
+	Principal string `yaml:"principal"`
+
+	// Via is how the assumption happens, deploying a workload under the service
+	// account or issuing its credential. A finding without the how is not
+	// actionable.
+	Via string `yaml:"via"`
+
+	Note string `yaml:"note"`
+}
+
 // Field is one part of the request.
 type Field struct {
 	// Path is the part, in the notation of the write model:
@@ -138,6 +158,25 @@ type Field struct {
 	// Identifier is the kind of value the issuer puts there, when it names
 	// somebody, and empty when it does not or when nothing verified says.
 	Identifier Identifier `yaml:"identifier"`
+
+	// Identity marks a part of the request as a runtime identity a decision may
+	// grant on: a workload's SPIFFE id, an agent principal, a process lineage.
+	// It belongs on a part an issuer or the enforcement point sets, since a
+	// caller who writes an identity forges it, which is a name a decision grants
+	// on and not an identity to assume.
+	Identity bool `yaml:"identity"`
+
+	// Pinned says the assumption of the identity is constrained, as a credential
+	// the enforcement point verifies pins it: nobody below the grant can become
+	// it. It belongs only on an identity, and an identity it is set on is left
+	// alone rather than reported.
+	Pinned bool `yaml:"pinned"`
+
+	// AssumableBy names who can assume or mint the identity in another layer,
+	// whoever can deploy the service account it names or obtain its credential.
+	// It is the fact no policy contains, the identity-side counterpart of the
+	// write model, and it is what turns a grant on an identity into a finding.
+	AssumableBy []Assumption `yaml:"assumable_by"`
 
 	Note string `yaml:"note"`
 
@@ -267,8 +306,33 @@ func (f *Field) validate() error {
 	default:
 		return fmt.Errorf("field %s: set_by %q is none of %s, %s, %s", f.Path, f.SetBy, SetByCaller, SetByEnforcementPoint, SetByIssuer)
 	}
+	if err := f.validateIdentity(); err != nil {
+		return err
+	}
 	if len(f.Evidence) == 0 {
 		return fmt.Errorf("field %s: no evidence, and every field says where it was read", f.Path)
+	}
+	return nil
+}
+
+// validateIdentity checks the identity side of a field: it is an identity only
+// where an issuer or the enforcement point sets it, it is pinned or assumable
+// and not both, and the two belong to an identity.
+func (f *Field) validateIdentity() error {
+	if f.Identity && f.SetBy == SetByCaller {
+		return fmt.Errorf("field %s: the caller sets it, so an identity there is forged in the request, "+
+			"which is a name a decision grants on and not an identity to assume", f.Path)
+	}
+	if !f.Identity && (f.Pinned || len(f.AssumableBy) > 0) {
+		return fmt.Errorf("field %s: pinned and assumable_by describe an identity, and this is not declared as one", f.Path)
+	}
+	if f.Pinned && len(f.AssumableBy) > 0 {
+		return fmt.Errorf("field %s: an identity is pinned or assumable by somebody, not both", f.Path)
+	}
+	for _, assumption := range f.AssumableBy {
+		if assumption.Principal == "" {
+			return fmt.Errorf("field %s: an assumable_by entry names no principal", f.Path)
+		}
 	}
 	return nil
 }

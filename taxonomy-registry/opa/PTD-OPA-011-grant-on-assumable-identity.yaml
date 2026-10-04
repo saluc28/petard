@@ -1,0 +1,264 @@
+schema_version: 1
+
+id: PTD-OPA-011
+name: grant-on-assumable-identity
+title: A decision grants on an identity somebody can assume
+closes: >
+  Pinning the identity to a credential the enforcement point verifies, which nobody below the grant can assume, closes it.
+engine: opa
+status: implemented
+
+category:
+  id: ASSUMABLE-IDENTITY
+  title: Assumable identity
+  summary: >
+    A decision grants to a runtime identity it trusts, a workload's SPIFFE id, an agent principal,
+    a process lineage. The enforcement point proves the identity, so the caller cannot forge it in
+    the request. Who can become that identity is a question another layer answers: whoever can
+    deploy the workload the id names, spawn the process, or obtain the credential. Neither the policy
+    nor the enforcement point's set_by holds that fact.
+    Abstract category: it holds for any engine that decides on an identity an enforcement point
+    asserts, where the identity can be assumed in a layer the policy does not see.
+  category_note: >
+    The first instance. The same category covers the forms the identity takes, a SPIFFE service
+    account, a process lineage a supervisor observes, an agent principal a gateway binds, which
+    differ only in how the identity is named.
+
+summary: >
+  A decision grants when a part of the request carries an identity the policy trusts, the SPIFFE id
+  of the service account a call came from. The enforcement point proves it, a mesh from the mTLS
+  certificate of the connection, so whoever sends the request cannot write it. What it proves is that
+  the caller holds that identity now. Who is allowed to hold it is a separate question, and another
+  layer answers it: whoever can deploy a workload under the service account the id names becomes it,
+  and who can deploy into the namespace depends on the orchestrator's own rules, which the policy
+  cannot see.
+  In the fixture, the internal sync is open to the SPIFFE id of a service account, and anyone who
+  can deploy into the namespace can bring up a workload under it.
+
+preconditions:
+  - capability: The principal can assume the identity the grant trusts, in another layer
+    note: >
+      Deploying a workload under the service account a SPIFFE id names, where creating workloads in
+      the namespace is open, or obtaining the credential the identity rests on. The declaration
+      says who can, in an entry on the part of the request.
+
+mechanism:
+  description: >
+    `input.caller.spiffe == "spiffe://.../sa/sync"` holds for a call whose proven identity is that
+    service account, and the mesh puts the identity of the calling workload in the request from its
+    certificate. A workload deployed a minute ago under that service account carries the same id.
+    An agent identity the enforcement point binds to a verified credential, `input.caller.attested
+    == "agent:indexer"`, is read the same way and cannot be assumed without the credential.
+  example: |
+    package example
+
+    # the decision the PEP of the mesh consumes for an internal call
+    default allow_sync := false
+
+    allow_sync if {
+        input.action == "sync"
+        input.caller.spiffe == "spiffe://cluster.local/ns/platform/sa/sync"
+    }
+  example_note: >
+    The internal sync rule of the fixture has the same shape, and it was measured with the rego
+    package of OPA v1.20.2: a call from another workload is refused, the same call from the sync
+    service account is allowed, and the agent identity the mesh pins is allowed too, which is the
+    point, since the policy reads the two identities the same way.
+
+detection:
+  ast_source: compiled
+  requires:
+    - binding-resolution
+    - rule-graph
+    - enforcement-point
+  requires_note: >
+    `enforcement-point` for signals 2 and 3: whether a part of the request is a runtime identity,
+    whether its assumption is pinned, and who can assume it, are declared per product in
+    `pep-registry/`, or in a file of the same format named with `-pep`. Without a declaration the
+    pattern does not run, and the report says so.
+  signals:
+    - order: 1
+      check: >
+        A decision reaches a check that holds a part of the request against a value the policy
+        writes, an equality or a search with `in` in either direction, and the check holding moves
+        the decision towards granting. The engine reports it among the checks on the request, as
+        granting in that decision.
+      rationale: >
+        The value the policy writes is the identity the grant is keyed on. A part of the request
+        asked to be true is compared with no identity, and a check that refuses grants nothing.
+    - order: 2
+      check: >
+        The enforcement point declares that part a runtime identity it asserts, with `identity:
+        true` on a part an issuer or the enforcement point sets. A part the caller sets is left
+        alone, since an identity whoever sends the request writes is a name forged in the request,
+        which is PTD-OPA-010. A part it declares pinned is left alone too, since nobody below the
+        grant can assume it.
+      rationale: >
+        The case and the counter case differ only here, and the policy does not say it. A service
+        account's id and an agent identity bound to a verified credential are compared the same way;
+        only the declaration says the first is assumed by deploying the service account and the
+        second is pinned.
+    - order: 3
+      check: >
+        The declaration says who can assume the identity, in an `assumable_by` entry on that part
+        of the request. With one the match is a finding, without one a candidate.
+      rationale: >
+        Who can deploy the service account an id names, or obtain the credential an agent principal
+        rests on, is a fact about another layer, of the same kind as who can write a document. It is
+        the identity-side counterpart of the write model, and it lives with the rest of what the
+        enforcement point declares, since it is a fact about the request the enforcement point built.
+  confidence: A
+  confidence_note: >
+    A finding rests on two declarations, that the part is a runtime identity and who can assume it,
+    and carries level A. A candidate carries the level the request was recognized at.
+  requires_write_model: false
+  requires_write_model_note: >
+    Nobody writes a document here: the identity is in the request. What plays the part of the write
+    model is the declaration of the enforcement point, who can assume the identity, and without the
+    declaration the pattern does not run. It emits no `PTD_CanEscalateTo` either: the identity opens
+    a grant rather than the position of another principal.
+
+graph:
+  emits: finding
+  marks:
+    - kind: PTD_Rule
+      properties: [is_decision]
+  marks_note: >
+    It marks the rule that holds the check on the request, as PTD-OPA-009 and PTD-OPA-010 do, and a
+    rule that reads no document has no node otherwise.
+
+false_positives:
+  - condition: >
+      The identity is pinned to a credential the enforcement point verifies, the policy requiring a
+      verified credential before it trusts the identity, so nobody can assume it without the
+      credential.
+    discriminator: >
+      Whether the assumption is pinned is a fact about the enforcement point, and the declaration is
+      where it is said, with `pinned: true`. The pattern takes the declaration as written and leaves
+      a pinned identity alone.
+  - condition: >
+      Only somebody already entitled to the grant can assume the identity: the orchestrator reserves
+      the service account, or limits who can deploy under it to the owners of the namespace.
+    discriminator: >
+      Who can deploy a workload under a service account is a setting of the orchestrator, and the
+      declaration is where it is said. The pattern takes the `assumable_by` entry as written, and
+      without one the match stays a candidate.
+  - condition: >
+      The grant on the identity also asks for something the principal who can assume it does not
+      have, a scope in the data or a second decision.
+    discriminator: >
+      The engine reports the check and does not evaluate the decision for the principal the
+      declaration names, with the identity in place. Partial evaluation with the identity fixed and
+      that principal as the subject would tell the two apart.
+  - condition: >
+      The grant is meant for whoever holds the identity, by design: an open internal plane where
+      any workload of the mesh is trusted, and deploying one gives nothing calling the plane does
+      not.
+    discriminator: >
+      Intent, which is in neither the policy, the data nor the declarations.
+
+not_a_lint_rule: >
+  A linter sees `input.caller.spiffe == "spiffe://.../sa/sync"` and `input.caller.attested ==
+  "agent:indexer"` as the same comparison of the request with a string. Which of the two can be
+  assumed, and by whom, is in the declaration of the enforcement point, in no file of the bundle.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  pep: fixtures/vulnerable-bundle/pep.yaml
+  case: >
+    `mesh.rego`, `allow_sync`: the internal sync is open to the SPIFFE id of the sync service
+    account, the gateway declares it a runtime identity the mesh proves, and the declaration says
+    whoever can deploy into the namespace can assume it.
+  counter_case: >
+    The same decision, `input.caller.attested == "agent:indexer"`: an agent identity the gateway
+    declares pinned to a verified credential.
+  expected: >
+    A finding on `input.caller.spiffe` for `data.quill.mesh.allow_sync`, and nothing on
+    `input.caller.attested`.
+
+references:
+  - title: aws-samples/istio-on-eks, the SPIFFE workload-identity grant
+    note: >
+      At commit d948a12a, `modules/04-security/opa-external-authorization/policy.rego`: the `allow`
+      decision grants when `input.attributes.destination.principal` (imported as `principal` on line
+      5) matches the `principal` of a permitted operation, a SPIFFE id such as
+      `spiffe://cluster.local/ns/workshop/sa/frontend-sa` (role_perms, lines 37 to 54, and the
+      unprotected operations from line 56). The destination principal is the identity the mesh
+      proves from the mTLS certificate, and the grant keys on the service account it names. Consulted
+      2026-10-05. A tutorial module, so an instance of the form rather than a finding in a product.
+  - title: Yanofnasr/mcp-agent-identity-control-plane, the credential-pinned counter case
+    note: >
+      At commit d28048a6, `policy/mcp-tool-authorization.rego`: the agent identity
+      (`agent.agent_principal`, a SPIFFE or urn value, format checked on lines 120 to 125) is
+      trusted only once the policy has a verified credential for it, `agent.credential_verified ==
+      true` on line 137 and a valid sha256 thumbprint on line 136. The assumption is pinned to the
+      credential, which is the shape the pattern must leave alone. Consulted 2026-10-05.
+  - title: OWASP Top 10 for Agentic Applications 2026, ASI03 Identity and Privilege Abuse
+    note: >
+      Consulted 2026-10-05: agents act with borrowed, over-scoped or long-lived credentials, and a
+      compromised agent inherits far more access than its task needs. The identity half of ASI03 is
+      this pattern, a grant on an identity whose assumption is not pinned.
+
+verified:
+  date: 2026-10-05
+  tool_version: opa 1.20.2
+  how: >
+    The engine finds the case and stays quiet about the counter case on the fixture, run with its
+    gateway (`-pep fixtures/vulnerable-bundle/pep.yaml`). The checks on the request list
+    `input.caller.spiffe` and `input.caller.attested` as granting in `allow_sync`; the declaration
+    puts the first on the enforcement point as a runtime identity assumable by `role:deployer` and
+    the second as a pinned one, so one finding comes out, at confidence A. Without the write model
+    it is still a finding, since who can assume the identity is in the declaration of the enforcement
+    point and not in the write model. Without an `assumable_by` entry it is a candidate, and without
+    a declaration the pattern does not run.
+    The numbers behind it, `data.quill.verify.assumable_identity`, measured with the rego package of
+    OPA v1.20.2: a call from another workload is refused, the same call from the sync service account
+    is allowed, and the pinned agent identity is allowed too, since the policy reads the two
+    identities the same way.
+    `regal` v0.42.0 reports no violations on `policy-v1`.
+    On generated worlds the pattern reports the same finding and nothing else: it rests on the policy
+    and the declaration, and a dataset moves neither.
+
+related:
+  - id: PTD-OPA-010
+    note: >
+      The other grant on a value an issuer or the enforcement point sets. 010 is a name somebody
+      picks at the issuer; this is an identity somebody assumes in another layer. The line between
+      them is the declaration: a part the caller forges is 010, a part the enforcement point asserts
+      and somebody can still become is this one.
+  - id: PTD-OPA-009
+    note: >
+      The other pattern that reads the request from the same declaration. 009 is a part the caller
+      writes that lifts a refusal; this is an identity the enforcement point asserts and somebody can
+      assume, that grants.
+  - id: PTD-OPA-001
+    note: >
+      The same shape on the data rather than the request. 001 is a document the subject writes that
+      a decision reads about them; here the subject writes no part of the request, and assumes the
+      identity the decision trusts in another layer.
+
+notes:
+  - >
+    Known false negative: an identity matched rather than compared, with `startswith`, `glob.match`
+    or `regex.match`, a prefix over a SPIFFE trust domain for instance. Only an equality and a
+    search with `in` are checks.
+  - >
+    Known false negative: a refusal keyed on an identity, `deny if input.caller.spiffe ==
+    "spiffe://.../sa/quarantined"`. Whoever can assume another identity leaves the refusal behind,
+    and the pattern looks at the side that grants only.
+  - >
+    Design note: who can assume an identity is declared in the enforcement point, with `assumable_by`,
+    and not in the write model. The write model says who can write a document; assuming an identity
+    is a fact about the request the enforcement point builds, deploying a workload or obtaining a
+    credential rather than writing data, so it lives with the rest of what the enforcement point
+    declares. PTD-OPA-010 declares who can pick a name in the write model because picking a name is
+    of a kind with writing a document; becoming an identity in another layer is not.
+
+open_questions:
+  - >
+    Whether the engine can read the credential verification off the policy, so that a grant guarded
+    by `credential_verified == true` in the same decision is recognized as pinned without the
+    declaration saying so. Today pinned is a declaration, the way `set_by` is, and the policy-side
+    confirmation is left for later, since reading intent off a rule body is the kind of guess the
+    rest of the engine declines to make.

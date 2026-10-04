@@ -61,6 +61,11 @@ type Findings struct {
 	// write model decides between a finding and a candidate.
 	UncontrolledName []Finding
 
+	// AssumableIdentity holds the grants on a runtime identity somebody can
+	// assume in another layer. Like SelfAsserted it does not run without the
+	// declaration, and the declaration decides between a finding and a candidate.
+	AssumableIdentity []Finding
+
 	// Skipped names the patterns that could not run, and what it would have
 	// taken. A pattern left out in silence reads as a pattern that found
 	// nothing, which is the one thing these patterns exist to disprove.
@@ -79,6 +84,7 @@ func (f Findings) All() []Finding {
 	all = append(all, f.GlobalSwitch...)
 	all = append(all, f.SelfAsserted...)
 	all = append(all, f.UncontrolledName...)
+	all = append(all, f.AssumableIdentity...)
 	return all
 }
 
@@ -155,12 +161,14 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 	if a.EnforcementPoint == nil {
 		found.Skipped[SelfAssertedExemption] = needsEnforcementPoint
 		found.Skipped[GrantOnUncontrolledName] = needsEnforcementPoint
+		found.Skipped[GrantOnAssumableIdentity] = needsEnforcementPoint
 		return found, nil
 	}
 	found.SelfAsserted = SelfAssertedExemptions(a)
 	if found.UncontrolledName, err = GrantsOnUncontrolledNames(a); err != nil {
 		return Findings{}, err
 	}
+	found.AssumableIdentity = GrantsOnAssumableIdentities(a)
 	return found, nil
 }
 

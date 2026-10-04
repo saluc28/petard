@@ -1,0 +1,17 @@
+name: "PTD-OPA-011: grants on an identity nobody declared an assumer for"
+guid: 3d909d01-6be8-432f-ba22-05db1939df5d
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Assumable identity
+description: >
+  The same checks, where no declaration says who can assume the identity the grant trusts. Whoever
+  can deploy the workload it names, or obtain its credential, may be able to.
+query: |-
+  MATCH (r:PTD_Rule)
+  WHERE 'PTD-OPA-011' IN r.candidate_patterns
+  RETURN r
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-011-grant-on-assumable-identity.yaml
+acknowledgements: []

@@ -375,6 +375,7 @@ func TestReadsListsTheDecisions(t *testing.T) {
 		"data.quill.admin.allow",
 		"data.quill.authz.allow",
 		"data.quill.enrichment.allow",
+		"data.quill.mesh.allow_sync",
 		"data.quill.platform.allow_audit_log",
 		"data.quill.platform.allow_console",
 		"data.quill.platform.allow_reading_room",

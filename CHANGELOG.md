@@ -54,12 +54,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `GET /v1/policies`, and, for each top-level document the decisions read, the data under it over
   `GET /v1/data/<root>`. The server is never asked to decide anything. A bearer token is read from
   `$PETARD_OPA_TOKEN`, and `-data` replaces the data read over the API.
+- `PTD-OPA-011`, a decision grants on an identity somebody can assume: a check that grants on a part
+  of the request the enforcement point asserts as a runtime identity, a workload's SPIFFE id for
+  instance, where the declaration says who can assume it in another layer, such as whoever can deploy
+  the service account the id names. It runs with `-pep`. An `assumable_by` entry on that part of the
+  request turns the candidate into a finding, and an identity declared `pinned` to a verified
+  credential is left alone. The declaration takes two new keys on a field, `identity` and
+  `assumable_by`, with `pinned` for an identity nobody can assume. The fixture holds the case and the
+  counter case in one decision: the sync service account and an agent identity bound to a verified
+  credential, read the same way.
 
 ### Changed
 
 - The extension schema, now `v0.2.4`, shows on a `PTD_CanEscalateTo` edge the request that proves
   it, which the payload carries as `witness_request`, `witness_document`, `witness_value` and
-  `witness_write_request`. `petard export -install` puts the new schema in place.
+  `witness_write_request`, and describes `PTD-OPA-011` in the Entity Panel, with two saved queries
+  asking for it. `petard export -install` puts the new schema in place.
 - `petard analyze` and `petard export` no longer stop at a policy that annotates no entrypoint
   when no flag or `-pep` names one. The decisions are then the rules no other rule uses, and the
   report says they were inferred. A rule called `deny`, `violation` or `warn`, alone or with a

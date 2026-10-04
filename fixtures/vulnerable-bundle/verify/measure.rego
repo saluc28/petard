@@ -200,3 +200,24 @@ uncontrolled_name := {
 	her_id := data.quill.platform.allow_audit_log with input as audit_log_her_id
 	by_id := data.quill.platform.allow_audit_log with input as audit_log_by_id
 }
+
+# --- PTD-OPA-011: a grant on an identity somebody can assume --------------------
+# The internal sync is authorized by the workload identity of the caller. The
+# service account and the agent pinned to a verified credential are read the same
+# way and both grant; who can BECOME each identity is not in the policy, it is in
+# pep.yaml.
+sync_as_service_account := {"action": "sync", "caller": {"spiffe": "spiffe://quill.internal/ns/platform/sa/sync"}}
+
+sync_as_attested_agent := {"action": "sync", "caller": {"attested": "agent:indexer"}}
+
+sync_as_another_workload := {"action": "sync", "caller": {"spiffe": "spiffe://quill.internal/ns/platform/sa/web"}}
+
+assumable_identity := {
+	"as_the_sync_service_account": as_service_account,
+	"as_the_attested_agent": as_attested_agent,
+	"as_another_workload": as_another_workload,
+} if {
+	as_service_account := data.quill.mesh.allow_sync with input as sync_as_service_account
+	as_attested_agent := data.quill.mesh.allow_sync with input as sync_as_attested_agent
+	as_another_workload := data.quill.mesh.allow_sync with input as sync_as_another_workload
+}

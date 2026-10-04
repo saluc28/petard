@@ -51,6 +51,15 @@ can make the issuer say it, and a name let go can be taken by somebody else. An 
 by the issuer and never given to anything else. Where nothing verified says which, `identifier` is
 left out.
 
+A part an issuer or the enforcement point sets can be marked an `identity`, a runtime identity a
+decision may grant on, a workload's SPIFFE id or an agent principal. Who can assume it in another
+layer, whoever can deploy the service account it names or obtain its credential, goes in
+`assumable_by`, a list of `principal` and `via`: it is the identity-side counterpart of the write
+model, and it turns a grant on the identity into a finding. An identity whose assumption is
+constrained, pinned to a credential the enforcement point verifies, is marked `pinned` and left
+alone. A caller who sets an identity forges it, so `identity` belongs only on a part an issuer or
+the enforcement point sets.
+
 The first entry that covers a part of the request is the one that answers for it, so the more
 specific entries come first. A part no entry covers is one the declaration does not speak about,
 and the patterns treat it as unknown rather than as safe.

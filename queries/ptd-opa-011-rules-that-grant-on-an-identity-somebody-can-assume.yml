@@ -1,0 +1,17 @@
+name: "PTD-OPA-011: rules that grant on an identity somebody can assume"
+guid: 065599f3-56cc-4bd3-b3df-37ce13e0394d
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Assumable identity
+description: >
+  Rules holding a check that grants on a runtime identity the enforcement point asserts, where the
+  declaration says who can assume it in another layer.
+query: |-
+  MATCH (r:PTD_Rule)
+  WHERE 'PTD-OPA-011' IN r.patterns
+  RETURN r
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-011-grant-on-assumable-identity.yaml
+acknowledgements: []
