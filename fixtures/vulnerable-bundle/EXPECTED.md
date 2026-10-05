@@ -29,15 +29,15 @@ fixtures/vulnerable-bundle/
 
 ### The two variants are the same policy
 
-Checked on the value of every rule the two variants produce under `data.quill`, against every
-input under `inputs/`, which is 237 values over 13 inputs: no divergence between `policy-v1` and
-`policy-v0`, with the rego package of OPA v1.20.2.
+Checked on the value of every rule the two variants produce under `data.quill`, against every one
+of the thirteen inputs under `inputs/`: no divergence between `policy-v1` and `policy-v0`, with the
+rego package of OPA v1.20.2.
 The same pair of trees is also the test of dual parsing:
 
 | | v1 parser | v0 parser (`--v0-compatible`) |
 |---|---|---|
-| `policy-v1/` | passes | 19 errors |
-| `policy-v0/` | 32 errors, "`if` keyword is required before rule body" | passes |
+| `policy-v1/` | passes | 21 errors |
+| `policy-v0/` | 34 errors, "`if` keyword is required before rule body" | passes |
 
 ---
 
@@ -542,7 +542,7 @@ Run on 2026-09-25 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant he
 saying):
 
 ```
-regal lint fixtures/vulnerable-bundle/policy-v1   →  8 files linted. No violations found.
+regal lint fixtures/vulnerable-bundle/policy-v1   →  9 files linted. No violations found.
 ```
 
 The rule categories were confirmed **at the source**, by listing the directories in the pinned
