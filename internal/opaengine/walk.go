@@ -105,6 +105,11 @@ type refReader struct {
 	// input.emergency. See checks.go.
 	foundTruths []foundTruth
 
+	// foundMatches are the loose string matches met while walking, a substring,
+	// a prefix or suffix, a glob or an unanchored regex on a part of the request.
+	// See loosematch.go.
+	foundMatches []foundMatch
+
 	// ways are the ways each decision reaches each rule, recorded by
 	// decisionReach. See reachWay.
 	ways map[*ast.Rule]map[string]map[reachWay]bool
@@ -515,6 +520,7 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 			r.followCall(operator, expr.Operands(), sc)
 			r.markClosure(operator, expr, sc)
 			r.markComparisons(expr, sc)
+			r.markMatches(expr, sc)
 		}
 		if path, ok := objectGetPath(expr, sc.bindings); ok {
 			switch {

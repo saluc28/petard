@@ -480,6 +480,38 @@
     "acknowledgements": []
   },
   {
+    "name": "PTD-OPA-012: decisions that grant on a loose match",
+    "guid": "c1e260da-9ffb-4d92-8d8a-b39f48c9cb57",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Loose enforcement match",
+    "description": "Rules that grant on a resource or an action matched as a substring or an unanchored regex, where a value embedding the one the policy writes passes.",
+    "query": "MATCH (r:PTD_Rule)\nWHERE 'PTD-OPA-012' IN r.patterns\nRETURN r",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-012-grant-on-loose-match.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-OPA-012: loose matches to weigh against the enforcement",
+    "guid": "c60dfaa0-92cf-4647-b735-8027909b56b6",
+    "prebuilt": false,
+    "platforms": [
+      "Open Policy Agent"
+    ],
+    "category": "Loose enforcement match",
+    "description": "The same rules where the match is a prefix, a suffix or a glob, often an intended wildcard, to weigh against what the enforcement point does with the value.",
+    "query": "MATCH (r:PTD_Rule)\nWHERE 'PTD-OPA-012' IN r.candidate_patterns\nRETURN r",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-012-grant-on-loose-match.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
     "name": "Petard: every escalation",
     "guid": "add3eff5-92cc-47fa-9e23-d29f03dfe870",
     "prebuilt": false,

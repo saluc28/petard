@@ -78,11 +78,11 @@ detection:
   signals:
     - order: 1
       check: >
-        A decision reaches a check on a part of the request, an equality or a search against a
-        value the policy writes or the part of the request asked to be true, that lands on the
-        side that grants after crossing a negation: it holds inside something that would refuse,
-        so it lifts the refusal. The engine reports it among the checks on the request, as lifting
-        a refusal in that decision.
+        A decision reaches a check on a part of the request, an equality, a search, or a loose match
+        with `startswith`, `glob.match` or an unanchored `regex.match` against a value the policy
+        writes, or the part of the request asked to be true, that lands on the side that grants after
+        crossing a negation: it holds inside something that would refuse, so it lifts the refusal.
+        The engine reports it among the checks on the request, as lifting a refusal in that decision.
       rationale: >
         The negation is what tells an exemption from a condition of the grant. `input.action ==
         "export"` in the rule that grants says what is asked for and lifts nothing; `not

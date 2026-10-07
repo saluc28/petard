@@ -133,6 +133,88 @@ func sameCheck(a, b Check) bool {
 		a.Line == b.Line && a.UnderNegation == b.UnderNegation && slices.Equal(a.Decisions, b.Decisions)
 }
 
+// A loose string match is a check too: the request held against a value the
+// policy writes with an operator wider than equality. The engine reads the form,
+// so a pattern can tell a substring from a prefix, and reads through a case fold.
+func TestReadsFindTheLooseMatches(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		expected []Check
+	}{
+		{
+			name: "a substring of the request",
+			body: "allow if contains(input.path, \"/admin\")\n",
+			expected: []Check{{
+				Request: "input.path", Value: `"/admin"`, Operator: CheckSubstring, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			// The compiler hoists lower(input.path) into a binding the loose-match
+			// reader does not follow, so a case-folded match is a known false
+			// negative, declared in the registry.
+			name:     "a case-folded match is not read",
+			body:     "allow if contains(lower(input.path), \"/admin\")\n",
+			expected: nil,
+		},
+		{
+			name: "a prefix of the request",
+			body: "allow if startswith(input.path, \"/admin/\")\n",
+			expected: []Check{{
+				Request: "input.path", Value: `"/admin/"`, Operator: CheckPrefix, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			name: "a glob over the request",
+			body: "allow if glob.match(\"/do/**\", [], input.path)\n",
+			expected: []Check{{
+				Request: "input.path", Value: `"/do/**"`, Operator: CheckGlob, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			name: "an unanchored regex over the request",
+			body: "allow if regex.match(\"admin\", input.path)\n",
+			expected: []Check{{
+				Request: "input.path", Value: `"admin"`, Operator: CheckRegex, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			name:     "an anchored regex is a whole-string test, not a loose match",
+			body:     "allow if regex.match(\"^/admin$\", input.path)\n",
+			expected: nil,
+		},
+		{
+			name:     "a match against a value from the data is not a value the policy writes",
+			body:     "allow if contains(input.path, data.markers.admin)\n",
+			expected: nil,
+		},
+		{
+			name:     "an assigned match asserts nothing",
+			body:     "allow if {\n\tok := startswith(input.path, \"/admin\")\n\tok\n}\n",
+			expected: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := "package checks\n\n# METADATA\n# entrypoint: true\n" + tt.body
+			reads := readsOf(t, policy, Limits{})
+
+			var got []Check
+			for _, check := range reads.Checks {
+				check.File = ""
+				got = append(got, check)
+			}
+			if !slices.EqualFunc(got, tt.expected, sameCheck) {
+				t.Errorf("checks =\n%+v\nwant\n%+v", got, tt.expected)
+			}
+		})
+	}
+}
+
 // With not imported the negation holds a body of its own, and the check inside
 // it lands on the same side as the one written the old way.
 func TestReadsFindTheChecksInsideAnImportedNot(t *testing.T) {

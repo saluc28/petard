@@ -86,6 +86,11 @@ var patternNotes = []patternNote{
 		title:  "A decision grants on an identity somebody can assume",
 		closes: "Pinning the identity to a credential the enforcement point verifies, which nobody below the grant can assume, closes it.",
 	},
+	{
+		id: "PTD-OPA-012", name: "grant-on-loose-match",
+		title:  "A decision grants on a value matched more loosely than it is enforced",
+		closes: "Matching the value whole, by equality or by its components, so a crafted value cannot slip through, closes it.",
+	},
 }
 
 // patternLines renders, for a list of pattern ids held under key, one line per

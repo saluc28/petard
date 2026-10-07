@@ -36,8 +36,8 @@ The same pair of trees is also the test of dual parsing:
 
 | | v1 parser | v0 parser (`--v0-compatible`) |
 |---|---|---|
-| `policy-v1/` | passes | 21 errors |
-| `policy-v0/` | 34 errors, "`if` keyword is required before rule body" | passes |
+| `policy-v1/` | passes | 22 errors |
+| `policy-v0/` | 36 errors, "`if` keyword is required before rule body" | passes |
 
 ---
 
@@ -440,6 +440,33 @@ second is pinned. Without `-pep` the pattern does not run, and without an `assum
 case stays a candidate: the declaration says the value is an identity, and only the declaration says
 who can assume it.
 
+### PTD-OPA-012, a value matched more loosely than it is enforced
+
+`library.rego` serves a document when its id contains the marker `public`, a substring. A document
+whose id merely embeds the marker, `public-incident-q3`, is served all the same, though it names a
+document that is not public: the match is wider than the id it names, so a crafted id reaches a
+document the policy never meant to allow. The same decision also matches `public` as a whole path
+component, the fix defenseclaw made, which an embedding id does not satisfy. It needs no enforcement
+point: the looseness is in the match, and the shape recognizer names `input.doc` the resource.
+
+| | where | expected |
+|---|---|---|
+| **case** | `library.rego`, `allow_doc`, `contains(input.doc, "public")` | **finding**, a substring is matched more loosely than the id |
+| **counter case** | the same decision, `"public" in split(input.doc, "/")` | **nothing**, a whole path component, matched by membership over a computed value |
+
+Measured with `data.quill.verify.loose_match`:
+
+```
+served for public-incident-q3    allow_doc = TRUE   ← embeds the marker, not a public document
+served for handbook/public/intro allow_doc = true   ← public as a whole component, the intended case
+served for secret-report         allow_doc = false
+```
+
+A substring and an unanchored regex are findings, because a value embedding the written one slips
+through. A prefix, a suffix or a glob is a candidate, because the looseness is often the intended
+wildcard. The pattern reports only the grant side: a loose match in a `violation`, an admission
+policy validating the object it is handed, is a deny that under-blocks, a different concern.
+
 ---
 
 ## 4. What the engine must not report
@@ -466,16 +493,18 @@ legitimate finding for another.
 | 14 | `not input.mfa`, in `allow_export` and in `allow` | 009 | the gateway sets it from the session |
 | 15 | `"grp-5821" in input.group_ids` | 010 | an id the directory assigns, which nobody picks |
 | 16 | `input.caller.attested` | 011 | an identity the mesh pins to a verified credential |
+| 17 | `"public" in split(input.doc, "/")` | 012 | a whole path component, not a loose match |
 
 Expected precision, with the gateway declared: **two `PTD_CanEscalateTo`** (mallory and carol),
-**sixteen findings and one candidate**, and none of the rows above under the pattern they belong
+**seventeen findings and one candidate**, and none of the rows above under the pattern they belong
 to.
 
-The sixteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
+The seventeen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
 `allow_unguarded`, mallory's escalation, which comes out under the id of 003 because that is where
 the registry says a candidate turns into a finding, carol's escalation under 006, the reading room
-under 008, the scheduled export under 009, the group called security under 010, and the internal
-sync under 011. The two escalations are the two findings that are also `PTD_CanEscalateTo` edges.
+under 008, the scheduled export under 009, the group called security under 010, the internal sync
+under 011, and the document served by substring under 012. The two escalations are the two findings
+that are also `PTD_CanEscalateTo` edges.
 
 ---
 
@@ -542,7 +571,7 @@ Run on 2026-09-25 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant he
 saying):
 
 ```
-regal lint fixtures/vulnerable-bundle/policy-v1   →  9 files linted. No violations found.
+regal lint fixtures/vulnerable-bundle/policy-v1   →  10 files linted. No violations found.
 ```
 
 The rule categories were confirmed **at the source**, by listing the directories in the pinned
@@ -582,10 +611,10 @@ Readable with `opa inspect -a`. They serve three purposes:
 There are no `schemas:`, and that is deliberate: they would raise the confidence of a finding
 artificially. The realistic case is that nobody writes them.
 
-**Sixteen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
+**Seventeen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
 of the split grant, `admin` and `publish`, the guarded and unguarded merge decisions of `review`,
-the reading room, the console and the audit log of `platform`, the export of `tenant_policy`, and
-the internal sync of `mesh`. A rule
+the reading room, the console and the audit log of `platform`, the export of `tenant_policy`, the
+internal sync of `mesh`, and the document serving of `library`. A rule
 without the annotation is a rule the engine never looks at, and leaving the three counter cases
 of `risk.rego` unannotated would break the fixture in two directions at once: *"the engine must
 not report `allow_defensive`"* would be satisfied for the wrong reason, because that rule would
@@ -708,6 +737,10 @@ opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy
 
 ```bash
 opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.assumable_identity'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.loose_match'
 ```
 
 Dual parsing, where the first has to pass and the second has to fail:

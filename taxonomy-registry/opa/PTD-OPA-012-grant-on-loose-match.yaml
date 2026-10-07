@@ -1,0 +1,234 @@
+schema_version: 1
+
+id: PTD-OPA-012
+name: grant-on-loose-match
+title: A decision grants on a value matched more loosely than it is enforced
+closes: >
+  Matching the value whole, by equality or by its components, so a crafted value cannot slip through, closes it.
+engine: opa
+status: implemented
+
+category:
+  id: LOOSE-ENFORCEMENT-MATCH
+  title: Loose enforcement match
+  summary: >
+    A decision grants on a resource or an action matched more loosely than the enforcement point
+    acts on it: a substring, a prefix or suffix, a glob, an unanchored regex. A crafted value
+    satisfies the policy's match but resolves to a different resource downstream, so the policy
+    approves one thing and the enforcement point does another, the confused deputy.
+    Abstract category: it holds for any engine that matches the value it authorizes more loosely
+    than the value the enforcement point uses.
+  category_note: >
+    The first instance. The same category covers the match forms: a substring and an unanchored
+    regex, which let a value embed the written one, and a prefix, suffix or glob, which is often
+    an intended wildcard and so is reported as a candidate.
+
+summary: >
+  A decision grants when a part of the request matches a value the policy writes with an operator
+  wider than equality, `contains(input.path, "/admin")`. A value that merely embeds the written one
+  passes: `/app/.admin-preview` embeds `.admin`, and the router serves a resource the policy never
+  meant to allow. The policy approved a path that matched; the enforcement point serves the path it
+  resolves to, and the two are not the same.
+  In the fixture, a document is served when its id contains the marker `public`, so a private
+  document whose id embeds it is served all the same.
+
+preconditions:
+  - capability: The principal can send a request whose value embeds the one the policy matches
+    note: >
+      Naming a resource or an action that satisfies the loose match while resolving, at the
+      enforcement point, to one the policy did not mean to allow: a path that embeds the marker, a
+      traversal the router collapses.
+
+mechanism:
+  description: >
+    `contains(input.path, "/admin")` holds for any path with `/admin` anywhere inside it, so
+    `/app/.admin-preview` and `/not-admin` pass, though each names a different resource than the
+    one the policy meant. `startswith`, `endswith`, `glob.match` and an unanchored `regex.match`
+    widen the match the same way; an equality or a match by whole components does not.
+  example: |
+    package example
+
+    # the decision the router consumes
+    default allow_route := false
+
+    allow_route if {
+        input.action == "GET"
+        contains(input.path, "/public/")
+    }
+  example_note: >
+    The document rule of the fixture has the same shape, and it was measured with the rego package
+    of OPA v1.20.2: a request for `welcome-public` is allowed, and a request for `public-incident-q3`,
+    a document that is not public, is allowed too, because its id embeds the marker.
+
+detection:
+  ast_source: compiled
+  requires:
+    - binding-resolution
+    - rule-graph
+  requires_note: >
+    No enforcement point and no data: the looseness is in the match, which the engine reads off the
+    policy, and the shape recognizer says which part of the request is the resource or the action.
+  signals:
+    - order: 1
+      check: >
+        A decision reaches a check that holds a part of the request against a value the policy
+        writes with an operator wider than equality: a substring with `contains`, a prefix with
+        `startswith`, a suffix with `endswith`, a glob with `glob.match`, or an unanchored regex
+        with `regex.match`. The engine records which form it is.
+      rationale: >
+        Each of these matches a value the policy did not write out: a substring matches it embedded
+        anywhere, a prefix or suffix at one end, a glob or an unanchored regex by pattern. An
+        equality and a match by whole components match the value and nothing else.
+    - order: 2
+      check: >
+        The decision grants on it, and that part of the request is the resource or the action the
+        shape recognizer names, the thing the decision authorizes. A loose match on the side that
+        refuses, or on neither the resource nor the action, is left alone.
+      rationale: >
+        The confused deputy is a grant on more than the value it names. A loose match on the side
+        that refuses is a deny that under-blocks, an admission policy validating the object it is
+        handed, which is a different concern. A name matched loosely is the question of another
+        pattern, PTD-OPA-010, about who controls the name rather than how widely it is matched.
+    - order: 3
+      check: >
+        A substring and an unanchored regex are a finding: the written value embedded anywhere
+        passes, so a crafted value slips through. A prefix, a suffix or a glob is a candidate: the
+        looseness is often the intended wildcard, to weigh against what the enforcement point does.
+      rationale: >
+        A mid-string match lets a crafted value through whatever the deployment does with it. A
+        prefix route can be exactly what was meant, so it is reported as a candidate to check rather
+        than a finding.
+  confidence: C
+  confidence_note: >
+    The claim rests on the shape recognizer naming the resource or the action, so a finding carries
+    the level that recognition reached, from a declaration down to a guess about field names. The
+    looseness of the match itself is read off the policy and is not a guess.
+  requires_write_model: false
+  requires_write_model_note: >
+    Nobody writes a document here: the defect is the match, in the policy. It emits no
+    `PTD_CanEscalateTo`, since the loose match widens a grant rather than taking the position of
+    another principal.
+
+graph:
+  emits: finding
+  marks:
+    - kind: PTD_Rule
+      properties: [is_decision]
+  marks_note: >
+    It marks the rule that holds the loose match, as PTD-OPA-009 and PTD-OPA-010 do, and a rule
+    that reads no document has no node otherwise.
+
+false_positives:
+  - condition: >
+      The loose match is the intended wildcard, a prefix route `/do/**` that the enforcement point
+      resolves the same way the policy matches it, with no traversal or encoding to collapse.
+    discriminator: >
+      Whether a prefix or a glob is intended is not in the policy, so an affix and a glob are
+      reported as candidates rather than findings, and a substring or an unanchored regex, which is
+      wrong whatever the intent, as a finding.
+  - condition: >
+      The enforcement point canonicalizes the value the same way the policy matches it, lower-casing
+      before a case-insensitive compare the policy also folds, so the two agree.
+    discriminator: >
+      How the enforcement point canonicalizes the value is not in the policy. The pattern reads the
+      match form and leaves the canonicalization to whoever declares the enforcement point.
+  - condition: >
+      The value matched loosely cannot be crafted: a closed set of resources where no name embeds
+      another, enforced somewhere the policy cannot see.
+    discriminator: >
+      Which values can reach the decision is not in the policy, and a substring match over a closed
+      set is still a substring match. Only the system around the policy can say the set is closed.
+  - condition: >
+      The loose match is on the side that refuses, an admission policy's `violation` that matches the
+      object it validates with a glob or a regex, a container image against a digest pattern.
+    discriminator: >
+      The pattern reports only the grant side. A deny that matches loosely under-blocks, which is a
+      different concern from a grant that reaches more than the value it names. On
+      open-policy-agent/gatekeeper-library at e4d3bd2 the engine reads six loose matches across its
+      violation rules, a suffix on a cpu limit and a regex on an image digest among them, and reports
+      none of them, because they are all on the side that refuses.
+
+not_a_lint_rule: >
+  A linter sees `contains(input.path, "/admin")` and `input.path == "/admin"` as a function call
+  and a comparison, both well formed. Which one authorizes more than the value it names is the
+  difference between a substring and an equality, and whether the loosely matched part is the
+  resource the enforcement point serves is in the shape of the request, not in a rule about
+  syntax.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  case: >
+    `library.rego`, `allow_doc`: a document is served when its id contains `public`, a substring,
+    so a document whose id merely embeds the marker is served too.
+  counter_case: >
+    The same decision, `input.doc == "welcome-public"`: the exact id, which a document that embeds
+    the marker does not match.
+  expected: >
+    A finding on `input.doc` for `data.quill.library.allow_doc`, and nothing on the exact id.
+
+references:
+  - title: defenseclaw, F-0543, a substring match on a path
+    note: >
+      At commit 9bc62550, `policies/rego/admission.rego`: the fix comment at lines 210 to 220
+      records the old test `contains(lower(input.path), lower(prefix))`, a substring match that
+      "accepted attacker paths whose components merely embedded the marker (e.g. `.defenseclaw-evil`
+      satisfying a `.defenseclaw` allow)". The fix matches whole path components
+      (`_provenance_prefix_matches` at 218, `_path_components` at 231). The real instance folds the
+      case and reads the marker from a configuration document, which this pattern reports when the
+      marker is written in the policy; see the notes. Consulted 2026-10-05.
+  - title: yashigani, LAURA-OPA-001, a match before canonicalization
+    note: >
+      At commit f24fa84a, `helm/yashigani/files/policy/agents.rego`: `_agent_path_matches` (line 108)
+      matches a `/do/**` pattern with `startswith(path, concat("", [prefix, "/"]))` (line 113). The
+      close-out added `_agent_path_safe` (line 95), which rejects `../`, `..\`, a trailing `/..`, and
+      the URL-encoded forms, before the match. Without it `/do/../admin` prefix-matches `/do/` but
+      the downstream collapses it to `/admin`. The pre-canonicalization shape needs the enforcement
+      point's canonicalization declared and the guard read; see the notes. Consulted 2026-10-05.
+
+verified:
+  date: 2026-10-05
+  tool_version: opa 1.20.2
+  how: >
+    The engine finds the case and stays quiet about the counter case on the fixture. The checks on
+    the request list `contains(input.doc, "public")` as granting in `data.quill.library.allow_doc`,
+    read as a substring, and `input.doc == "welcome-public"` as an equality, which is not a loose
+    match. The shape recognizer names `input.doc` the resource at level C, so the substring is a
+    finding at that level and the equality is nothing.
+    The numbers behind it, measured with the rego package of OPA v1.20.2: a request for the exact id
+    is allowed, and a request for an id that embeds the marker is allowed too.
+    `regal` v0.42.0 reports no violations on `policy-v1`.
+    On generated worlds the verdict rests on the policy and not on the data: the same substring is a
+    finding and the same prefix a candidate, whatever the dataset.
+
+related:
+  - id: PTD-OPA-010
+    note: >
+      The other pattern that reads how a part of the request is matched. 010 is about who controls a
+      name an issuer hands over; this is about a match wider than the value the enforcement point
+      uses. A loose match on a name an issuer sets is 010's, on a resource or an action is this one.
+  - id: PTD-OPA-009
+    note: >
+      The same engine reading of the loose-match builtins closes a false negative in 009 too: an
+      exemption lifted by `not startswith(input.kind, "exempt-")` is now read as a check, where only
+      `==` and `in` were read before.
+
+notes:
+  - >
+    Known false negative: a case-folded match, `contains(lower(input.path), "/admin")`. The compiler
+    hoists `lower(input.path)` into a binding the loose-match reader does not follow, so the match is
+    not read. The real defenseclaw instance folds the case this way.
+  - >
+    Known false negative: a loose match against a value from the data rather than one the policy
+    writes, `contains(input.path, data.markers[_])`. The value is not a value the policy writes, so
+    the check is not kept. The real defenseclaw instance reads its marker from a configuration
+    document.
+  - >
+    Known false negative: the pre-canonicalization shape, a prefix or glob match on a path the
+    enforcement point canonicalizes, collapsing `..` or decoding `%2e`, as yashigani's. Telling the
+    sound form from the vulnerable one needs the enforcement point's canonicalization declared and
+    the traversal guard read, which this instance does not do yet.
+  - >
+    A match by whole components, `"admin" in split(input.path, "/")`, is a membership over a value
+    the policy computes, not a loose match, and is not reported: it is one of the shapes that closes
+    the pattern.

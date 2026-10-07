@@ -66,6 +66,11 @@ type Findings struct {
 	// declaration, and the declaration decides between a finding and a candidate.
 	AssumableIdentity []Finding
 
+	// LooseMatch holds the grants on a resource or an action matched more loosely
+	// than it is enforced. It reads the policy alone, needing no data, no write
+	// model and no enforcement point: the looseness is in the match itself.
+	LooseMatch []Finding
+
 	// Skipped names the patterns that could not run, and what it would have
 	// taken. A pattern left out in silence reads as a pattern that found
 	// nothing, which is the one thing these patterns exist to disprove.
@@ -85,6 +90,7 @@ func (f Findings) All() []Finding {
 	all = append(all, f.SelfAsserted...)
 	all = append(all, f.UncontrolledName...)
 	all = append(all, f.AssumableIdentity...)
+	all = append(all, f.LooseMatch...)
 	return all
 }
 
@@ -116,6 +122,7 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		return Findings{}, err
 	}
 	found.SelfWrite = selfWrite
+	found.LooseMatch = GrantsOnLooseMatches(a)
 
 	if a.Data == nil {
 		found.Skipped[DenyUndefinedOnMissingData] = needsData
@@ -270,7 +277,7 @@ type Inputs struct {
 
 // TokenEnv is the environment variable a running OPA's bearer token is read
 // from, so the token stays out of the command line and the shell history.
-const TokenEnv = "PETARD_OPA_TOKEN"
+const TokenEnv = "PETARD_OPA_TOKEN" //nosec G101 -- the name of an environment variable, not a credential
 
 // Load reads everything the inputs name and builds the analysis over it.
 //

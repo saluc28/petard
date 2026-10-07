@@ -69,7 +69,50 @@ const (
 	// CheckTrue is the request on its own, asked to be there and not false:
 	// input.emergency.
 	CheckTrue CheckOperator = ""
+
+	// CheckSubstring is the request searched for a value anywhere inside it:
+	// contains(input.path, "/admin"). A value that embeds the one the policy
+	// writes passes, which equality would not let through.
+	CheckSubstring CheckOperator = "substring"
+
+	// CheckPrefix is the request matched at its start:
+	// startswith(input.path, "/admin/").
+	CheckPrefix CheckOperator = "prefix"
+
+	// CheckSuffix is the request matched at its end:
+	// endswith(input.name, ".read").
+	CheckSuffix CheckOperator = "suffix"
+
+	// CheckGlob is the request matched against a glob:
+	// glob.match("/do/**", [], input.path).
+	CheckGlob CheckOperator = "glob"
+
+	// CheckRegex is the request matched against an unanchored regex:
+	// regex.match("admin", input.path). An anchored pattern is a whole-string
+	// test and is not read as a loose match.
+	CheckRegex CheckOperator = "regex"
 )
+
+// Loose reports whether the operator matches a part of the request more loosely
+// than equality or membership, so a value the policy did not write can satisfy
+// it. These are the forms PTD-OPA-012 reads, and the ones PTD-OPA-009 and
+// PTD-OPA-010 missed while only == and in counted as checks.
+func (o CheckOperator) Loose() bool {
+	switch o {
+	case CheckSubstring, CheckPrefix, CheckSuffix, CheckGlob, CheckRegex:
+		return true
+	default:
+		return false
+	}
+}
+
+// MidString reports whether the match accepts the written value embedded
+// anywhere in the request, not only as the whole value, a prefix or a suffix. A
+// substring and an unanchored regex are the forms a crafted value slips through,
+// the confused deputy PTD-OPA-012 reports as a finding rather than a candidate.
+func (o CheckOperator) MidString() bool {
+	return o == CheckSubstring || o == CheckRegex
+}
 
 // Expression writes the check back as Rego, the way a report prints it.
 func (c Check) Expression() string {
@@ -80,6 +123,16 @@ func (c Check) Expression() string {
 		return c.Request + " in " + c.Value
 	case CheckContains:
 		return c.Value + " in " + c.Request
+	case CheckSubstring:
+		return "contains(" + c.Request + ", " + c.Value + ")"
+	case CheckPrefix:
+		return "startswith(" + c.Request + ", " + c.Value + ")"
+	case CheckSuffix:
+		return "endswith(" + c.Request + ", " + c.Value + ")"
+	case CheckGlob:
+		return "glob.match(" + c.Value + ", _, " + c.Request + ")"
+	case CheckRegex:
+		return "regex.match(" + c.Value + ", " + c.Request + ")"
 	default:
 		return c.Request
 	}
@@ -204,6 +257,21 @@ func (r *refReader) checks(limits Limits) ([]Check, map[string]string, []string)
 		budget := &callBudget{limits: limits}
 		if request, isRequest := r.requestOf(truth.rule, truth.term, truth.bindings, budget); isRequest {
 			keep(truth.exprSite, request, nil, CheckTrue)
+		}
+		warnings = append(warnings, budget.warnings...)
+	}
+
+	for _, match := range r.foundMatches {
+		budget := &callBudget{limits: limits}
+		request, isRequest := r.requestOf(match.rule, match.request, match.bindings, budget)
+		if isRequest {
+			if value, isConstant := constantOf(match.value, match.bindings); isConstant {
+				// An anchored regex matches the whole string, so it is not a loose
+				// match; the other checks already read it as what it is.
+				if match.operator != CheckRegex || !anchoredRegex(value) {
+					keep(match.exprSite, request, value, match.operator)
+				}
+			}
 		}
 		warnings = append(warnings, budget.warnings...)
 	}

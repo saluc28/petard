@@ -221,3 +221,24 @@ assumable_identity := {
 	as_attested_agent := data.quill.mesh.allow_sync with input as sync_as_attested_agent
 	as_another_workload := data.quill.mesh.allow_sync with input as sync_as_another_workload
 }
+
+# --- PTD-OPA-012: a value matched more loosely than it is enforced ------------
+# The document is served when its id contains the marker "public", a substring.
+# An id that merely embeds the marker is served all the same, though it names a
+# document that is not public; an id with "public" as a whole component is the
+# intended case, and one without it is not served.
+doc_embedding := {"doc": "public-incident-q3"}
+
+doc_component := {"doc": "handbook/public/intro"}
+
+doc_private := {"doc": "secret-report"}
+
+loose_match := {
+	"embedding_id_served": embedding,
+	"public_component_served": component,
+	"private_not_served": private,
+} if {
+	embedding := data.quill.library.allow_doc with input as doc_embedding
+	component := data.quill.library.allow_doc with input as doc_component
+	private := data.quill.library.allow_doc with input as doc_private
+}

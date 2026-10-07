@@ -63,7 +63,8 @@ func addFinding(g *graph.Graph, reads *opaengine.ReadSet, finding Finding) (int,
 		return countOf(g.MarkNode(finding.Principal, mark)), nil
 
 	case finding.PatternID == EveryOverEmptyDomain || finding.PatternID == SelfAssertedExemption ||
-		finding.PatternID == GrantOnUncontrolledName || finding.PatternID == GrantOnAssumableIdentity:
+		finding.PatternID == GrantOnUncontrolledName || finding.PatternID == GrantOnAssumableIdentity ||
+		finding.PatternID == GrantOnLooseMatch:
 		reached := 0
 		for _, site := range finding.Reads {
 			if err := g.AddNode(graph.Node{

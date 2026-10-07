@@ -1,0 +1,17 @@
+name: "PTD-OPA-012: loose matches to weigh against the enforcement"
+guid: c60dfaa0-92cf-4647-b735-8027909b56b6
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Loose enforcement match
+description: >
+  The same rules where the match is a prefix, a suffix or a glob, often an intended wildcard, to
+  weigh against what the enforcement point does with the value.
+query: |-
+  MATCH (r:PTD_Rule)
+  WHERE 'PTD-OPA-012' IN r.candidate_patterns
+  RETURN r
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-012-grant-on-loose-match.yaml
+acknowledgements: []

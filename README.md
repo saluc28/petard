@@ -18,7 +18,7 @@ the line between whoever takes a decision and whoever writes what the decision i
 
 ## What it finds
 
-Eleven patterns live in [`taxonomy-registry/`](taxonomy-registry), which is versioned data rather
+Twelve patterns live in [`taxonomy-registry/`](taxonomy-registry), which is versioned data rather
 than code. Every one of them runs against the fixture in this repository, and the registry is the
 source of truth down to what each has been held to. These are one-line glosses; `petard patterns`
 lists them from the binary and `petard explain <id>` prints one in full.
@@ -36,6 +36,7 @@ lists them from the binary and `petard explain <id>` prints one in full.
 | `PTD-OPA-009` | a request lifts a check on itself by saying it is exempt |
 | `PTD-OPA-010` | a decision grants on a name that anybody able to create a group can pick |
 | `PTD-OPA-011` | a decision grants on a runtime identity that anybody able to deploy a workload can assume |
+| `PTD-OPA-012` | a decision grants on a resource matched so loosely a crafted value reaches a different one |
 
 Two of them end in the words privilege escalation, and each draws a `PTD_CanEscalateTo` edge
 between two principals: `PTD-OPA-001` and `PTD-OPA-003` chain into one, `PTD-OPA-006` draws the
@@ -82,7 +83,7 @@ inside the binary, so there is something to look at before you point the tool at
 policies. It leads with who can take whose place:
 
 ```
-9 files, 16 decisions, parsed as rego v1
+10 files, 17 decisions, parsed as rego v1
 
 Escalations
   mallory -> dave  (PTD-OPA-003, confidence D)
@@ -110,6 +111,7 @@ Findings
     1  PTD-OPA-009  A request lifts a check on itself by saying it is exempt
     1  PTD-OPA-010  A decision grants on a name somebody else picks
     1  PTD-OPA-011  A decision grants on an identity somebody can assume
+    1  PTD-OPA-012  A decision grants on a value matched more loosely than it is enforced
 
 Candidates, which need a write model to become findings
     1  PTD-OPA-003  A position in a hierarchy grants everything below it, and nothing says so
@@ -158,9 +160,9 @@ petard export -url https://bloodhound.example -install -upload -verify \
 ```
 
 ```
-graph: 65 nodes, 84 edges
+graph: 66 nodes, 84 edges
 schema installed, 3 of 5 relationship kinds are traversable
-saved queries: 35 added, 0 already there
+saved queries: 37 added, 0 already there
 ingest job 1 started
 job 1 processed 1 file(s) with no errors
   MALLORY -> DAVE: pathfinding walks it
@@ -192,7 +194,7 @@ Pathfinding walks them too, which is what `-verify` checks over the API.
 
 ![Pathfinding between the two principals](docs/assets/pathfinding.png)
 
-Installing also saves 35 Cypher queries, two to four per pattern, named after the question they
+Installing also saves 37 Cypher queries, two to four per pattern, named after the question they
 ask. They return nodes and paths, so the answer opens in the graph and in the table view next to
 it.
 

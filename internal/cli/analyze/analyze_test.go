@@ -556,7 +556,7 @@ func TestRunTakesADecisionDeclaredToDeny(t *testing.T) {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "decisions: 17\n") || !strings.Contains(out, "  data.quill.tenant_policy.denied_mfa, to deny\n") {
+	if !strings.Contains(out, "decisions: 18\n") || !strings.Contains(out, "  data.quill.tenant_policy.denied_mfa, to deny\n") {
 		t.Errorf("the report does not list the decision declared to deny:\n%s", out)
 	}
 }

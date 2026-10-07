@@ -63,13 +63,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `assumable_by`, with `pinned` for an identity nobody can assume. The fixture holds the case and the
   counter case in one decision: the sync service account and an agent identity bound to a verified
   credential, read the same way.
+- `PTD-OPA-012`, a decision grants on a value matched more loosely than it is enforced: a check that
+  grants on a resource or an action matched with `contains`, `startswith`, `endswith`, `glob.match`
+  or an unanchored `regex.match`, so a crafted value satisfies the match but resolves to a different
+  resource. A substring and an unanchored regex are findings, because a value embedding the written
+  one passes; a prefix, a suffix or a glob is a candidate, often an intended wildcard. It reads the
+  policy alone, needing no enforcement point and no data, and reports only the grant side. The
+  fixture serves a document whose id merely embeds a marker.
+- The engine reads the loose-match builtins, `contains`, `startswith`, `endswith`, `glob.match` and
+  an unanchored `regex.match`, as checks on the request, where only `==` and `in` were read before.
+  Besides `PTD-OPA-012` this closes a false negative in `PTD-OPA-009` and `PTD-OPA-010`: an exemption
+  lifted by a prefix match, and a grant on a group name matched by a prefix or a glob, are now
+  reported.
 
 ### Changed
 
 - The extension schema, now `v0.2.4`, shows on a `PTD_CanEscalateTo` edge the request that proves
   it, which the payload carries as `witness_request`, `witness_document`, `witness_value` and
-  `witness_write_request`, and describes `PTD-OPA-011` in the Entity Panel, with two saved queries
-  asking for it. `petard export -install` puts the new schema in place.
+  `witness_write_request`, and describes `PTD-OPA-011` and `PTD-OPA-012` in the Entity Panel, with
+  two saved queries each. `petard export -install` puts the new schema in place.
 - `petard analyze` and `petard export` no longer stop at a policy that annotates no entrypoint
   when no flag or `-pep` names one. The decisions are then the rules no other rule uses, and the
   report says they were inferred. A rule called `deny`, `violation` or `warn`, alone or with a
