@@ -277,7 +277,7 @@ type Inputs struct {
 
 // TokenEnv is the environment variable a running OPA's bearer token is read
 // from, so the token stays out of the command line and the shell history.
-const TokenEnv = "PETARD_OPA_TOKEN" //nosec G101 -- the name of an environment variable, not a credential
+const TokenEnv = "PETARD_OPA_TOKEN" // #nosec G101 -- the name of an environment variable, not a credential
 
 // Load reads everything the inputs name and builds the analysis over it.
 //
