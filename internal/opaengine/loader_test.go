@@ -107,7 +107,7 @@ func TestLoadRecordsFiles(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	expected := []string{"admin.rego", "authz.rego", "enrichment.rego", "library.rego", "mesh.rego", "platform.rego", "publish.rego", "review.rego", "risk.rego", "tenant_policy.rego"}
+	expected := []string{"admin.rego", "authz.rego", "delegation.rego", "enrichment.rego", "library.rego", "mesh.rego", "platform.rego", "publish.rego", "review.rego", "risk.rego", "tenant_policy.rego"}
 	if len(bundle.Files) != len(expected) {
 		t.Fatalf("Files = %v, want %d files", bundle.Files, len(expected))
 	}
@@ -145,6 +145,8 @@ func TestLoadProcessesAnnotations(t *testing.T) {
 	expected := []string{
 		"data.quill.admin.allow",
 		"data.quill.authz.allow",
+		"data.quill.delegation.allow_mint",
+		"data.quill.delegation.allow_mint_narrowed",
 		"data.quill.enrichment.allow",
 		"data.quill.library.allow_doc",
 		"data.quill.mesh.allow_sync",

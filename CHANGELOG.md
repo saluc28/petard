@@ -75,13 +75,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Besides `PTD-OPA-012` this closes a false negative in `PTD-OPA-009` and `PTD-OPA-010`: an exemption
   lifted by a prefix match, and a grant on a group name matched by a prefix or a glob, are now
   reported.
+- `PTD-OPA-013`, a decision grants a requested authority not bounded by the delegator's: a granting
+  decision mints the scopes a delegated agent asks for, bounding them by the agent's own role but not
+  by the authority the delegating edge carries, so the agent mints scopes the delegating user never
+  held. It asks the decision itself, pinning the requested authority within every declared ceiling
+  and reaching one element past one of them, so the verdict holds whatever form the bound takes. It
+  runs with `-pep` and the data, and the declaration takes two new keys on a field, `authority` and
+  `bounded_by`, naming the requested authority and the ceilings it must sit under. A requested
+  authority with no ceiling declared is a candidate. The fixture mints a credential bounded by the
+  role and not by the edge.
 
 ### Changed
 
 - The extension schema, now `v0.2.4`, shows on a `PTD_CanEscalateTo` edge the request that proves
   it, which the payload carries as `witness_request`, `witness_document`, `witness_value` and
-  `witness_write_request`, and describes `PTD-OPA-011` and `PTD-OPA-012` in the Entity Panel, with
-  two saved queries each. `petard export -install` puts the new schema in place.
+  `witness_write_request`, and describes `PTD-OPA-011`, `PTD-OPA-012` and `PTD-OPA-013` in the Entity
+  Panel, with two saved queries each. `petard export -install` puts the new schema in place.
 - `petard analyze` and `petard export` no longer stop at a policy that annotates no entrypoint
   when no flag or `-pep` names one. The decisions are then the rules no other rule uses, and the
   report says they were inferred. A rule called `deny`, `violation` or `warn`, alone or with a

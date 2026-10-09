@@ -40,6 +40,10 @@ decisions:
     side: grants
   - rule: allow_sync
     side: grants
+  - rule: allow_mint
+    side: grants
+  - rule: allow_mint_narrowed
+    side: grants
 
 fields:
   - path: input.user
@@ -104,6 +108,37 @@ fields:
     note: An agent identity the mesh binds to a verified credential.
     evidence:
       - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-011"
+  # THE PTD-OPA-013 CASE. The agent asks for scopes, and the mint decision bounds
+  # them by the agent's own role but not by the delegating edge. What the agent
+  # may ask for has to sit inside what the delegator holds, and that bound is not
+  # in the policy: the gateway declares the requested authority and its ceilings.
+  - path: input.requested_scopes
+    set_by: caller
+    authority: requested
+    bounded_by:
+      - input.delegation_edge.scopes
+      - input.role_scopes
+    note: The scopes the delegated agent asks to mint.
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-013"
+  # The delegating user's edge: the scopes the delegator carries, which the STS
+  # proves. The requested authority must sit inside it.
+  - path: input.delegation_edge.scopes
+    set_by: issuer
+    issuer: the delegation edge the STS proves
+    authority: ceiling
+    note: The scopes the delegating user's edge carries.
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-013"
+  # The agent's own role grant. Bounding the request by this is sound, but a role
+  # grant is not the delegator's authority.
+  - path: input.role_scopes
+    set_by: issuer
+    issuer: the role service
+    authority: ceiling
+    note: The scopes the agent's own role grants.
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-013"
   # THE PTD-OPA-009 CASE falls here: input.scheduled is in the body of the
   # request, with what the caller asks for.
   - path: input.*

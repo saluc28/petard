@@ -79,6 +79,21 @@ const (
 	IdentifierID Identifier = "id"
 )
 
+// Authority says what kind of authority a part of the request carries, for a
+// decision that grants a delegated principal more or less of it.
+type Authority string
+
+const (
+	// AuthorityRequested is the authority a principal asks for, the scopes or
+	// the role a delegated agent requests. It is sound only when it is bounded
+	// by the authority the delegator holds, which BoundedBy names.
+	AuthorityRequested Authority = "requested"
+
+	// AuthorityCeiling is an authority that bounds a requested one: the scopes
+	// the delegation edge carries, or the role grant a principal already holds.
+	AuthorityCeiling Authority = "ceiling"
+)
+
 // EnforcementPoint is one product that asks a policy engine for decisions.
 type EnforcementPoint struct {
 	// File is where the declaration was read from, which is how a report
@@ -177,6 +192,21 @@ type Field struct {
 	// It is the fact no policy contains, the identity-side counterpart of the
 	// write model, and it is what turns a grant on an identity into a finding.
 	AssumableBy []Assumption `yaml:"assumable_by"`
+
+	// Authority marks a part of the request as an authority a delegated
+	// principal carries: a requested authority is what the principal asks for, a
+	// ceiling is what bounds it. It is the authority leg of the identity model,
+	// beside the Identity above, and a field is one leg or the other, never
+	// both.
+	Authority Authority `yaml:"authority"`
+
+	// BoundedBy names the ceilings a requested authority must sit under: every
+	// element the principal asks for has to be an element of each. It is the
+	// fact no policy contains on its own, that the requested authority is a
+	// subset of the delegated one, and it belongs only on a requested authority.
+	// A ceiling is a part of the request an issuer sets, or a document in the
+	// data; with none named the grant is a candidate asking what bounds it.
+	BoundedBy []string `yaml:"bounded_by"`
 
 	Note string `yaml:"note"`
 
@@ -309,8 +339,36 @@ func (f *Field) validate() error {
 	if err := f.validateIdentity(); err != nil {
 		return err
 	}
+	if err := f.validateAuthority(); err != nil {
+		return err
+	}
 	if len(f.Evidence) == 0 {
 		return fmt.Errorf("field %s: no evidence, and every field says where it was read", f.Path)
+	}
+	return nil
+}
+
+// validateAuthority checks the authority side of a field: the kind is one of
+// the two, an identity is not also an authority, and only a requested authority
+// names the ceilings that bound it, each of them a part of the request or a
+// document.
+func (f *Field) validateAuthority() error {
+	switch f.Authority {
+	case "", AuthorityRequested, AuthorityCeiling:
+	default:
+		return fmt.Errorf("field %s: authority %q is neither %s nor %s", f.Path, f.Authority, AuthorityRequested, AuthorityCeiling)
+	}
+	if f.Identity && f.Authority != "" {
+		return fmt.Errorf("field %s: an identity and an authority are different legs of the model, "+
+			"and a part of the request is one or the other, not both", f.Path)
+	}
+	if len(f.BoundedBy) > 0 && f.Authority != AuthorityRequested {
+		return fmt.Errorf("field %s: bounded_by names the ceilings of a requested authority, and this is not declared as one", f.Path)
+	}
+	for _, ceiling := range f.BoundedBy {
+		if !strings.HasPrefix(ceiling, "input.") && !strings.HasPrefix(ceiling, "data.") {
+			return fmt.Errorf("field %s: bounded_by %q is neither a part of the request nor a document", f.Path, ceiling)
+		}
 	}
 	return nil
 }

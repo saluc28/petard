@@ -71,6 +71,12 @@ type Findings struct {
 	// model and no enforcement point: the looseness is in the match itself.
 	LooseMatch []Finding
 
+	// Delegation holds the grants of a requested authority not bounded by the
+	// delegator's. It asks the decision about a witness, so it needs the data,
+	// and reads who requests and who bounds from the enforcement point, so it
+	// does not run without the declaration either.
+	Delegation []Finding
+
 	// Skipped names the patterns that could not run, and what it would have
 	// taken. A pattern left out in silence reads as a pattern that found
 	// nothing, which is the one thing these patterns exist to disprove.
@@ -91,6 +97,7 @@ func (f Findings) All() []Finding {
 	all = append(all, f.UncontrolledName...)
 	all = append(all, f.AssumableIdentity...)
 	all = append(all, f.LooseMatch...)
+	all = append(all, f.Delegation...)
 	return all
 }
 
@@ -129,6 +136,7 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		found.Skipped[TransitiveGrantViaOwnership] = needsData
 		found.Skipped[WriteAllowedByAnotherDecision] = needsData
 		found.Skipped[GlobalDocumentDecides] = needsData
+		found.Skipped[GrantBeyondDelegatedScope] = needsData
 	} else {
 		if found.MissingData, err = FailOpenOnMissingData(ctx, a.Reads, a.Data); err != nil {
 			return Findings{}, err
@@ -169,6 +177,9 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		found.Skipped[SelfAssertedExemption] = needsEnforcementPoint
 		found.Skipped[GrantOnUncontrolledName] = needsEnforcementPoint
 		found.Skipped[GrantOnAssumableIdentity] = needsEnforcementPoint
+		if a.Data != nil {
+			found.Skipped[GrantBeyondDelegatedScope] = needsEnforcementPoint
+		}
 		return found, nil
 	}
 	found.SelfAsserted = SelfAssertedExemptions(a)
@@ -176,6 +187,11 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		return Findings{}, err
 	}
 	found.AssumableIdentity = GrantsOnAssumableIdentities(a)
+	if a.Data != nil {
+		if found.Delegation, err = GrantsBeyondDelegatedScope(ctx, a); err != nil {
+			return Findings{}, err
+		}
+	}
 	return found, nil
 }
 

@@ -365,15 +365,17 @@ func TestReadsListsTheDecisions(t *testing.T) {
 		t.Fatalf("Reads() error = %v", err)
 	}
 
-	// Fifteen decisions: the three counter cases of PTD-OPA-005 are consumed by
-	// the PEP like the others, PTD-OPA-006, 007 and 008 add two each, and
-	// PTD-OPA-009 and 010 add one each, which holds the case and the counter
-	// case. Leaving any of them unannotated made the engine ignore them, so a
-	// counter case "the engine must not flag" was satisfied for the wrong reason
-	// and a case "it must flag" could not be satisfied at all.
+	// The decisions of the fixture, one per case and counter case the patterns
+	// need: PTD-OPA-006, 007 and 008 add two each, 009 and 010 one each, 011 and
+	// 012 their own, and 013 two, the mint and the mint narrowed to the edge.
+	// Leaving any of them unannotated made the engine ignore them, so a counter
+	// case "the engine must not flag" was satisfied for the wrong reason and a
+	// case "it must flag" could not be satisfied at all.
 	expected := []string{
 		"data.quill.admin.allow",
 		"data.quill.authz.allow",
+		"data.quill.delegation.allow_mint",
+		"data.quill.delegation.allow_mint_narrowed",
 		"data.quill.enrichment.allow",
 		"data.quill.library.allow_doc",
 		"data.quill.mesh.allow_sync",

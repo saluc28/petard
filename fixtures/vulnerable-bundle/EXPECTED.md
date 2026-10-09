@@ -36,8 +36,8 @@ The same pair of trees is also the test of dual parsing:
 
 | | v1 parser | v0 parser (`--v0-compatible`) |
 |---|---|---|
-| `policy-v1/` | passes | 22 errors |
-| `policy-v0/` | 36 errors, "`if` keyword is required before rule body" | passes |
+| `policy-v1/` | passes | 23 errors |
+| `policy-v0/` | 38 errors, "`if` keyword is required before rule body" | passes |
 
 ---
 
@@ -467,6 +467,35 @@ through. A prefix, a suffix or a glob is a candidate, because the looseness is o
 wildcard. The pattern reports only the grant side: a loose match in a `violation`, an admission
 policy validating the object it is handed, is a deny that under-blocks, a different concern.
 
+### PTD-OPA-013, a requested authority not bounded by the delegator
+
+`delegation.rego` mints a credential for a delegated agent. The agent asks for scopes, and the mint
+bounds them by the agent's own role grant, but never by the scopes the delegating user's edge
+carries. An agent whose role is broad mints scopes the user who delegated to it never held. The same
+mint narrowed to the edge as well refuses them. The policy cannot tell a bound by the role from a
+bound by the edge, so `pep.yaml` declares `input.requested_scopes` the requested authority and names
+its ceilings, the edge and the role.
+
+| | where | expected |
+|---|---|---|
+| **case** | `delegation.rego`, `allow_mint`, bounded by `input.role_scopes` and not by `input.delegation_edge.scopes` | **finding**, the edge does not bound the request, at the subject's confidence |
+| **counter case** | the same mint, `allow_mint_narrowed`, bounded by the edge as well | **nothing**, a scope the edge does not carry is refused |
+
+Measured with `data.quill.verify.delegation`:
+
+```
+minted within the edge                           allow_mint = TRUE
+minted a scope within the role, past the edge    allow_mint = TRUE   ← the edge does not bound it
+the narrowed mint, the same request              allow_mint_narrowed = false   ← the edge refuses it
+```
+
+The pattern does not read the narrowing form: it pins the requested authority to one synthetic
+element every ceiling holds, lets partial evaluation solve the rest, and asks the decision again
+with one element past a ceiling. `allow_mint` grants the request past the edge, so the edge is the
+ceiling it does not enforce, while it refuses the request past the role, so the role is sound.
+Without `-pep` the pattern does not run, and a requested authority declared with no ceiling is a
+candidate, asking what bounds it.
+
 ---
 
 ## 4. What the engine must not report
@@ -494,17 +523,19 @@ legitimate finding for another.
 | 15 | `"grp-5821" in input.group_ids` | 010 | an id the directory assigns, which nobody picks |
 | 16 | `input.caller.attested` | 011 | an identity the mesh pins to a verified credential |
 | 17 | `"public" in split(input.doc, "/")` | 012 | a whole path component, not a loose match |
+| 18 | `allow_mint_narrowed` | 013 | the request is bounded by the delegating edge as well |
 
 Expected precision, with the gateway declared: **two `PTD_CanEscalateTo`** (mallory and carol),
-**seventeen findings and one candidate**, and none of the rows above under the pattern they belong
+**eighteen findings and one candidate**, and none of the rows above under the pattern they belong
 to.
 
-The seventeen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
+The eighteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
 `allow_unguarded`, mallory's escalation, which comes out under the id of 003 because that is where
 the registry says a candidate turns into a finding, carol's escalation under 006, the reading room
 under 008, the scheduled export under 009, the group called security under 010, the internal sync
-under 011, and the document served by substring under 012. The two escalations are the two findings
-that are also `PTD_CanEscalateTo` edges.
+under 011, the document served by substring under 012, and the mint that does not bound the request
+to the delegating edge under 013. The two escalations are the two findings that are also
+`PTD_CanEscalateTo` edges.
 
 ---
 
@@ -571,7 +602,7 @@ Run on 2026-09-25 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant he
 saying):
 
 ```
-regal lint fixtures/vulnerable-bundle/policy-v1   →  10 files linted. No violations found.
+regal lint fixtures/vulnerable-bundle/policy-v1   →  11 files linted. No violations found.
 ```
 
 The rule categories were confirmed **at the source**, by listing the directories in the pinned
@@ -611,10 +642,11 @@ Readable with `opa inspect -a`. They serve three purposes:
 There are no `schemas:`, and that is deliberate: they would raise the confidence of a finding
 artificially. The realistic case is that nobody writes them.
 
-**Seventeen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
+**Nineteen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
 of the split grant, `admin` and `publish`, the guarded and unguarded merge decisions of `review`,
 the reading room, the console and the audit log of `platform`, the export of `tenant_policy`, the
-internal sync of `mesh`, and the document serving of `library`. A rule
+internal sync of `mesh`, the document serving of `library`, and the mint and the mint narrowed to
+the edge of `delegation`. A rule
 without the annotation is a rule the engine never looks at, and leaving the three counter cases
 of `risk.rego` unannotated would break the fixture in two directions at once: *"the engine must
 not report `allow_defensive`"* would be satisfied for the wrong reason, because that rule would
@@ -741,6 +773,10 @@ opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy
 
 ```bash
 opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.loose_match'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.delegation'
 ```
 
 Dual parsing, where the first has to pass and the second has to fail:

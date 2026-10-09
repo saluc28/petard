@@ -242,3 +242,22 @@ loose_match := {
 	component := data.quill.library.allow_doc with input as doc_component
 	private := data.quill.library.allow_doc with input as doc_private
 }
+
+# --- PTD-OPA-013: a requested authority not bounded by the delegator ----------
+# The agent asks for scopes. The mint bounds them by the agent's own role, which
+# is broad, but not by the delegating edge, so a scope within the role and
+# outside the edge is minted all the same. The narrowed mint bounds them by the
+# edge too, and refuses it.
+mint_within_edge := {"action": "mint", "requested_scopes": ["read"], "role_scopes": ["read", "write"], "delegation_edge": {"scopes": ["read"]}}
+
+mint_past_edge := {"action": "mint", "requested_scopes": ["write"], "role_scopes": ["read", "write"], "delegation_edge": {"scopes": ["read"]}}
+
+delegation := {
+	"minted_within_the_edge": within,
+	"minted_past_the_edge": past,
+	"narrowed_refuses_past_the_edge": narrowed,
+} if {
+	within := data.quill.delegation.allow_mint with input as mint_within_edge
+	past := data.quill.delegation.allow_mint with input as mint_past_edge
+	narrowed := data.quill.delegation.allow_mint_narrowed with input as mint_past_edge
+}

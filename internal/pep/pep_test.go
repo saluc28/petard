@@ -114,6 +114,10 @@ func TestLoadRejects(t *testing.T) {
 		{"an identifier that is neither", header + "fields:\n  - path: input.token.sub\n    set_by: issuer\n    issuer: idp\n    identifier: email\n    evidence: [x]\n"},
 		{"an identifier on a part the caller sets", header + "fields:\n  - path: input.team\n    set_by: caller\n    identifier: name\n    evidence: [x]\n"},
 		{"a field with no evidence", header + "fields:\n  - path: input.team\n    set_by: caller\n"},
+		{"an authority that is neither", header + "fields:\n  - path: input.scope\n    set_by: caller\n    authority: both\n    evidence: [x]\n"},
+		{"an identity that is also an authority", header + "fields:\n  - path: input.id\n    set_by: issuer\n    issuer: idp\n    identity: true\n    authority: requested\n    evidence: [x]\n"},
+		{"bounded_by on a part that is not requested", header + "fields:\n  - path: input.ceiling\n    set_by: issuer\n    issuer: idp\n    authority: ceiling\n    bounded_by: [input.other]\n    evidence: [x]\n"},
+		{"a ceiling that is neither request nor data", header + "fields:\n  - path: input.scope\n    set_by: caller\n    authority: requested\n    bounded_by: [scope.other]\n    evidence: [x]\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -91,6 +91,11 @@ var patternNotes = []patternNote{
 		title:  "A decision grants on a value matched more loosely than it is enforced",
 		closes: "Matching the value whole, by equality or by its components, so a crafted value cannot slip through, closes it.",
 	},
+	{
+		id: "PTD-OPA-013", name: "grant-beyond-delegated-scope",
+		title:  "A decision grants a requested authority not bounded by the delegator's",
+		closes: "Bounding the requested authority by the delegator's, so every scope asked for has to sit inside the one the delegating edge carries, closes it.",
+	},
 }
 
 // patternLines renders, for a list of pattern ids held under key, one line per

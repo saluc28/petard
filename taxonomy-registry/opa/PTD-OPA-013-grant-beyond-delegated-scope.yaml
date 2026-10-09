@@ -1,0 +1,222 @@
+schema_version: 1
+
+id: PTD-OPA-013
+name: grant-beyond-delegated-scope
+title: A decision grants a requested authority not bounded by the delegator's
+closes: >
+  Bounding the requested authority by the delegator's, so every scope asked for has to sit inside
+  the one the delegating edge carries, closes it.
+engine: opa
+status: implemented
+
+category:
+  id: DELEGATION-NOT-NARROWED
+  title: Delegation not narrowed
+  summary: >
+    A decision grants a delegated principal the authority it asks for, its own scopes or role,
+    without bounding that authority by the authority of the principal who delegated to it. The agent
+    mints authority its delegator never held. The fact no policy contains on its own: what the
+    delegator granted, and that the requested authority has to sit inside it.
+    Abstract category: it holds for any engine that grants a requested authority without intersecting
+    it with the delegated one.
+  category_note: >
+    The first instance. The authority leg of the identity model, beside the assumable identity of
+    PTD-OPA-011: 011 is who can become the principal, this is the authority the principal's agent
+    carries once it legitimately is one.
+
+summary: >
+  An agent asks a security token service to mint a credential with a set of scopes. The decision
+  checks the scopes against the agent's own role grant and mints them, but never against the scopes
+  the delegating user's edge carries. An agent whose role is broad mints scopes the user who
+  delegated to it never had, so the delegation widens authority instead of narrowing it.
+  In the fixture, the mint decision bounds the request by the agent's role and not by the edge, so a
+  request asking for a scope outside the edge is granted all the same.
+
+preconditions:
+  - capability: The principal can request an authority wider than the one delegated to it
+    note: >
+      Asking for a scope, a role or a capability the delegating edge does not carry, which the
+      decision grants because it bounds the request by something other than that edge, the agent's
+      own role among them.
+
+mechanism:
+  description: >
+    `every scope in input.requested_scopes { scope in input.role_scopes }` bounds the request by the
+    agent's own role, so a broad role lets a broad request through. The sound decision bounds it by
+    the delegating edge as well, `every scope in input.requested_scopes { scope in
+    input.delegation_edge.scopes }`, so a scope the edge does not carry is refused. The defect is the
+    absence of that second narrowing, which the policy alone cannot tell from a decision that is
+    bounded: a bound by the role looks like a bound.
+  example: |
+    package example
+
+    default allow_mint := false
+
+    # bounded by the agent's own role, never by the delegating edge
+    allow_mint if {
+        input.action == "mint"
+        count(input.requested_scopes) > 0
+        every scope in input.requested_scopes {
+            scope in input.role_scopes
+        }
+    }
+  example_note: >
+    The mint decision of the fixture has the same shape, and it was measured with the rego package of
+    OPA v1.20.2: a request for a scope within the role but outside the edge is granted, while the
+    counter case, the same decision narrowed by the edge as well, refuses it.
+
+detection:
+  ast_source: compiled
+  requires:
+    - binding-resolution
+    - rule-graph
+  requires_note: >
+    No reading of the narrowing form: the pattern asks the decision itself. It pins the requested
+    authority to one synthetic element every declared ceiling holds, lets partial evaluation solve
+    the other conditions a grant needs, and then asks whether the decision still grants once the
+    authority reaches one element past a ceiling while staying within the others.
+  signals:
+    - order: 1
+      check: >
+        The enforcement point declares a part of the request a requested authority, and the ceilings
+        it must sit under: the scopes the delegating edge carries, the agent's own role grant. A
+        granting decision reads the requested authority.
+      rationale: >
+        What bounds a requested authority is not in the policy. A decision that narrows the request
+        by the agent's role looks, to the policy, like a decision that narrows the request; only the
+        enforcement point says the delegator's edge is the ceiling that matters.
+    - order: 2
+      check: >
+        The decision grants a request whose requested authority sits inside every declared ceiling,
+        and grants it still once the authority reaches one element past one ceiling while staying
+        within the others. That ceiling makes no difference to the grant, so the authority reaches
+        past it.
+      rationale: >
+        Asking the decision rather than reading the narrowing form makes the verdict independent of
+        how the bound is written: an every, an object.subset, a set difference or a comprehension all
+        refuse the request that reaches past, and a bound a later branch leaves open grants it.
+    - order: 3
+      check: >
+        A ceiling the decision does not enforce is a finding; a requested authority declared with no
+        ceiling is a candidate, asking what bounds it.
+      rationale: >
+        A grant that reaches past the delegator's edge mints authority the delegator never held. With
+        no ceiling declared the question is open rather than answered, so it is a candidate.
+  confidence: C
+  confidence_note: >
+    The claim rests on the enforcement point naming the requested authority and its ceilings, so a
+    finding carries the level that recognition of the subject reached. The reach past the ceiling is
+    measured against the decision and is not a guess.
+  requires_write_model: false
+  requires_write_model_note: >
+    Nobody writes a document here: the defect is the missing bound, in the policy and the request. It
+    emits no PTD_CanEscalateTo, since the over-reach widens the authority a request carries rather
+    than taking the position of another principal.
+
+graph:
+  emits: finding
+  marks:
+    - kind: PTD_Rule
+      properties: [is_decision]
+  marks_note: >
+    It marks the rule that holds the grant, as PTD-OPA-009 to PTD-OPA-012 do, and a decision that
+    reads no document has no node otherwise.
+
+false_positives:
+  - condition: >
+      The ceiling is enforced out of band, upstream of this decision, when the delegating edge is
+      minted rather than in the decision the pattern reads.
+    discriminator: >
+      Where a ceiling is enforced is not in the policy. The pattern fires only when the enforcement
+      point declares the ceiling as a part of the request this decision reads, so a system that
+      enforces the bound elsewhere, and does not declare it here, is a candidate asking what bounds
+      the authority rather than a finding.
+  - condition: >
+      The requested authority cannot exceed the ceiling: a closed set of scopes the issuer mints, no
+      wider than the edge, enforced where the policy cannot see.
+    discriminator: >
+      Which authorities can reach the decision is not in the policy. The pattern asks whether the
+      decision would grant a request one element past the ceiling, and a decision that grants it
+      reaches past it whatever the issuer is expected to mint.
+
+not_a_lint_rule: >
+  A linter sees `every scope in input.requested_scopes { scope in input.role_scopes }` and the same
+  every against `input.delegation_edge.scopes` as two well formed quantifiers. Which one is the
+  ceiling that matters is the delegation the enforcement point declares, and whether the grant
+  reaches past it is a question for the decision, not a rule about syntax.
+
+fixture:
+  bundle: fixtures/vulnerable-bundle/
+  scenario: quill
+  case: >
+    `delegation.rego`, `allow_mint`: the mint bounds the requested scopes by the agent's own role and
+    not by the delegating edge, so a scope within the role but outside the edge is minted.
+  counter_case: >
+    The same mint, `allow_mint_narrowed`: bounded by the edge as well, so a scope the edge does not
+    carry is refused.
+  expected: >
+    A finding on `input.requested_scopes` for `data.quill.delegation.allow_mint`, naming
+    `input.delegation_edge.scopes` as the ceiling it does not enforce, and nothing on
+    `allow_mint_narrowed`.
+
+references:
+  - title: caracal, the delegation narrowing floor
+    note: >
+      At commit c6a0689, `services/sts/internal/decision_contract.rego`: `delegation_scopes_narrowed`
+      (line 79) is `every scope in input.context.requested_scopes { scope in
+      input.delegation_edge.scopes }` (lines 80 to 81), and the comment above it names the failure
+      mode, "removing it would let an agent mint authority its parent never held." It gates
+      `delegated_mint` (line 85), which the mint allow requires (line 300), and its absence is named
+      `deny_reason := "delegation_scope_exceeded"` (line 376). A second narrowing, `mint_role_allowed`
+      (line 92), bounds the request by the agent's own role, the bound the vulnerable case keeps while
+      dropping the edge. The sound decision is the counter case; this pattern reports the grant with
+      the edge narrowing absent. Consulted 2026-10-09.
+  - title: OWASP Top 10 for Agentic Applications 2026, ASI03
+    note: >
+      Identity and Privilege Abuse: "agents act with borrowed, over-scoped, or long-lived
+      credentials; a compromised agent inherits far more access than its task needs." The over-scope
+      half of ASI03 is this pattern. Consulted 2026-10-09.
+
+verified:
+  date: 2026-10-09
+  tool_version: opa 1.20.2
+  how: >
+    The engine finds the case and stays quiet about the counter case on the fixture. It pins
+    `input.requested_scopes` to one synthetic element every ceiling holds, lets partial evaluation
+    solve `input.action == "mint"`, and asks the decision again with one element past a ceiling:
+    `data.quill.delegation.allow_mint` grants the request past `input.delegation_edge.scopes`, so the
+    edge is reported as the ceiling it does not enforce, while it refuses the request past
+    `input.role_scopes`, so the role is sound. `data.quill.delegation.allow_mint_narrowed` refuses
+    both, so it is left alone.
+    The anchor was read at the source: caracal at c6a0689 narrows the request by the edge three ways
+    over and names the failure its absence would be.
+    On generated worlds the verdict rests on the policy and the declaration, not on the data: the
+    synthetic elements carry no value a policy writes.
+
+related:
+  - id: PTD-OPA-011
+    note: >
+      The other leg of the identity model. 011 is who can assume the identity a decision trusts; this
+      is the authority the principal carries once it is legitimately that identity. A policy can be
+      sound on 011, the identity pinned to a credential, and still grant past the delegation here. A
+      part of the request is an identity or an authority, not both, so the two do not double count.
+  - id: PTD-OPA-007
+    note: >
+      The fail-open family it is closest to: both fire on a guard that is missing or does not apply.
+      007 reads an every that goes vacuous on an empty domain; this asks whether a narrowing bounds
+      the authority at all, whatever form it takes.
+
+notes:
+  - >
+    Known false negative: a ceiling that lives in the data rather than in the request,
+    `every scope in input.requested_scopes { scope in data.roles[role].scopes }`. The witness sets a
+    part of the request, so it cannot vary a ceiling the data holds; the pattern tests only the
+    ceilings declared as parts of the request.
+  - >
+    Known false negative: a decision that grants only specific named scopes, where a synthetic
+    element builds no request the decision grants, so the bound cannot be isolated. The pattern says
+    nothing rather than guess.
+  - >
+    Known false negative: a delegation chain of more than one hop. One decision sees one hop, the
+    edge it is handed; whether that edge was itself narrowed from the hop before is a fact about
+    another decision, which this pattern does not follow.

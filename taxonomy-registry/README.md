@@ -16,7 +16,7 @@ Two checks say what is not covered elsewhere.
 `imports`, `performance`, `style`, `testing`, confirmed at the source of v0.42.0 by listing the
 rule directories rather than reading them off a documentation page. The official linter of the
 OPA ecosystem, written by the maintainers, has no notion of "this Rego is dangerous". And
-`regal lint` on the fixture, which holds the case and the counter case of all twelve patterns,
+`regal lint` on the fixture, which holds the case and the counter case of all thirteen patterns,
 reports zero violations.
 
 **OPA's security documentation is about the server, not about the policy.** It covers TLS,
@@ -324,14 +324,17 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-010` | UNCONTROLLED-IDENTIFIER | opa | finding | A | `implemented`, a grant on a group name an issuer hands over, where whoever creates or renames the group picks the name |
 | `PTD-OPA-011` | ASSUMABLE-IDENTITY | opa | finding | A | `implemented`, a grant on a runtime identity an enforcement point proves, where whoever can deploy the workload it names or hold its credential assumes it |
 | `PTD-OPA-012` | LOOSE-ENFORCEMENT-MATCH | opa | finding | C | `implemented`, a grant on a resource matched as a substring, a prefix, a glob or an unanchored regex, wider than the value the enforcement point serves |
+| `PTD-OPA-013` | DELEGATION-NOT-NARROWED | opa | finding | C | `implemented`, a grant of a requested authority not bounded by the delegator's, so a delegated agent mints scopes the delegating user never held |
 
-Between them the twelve exercise `binding-resolution`, `concrete-data`, `enforcement-point`,
+Between them the thirteen exercise `binding-resolution`, `concrete-data`, `enforcement-point`,
 `rule-graph` and `taint`. 007 adds no new capability, only a new construct within `rule-graph`,
 008 asks a new question of `concrete-data`, what a decision gives a principal the data knows
 nothing about, 009 needs the declaration of the enforcement point, which says who sets each part
 of the request, 010 asks the same declaration what kind of value an issuer puts there, 011
-asks it whether a part is a runtime identity and who can assume it in another layer, and 012 reads
-the loose-match builtins off the policy and needs no enforcement point at all.
+asks it whether a part is a runtime identity and who can assume it in another layer, 012 reads
+the loose-match builtins off the policy and needs no enforcement point at all, and 013 asks a
+granting decision whether it bounds a requested authority by the delegated one, needing both the
+concrete data and the enforcement point.
 
 `partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
 the engine measures with, and in 002 it is how the fixture checks the **consequence** of a
@@ -419,6 +422,7 @@ limit in the engine:
 | `PTD-OPA-010` | it runs only with the enforcement point declared, too. The one policy that reads who is asking, `noupdateserviceaccount`, compares the user's name and groups with the lists the constraint passes in its parameters, and never with a name the policy writes |
 | `PTD-OPA-011` | it runs only with the enforcement point declared as well, and none is declared for Gatekeeper. An admission policy judges the object being admitted, and grants on no runtime identity of the caller, which is what this pattern keys on |
 | `PTD-OPA-012` | the engine reads six loose matches in the corpus, a suffix on a cpu limit and a regex on an image digest among them, but reports none: every one is in a `violation`, on the side that refuses, and this pattern reports only the grant side. A Gatekeeper policy validates the object it is handed; it does not grant |
+| `PTD-OPA-013` | it runs only with the enforcement point declared, and none is declared for Gatekeeper. An admission policy judges the object being admitted and mints no credential for a delegated agent, so there is no requested authority to bound, which is what this pattern keys on |
 
 A zero against a real corpus is neither a confirmation nor a refutation of the declared false
 positives: it is a measurement of what that corpus holds. Kubernetes admission policies decide
@@ -511,10 +515,12 @@ functions of `common` they call, so the tree was run as one bundle. Its decision
 to the `allow` of its own package. The 45 files read no `data`. The roles, permissions and
 organizational units of the user travel in the request under `input.user`, which the API sets to
 the current user it looks up before asking (`createOpaRouter.ts:143` and `180`). Eight of the
-twelve patterns start from a read of `data`, from a value from outside the policy or from an
+thirteen patterns start from a read of `data`, from a value from outside the policy or from an
 `every`, and the 45 files contain none of them. Three more, `PTD-OPA-009`, `PTD-OPA-010` and
-`PTD-OPA-011`, run only with the enforcement point declared. The last, `PTD-OPA-012`, reads the
-request and needs none, but the files hold no loose match on a resource it grants on.
+`PTD-OPA-011`, run only with the enforcement point declared. `PTD-OPA-012` reads the request and
+needs none, but the files hold no loose match on a resource it grants on. The last,
+`PTD-OPA-013`, asks a decision whether it bounds a delegated authority and needs both the data and
+the enforcement point, and the files mint no delegated credential to ask about.
 
 A corpus is not what `verified` waits for, and this is worth separating: a corpus says what other
 people write, which is why these six are here, while the conditions a pattern declares against
@@ -523,7 +529,7 @@ itself are settled one case at a time, in the file that declares them.
 ### The fixture
 
 `fixtures/vulnerable-bundle/` holds a case **and at least one counter case** for each of the
-twelve, in Rego v1 and v0, with the write model, the declaration of its gateway, and an
+thirteen, in Rego v1 and v0, with the write model, the declaration of its gateway, and an
 `EXPECTED.md` that declares in words what the engine has to find and what it must not. The numbers
 there are executed, not estimated.
 

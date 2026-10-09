@@ -1,0 +1,17 @@
+name: "PTD-OPA-013: requested authorities with no ceiling declared"
+guid: 77501d72-ebae-42a5-bba0-1aa7fae12b77
+prebuilt: false
+platforms:
+  - Open Policy Agent
+category: Delegation not narrowed
+description: >
+  The same rules where a requested authority is declared but no ceiling is, so the question is open:
+  what bounds this authority?
+query: |-
+  MATCH (r:PTD_Rule)
+  WHERE 'PTD-OPA-013' IN r.candidate_patterns
+  RETURN r
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/opa/PTD-OPA-013-grant-beyond-delegated-scope.yaml
+acknowledgements: []

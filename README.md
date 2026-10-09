@@ -18,7 +18,7 @@ the line between whoever takes a decision and whoever writes what the decision i
 
 ## What it finds
 
-Twelve patterns live in [`taxonomy-registry/`](taxonomy-registry), which is versioned data rather
+Thirteen patterns live in [`taxonomy-registry/`](taxonomy-registry), which is versioned data rather
 than code. Every one of them runs against the fixture in this repository, and the registry is the
 source of truth down to what each has been held to. These are one-line glosses; `petard patterns`
 lists them from the binary and `petard explain <id>` prints one in full.
@@ -37,6 +37,7 @@ lists them from the binary and `petard explain <id>` prints one in full.
 | `PTD-OPA-010` | a decision grants on a name that anybody able to create a group can pick |
 | `PTD-OPA-011` | a decision grants on a runtime identity that anybody able to deploy a workload can assume |
 | `PTD-OPA-012` | a decision grants on a resource matched so loosely a crafted value reaches a different one |
+| `PTD-OPA-013` | a decision grants a delegated agent an authority wider than the one delegated to it |
 
 Two of them end in the words privilege escalation, and each draws a `PTD_CanEscalateTo` edge
 between two principals: `PTD-OPA-001` and `PTD-OPA-003` chain into one, `PTD-OPA-006` draws the
@@ -83,7 +84,7 @@ inside the binary, so there is something to look at before you point the tool at
 policies. It leads with who can take whose place:
 
 ```
-10 files, 17 decisions, parsed as rego v1
+11 files, 19 decisions, parsed as rego v1
 
 Escalations
   mallory -> dave  (PTD-OPA-003, confidence D)
@@ -112,13 +113,14 @@ Findings
     1  PTD-OPA-010  A decision grants on a name somebody else picks
     1  PTD-OPA-011  A decision grants on an identity somebody can assume
     1  PTD-OPA-012  A decision grants on a value matched more loosely than it is enforced
+    1  PTD-OPA-013  A decision grants a requested authority not bounded by the delegator's
 
 Candidates, which need a write model to become findings
     1  PTD-OPA-003  A position in a hierarchy grants everything below it, and nothing says so
 
 How much to trust this
   Level D (field names): the subject is input.user. 17 reads over 11 data paths.
-  The enforcement point is quill-gateway: it says who sets 12 of the 12 parts of the request the
+  The enforcement point is quill-gateway: it says who sets 15 of the 15 parts of the request the
   decisions read, and the caller sets 4 of them.
   The write model covers 6 of 11 paths read (54%).
 ```
@@ -160,9 +162,9 @@ petard export -url https://bloodhound.example -install -upload -verify \
 ```
 
 ```
-graph: 66 nodes, 84 edges
+graph: 67 nodes, 84 edges
 schema installed, 3 of 5 relationship kinds are traversable
-saved queries: 37 added, 0 already there
+saved queries: 39 added, 0 already there
 ingest job 1 started
 job 1 processed 1 file(s) with no errors
   MALLORY -> DAVE: pathfinding walks it
@@ -194,7 +196,7 @@ Pathfinding walks them too, which is what `-verify` checks over the API.
 
 ![Pathfinding between the two principals](docs/assets/pathfinding.png)
 
-Installing also saves 37 Cypher queries, two to four per pattern, named after the question they
+Installing also saves 39 Cypher queries, two to four per pattern, named after the question they
 ask. They return nodes and paths, so the answer opens in the graph and in the table view next to
 it.
 
