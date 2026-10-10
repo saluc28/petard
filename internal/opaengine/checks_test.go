@@ -91,11 +91,10 @@ exempt(image) if image == "registry.example/debug"
 			},
 		},
 		{
-			// The shape of K8sBlockWildcardIngress in the gatekeeper-library.
-			// What the function tests is what object.get made of the request,
-			// and the call site can name the builtin and not the part: a check
-			// names a part of the request or it is not one.
-			name: "a value a builtin made of the request, tested in a function",
+			// The shape of K8sBlockWildcardIngress in the gatekeeper-library. A
+			// field read with object.get and a default is that field, and what a
+			// function then tests is a check on it.
+			name: "a field read with a default, tested in a function",
 			body: `violation contains "wildcard" if {
 	hostname := object.get(input.review.object.spec.rules[_], "host", "")
 	wildcard(hostname)
@@ -105,14 +104,23 @@ wildcard(hostname) if hostname == ""
 
 wildcard(hostname) if contains(hostname, "*")
 `,
-			deny:     []string{"checks/violation"},
-			expected: nil,
+			deny: []string{"checks/violation"},
+			expected: []Check{
+				{
+					Request: "input.review.object.spec.rules[_].host", Value: `""`, Operator: CheckEqual, Rule: "data.checks.wildcard", Line: 10,
+					Decisions: []CheckedDecision{{Name: "data.checks.violation"}},
+				},
+				{
+					Request: "input.review.object.spec.rules[_].host", Value: `"*"`, Operator: CheckSubstring, Rule: "data.checks.wildcard", Line: 12,
+					Decisions: []CheckedDecision{{Name: "data.checks.violation"}},
+				},
+			},
 		},
 		{
-			// lib.exempt_container again, as it is written: the exemption is an
-			// element of a list object.get took out of the request, and the
-			// call site has only the name the author gave that list.
-			name: "an element of a list a builtin made of the request, tested in a function",
+			// lib.exempt_container again, as it is written: the list of exempt
+			// images is read out of the parameters with one object.get inside
+			// another, and the exemption is an element of it.
+			name: "an element of a list read with a default, tested in a function",
 			body: `violation contains "not allowed" if {
 	some container in input.review.object.spec.containers
 	not exempt(container)
@@ -128,6 +136,60 @@ matches(image, exemption) if {
 	endswith(exemption, "*")
 	startswith(image, trim_suffix(exemption, "*"))
 }
+`,
+			deny: []string{"checks/violation"},
+			expected: []Check{{
+				Request: "input.parameters.exemptImages[_]", Value: `"*"`, Operator: CheckSuffix, Rule: "data.checks.matches", Line: 17,
+				Decisions: []CheckedDecision{{Name: "data.checks.violation", Grants: true, Exception: true}},
+			}},
+		},
+		{
+			// The exemption of the fixture, read the way a policy reads a
+			// request it does not trust to be complete.
+			name: "an exemption read with a default",
+			body: `allow if {
+	input.action == "export"
+	not needs_second_factor
+}
+
+needs_second_factor if {
+	scheduled := object.get(input, "scheduled", false)
+	not scheduled
+}
+`,
+			expected: []Check{
+				{
+					Request: "input.action", Value: `"export"`, Operator: CheckEqual, Rule: "data.checks.allow", Line: 6,
+					Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+				},
+				{
+					Request: "input.scheduled", Rule: "data.checks.needs_second_factor", Line: 12, UnderNegation: true,
+					Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true, Exception: true}},
+				},
+			},
+		},
+		{
+			// A key the policy computes could be any field of the request, so
+			// what the call returned names none.
+			name: "a field read under a key the policy computes",
+			body: `allow if {
+	flag := object.get(input, data.settings.field, false)
+	flag == "on"
+}
+`,
+			expected: nil,
+		},
+		{
+			// What another builtin made of the request has the request behind it
+			// and no path in it. The call site can name the builtin and not a
+			// part of the request, and a check names a part or it is not one.
+			name: "a value a builtin made of the request, tested in a function",
+			body: `violation contains "wildcard" if {
+	hostname := lower(input.review.object.spec.host)
+	wildcard(hostname)
+}
+
+wildcard(hostname) if contains(hostname, "*")
 `,
 			deny:     []string{"checks/violation"},
 			expected: nil,

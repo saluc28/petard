@@ -117,6 +117,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the enforcement point, or for a judgment.
 - `petard` and `petard help` say what the tool is for and where to start, before the list of
   commands.
+- A part of the request read with `object.get` and keys the policy writes out is followed as the
+  field it names, through one call inside another too: `object.get(object.get(input,
+  "parameters", {}), "exemptImages", [])` is `input.parameters.exemptImages`. A check on what
+  the call returned is a check on that field, and a subject read this way picks the documents it
+  indexes, so `PTD-OPA-001` and the patterns that read the request report on a policy that does
+  not trust a request to be complete. A key the policy computes is not followed.
 
 ### Fixed
 
@@ -144,8 +150,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A check on the request named something that is not a part of it, when a function tested a
   value a builtin had made of the request: `contains(object.get, "*")` for a host name read with
   `object.get`, or the name of a local list. `PTD-OPA-009` then reported candidates on parts no
-  declaration of the enforcement point can cover. Such a value is no longer read as a check,
-  and `petard measure` counts fewer of them.
+  declaration of the enforcement point can cover. A check is now read only where it names a
+  part of the request.
 - A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
 
 ## [0.4.0] - 2026-09-30

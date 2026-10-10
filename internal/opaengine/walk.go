@@ -405,8 +405,68 @@ func resolveDomain(term *ast.Term, bindings map[ast.Var]binding) (ast.Ref, bool)
 func (r *refReader) bindingsOf(rule *ast.Rule, body ast.Body, inherited map[ast.Var]binding) map[ast.Var]binding {
 	bindings := merge(inherited, collectBindings(body))
 	r.addRuleOutputs(body, bindings)
+	addRequestFields(body, bindings)
 	addIterations(rule, body, bindings)
 	return bindings
+}
+
+// addRequestFields makes the variable that receives object.get(input.x, "k", d)
+// stand for the field the call reads, input.x.k, when the call reads the request
+// and names the field with constants.
+//
+// collectBindings records that variable as what a builtin returned, which says
+// where the value came from and not which part of the request it is. A policy
+// that does not trust a request to be complete reads it this way throughout, as
+// the gatekeeper-library reads the parameters of a constraint, and a check on
+// such a variable is a check on that field: the default is what the policy
+// writes for a request that leaves the field out.
+//
+// A key the policy computes names no field, so the variable stays what the
+// builtin returned. So does one read out of the data: the document the call
+// lands on is recorded where the call is (see objectGetPath), and what it
+// returned is not followed further.
+//
+// The calls are taken in the order the body holds them, which is the order the
+// compiler evaluates them in, so what one returned can be what the next reads.
+func addRequestFields(body ast.Body, bindings map[ast.Var]binding) {
+	for _, expr := range body {
+		if expr.Negated || len(expr.With) > 0 || !expr.IsCall() {
+			continue
+		}
+		// Three arguments and the variable the result lands in.
+		operands := expr.Operands()
+		if len(operands) != 4 {
+			continue
+		}
+		result, isVar := varOf(operands[3])
+		if !isVar {
+			continue
+		}
+		path, reads := objectGetPath(expr, bindings)
+		if !reads || !isInputRooted(path) || !writtenKeys(operands[1]) {
+			continue
+		}
+		bindings[result] = binding{kind: bindingAlias, term: ast.NewTerm(path)}
+	}
+}
+
+// writtenKeys reports whether the key of an object.get names fields the policy
+// writes out: a string or a number, or a path made of them.
+func writtenKeys(key *ast.Term) bool {
+	if path, isArray := key.Value.(*ast.Array); isArray {
+		for i := range path.Len() {
+			if !writtenKeys(path.Elem(i)) {
+				return false
+			}
+		}
+		return true
+	}
+	switch key.Value.(type) {
+	case ast.String, ast.Number:
+		return true
+	default:
+		return false
+	}
 }
 
 // addRuleOutputs records the variables that receive what a rule of the policy
@@ -671,9 +731,10 @@ func (r *refReader) walkTerm(term *ast.Term, sc scope, found *[]foundRef) {
 // and in the request itself it reads as input[_], any field, the subject
 // included, which leaves the whole request unknown to every question that
 // leaves it unknown. A key that is itself a computed path cannot be told from
-// one field, and is taken as one. What a call returned is not followed further:
-// object.get(object.get(data.users, input.user, {}), "roles", []) reads
-// data.users[input.user], not its roles.
+// one field, and is taken as one. What a call returned out of the data is not
+// followed further: object.get(object.get(data.users, input.user, {}), "roles",
+// []) reads data.users[input.user], not its roles. What it returned out of the
+// request is, where the keys are written out (see addRequestFields).
 func objectGetPath(expr *ast.Expr, bindings map[ast.Var]binding) (ast.Ref, bool) {
 	operator, operands := expr.Operator(), expr.Operands()
 	if operator == nil || operator.String() != ast.ObjectGet.Name || len(operands) < 3 {

@@ -759,6 +759,53 @@ allow if {
 	}
 }
 
+// A subject read out of the request with a default is still the subject: the
+// variable the call fills stands for the field it read, so a document indexed
+// by it is picked by whoever asks, and so is one searched for it by value.
+func TestReadsFollowTheSubjectReadWithADefault(t *testing.T) {
+	dir := writeSources(t, map[string]string{
+		"policy.rego": `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+allow if {
+	user := object.get(input, "user", "")
+	data.users[user].tier == "gold"
+}
+
+# METADATA
+# scope: document
+# entrypoint: true
+member if {
+	user := object.get(input, "user", "")
+	data.teams[_].members[_] == user
+}
+`,
+	})
+	bundle, err := Load([]string{dir}, ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	reads, err := Reads(bundle, Limits{})
+	if err != nil {
+		t.Fatalf("Reads() error = %v", err)
+	}
+
+	shape := RecognizeShape(reads)
+	if shape.Subject != "input.user" {
+		t.Fatalf("subject = %q, want input.user", shape.Subject)
+	}
+	indexed := SubjectIndexedReads(shape, reads)
+	if len(indexed) != 1 || indexed[0].Path != "data.users[_].tier" {
+		t.Errorf("indexed by the subject = %v, want the tier of whoever asks", indexed)
+	}
+	matched := SubjectMatchedReads(shape, reads)
+	if len(matched) != 1 || matched[0].Path != "data.teams[_].members[_]" {
+		t.Errorf("searched for the subject = %v, want the members of a team", matched)
+	}
+}
+
 // violationsPolicy is a check written as a violation, the form a decision takes
 // when it answers with its violations as well as with a verdict.
 const violationsPolicy = `package t

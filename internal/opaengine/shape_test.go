@@ -299,6 +299,19 @@ audited if count(input) > 0
 `,
 			expected: []string{"input", "input.name"},
 		},
+		{
+			// What one call read out of the request is what the next reads
+			// from, as the gatekeeper-library reads a parameter of a constraint.
+			name: "one call inside another",
+			policy: `package t
+
+# METADATA
+# scope: document
+# entrypoint: true
+allow if count(object.get(object.get(input, "parameters", {}), "exemptImages", [])) > 0
+`,
+			expected: []string{"input.parameters.exemptImages"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
