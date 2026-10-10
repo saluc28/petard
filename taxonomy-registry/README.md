@@ -88,6 +88,25 @@ signals do not overlap.** If the signals overlap it is one pattern written twice
 merged. The practical test: if the two `detection.requires` are identical and the `signals`
 differ only in their prose, they are not two patterns.
 
+### A resource that describes itself is read by an existing pattern
+
+A tool that declares a property about itself, an MCP server's `readOnlyHint`, an advertised
+capability or a schema annotation, invites a pattern of its own, "the policy trusts what the tool
+says it is." It does not get one, by the disjoint cause rule above.
+
+A decision that grants on such a property is `PTD-OPA-009` when the property lifts a check, the
+tool asserting an exemption, or `PTD-OPA-010` when the grant keys on a value the declarer picks.
+The only new element is who the issuer is, the tool rather than an identity provider, which is a
+flavor of issuer and not a disjoint cause: declare the property a part of the request `set_by:
+issuer` with the server as the issuer, and the two patterns read it.
+
+A policy that validates the declaration instead of granting on it, a readiness rule that flags a
+tool with too many capabilities or no error schema, is admission: a `violation` on the object it is
+handed, the deny side `PTD-OPA-012` carves out and the no-data note already covers. And a model
+that trusts the tool's description at discovery, the full-schema poisoning of the MCP literature,
+is a trust the LLM places in text and not a decision a policy makes, so it is outside what the
+engine reads at all.
+
 ### Two patterns on the same rule do not silence each other
 
 One rule of the fixture, `quill.risk.allow_positive_side`, is a counter case of `PTD-OPA-005`,

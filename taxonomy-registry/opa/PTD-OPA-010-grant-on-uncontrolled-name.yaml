@@ -233,3 +233,8 @@ notes:
   - >
     Known false negative: a part an issuer sets whose declaration leaves out whether it is a name
     or an id. The pattern leaves it alone rather than guess.
+  - >
+    A grant that keys on a capability a tool declares about itself, an MCP server's advertised
+    scope or `readOnlyHint`, is this pattern with the server as the issuer: whoever controls the
+    server picks the value the grant trusts, as whoever creates a group picks its name. Validating
+    the declaration rather than granting on it is admission, which this pattern does not read.

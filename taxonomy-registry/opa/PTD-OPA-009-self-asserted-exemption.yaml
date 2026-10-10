@@ -237,3 +237,9 @@ notes:
     Known false negative: an exemption compared with anything the policy does not write out, a
     list in another part of the request as in the gatekeeper-library, or a value in the data as in
     the AAP policies, and an exemption searched in a set the policy builds from the request.
+  - >
+    A tool that declares a property about itself, an MCP server's `readOnlyHint` or a schema
+    annotation, is this pattern when a decision lets the property lift a check: declare it a part
+    of the request `set_by: issuer` with the server as the issuer, and whoever controls the server
+    asserts the exemption. A policy that validates such a declaration rather than granting on it is
+    admission, the deny side this pattern does not read.
