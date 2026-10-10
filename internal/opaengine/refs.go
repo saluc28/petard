@@ -551,7 +551,7 @@ type decisionRoot struct {
 //
 // The two sources are merged rather than one overriding the other, which is
 // what OPA itself does with an entrypoint given on the command line next to an
-// annotated one (v1/compile/compile.go:383 at v1.19.0 dedups the two lists
+// annotated one (v1/compile/compile.go:406 at v1.21.1 dedups the two lists
 // instead of preferring either).
 //
 // A declared entrypoint may also reach into the value a rule returns. A rule
@@ -560,10 +560,10 @@ type decisionRoot struct {
 // not ask it that way: AWX reads allowed out of the object
 // (awx/main/tasks/policy.py:263 and :443 at bbda905), and the Envoy plugin
 // does the same when a decision is an object (envoyauth/response.go:124 at
-// v1.20.2-envoy). OPA takes such a path as an entrypoint, since opa build
-// checks it with GetRules (v1/compile/compile.go:705 at v1.20.2), and
+// v1.21.1-envoy). OPA takes such a path as an entrypoint, since opa build
+// checks it with GetRules (v1/compile/compile.go:705 at v1.21.1), and
 // evaluates it by carrying the rest of the reference into the value
-// (v1/topdown/eval.go:4038). Here the decision keeps the declared name, so
+// (v1/topdown/eval.go:4009). Here the decision keeps the declared name, so
 // that residuals and dependence are asked of the field, and the walk starts
 // from the rule less the expressions that only build another field, where
 // leaving them out cannot change whether the rule holds (see fieldExprs).
@@ -662,7 +662,7 @@ func documentRules(compiler *ast.Compiler, ref ast.Ref) []*ast.Rule {
 //
 // Two spellings are accepted and neither of them is ours: data.authz.allow is
 // how this tool prints a decision, and authz/allow is how opa build takes one
-// (cmd/build.go:280 at v1.19.0). Somebody who has just read a report and
+// (cmd/build.go:281 at v1.21.1). Somebody who has just read a report and
 // somebody who knows the opa CLI should each be able to type what they already
 // have in front of them, which is the whole of the choice.
 func entrypointRef(declared string) (ast.Ref, error) {
@@ -758,7 +758,7 @@ func (b *Bundle) RulesNamed(name string) []string {
 //
 // The uses are OPA's own, the rule graph the compiler builds, which resolves a
 // reference with a variable in it, data[name].allow, to every rule it can reach
-// (setGraph, v1/ast/compile.go:3640 at v1.20.2). A rule reached that way is
+// (setGraph, v1/ast/compile.go:3750 at v1.21.1). A rule reached that way is
 // used.
 //
 // A function is left out, since an enforcement point asks for a document and a
@@ -788,7 +788,7 @@ func (b *Bundle) Roots() []string {
 }
 
 // The prefixes opa test runs a rule by and skips one by (TestPrefix and
-// SkipTestPrefix in v1/tester/runner.go:40 and :43 at v1.20.2), and the suffix
+// SkipTestPrefix in v1/tester/runner.go:41 and :44 at v1.21.1), and the suffix
 // regal asks a file of tests to have (docs/rules/testing/
 // file-missing-test-suffix.md at v0.43.0).
 const (

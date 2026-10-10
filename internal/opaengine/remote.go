@@ -100,7 +100,7 @@ func (c *opaClient) get(ctx context.Context, path string, v any) error {
 // bundle, the same as Load does for files.
 //
 // GET /v1/policies returns the source of every module the server holds, under
-// the id it was loaded with (v1/server/server.go:2179 at v1.20.2). Petard
+// the id it was loaded with (v1/server/server.go:2098 at v1.21.1). Petard
 // compiles that source, so it analyzes the policy the server is actually
 // running, not a checkout that may have moved on.
 func LoadRemote(ctx context.Context, base, token string, mode ParseMode) (*Bundle, error) {
@@ -132,7 +132,7 @@ func LoadRemote(ctx context.Context, base, token string, mode ParseMode) (*Bundl
 //
 // Each root is one top-level segment the decisions read, fetched with GET
 // /v1/data/<root>, which returns the document at that path (v1/server/server.go
-// at v1.20.2). A root the server has nothing under comes back with no result,
+// at v1.21.1). A root the server has nothing under comes back with no result,
 // and is skipped rather than stored as an empty document. Only the roots the
 // decisions read are fetched, so a live analysis reads the least of the data it
 // can, and never asks the server to decide anything.

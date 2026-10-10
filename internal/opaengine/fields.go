@@ -271,7 +271,7 @@ func (r *refReader) decisionsAt(rule *ast.Rule, top int, reach map[*ast.Rule]dec
 //
 // Asked for one field, OPA still builds the whole object, and partial evaluation
 // saves a comprehension that depends on something unknown as it is written
-// (v1/topdown/eval.go:1243 at v1.20.2). The list of violations next to the
+// (v1/topdown/eval.go:1241 at v1.21.1). The list of violations next to the
 // verdict then stays in every residual of the verdict, and a decision that
 // grants whatever is asked reads as granting under a condition. The rule added
 // for a field keeps the body of the rule it comes from, and the other fields

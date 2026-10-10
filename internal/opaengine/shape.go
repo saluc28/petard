@@ -47,7 +47,7 @@ const (
 	// whoever deploys the policy, who builds the request and knows which part of
 	// it names the requester. OPA takes a declaration of the input from either
 	// place, an annotation or the command line (opa eval --schema,
-	// cmd/eval.go:289 at v1.20.2).
+	// cmd/eval.go:289 at v1.21.1).
 	ConfidenceDeclared
 )
 

@@ -24,7 +24,7 @@ const maxSplitRules = 64
 //
 // Partial evaluation does not go into either once an operand depends on
 // something unknown. It saves the whole expression, with the operands plugged
-// but not evaluated (v1/topdown/eval.go:4480 and 4539 at v1.20.2, "a valid, but
+// but not evaluated (v1/topdown/eval.go:4545 and 4604 at v1.21.1, "a valid, but
 // non-optimized PE result"), so the residual still names the documents the
 // operands read instead of the requests that make them hold. A decision written
 // with or, asked what anybody can get out of it, answers with a reference to
@@ -33,7 +33,7 @@ const maxSplitRules = 64
 //
 // What each operator means is plain in the evaluator: an operand is a closed
 // scope that holds or does not, and the variables it binds stay inside it
-// (v1/topdown/eval.go:4568; v1/ast/compile.go:5419). Written as the rules
+// (v1/topdown/eval.go:4633; v1/ast/compile.go:5544). Written as the rules
 // partial evaluation already knows how to take apart, the or of a body is one
 // rule per operand, and the and is its two operands one after the other:
 //
@@ -252,8 +252,8 @@ func freshVars(modules map[string]*ast.Module) func() ast.Var {
 // written as not data.users[input.user].blocked comes out holding two
 // expressions, one binding a variable of its own. A body written without braces
 // is checked for safety by a rule of its own, which decides from the shape of
-// the body which of its variables must come from outside (v1/ast/compile.go:5132
-// at v1.20.2), and the compiled operand no longer has the shape it was written
+// the body which of its variables must come from outside (v1/ast/compile.go:5255
+// at v1.21.1), and the compiled operand no longer has the shape it was written
 // with: compiled a second time, it fails the check. With braces it is what the
 // first compilation made of it, a closed scope.
 func closeOperands(modules map[string]*ast.Module) {

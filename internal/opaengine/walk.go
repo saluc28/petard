@@ -31,7 +31,7 @@ func rulePath(rule *ast.Rule) ast.Ref {
 // Looking up a document's rules gives the first leg of each. The others hang
 // off it (Rule.Else) as rules of their own, with the same head and their own
 // body, and the compiler moves into that body whatever the leg's value needs
-// evaluated (rewriteRefsInHead, v1/ast/compile.go:2970 at v1.20.2, reaches every
+// evaluated (rewriteRefsInHead, v1/ast/compile.go:3061 at v1.21.1, reaches every
 // leg). Walking the bodies of all the legs covers everything a rule reads,
 // calls and returns.
 func withElse(rules []*ast.Rule) []*ast.Rule {
@@ -119,8 +119,8 @@ type refReader struct {
 // transitively.
 //
 // Rego forbids recursion between rules, so transitivity cannot be written as a
-// rule that calls itself: Compiler.checkRecursion (v1/ast/compile.go:1299 at
-// v1.19.0) is a mandatory stage of the compilation and fails on any cycle. That
+// rule that calls itself: Compiler.checkRecursion (v1/ast/compile.go:1321 at
+// v1.21.1) is a mandatory stage of the compilation and fails on any cycle. That
 // leaves three ways of writing it, and two of them are these calls. The third
 // is a closure somebody precomputed and stored in the data, which is an
 // ordinary read carrying no construct at all: nothing here can see it, and the
@@ -557,8 +557,8 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 // an and or an or, and whether the expression negates them.
 //
 // These are the forms the and, or and not future keywords parse to
-// (v1/ast/parser.go:3878 at v1.20.2), and the compiler keeps them as they are:
-// the evaluator goes into them itself (v1/topdown/eval.go:495 to 529). With not
+// (v1/ast/parser.go:4013 at v1.21.1), and the compiler keeps them as they are:
+// the evaluator goes into them itself (v1/topdown/eval.go:496 to 530). With not
 // imported, every negation of a module takes this form, not only the ones
 // written with braces. Each operand is a body of its own, whose variables stay
 // inside it, which is how the walk treats it. A not flips the side of
@@ -662,7 +662,7 @@ func (r *refReader) walkTerm(term *ast.Term, sc scope, found *[]foundRef) {
 // object.get(input, ["created_by", "username"], "") is input.created_by.username
 // with a default, and object.get(data.users, input.user, {}) is
 // data.users[input.user]: an array key is a path that the builtin walks one
-// element at a time (v1/topdown/object.go:152 at v1.20.2), and any other key
+// element at a time (v1/topdown/object.go:152 at v1.21.1), and any other key
 // is one field. It is how a policy reads a request or a document it does not
 // trust to be complete.
 //

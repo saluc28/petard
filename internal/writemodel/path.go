@@ -70,7 +70,7 @@ type Path struct {
 // document the step names, the first element of an array or the key "0" of an
 // object, depends on what the store holds there and not on how the path was
 // written (storage.NewPathForRef, v1/storage/path.go:66, and ptr.Ptr,
-// v1/storage/internal/ptr/ptr.go:19, at OPA v1.20.2). The write model says
+// v1/storage/internal/ptr/ptr.go:19, at OPA v1.21.1). The write model says
 // who writes documents, so it follows the store.
 func ParsePath(path string) (Path, error) {
 	if path == "" {
@@ -173,7 +173,7 @@ func parseIndex(rest string) (Segment, string, error) {
 
 // regoNumber is a number the way OPA's parser takes one, which is JSON's
 // grammar plus a fraction with no integer part, as in .5 (parseNumber,
-// v1/ast/parser.go:2563 at v1.20.2). The segment keeps the number as written,
+// v1/ast/parser.go:2700 at v1.21.1). The segment keeps the number as written,
 // the way the store does.
 var regoNumber = regexp.MustCompile(`^-?(\.[0-9]+|(0|[1-9][0-9]*)(\.[0-9]+)?)([eE][+-]?[0-9]+)?$`)
 

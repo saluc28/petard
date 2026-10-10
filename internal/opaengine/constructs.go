@@ -54,7 +54,7 @@ type Constructs struct {
 // into ordinary indexed iteration before anything can see it, which is exactly
 // why it needed no work. And import statements are gone: the compiler resolves
 // them into the references that used them and then clears the list
-// (Compiler.removeImports, v1/ast/compile.go:2273 at v1.19.0), so a count taken
+// (Compiler.removeImports, v1/ast/compile.go:2349 at v1.21.1), so a count taken
 // on the compiled AST would report zero for a module full of them. Nothing
 // about behavior is lost, since the references carry what the imports meant,
 // but the statements themselves are not there to count.

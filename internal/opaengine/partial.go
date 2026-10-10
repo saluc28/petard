@@ -72,11 +72,11 @@ var documentExts = []string{".json", ".yaml", ".yml"}
 // name: a users.json holding {"users": {...}} directly inside the directory
 // given here lands on data.users, and one inside a tenants/ subdirectory lands
 // on data.tenants.users. That is the rule opa eval follows for -d, verified in
-// the OPA sources at v1.19.0 (v1/loader/loader.go:651 and 838), and it is
+// the OPA sources at v1.21.1 (v1/loader/loader.go:678 and 865), and it is
 // replicated rather than reused for one reason:
 //
 // the loader of OPA splits a path on its first colon, to support the
-// prefix:path syntax of the command line (SplitPrefix, v1/loader/loader.go:589).
+// prefix:path syntax of the command line (SplitPrefix, v1/loader/loader.go:592).
 // On Windows that reads C:\data as the prefix "C" over the path "\data", which
 // does not exist, so every absolute path fails with an error that names a
 // directory nobody asked for. Passing the paths through an fs.FS instead trades
@@ -104,7 +104,7 @@ func LoadData(paths []string) (*Data, error) {
 }
 
 // bundleDataNames are the files a bundle keeps its data in (dataFile,
-// yamlDataFile and ymlDataFile, v1/bundle/bundle.go:49 to :51 at v1.20.2).
+// yamlDataFile and ymlDataFile, v1/bundle/bundle.go:50 to :52 at v1.21.1).
 var bundleDataNames = []string{"data.json", "data.yaml", "data.yml"}
 
 // LoadBundleData reads the data a bundle keeps next to its policies, and
@@ -112,7 +112,7 @@ var bundleDataNames = []string{"data.json", "data.yaml", "data.yml"}
 //
 // Only a file called data.json, data.yaml or data.yml counts, placed at the
 // path of its directory below the one given, which is how OPA reads a bundle
-// (v1/bundle/bundle.go:716 and :736 at v1.20.2). The other JSON a repository
+// (v1/bundle/bundle.go:717 and :737 at v1.21.1). The other JSON a repository
 // of policies holds, a package.json or the input of a test, is not data to OPA
 // and is left out here too. A bundle archive is read the same way, from the
 // paths inside it. Any other path that is a file is a policy, and holds no
@@ -443,7 +443,7 @@ func (d *Data) With(ctx context.Context, path string, value any) (*Data, error) 
 // write lands inside it: the path itself and no pointer when the path is made
 // of names, or else the nearest document above it that is, with the JSON
 // pointer (RFC 6901) from there to the place written. A with modifier takes a
-// path of names only (IsValidImportPath, v1/topdown/input.go:22 at v1.20.2), so
+// path of names only (IsValidImportPath, v1/topdown/input.go:22 at v1.21.1), so
 // a write into data.team.members[0].role is repeated by patching
 // data.team.members at /0/role.
 func WithTarget(path string) (target, pointer string, err error) {
@@ -1141,7 +1141,7 @@ func valuesComparedWith(ctx context.Context, bundle *Bundle, data *Data, ask Req
 // generated to hold one, or a rule of the policy it left for evaluation time.
 // That last one is what a comprehension over something unknown and a call to a
 // function with an else come back as: partial evaluation saves both as they are
-// written (v1/topdown/eval.go:1243 and 2223 at v1.20.2), so they name the rules
+// written (v1/topdown/eval.go:1241 and 2215 at v1.21.1), so they name the rules
 // they use and not the document those rules read.
 //
 // Nothing is interpreted, and in particular the side is not: a document that

@@ -17,12 +17,12 @@ import (
 //
 // OPA does not partially evaluate a rule with an else once it depends on
 // something unknown. It keeps the reference to the rule and moves on
-// (v1/topdown/eval.go:2967 at v1.20.2), so the residual names the rule for
+// (v1/topdown/eval.go:2940 at v1.21.1), so the residual names the rule for
 // whoever asks, and a decision behind it reads as granting everybody the same
 // way: a principal without the role as much as one who holds it. What an else
 // means is plain in the evaluator: the branches of one definition are tried in
 // order, and the first whose body has a result gives the value
-// (v1/topdown/eval.go:3831 to 3862). Written as rules that say so, each branch
+// (v1/topdown/eval.go:3801 to 3832). Written as rules that say so, each branch
 // after the first waits for the ones before it to fail:
 //
 //	p := v0 if B0 else := v1 if B1
@@ -35,7 +35,7 @@ import (
 //
 // A branch fails when its body fails or its value is undefined. The compiler
 // moves a value that needs evaluating into the body of its branch
-// (rewriteRefsInHead, v1/ast/compile.go:2970 at v1.20.2, which reaches every
+// (rewriteRefsInHead, v1/ast/compile.go:3061 at v1.21.1, which reaches every
 // else), so in
 //
 //	region := input.region if input.verified else := "unknown"
@@ -45,7 +45,7 @@ import (
 // defined. A constant is always defined and needs no check.
 //
 // Functions keep their else. A function is evaluated against the value it is
-// asked for (v1/topdown/eval.go:2291 and 2308), so a branch whose value does
+// asked for (v1/topdown/eval.go:2276 and 2293), so a branch whose value does
 // not match counts as failed and the next one is tried, and branches that
 // exclude each other would change what it answers. Partial evaluation still
 // hands back a call to one of them whole.
@@ -105,7 +105,7 @@ func exclusiveBranches(root *ast.Rule, helpers func() ast.Var) []*ast.Rule {
 		helperBody := branch.Body.Copy()
 		if value := branch.Head.Value; value != nil && !ast.IsConstant(value.Value) {
 			// The parser turns every _ into $ and a number
-			// (v1/ast/parser.go:3234 at v1.20.2), so $value cannot collide
+			// (v1/ast/parser.go:3371 at v1.21.1), so $value cannot collide
 			// with one.
 			defined := ast.Equality.Expr(ast.VarTerm(ast.WildcardPrefix+"value"), value.Copy())
 			defined.Location = branch.Location

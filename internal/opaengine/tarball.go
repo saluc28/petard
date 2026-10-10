@@ -17,7 +17,7 @@ import (
 // be pointed at what is deployed rather than at a checkout of it.
 
 // tarballExts are the names a bundle archive goes by: bundle.tar.gz is what
-// opa build writes unless told otherwise (cmd/build.go:283 at v1.20.2), and
+// opa build writes unless told otherwise (cmd/build.go:283 at v1.21.1), and
 // .tgz is the same thing shorter.
 var tarballExts = []string{".tar.gz", ".tgz"}
 
@@ -47,7 +47,7 @@ type archived struct {
 
 // readTarball reads every file of a bundle archive, through the loader OPA
 // reads bundles with and under the size limit it applies to each file
-// (bundle.DefaultSizeLimitBytes, v1/bundle/bundle.go:53 at v1.20.2), so that a
+// (bundle.DefaultSizeLimitBytes, v1/bundle/bundle.go:54 at v1.21.1), so that a
 // file too large for OPA is too large here as well.
 func readTarball(path string) ([]archived, error) {
 	compressed, err := os.ReadFile(path)

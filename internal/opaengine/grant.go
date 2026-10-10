@@ -114,7 +114,7 @@ func (c *grantCondition) apply(expr *ast.Expr) {
 	}
 
 	// IsEquality looks at the operator alone, negated or not
-	// (v1/ast/policy.go:1245 at v1.20.2). Without the check, not
+	// (v1/ast/policy.go:1231 at v1.21.1). Without the check, not
 	// input.action = "delete" would pin the action to the one value it refuses.
 	if expr.IsEquality() && !expr.Negated {
 		if operands := expr.Operands(); len(operands) == 2 {
@@ -305,7 +305,7 @@ func inputFieldsOf(expr *ast.Expr) []string {
 
 // generatedRoot is where partial evaluation writes the rules it generates.
 // Petard sets no namespace, so OPA uses its default, partial
-// (v1/rego/rego.go:43 at v1.20.2), under data.
+// (v1/rego/rego.go:44 at v1.21.1), under data.
 var generatedRoot = ast.MustParseRef("data.partial")
 
 // namesGeneratedRule reports whether an expression refers to a rule partial
