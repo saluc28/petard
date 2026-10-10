@@ -61,7 +61,7 @@ mechanism:
     }
   example_note: >
     The export rule of the fixture has the same shape, and it was measured with the rego package of
-    OPA v1.20.2: an export without a second factor is refused, the same export with `scheduled` in
+    OPA v1.21.1: an export without a second factor is refused, the same export with `scheduled` in
     the request is allowed, and one with the second factor is allowed.
 
 detection:
@@ -199,8 +199,8 @@ references:
       the input is an exemption.
 
 verified:
-  date: 2026-09-24
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture, run with its
     gateway declared (`-pep fixtures/vulnerable-bundle/pep.yaml`). The checks on the request list
@@ -210,7 +210,7 @@ verified:
     comes out. Without a declaration the pattern does not run, and with one that does not cover a
     part, that part is a candidate.
     The numbers behind it, `data.quill.verify.self_asserted`, measured with the rego package of
-    OPA v1.20.2: an export without a second factor is refused, and allowed with `scheduled` in the
+    OPA v1.21.1: an export without a second factor is refused, and allowed with `scheduled` in the
     request or with the second factor.
     `regal` v0.42.0 reports no violations on `policy-v1`.
     On generated worlds the pattern reports the same finding and nothing else: it rests on the

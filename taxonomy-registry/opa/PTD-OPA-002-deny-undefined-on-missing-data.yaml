@@ -92,7 +92,7 @@ detection:
         The two negations are counted together because it is their parity that says what the
         absence does: one negation between the decision and the read, and missing data lets the
         request through; two, and the same missing data denies. The walk records the path on the
-        way down, because `ast.Graph` (`v1/ast/compile.go:4694` at v1.19.0) holds adjacency only
+        way down, because `ast.Graph` (`v1/ast/compile.go:4835` at v1.21.1) holds adjacency only
         and does not keep the expression; the negation of the expression is `Expr.Negated`, a
         bool.
         Knowing which side applies the check depends on the PEP, and it stays the fragile point
@@ -221,7 +221,7 @@ false_positives:
         {"tenants": {"berq": {"policy": {"require_mfa": true}}, "dolm": {}}}
       reports: false
       note: >
-        Run with opa 1.20.2: `dolm`, which has no `policy`, gives `false` without MFA, because the
+        Run with opa 1.21.1: `dolm`, which has no `policy`, gives `false` without MFA, because the
         guard on the prefix denies; `berq` with MFA gives `true`. The engine stays quiet, since the
         guard on `policy` covers `policy.require_mfa`.
   - condition: >
@@ -261,7 +261,7 @@ false_positives:
         {"tenants": {"berq": {"policy": {"require_mfa": true}}, "dolm": {}}}
       reports: true
       note: >
-        Run with opa 1.20.2: `dolm` without MFA gives `false`, because `mfa_required` falls back
+        Run with opa 1.21.1: `dolm` without MFA gives `false`, because `mfa_required` falls back
         to `true` when `configured_mfa` is undefined, and with MFA it gives `true`. The check
         applies to `dolm` after all. The engine reports `dolm` as uncovered anyway, because the
         default sits on `mfa_required` and the read sits in `configured_mfa`.
@@ -307,7 +307,7 @@ false_positives:
         }
       reports: true
       note: >
-        Run with opa 1.20.2: `alice`, whose tenant is `berq`, gives `false` without MFA and `true`
+        Run with opa 1.21.1: `alice`, whose tenant is `berq`, gives `false` without MFA and `true`
         with it. No user belongs to `orphan`, so no request can reach the tenant that has no
         `policy`. The engine reports `orphan` as uncovered anyway, because it counts the
         collection and not the documents a request can pick.
@@ -345,8 +345,8 @@ references:
       rule for this case.
 
 verified:
-  date: 2026-09-16
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     The mechanism was executed rather than argued. With
     `data.tenants.berq.policy.require_mfa=true` and `data.tenants.dolm={}`, and the same input

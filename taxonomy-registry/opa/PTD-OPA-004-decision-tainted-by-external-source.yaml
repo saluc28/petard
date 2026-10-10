@@ -185,7 +185,7 @@ false_positives:
         }
       reports: true
       note: >
-        Run with opa 1.20.2 against a local server: a token signed with the key in
+        Run with opa 1.21.1 against a local server: a token signed with the key in
         `data.keys.idp` gives `true`, the same claims signed with another key give `false`, so
         whoever answers in place of the endpoint cannot grant without that key. The engine
         reports it anyway, because signal 2 follows the value from the call to the decision and
@@ -225,8 +225,8 @@ references:
       rule about `http.send`.
 
 verified:
-  date: 2026-09-16
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     `opa check` accepts the example policy without any warning. The taint mechanism was checked
     on the compiled body: the resolver identifies `__local0__.body.privileged` as coming from

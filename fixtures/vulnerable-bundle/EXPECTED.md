@@ -4,7 +4,7 @@ A policy with escalation built into it on purpose, next to the statement, in wor
 analysis has to produce from it and what it has to stay quiet about. It is the criterion the
 patterns are measured against.
 
-Every number here was executed and not estimated, with `opa 1.20.2`. Section 7 has the commands
+Every number here was executed and not estimated, with `opa 1.21.1`. Section 7 has the commands
 to regenerate them.
 
 ---
@@ -31,7 +31,7 @@ fixtures/vulnerable-bundle/
 
 Checked on the value of every rule the two variants produce under `data.quill`, against every one
 of the thirteen inputs under `inputs/`: no divergence between `policy-v1` and `policy-v0`, with the
-rego package of OPA v1.20.2.
+rego package of OPA v1.21.1.
 The same pair of trees is also the test of dual parsing:
 
 | | v1 parser | v0 parser (`--v0-compatible`) |

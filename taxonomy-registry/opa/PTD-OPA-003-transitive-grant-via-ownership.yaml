@@ -255,7 +255,7 @@ false_positives:
         `defaults` is the record new accounts copy their team from, and nobody signs in as it.
         The engine takes the keys of `data.users` for people and reports `defaults` as reaching
         `d1` through the hierarchy, 1 way with the relation and 0 without. `erin` is a member of
-        `app` itself and stays quiet. Run with opa 1.20.2, `erin` reads `d1`.
+        `app` itself and stays quiet. Run with opa 1.21.1, `erin` reads `d1`.
   - condition: >
       The decision grants to that principal anyway, whatever resource they ask for.
     discriminator: >
@@ -295,7 +295,7 @@ false_positives:
         }
       reports: false
       note: >
-        Run with opa 1.20.2: `ops` is granted `d1`, and is granted with no document and no
+        Run with opa 1.21.1: `ops` is granted `d1`, and is granted with no document and no
         action at all. The team of `ops` matches the root, so the hierarchy would grant `d1` too,
         but the decision grants everything regardless, and the engine stays quiet as the
         discriminator says.
@@ -340,7 +340,7 @@ false_positives:
         }
       reports: false
       note: >
-        Run with opa 1.20.2: `bob` reads `d1`. The team of `bob` would reach it through the root
+        Run with opa 1.21.1: `bob` reads `d1`. The team of `bob` would reach it through the root
         as well, but the administrator branch grants every document without the relation, so the
         cut takes nothing away and the engine stays quiet.
   - condition: >
@@ -395,7 +395,7 @@ false_positives:
       reports: false
       note: >
         The team of `dave` matches the root, so a count over the graph would say he reaches `d1`.
-        Run with opa 1.20.2 he does not, because `d1` belongs to another tenant, and the engine,
+        Run with opa 1.21.1 he does not, because `d1` belongs to another tenant, and the engine,
         which evaluates the whole decision, stays quiet.
   - condition: >
       **The engine computes reachability with an implementation of its own instead of following
@@ -450,7 +450,7 @@ false_positives:
       reports: false
       note: >
         `parent_of` gives no entry to `root`, so `graph.reachable` never returns it. Run with opa
-        1.20.2, `dave`, whose team matches the root, does not read `d1`, and with the comprehension
+        1.21.1, `dave`, whose team matches the root, does not read `d1`, and with the comprehension
         form of the first case he does. A walk over the graph would report him; the engine asks OPA
         and stays quiet.
 
@@ -494,8 +494,8 @@ references:
     note: Checked on 2026-08-01 and again at the source of v0.42.0, no `security` category.
 
 verified:
-  date: 2026-09-16
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     Executed, not argued. The recursion ban is confirmed by the compiler's message, and
     `graph.reachable` works with the example policy compiling without warnings.

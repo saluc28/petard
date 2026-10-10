@@ -245,7 +245,7 @@ false_positives:
         }
       reports: false
       note: >
-        Run with opa 1.20.2 against a local server: a score of 95 gives `false`, the source down
+        Run with opa 1.21.1 against a local server: a score of 95 gives `false`, the source down
         gives `true`. The decision fails open, on purpose and in writing, and the engine stays
         quiet because the rule reads `error`. The same silence would cover a `not risk.error`
         written by mistake, which is the limit the discriminator states.
@@ -296,7 +296,7 @@ false_positives:
         denied_local if input.user in blocked_here
       reports: true
       note: >
-        Run with opa 1.20.2 with the source down: `mallory`, whom the local list names too, gives
+        Run with opa 1.21.1 with the source down: `mallory`, whom the local list names too, gives
         `false`, and `alice` gives `true`. The remote check fails open, and for the principals the
         local list repeats nothing is lost. The engine reports it anyway: that two lists name the
         same principals is a fact about their contents, not about the shape of the rules.
@@ -328,7 +328,7 @@ false_positives:
         }
       reports: false
       note: >
-        Run with opa 1.20.2 against a local server: a score of 10 gives `true`, the source down
+        Run with opa 1.21.1 against a local server: a score of 10 gives `true`, the source down
         gives `false`, which is fail-closed. The engine stays quiet, as signal 2 asks.
         `PTD-OPA-004` reports the same rule, because whoever controls the source grants in place
         of the policy.
@@ -402,8 +402,8 @@ references:
       `not_a_lint_rule`.
 
 verified:
-  date: 2026-09-16
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     Executed, not argued, and the matrix is the part worth reading: the option everybody blames
     is not what makes the rule undefined. With a host that does not resolve, the same input, and

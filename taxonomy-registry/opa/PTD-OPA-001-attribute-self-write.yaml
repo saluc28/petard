@@ -182,7 +182,7 @@ false_positives:
       reports: false
       note: >
         With the model at field granularity the engine is quiet: the subject writes
-        `display_name`, billing writes `tier`, and the decision reads `tier`. Run with opa 1.20.2,
+        `display_name`, billing writes `tier`, and the decision reads `tier`. Run with opa 1.21.1,
         a `tier` of `free` gives `false` and `gold` gives `true`, so the field decides. The same
         policy against a model that declares `data.users.{owner}.*` writable by the subject gives
         a finding on `tier`, which is the false positive this condition names.
@@ -225,7 +225,7 @@ false_positives:
                 confidence: asserted
       reports: true
       note: >
-        Run with opa 1.20.2: a `tier` the subject sets to `gold` over a billing plan of `free`
+        Run with opa 1.21.1: a `tier` the subject sets to `gold` over a billing plan of `free`
         gives `false`, and only both at `gold` give `true`, so writing the field alone grants
         nothing. The engine reports `tier` anyway, because it does not look for the second read
         that holds the value in check.
@@ -267,7 +267,7 @@ false_positives:
                 confidence: asserted
       reports: true
       note: >
-        Run with opa 1.20.2: with the exclusion set the decision gives `false`, and without it
+        Run with opa 1.21.1: with the exclusion set the decision gives `false`, and without it
         `true`. The engine reports the field, as it does for a suspension the subject can clear,
         and here that is a false positive: the note in the model says the write goes one way,
         and the engine does not read notes.
@@ -318,8 +318,8 @@ references:
       `imports`, `performance`, `style`, `testing`. **No `security` category.**
 
 verified:
-  date: 2026-09-17
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     Signals 1 and 2 are executable, not argued: the resolver rebuilds
     `data.profiles[input.subject.id].tier` out of `data.profiles[__local4__].tier` plus the

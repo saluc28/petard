@@ -64,7 +64,7 @@ mechanism:
         data.settings.reading_room.open == true
     }
   example_note: >
-    It compiles, it lints clean, and it does what it says. Measured on the fixture with opa 1.20.2:
+    It compiles, it lints clean, and it does what it says. Measured on the fixture with opa 1.21.1:
     for a principal no document names, `allow` is false with the room closed and true with it
     open, and nothing about who asks changes that.
 
@@ -95,7 +95,7 @@ detection:
         the rest of the request unknown and the document left unknown too. The decision depends on
         the document when something partial evaluation leaves mentions it, or names a rule of the
         policy that reads it: a comprehension over something unknown and a call to a function with
-        an else come back as they are written (`v1/topdown/eval.go:1243` and `2223` at v1.20.2).
+        an else come back as they are written (`v1/topdown/eval.go:1241` and `2215` at v1.21.1).
         A rule with an else would too (`eval.go:2967`), and the engine rewrites its branches into
         rules that exclude each other before it asks, so the branch the stranger takes is the one
         measured.
@@ -194,7 +194,7 @@ false_positives:
                 via: "configuration repository, synced on merge"
       reports: true
       note: >
-        Run with opa 1.20.2: an upload of 20 MB is allowed for anybody and one of 30 MB is refused,
+        Run with opa 1.21.1: an upload of 20 MB is allowed for anybody and one of 30 MB is refused,
         and raising `max_mb` to 50 allows the second. The engine reports `max_mb` as deciding for
         somebody no document names, which it does; that the most its writer can do is let bigger
         files in is not something it can see.
@@ -237,7 +237,7 @@ false_positives:
                 via: "configuration repository, synced on merge"
       reports: false
       note: >
-        Run with opa 1.20.2: somebody named reads, somebody with an empty name is refused, and the
+        Run with opa 1.21.1: somebody named reads, somebody with an empty name is refused, and the
         address changes neither. The engine asks about `petard:nobody`, for whom the refusal never
         fires, and stays quiet.
   - condition: >
@@ -276,7 +276,7 @@ false_positives:
                 via: "configuration repository, synced on merge"
       reports: false
       note: >
-        Run with opa 1.20.2: `bob` opens the console while it is enabled and not once it is
+        Run with opa 1.21.1: `bob` opens the console while it is enabled and not once it is
         switched off, and `petard:nobody` never does, whatever the setting says. With the branches
         rewritten, nothing partial evaluation leaves for the stranger mentions the setting, and the
         engine stays quiet.
@@ -340,8 +340,8 @@ references:
       positive of a bound covers.
 
 verified:
-  date: 2026-09-18
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture. The walk
     reports `data.settings.reading_room.open` and `data.settings.console.enabled` as static reads.

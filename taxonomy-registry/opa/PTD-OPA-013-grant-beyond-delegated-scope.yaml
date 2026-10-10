@@ -62,7 +62,7 @@ mechanism:
     }
   example_note: >
     The mint decision of the fixture has the same shape, and it was measured with the rego package of
-    OPA v1.20.2: a request for a scope within the role but outside the edge is granted, while the
+    OPA v1.21.1: a request for a scope within the role but outside the edge is granted, while the
     counter case, the same decision narrowed by the edge as well, refuses it.
 
 detection:
@@ -178,8 +178,8 @@ references:
       half of ASI03 is this pattern. Consulted 2026-10-09.
 
 verified:
-  date: 2026-10-09
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture. It pins
     `input.requested_scopes` to one synthetic element every ceiling holds, lets partial evaluation

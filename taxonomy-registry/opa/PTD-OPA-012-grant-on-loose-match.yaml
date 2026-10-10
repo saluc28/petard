@@ -57,7 +57,7 @@ mechanism:
     }
   example_note: >
     The document rule of the fixture has the same shape, and it was measured with the rego package
-    of OPA v1.20.2: a request for `welcome-public` is allowed, and a request for `public-incident-q3`,
+    of OPA v1.21.1: a request for `welcome-public` is allowed, and a request for `public-incident-q3`,
     a document that is not public, is allowed too, because its id embeds the marker.
 
 detection:
@@ -187,15 +187,15 @@ references:
       point's canonicalization declared and the guard read; see the notes. Consulted 2026-10-05.
 
 verified:
-  date: 2026-10-05
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture. The checks on
     the request list `contains(input.doc, "public")` as granting in `data.quill.library.allow_doc`,
     read as a substring, and `input.doc == "welcome-public"` as an equality, which is not a loose
     match. The shape recognizer names `input.doc` the resource at level C, so the substring is a
     finding at that level and the equality is nothing.
-    The numbers behind it, measured with the rego package of OPA v1.20.2: a request for the exact id
+    The numbers behind it, measured with the rego package of OPA v1.21.1: a request for the exact id
     is allowed, and a request for an id that embeds the marker is allowed too.
     `regal` v0.42.0 reports no violations on `policy-v1`.
     On generated worlds the verdict rests on the policy and not on the data: the same substring is a

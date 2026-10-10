@@ -236,7 +236,7 @@ flag (`awx/main/tasks/policy.py:49` and `194` at `bbda905`), where no recognizer
 
 Both declarations are level A. OPA takes a declaration of its input from either place too: it
 checks the input against a schema given in an annotation or on the command line
-(`opa eval --schema`, `cmd/eval.go:289` at `v1.20.2`). A declared subject that no decision reads
+(`opa eval --schema`, `cmd/eval.go:289` at `v1.21.1`). A declared subject that no decision reads
 is refused, the way an entrypoint that names no rule is.
 
 ### Which way a decision answers is declared too
@@ -248,7 +248,7 @@ to say it. Gatekeeper queries `violation` on every constraint template
 carries the deny action (`pkg/webhook/policy.go:206` at `v3.21.0`). conftest counts every element
 of a rule named `deny` or `violation`, with a suffix or without, as a failure
 (`policy/engine.go:48` and `390` at `v0.70.0`). OPA's annotations mark an entrypoint and carry no
-direction (`v1/ast/annotations.go:28` at `v1.20.2`).
+direction (`v1/ast/annotations.go:28` at `v1.21.1`).
 
 So a decision that refuses is declared, `-deny-entrypoint k8sallowedrepos/violation`, like the
 decision itself and the subject, and never inferred from a name: a rule called `deny` can just as
@@ -489,9 +489,11 @@ Four more corpora were run the same way, with the decisions their enforcement po
 
 [`ynotbhatc/rego_policy_libraries`](https://github.com/ynotbhatc/rego_policy_libraries), at commit
 `e1eb90b5a73f8d90362833228837dded51547c87`, gives `petard measure` 296 units, all Rego v1, and
-every one of them loads. 123 define the `compliance_report` its README queries, and for 122 of
-those no request shape is recognized, because the input they take describes a system rather than
-somebody asking. `enforcement/aap` is the part that decides about a request, eleven decisions
+295 of them load. The other, `benchmarks/cis/saas/m365_v7`, iterates an object it declares empty
+(`attestation_validation.rego:83` and `126`), which OPA has refused to compile since v1.21.0. 122
+of the 295 define the `compliance_report` its README queries, and for 121 of those no request
+shape is recognized, because the input they take describes a system rather than somebody asking.
+`enforcement/aap` is the part that decides about a request, eleven decisions
 Ansible Automation Platform queries before it runs a job, each answering in an `allowed` field.
 Run with those eleven, the subject declared as `input.created_by.username` and the example
 configuration the directory ships as data, each decision reads its own block of

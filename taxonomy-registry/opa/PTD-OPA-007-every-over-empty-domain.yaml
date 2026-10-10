@@ -59,7 +59,7 @@ mechanism:
     }
   example_note: >
     With `input.reviews` a list holding one unapproved review, `allow` is false; with the list
-    empty, `allow` is true. Verified with opa 1.20.2. The guarded form, with
+    empty, `allow` is true. Verified with opa 1.21.1. The guarded form, with
     `count(input.reviews) > 0` before the `every`, denies the empty case, and that is the counter
     case: the same quantifier over the same domain, told apart only by the guard.
 
@@ -184,7 +184,7 @@ false_positives:
       note: >
         `input.reviews[_]` is undefined for an empty list, so this decision denies the empty case
         exactly as the counter case in the fixture does, and the every behind it can never be
-        vacuous. Run with opa 1.20.2: empty list `false`, one approved review `true`, one rejected
+        vacuous. Run with opa 1.21.1: empty list `false`, one approved review `true`, one rejected
         `false`, no `reviews` key at all `false`. The engine reports it anyway, because signal 4
         matches a `count` of the domain and nothing else.
 
@@ -215,8 +215,8 @@ references:
       2026-09-14: no rule about `every` over an empty domain, and none about vacuous quantifiers.
 
 verified:
-  date: 2026-09-16
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture. The walk
     collects every `every` the decisions reach, resolving the domain through the locals the
@@ -225,7 +225,7 @@ verified:
     guarded by `count(input.reviews) > 0`, so nothing does.
     The numbers behind it, `data.quill.verify.empty_every`: `allow_unguarded` is true for the empty
     list and false once a reviewer rejects, while `allow_guarded` is false for the empty list. The
-    quantifier itself was run with opa 1.20.2: `every` over an empty list is true.
+    quantifier itself was run with opa 1.21.1: `every` over an empty list is true.
     `regal` v0.42.0 reports no violations on `policy-v1`, and its rule list at that tag holds
     nothing for this construct.
     The three declared false positives are settled as the status requires. Two are `out-of-band`:

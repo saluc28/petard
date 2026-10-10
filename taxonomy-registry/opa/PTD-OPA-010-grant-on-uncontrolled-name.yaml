@@ -56,7 +56,7 @@ mechanism:
     }
   example_note: >
     The audit log rule of the fixture has the same shape, and it was measured with the rego package
-    of OPA v1.20.2: a request with no groups is refused, the same request after naming a new group
+    of OPA v1.21.1: a request with no groups is refused, the same request after naming a new group
     `security` is allowed, and the id the directory gave that new group opens nothing.
 
 detection:
@@ -183,8 +183,8 @@ references:
       whoever creates a team becomes its maintainer.
 
 verified:
-  date: 2026-09-25
-  tool_version: opa 1.20.2
+  date: 2026-10-10
+  tool_version: opa 1.21.1
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture, run with its
     gateway and its write model (`-pep fixtures/vulnerable-bundle/pep.yaml -write-model
@@ -194,7 +194,7 @@ verified:
     write model lets `role:viewer` create a group, so one finding comes out, at confidence A.
     Without the write model it is a candidate, and without a declaration the pattern does not run.
     The numbers behind it, `data.quill.verify.uncontrolled_name`, measured with the rego package of
-    OPA v1.20.2: a request with no groups is refused, the same request with a group named
+    OPA v1.21.1: a request with no groups is refused, the same request with a group named
     `security` is allowed, the id of that new group opens nothing, and the id of the real group
     does.
     `regal` v0.42.0 reports no violations on `policy-v1`.
