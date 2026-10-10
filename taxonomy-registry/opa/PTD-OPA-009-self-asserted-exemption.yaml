@@ -132,7 +132,7 @@ false_positives:
       compliance as exemption, which is why the pattern needs a declaration to run and why
       `pep-registry/` holds none for Gatekeeper. Measured on open-policy-agent/gatekeeper-library
       at e4d3bd2, one run for each unit under `src/` with a declaration that asks for `violation`
-      on the side that denies and covers no field: 53 candidates in 27 of the 49 units that hold
+      on the side that denies and covers no field: 31 candidates in 14 of the 49 units that hold
       a `violation`, among them the container's own `resources.limits` in `containerlimits`.
   - condition: >
       The enforcement point lets only the caller the exemption is meant for reach the endpoint,
@@ -239,6 +239,12 @@ notes:
     Known false negative: an exemption compared with anything the policy does not write out, a
     list in another part of the request as in the gatekeeper-library, or a value in the data as in
     the AAP policies, and an exemption searched in a set the policy builds from the request.
+  - >
+    Known false negative: an exemption taken out of the request with `object.get` before it is
+    tested, `scheduled := object.get(input, "scheduled", false)` and then `not scheduled`. The
+    value comes from the request and the check names no part of it, so none is read. The
+    gatekeeper-library reads the list of exempt images this way (line 4 of `lib.exempt_container`,
+    cited above).
   - >
     A tool that declares a property about itself, an MCP server's `readOnlyHint` or a schema
     annotation, is this pattern only where the client sends the property with its request: declared

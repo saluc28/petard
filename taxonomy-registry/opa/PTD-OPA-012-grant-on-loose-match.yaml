@@ -146,7 +146,7 @@ false_positives:
       The pattern reports only the grant side. A deny that matches loosely under-blocks, which is a
       different concern from a grant that reaches more than the value it names. On
       open-policy-agent/gatekeeper-library at e4d3bd2, run unit by unit with `violation` declared
-      to deny, the engine reads 58 loose matches, twelve of them on `input.review.object`, a suffix
+      to deny, the engine reads 15 loose matches, twelve of them on `input.review.object`, a suffix
       on a cpu limit and a regex on an image digest among them, and the pattern reports none: each
       sits in a `violation`, a decision that refuses, and it reports only in one that grants.
 

@@ -91,6 +91,48 @@ exempt(image) if image == "registry.example/debug"
 			},
 		},
 		{
+			// The shape of K8sBlockWildcardIngress in the gatekeeper-library.
+			// What the function tests is what object.get made of the request,
+			// and the call site can name the builtin and not the part: a check
+			// names a part of the request or it is not one.
+			name: "a value a builtin made of the request, tested in a function",
+			body: `violation contains "wildcard" if {
+	hostname := object.get(input.review.object.spec.rules[_], "host", "")
+	wildcard(hostname)
+}
+
+wildcard(hostname) if hostname == ""
+
+wildcard(hostname) if contains(hostname, "*")
+`,
+			deny:     []string{"checks/violation"},
+			expected: nil,
+		},
+		{
+			// lib.exempt_container again, as it is written: the exemption is an
+			// element of a list object.get took out of the request, and the
+			// call site has only the name the author gave that list.
+			name: "an element of a list a builtin made of the request, tested in a function",
+			body: `violation contains "not allowed" if {
+	some container in input.review.object.spec.containers
+	not exempt(container)
+}
+
+exempt(container) if {
+	exempt_images := object.get(object.get(input, "parameters", {}), "exemptImages", [])
+	exemption := exempt_images[_]
+	matches(container.image, exemption)
+}
+
+matches(image, exemption) if {
+	endswith(exemption, "*")
+	startswith(image, trim_suffix(exemption, "*"))
+}
+`,
+			deny:     []string{"checks/violation"},
+			expected: nil,
+		},
+		{
 			name:     "a part of the request compared with a document",
 			body:     "allow if input.user == data.settings.owner\n",
 			expected: nil,

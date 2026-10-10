@@ -141,6 +141,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   value written into the subject's record and for a subject added to a collection, and drew
   `PTD_CanEscalateTo` edges nobody can walk. The question is now a plain yes or no about that
   request.
+- A check on the request named something that is not a part of it, when a function tested a
+  value a builtin had made of the request: `contains(object.get, "*")` for a host name read with
+  `object.get`, or the name of a local list. `PTD-OPA-009` then reported candidates on parts no
+  declaration of the enforcement point can cover. Such a value is no longer read as a check,
+  and `petard measure` counts fewer of them.
 - A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
 
 ## [0.4.0] - 2026-09-30

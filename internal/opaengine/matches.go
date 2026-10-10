@@ -350,14 +350,24 @@ func (r *refReader) documentOf(term *ast.Term, bindings map[ast.Var]binding) (as
 
 // requestOf returns the part of the request a term stands for, asking the call
 // sites when the term is a parameter.
+//
+// A parameter is a part of the request only when the call site names one. A
+// value that comes from the request through a builtin, object.get taking a field
+// out of it, has the provenance of the request and no path in it: the trace then
+// says what made the value, the builtin or the name the caller gave it, which is
+// for a reader of the report and names nothing a declaration could cover.
 func (r *refReader) requestOf(rule *ast.Rule, term *ast.Term, bindings map[ast.Var]binding, budget *callBudget) (string, bool) {
 	if v, isVar := varOf(term); isVar {
 		if _, isParam := parameterPlaceOf(rule, v); isParam {
 			provenance, trace := r.parameterProvenance(rule, v, budget, 0)
-			if provenance != ProvenanceInput || trace == nil || trace.Term == "" {
+			if provenance != ProvenanceInput || trace == nil {
 				return "", false
 			}
-			return normalizeTerm(trace.Term), true
+			passed, err := ast.ParseRef(trace.Term)
+			if err != nil || !isInputRooted(passed) {
+				return "", false
+			}
+			return normalize(passed), true
 		}
 		if resolved := resolveVar(v, bindings); resolved.status == resolvedTerm {
 			return r.requestOf(rule, resolved.term, bindings, budget)
