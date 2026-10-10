@@ -339,20 +339,8 @@ func siblingWriteAllowed(ctx context.Context, a Analysis, start siblingStart, fi
 		fixed = append(fixed, start.Auth.Target)
 	}
 
-	unknowns := unknownsExcept(a.Reads.InputPaths, fixed...)
-	if len(unknowns) == 0 {
-		// Every request part the decision reads is fixed, so there is no request
-		// to search over: the question is whether it holds for this one, which
-		// Residuals cannot answer, since it reads an empty set of unknowns as the
-		// whole request being unknown. A request it allows is a reach that holds
-		// always, with nothing left to ask.
-		allowed, err := opaengine.Holds(ctx, a.Bundle, a.Data, start.Auth.Decision, request)
-		if err != nil || !allowed {
-			return reach{}, err
-		}
-		return reach{always: true, bundle: a.Bundle, data: a.Data, decision: start.Auth.Decision, request: request}, nil
-	}
-	return reachOf(ctx, a.Bundle, a.Data, start.Auth.Decision, request, unknowns, a.Limits)
+	return reachOf(ctx, a.Bundle, a.Data, start.Auth.Decision, request,
+		unknownsExcept(a.Reads.InputPaths, fixed...), a.Limits)
 }
 
 // valueHolders returns the values the granting field takes elsewhere in the list

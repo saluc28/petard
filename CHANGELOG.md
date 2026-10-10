@@ -134,6 +134,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   missing from the patterns that did not run, so it read as a pattern that ran and found nothing.
   It is now listed among them, and says it needs a write model naming the decision that allows
   each write.
+- `PTD-OPA-006` reported an escalation for a principal the decision behind the write refuses,
+  when the decisions read nothing of the request but the parts the question fixes: who asks, the
+  value written, the document it lands in. Whether that principal may make the write was then
+  asked with the whole request left open, and answered for anybody who may. It happened for a
+  value written into the subject's record and for a subject added to a collection, and drew
+  `PTD_CanEscalateTo` edges nobody can walk. The question is now a plain yes or no about that
+  request.
 - A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
 
 ## [0.4.0] - 2026-09-30

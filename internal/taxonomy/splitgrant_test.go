@@ -415,6 +415,115 @@ func TestSplitGrantDoesNotReportAJoinThatGrantsNothingNew(t *testing.T) {
 	}
 }
 
+// assignBundle is a role assignment and a grant on the role, where the two
+// decisions read nothing of the request but who asks and the role asked for.
+const assignBundle = `package app
+
+# METADATA
+# entrypoint: true
+default assign := false
+
+# Only an admin may assign a role, and only the editor role.
+assign if {
+	"admin" in data.users[input.user].roles
+	input.role == "editor"
+}
+
+# METADATA
+# entrypoint: true
+default publish := false
+
+publish if "editor" in data.users[input.user].roles
+`
+
+const assignData = `{"users": {"alice": {"roles": ["admin"]}, "bob": {"roles": ["editor"]}, "carol": {"roles": []}}}`
+
+const assignModel = `schema_version: 1
+model: write-paths
+entries:
+  - path: data.users.{owner}.roles
+    writable_by:
+      - principal: role:admin
+        via: "PUT /users/{id}/roles"
+        authorized_by:
+          decision: data.app.assign
+          value: input.role
+`
+
+// The question to the decision behind a write names the principal and the
+// value, and here those are every part of the request the decisions read. Asked
+// with nothing left open it has to stay about that principal: alice, an admin,
+// may give herself editor, and bob and carol, who are not, may give themselves
+// nothing. Read as a question about anybody, the write alice may make was
+// reported for all three, and so was a write of admin nobody may make.
+func TestSplitGrantAsksAboutThePrincipalWhenTheWriteLeavesNothingOpen(t *testing.T) {
+	a := analysisOf(t, &FalsePositiveCase{Policy: assignBundle, Data: assignData, WriteModel: assignModel})
+
+	findings, err := SplitGrant(t.Context(), a)
+	if err != nil {
+		t.Fatalf("SplitGrant() error = %v", err)
+	}
+
+	var reported []string
+	for _, f := range findings {
+		reported = append(reported, f.Principal+" -> "+f.Target+", "+f.Value)
+	}
+	if expected := []string{"alice -> bob, editor"}; !slices.Equal(reported, expected) {
+		t.Errorf("escalations = %v, want %v", reported, expected)
+	}
+}
+
+// teamBundle is the same question for a membership: only the owner of a team
+// may add a member to it, and the decisions read who asks and which team.
+const teamBundle = `package app
+
+# METADATA
+# entrypoint: true
+default add_member := false
+
+add_member if data.teams[input.team].owner == input.user
+
+# METADATA
+# entrypoint: true
+default deploy := false
+
+deploy if input.user in data.teams[input.team].members
+`
+
+const teamData = `{"teams": {
+  "core": {"owner": "alice", "members": ["alice", "bob"]},
+  "web": {"owner": "dave", "members": ["dave"]}
+}}`
+
+const teamModel = `schema_version: 1
+model: write-paths
+entries:
+  - path: data.teams.{team}.members.{member}
+    writable_by:
+      - principal: role:owner
+        via: "POST /teams/{team}/members"
+        authorized_by:
+          decision: data.app.add_member
+          request:
+            input.team: "{team}"
+`
+
+// The same for a join. Each owner may add a member to their own team, where
+// they already are, and to no other, so nobody has a join to make. Asked about
+// anybody, every team has an owner who may add a member, and each principal
+// outside a team was reported joining it.
+func TestSplitGrantAsksAboutThePrincipalWhenTheJoinLeavesNothingOpen(t *testing.T) {
+	a := analysisOf(t, &FalsePositiveCase{Policy: teamBundle, Data: teamData, WriteModel: teamModel})
+
+	findings, err := SplitGrant(t.Context(), a)
+	if err != nil {
+		t.Fatalf("SplitGrant() error = %v", err)
+	}
+	for _, f := range findings {
+		t.Errorf("%s is reported joining %s, and add_member refuses them there: %s", f.Principal, f.Target, f)
+	}
+}
+
 // modelWithoutAuthorization declares the same roles field as writable by
 // support, but says nothing about which decision bounds the write.
 func modelWithoutAuthorization(t *testing.T) *writemodel.Model {

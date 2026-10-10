@@ -464,7 +464,22 @@ func (w *Witness) authorizedBy(decision string, request map[string]any) *Witness
 
 // reachOf asks how much of a decision one principal can get, with the rest of
 // the request left open.
+//
+// A question that fixes every part of the request the decisions read leaves
+// nothing open, and is asked as a plain yes or no. Residuals reads an empty set
+// of unknowns as the whole request left open, which would answer about anybody
+// instead of about the request asked: whether some principal may make a write,
+// where the question was whether this one may. A request the decision holds for
+// is a reach that holds always, with nothing left to ask.
 func reachOf(ctx context.Context, bundle *opaengine.Bundle, data *opaengine.Data, decision string, request map[string]any, unknowns []string, limits opaengine.Limits) (reach, error) {
+	if len(unknowns) == 0 {
+		holds, err := opaengine.Holds(ctx, bundle, data, decision, request)
+		if err != nil {
+			return reach{}, err
+		}
+		return reach{always: holds, bundle: bundle, data: data, decision: decision, request: request}, nil
+	}
+
 	residuals, err := opaengine.Residuals(ctx, bundle, data, opaengine.Request{
 		Decision: decision,
 		Unknowns: unknowns,
