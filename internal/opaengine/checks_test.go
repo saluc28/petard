@@ -169,9 +169,78 @@ needs_second_factor if {
 			},
 		},
 		{
-			// A key the policy computes could be any field of the request, so
-			// what the call returned names none.
-			name: "a field read under a key the policy computes",
+			// The lookup of the budget rule in the FinOps policies of
+			// rego_policy_libraries: a key the policy computes picks an element
+			// of the part it is looked up in.
+			name: "an element read under a key the policy computes",
+			body: `allow if {
+	some cost_center, _ in input.budget_registry
+	spend := object.get(input.current_spend, cost_center, 0)
+	spend == 0
+}
+`,
+			expected: []Check{{
+				Request: "input.current_spend[_]", Value: "0", Operator: CheckEqual, Rule: "data.checks.allow", Line: 8,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			name: "an exemption read under a key the request picks",
+			body: `allow if not needs_review
+
+needs_review if {
+	exempt := object.get(input.exemptions, input.kind, false)
+	not exempt
+}
+`,
+			expected: []Check{{
+				Request: "input.exemptions[_]", Rule: "data.checks.needs_review", Line: 9, UnderNegation: true,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true, Exception: true}},
+			}},
+		},
+		{
+			// The shape of app_restriction_present in the Entra policy of
+			// rego_policy_libraries: the collection is a parameter, and what the
+			// function tests is an entry of whichever collection it is handed.
+			name: "elements read under a key a function is handed",
+			body: `violation contains "not restricted" if {
+	not restricted("password_credentials", "passwordAddition")
+}
+
+restricted(collection, kind) if {
+	some r in object.get(input.app_management, collection, [])
+	r.restrictionType == kind
+	r.state == "enabled"
+}
+`,
+			deny: []string{"checks/violation"},
+			expected: []Check{
+				{
+					Request: "input.app_management[_][_].restrictionType", Value: `"passwordAddition"`, Operator: CheckEqual, Rule: "data.checks.violation", Line: 6, UnderNegation: true,
+					Decisions: []CheckedDecision{{Name: "data.checks.violation", Grants: true, Exception: true}},
+				},
+				{
+					Request: "input.app_management[_][_].state", Value: `"enabled"`, Operator: CheckEqual, Rule: "data.checks.restricted", Line: 12,
+					Decisions: []CheckedDecision{{Name: "data.checks.violation", Grants: true, Exception: true}},
+				},
+			},
+		},
+		{
+			name: "a path the policy computes below a field it names",
+			body: `allow if {
+	role := object.get(input, ["user", data.settings.field], "")
+	role == "admin"
+}
+`,
+			expected: []Check{{
+				Request: "input.user[_]", Value: `"admin"`, Operator: CheckEqual, Rule: "data.checks.allow", Line: 7,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			// Looked up in the request itself, a key the policy computes could
+			// be any field of it, so what the call returned names no part.
+			name: "a field of the request read under a key the policy computes",
 			body: `allow if {
 	flag := object.get(input, data.settings.field, false)
 	flag == "on"

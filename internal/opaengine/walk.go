@@ -411,8 +411,8 @@ func (r *refReader) bindingsOf(rule *ast.Rule, body ast.Body, inherited map[ast.
 }
 
 // addRequestFields makes the variable that receives object.get(input.x, "k", d)
-// stand for the field the call reads, input.x.k, when the call reads the request
-// and names the field with constants.
+// stand for the field the call reads, input.x.k, when the call reads a part of
+// the request.
 //
 // collectBindings records that variable as what a builtin returned, which says
 // where the value came from and not which part of the request it is. A policy
@@ -421,10 +421,14 @@ func (r *refReader) bindingsOf(rule *ast.Rule, body ast.Body, inherited map[ast.
 // such a variable is a check on that field: the default is what the policy
 // writes for a request that leaves the field out.
 //
-// A key the policy computes names no field, so the variable stays what the
-// builtin returned. So does one read out of the data: the document the call
-// lands on is recorded where the call is (see objectGetPath), and what it
-// returned is not followed further.
+// A key the policy computes picks an element of what it is looked up in, and is
+// followed below a field the policy writes out:
+// object.get(input.current_spend, cost_center, 0) is
+// input.current_spend[cost_center], an element of that part. Looked up in the
+// request itself, object.get(input, key, d), it could be any field and names no
+// part, so the variable stays what the builtin returned. So does one read out
+// of the data: the document the call lands on is recorded where the call is
+// (see objectGetPath), and what it returned is not followed further.
 //
 // The calls are taken in the order the body holds them, which is the order the
 // compiler evaluates them in, so what one returned can be what the next reads.
@@ -443,11 +447,24 @@ func addRequestFields(body ast.Body, bindings map[ast.Var]binding) {
 			continue
 		}
 		path, reads := objectGetPath(expr, bindings)
-		if !reads || !isInputRooted(path) || !writtenKeys(operands[1]) {
+		if !reads || !isInputRooted(path) {
+			continue
+		}
+		if !writtenKeys(operands[1]) && !underNamedField(path) {
 			continue
 		}
 		bindings[result] = binding{kind: bindingAlias, term: ast.NewTerm(path)}
 	}
+}
+
+// underNamedField reports whether a path into the request goes through a field
+// the policy writes out, input.current_spend[cost_center] and not input[key].
+func underNamedField(path ast.Ref) bool {
+	if len(path) < 2 {
+		return false
+	}
+	_, named := namedSegment(path[1])
+	return named
 }
 
 // writtenKeys reports whether the key of an object.get names fields the policy
@@ -733,8 +750,8 @@ func (r *refReader) walkTerm(term *ast.Term, sc scope, found *[]foundRef) {
 // leaves it unknown. A key that is itself a computed path cannot be told from
 // one field, and is taken as one. What a call returned out of the data is not
 // followed further: object.get(object.get(data.users, input.user, {}), "roles",
-// []) reads data.users[input.user], not its roles. What it returned out of the
-// request is, where the keys are written out (see addRequestFields).
+// []) reads data.users[input.user], not its roles. What it returned out of a
+// part of the request is (see addRequestFields).
 func objectGetPath(expr *ast.Expr, bindings map[ast.Var]binding) (ast.Ref, bool) {
 	operator, operands := expr.Operator(), expr.Operands()
 	if operator == nil || operator.String() != ast.ObjectGet.Name || len(operands) < 3 {

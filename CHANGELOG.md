@@ -117,12 +117,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the enforcement point, or for a judgment.
 - `petard` and `petard help` say what the tool is for and where to start, before the list of
   commands.
-- A part of the request read with `object.get` and keys the policy writes out is followed as the
-  field it names, through one call inside another too: `object.get(object.get(input,
-  "parameters", {}), "exemptImages", [])` is `input.parameters.exemptImages`. A check on what
-  the call returned is a check on that field, and a subject read this way picks the documents it
-  indexes, so `PTD-OPA-001` and the patterns that read the request report on a policy that does
-  not trust a request to be complete. A key the policy computes is not followed.
+- A part of the request read with `object.get` is followed as the field it names, through one
+  call inside another too: `object.get(object.get(input, "parameters", {}), "exemptImages", [])`
+  is `input.parameters.exemptImages`. A check on what the call returned is a check on that
+  field, and a subject read this way picks the documents it indexes, so `PTD-OPA-001` and the
+  patterns that read the request report on a policy that does not trust a request to be
+  complete. A key the policy computes is followed as an element of the part it is looked up in,
+  `object.get(input.current_spend, cost_center, 0)` as `input.current_spend[_]`, and is not
+  followed when it is looked up in the request itself.
 
 ### Fixed
 

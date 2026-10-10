@@ -244,9 +244,11 @@ notes:
     An exemption read with `object.get` and a default, `scheduled := object.get(input,
     "scheduled", false)` and then `not scheduled`, is read as a check on that part of the request.
     The gatekeeper-library reads the list of exempt images this way (line 4 of
-    `lib.exempt_container`, cited above). Known false negative: a field read under a key the
-    policy computes, `object.get(input, data.settings.flag, false)`, which names no part of the
-    request.
+    `lib.exempt_container`, cited above). Under a key the policy computes it is an element of
+    the part the key is looked up in: `object.get(input.exemptions, input.kind, false)` is read
+    as `input.exemptions[_]`. Known false negative: such a key looked up in the request itself,
+    `object.get(input, data.settings.flag, false)`, which could be any field of it and names no
+    part.
   - >
     A tool that declares a property about itself, an MCP server's `readOnlyHint` or a schema
     annotation, is this pattern only where the client sends the property with its request: declared
