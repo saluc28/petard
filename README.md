@@ -14,6 +14,12 @@ A linter sees one file. Petard is built to see the policy, the data it reads and
 that data, together, because that is where the interesting failures live: the ones that cross
 the line between whoever takes a decision and whoever writes what the decision is taken on.
 
+It has the most to say about a policy that decides on data somebody writes: roles, memberships,
+ownership, a setting every request shares. It also reads what a decision takes from an external
+source, and from the request an enforcement point builds. It has little to say about a policy
+that judges the object it is handed and reads nothing stored, an admission controller or a
+configuration check, and the report says so when that is the case.
+
 ![The graph Petard exports, in BloodHound](docs/assets/map.png)
 
 ## What it finds
@@ -45,39 +51,18 @@ other. Neither names a value it made up. The engine leaves the document unknown 
 what is left of the decision, so "some value here works" is an answer from the policy rather
 than a guess about it. [docs/taxonomy.md](docs/taxonomy.md) walks both chains.
 
-## Install
-
-One file, no runtime:
-
-```
-# Linux, x86_64
-curl -L -o petard https://github.com/saluc28/petard/releases/latest/download/petard_Linux_x86_64
-chmod +x ./petard
-
-# macOS, Apple silicon
-curl -L -o petard https://github.com/saluc28/petard/releases/latest/download/petard_Darwin_arm64
-chmod +x ./petard
-```
-
-On Windows:
-
-```
-Invoke-WebRequest -Uri "https://github.com/saluc28/petard/releases/latest/download/petard_Windows_x86_64.exe" -OutFile "petard.exe"
-```
-
-In a pipeline, `ghcr.io/saluc28/petard:latest`, or pin the version. From source, with Go 1.26 or
-newer, `go install github.com/saluc28/petard/cmd/petard@latest`.
-
-`petard version` says which build it is and which OPA is compiled into it, which is what an
-analysis depends on.
-
 ## Quickstart
 
-Analyzing a policy never calls the endpoints written in it.
+With Go 1.26 or newer:
 
 ```
+go install github.com/saluc28/petard/cmd/petard@latest
 petard demo
+petard analyze path/to/policy
 ```
+
+Without Go, [Install](#install) has a binary for Linux, macOS and Windows, and a container image.
+Analyzing a policy never calls the endpoints written in it.
 
 `demo` analyzes a policy with escalation built into it on purpose, written by hand and carried
 inside the binary, so there is something to look at before you point the tool at your own
@@ -115,13 +100,13 @@ Findings
     1  PTD-OPA-012  A decision grants on a value matched more loosely than it is enforced
     1  PTD-OPA-013  A decision grants a requested authority not bounded by the delegator's
 
-Candidates, which need a write model to become findings
+Candidates, which match a pattern and are not proven
     1  PTD-OPA-003  A position in a hierarchy grants everything below it, and nothing says so
 
 How much to trust this
   Level D (field names): the subject is input.user. 17 reads over 11 data paths.
   The enforcement point is quill-gateway: it says who sets 15 of the 15 parts of the request the
-  decisions read, and the caller sets 4 of them.
+  decisions read, and the caller sets 5 of them.
   The write model covers 6 of 11 paths read (54%).
 ```
 
@@ -129,6 +114,12 @@ The `proven by` line is a request the decision refuses as the data stands and gr
 write is made. `-v` adds the evidence under it: every read with its file and line, the document
 each write changes and the value it puts there, what each decision is left to check once the data
 is concrete, and every place to go and look.
+
+`analyze` needs no flags to start. Where a policy annotates no entrypoint it takes the rules no
+other rule uses as the decisions, it reads the data the bundle carries, and it lists what only
+you can answer as questions. [docs/ten-minutes.md](docs/ten-minutes.md) takes a public policy
+from that first run to a finding, and
+[Running it on your own policy](#running-it-on-your-own-policy) has the flags.
 
 `-tests` writes each of those proofs as an opa test, which fails while its escalation is open and
 passes once it is closed:
@@ -145,8 +136,9 @@ petard patterns
 petard explain PTD-OPA-006
 ```
 
-`explain` prints what the pattern looks for signal by signal, what has to be true for a match to
-be a defect, the conditions it fires on with nothing behind them, and where the file is.
+`explain` prints what the pattern looks for signal by signal, what it needs to run, what has to be
+true for a match to be a defect, the conditions it fires on with nothing behind them, what closes
+it, and where the file is.
 
 To send an analysis to BloodHound CE, write the bundle to disk and export it. The credentials
 come from two environment variables, because a token on a command line ends up in the shell
@@ -178,6 +170,31 @@ nobody can take is the single thing this tool must not produce.
 
 Without an instance, `-out graph.json` writes the payload, and BloodHound takes a JSON upload
 from the interface.
+
+## Install
+
+Without Go, one file and no runtime:
+
+```
+# Linux, x86_64
+curl -L -o petard https://github.com/saluc28/petard/releases/latest/download/petard_Linux_x86_64
+chmod +x ./petard
+
+# macOS, Apple silicon
+curl -L -o petard https://github.com/saluc28/petard/releases/latest/download/petard_Darwin_arm64
+chmod +x ./petard
+```
+
+On Windows:
+
+```
+Invoke-WebRequest -Uri "https://github.com/saluc28/petard/releases/latest/download/petard_Windows_x86_64.exe" -OutFile "petard.exe"
+```
+
+In a pipeline, `ghcr.io/saluc28/petard:latest`, or pin the version.
+
+`petard version` says which build it is and which OPA is compiled into it, which is what an
+analysis depends on.
 
 ## Reading it in BloodHound
 
@@ -263,18 +280,23 @@ and `-pep` names one:
 petard analyze -pep spacelift-login path/to/login.rego
 ```
 
-Two inputs decide how much of an answer you get. Concrete data is what turns a pattern into a
-finding about named principals, since the engine evaluates each decision partially against it.
-A bundle that keeps its data in `data.json`, `data.yaml` or `data.yml` files next to the policies
-needs nothing more, since those are read the way OPA reads them; `-data` names other documents
-in their place. The write model under `-write-model` says who can write which path, which
-the policy never says, and without it every match stays a candidate. The run reports how many of
-the paths the decisions read the model covers, so an empty model is distinguishable from a clean
-result.
+Concrete data is what turns a pattern into a finding about named principals, since the engine
+evaluates each decision partially against it. A bundle that keeps its data in `data.json`,
+`data.yaml` or `data.yml` files next to the policies needs nothing more, since those are read the
+way OPA reads them; `-data` names other documents in their place.
 
-A candidate names the one fact that settles it: who writes the path it rests on. The report lists
-those as questions, and `-questions <file>` writes them as a write model to fill in, one entry per
-open path. Answer each `via`, confirm the principal, and rerun with `-write-model`:
+Three declarations supply what no policy says. The write model, under `-write-model`, says who
+can write which path. Without it a match that rests on who writes a path stays a candidate, and
+the run reports how many of the paths the decisions read the model covers, so an empty model is
+distinguishable from a clean result. The enforcement point, under `-pep`, says which rules a
+product asks for and who sets each part of the request. The identity model sits in the same
+file, on the parts of the request: who can assume an identity a decision grants on, and which
+authority bounds one a delegated agent asks for. `petard explain <id>` says which of them a
+pattern needs.
+
+A candidate that rests on who writes a path names it. The report lists those paths as questions,
+and `-questions <file>` writes them as a write model to fill in, one entry per open path. Answer
+each `via`, confirm the principal, and rerun with `-write-model`:
 
 ```
 petard analyze -data data -questions write-model.yaml path/to/policy
@@ -348,6 +370,7 @@ internal/graph        the engine-neutral model, all a second engine has to fill
 internal/opengraph    the adapter to what BloodHound ingests, over bhgraph
 internal/taxonomy     the registry reader and the patterns
 internal/writemodel   who can write which path, declared rather than inferred
+internal/pep          who sets each part of the request, declared per enforcement point
 internal/fixture      generated worlds, and the truth about them
 queries/              the saved Cypher queries, one file each
 taxonomy-registry/    the patterns as versioned data, embedded for explain and patterns
@@ -358,15 +381,22 @@ fixtures/             the bundle written by hand, in Rego v1 and v0, embedded fo
 
 ## Documentation
 
+- [docs/ten-minutes.md](docs/ten-minutes.md): one public policy, from the first run to a finding
 - [docs/engine.md](docs/engine.md): how a bundle is read, what the analysis reports, and how
   each claim is checked
-- [docs/taxonomy.md](docs/taxonomy.md): the two escalation chains, and what the write model
-  holds up
+- [docs/taxonomy.md](docs/taxonomy.md): the two escalation chains, and the three declarations a
+  claim rests on
 - [taxonomy-registry/README.md](taxonomy-registry/README.md): the format of a pattern file and
   what `verified` means
+- [pep-registry/README.md](pep-registry/README.md): the format of an enforcement point
+  declaration, and the ones the binary carries
+- [fixtures/vulnerable-bundle/EXPECTED.md](fixtures/vulnerable-bundle/EXPECTED.md): what the
+  analysis has to find in the demo bundle, and what it must not
 - [queries/README.md](queries/README.md): the saved queries, and what the BloodHound backend
   will and will not run
 - [CHANGELOG.md](CHANGELOG.md): what changed between versions
+- [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md): how to send a change, and
+  how to report a vulnerability
 
 ## License
 

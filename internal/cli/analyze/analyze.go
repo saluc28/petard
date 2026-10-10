@@ -1,10 +1,6 @@
-// Command petard analyze reads Rego policies and reports what their decisions
-// read from data, and who chooses the documents they land on.
-//
-// It exists so that the analysis can be looked at without running the tests.
-// Flags are parsed with the standard library: four options do not justify a
-// dependency, and the phase where this program grows a command tree is not
-// this one.
+// Package analyze is the petard analyze command. It reads Rego policies and
+// reports what their decisions read from data, who chooses the documents they
+// land on, and which patterns of the taxonomy match.
 package analyze
 
 import (
@@ -68,7 +64,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	maxCallDepth := flags.Int("max-call-depth", 0, "how many calls deep to follow an argument (0 for the default)")
 	maxCallPaths := flags.Int("max-call-paths", 0, "how many call paths to explore per reference (0 for the default)")
 	maxResiduals := flags.Int("max-residuals", 0, "how many residual conditions to report per decision (0 for the default)")
-	writeModelPath := flags.String("write-model", "", "path to the write model; without it every match stays a candidate")
+	writeModelPath := flags.String("write-model", "", "path to the write model; without it a match that rests on who writes a path stays a candidate")
 	dataPath := flags.String("data", "", "path to the concrete data, in place of the data.json and data.yaml files of the bundle; with it the decisions are also partially evaluated")
 	registryPath := flags.String("registry", "", registry.FlagUsage)
 	showGraph := flags.Bool("graph", false, "also build the internal graph model and report what it holds")
@@ -187,7 +183,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		if !*quiet {
-			fmt.Fprintf(stdout, "\n%s written to %s\n", count(written, "test"), *testsPath)
+			fmt.Fprintf(stdout, "\n%s written to %s\n", render.Count(written, "test"), *testsPath)
 		}
 	}
 
@@ -253,10 +249,9 @@ func exitCode(found summary, failOn string) int {
 // reportGraph assembles the internal model and says what it holds.
 //
 // It is behind a flag because the model is not the report: the report is what
-// an analyst reads, and the model is what the exporter will serialize. Until
-// there is an exporter, counting what the model holds is the only way to see
-// that every kind the model declares has something in it, and that a kind
-// nothing fills is a hole rather than a decision.
+// an analyst reads, and the model is what petard export serializes. Counting
+// what the model holds shows that every kind it declares has something in it,
+// and that a kind nothing fills is a hole rather than a decision.
 func reportGraph(ctx context.Context, out io.Writer, a taxonomy.Analysis, findings taxonomy.Findings) error {
 	g, gaps, err := taxonomy.Assemble(ctx, a, findings)
 	if err != nil {
@@ -328,8 +323,8 @@ func sortedKeys[V any](m map[string]V) []string {
 func reportFindings(out io.Writer, a taxonomy.Analysis, findings taxonomy.Findings, patterns []taxonomy.Pattern, coverage taxonomy.Coverage) {
 	// In a closed world an undeclared path is an assumed safe path, so this
 	// number is what keeps a clean run from looking like an empty model.
-	fmt.Fprintf(out, "\nwrite model: %d of %d paths covered (%d%%)\n",
-		len(coverage.Covered), len(coverage.Read), coverage.Percent())
+	fmt.Fprintf(out, "\nwrite model: %d of %s covered (%d%%)\n",
+		len(coverage.Covered), render.Count(len(coverage.Read), "path"), coverage.Percent())
 	for _, path := range coverage.Uncovered {
 		fmt.Fprintf(out, "  not covered: %s\n", path)
 	}
@@ -562,7 +557,7 @@ func describeShape(shape opaengine.Shape) string {
 
 func report(out io.Writer, a taxonomy.Analysis) {
 	bundle, reads, shape := a.Bundle, a.Reads, a.Shape
-	fmt.Fprintf(out, "bundle:    %d files, parsed as rego %s\n", len(bundle.Files), bundle.RegoVersion)
+	fmt.Fprintf(out, "bundle:    %s, parsed as rego %s\n", render.Count(len(bundle.Files), "file"), bundle.RegoVersion)
 	inferred := ""
 	if a.DecisionsInferred {
 		inferred = ", inferred as the rules no other rule uses"

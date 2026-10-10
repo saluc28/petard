@@ -53,7 +53,7 @@ func TestTheSummaryLeadsWithTheEscalations(t *testing.T) {
 		`proven by  {"action":"publish","user":"carol"}`,
 		"Findings",
 		"5  PTD-OPA-004  A decision depends on an external source",
-		"Candidates, which need a write model to become findings",
+		"Candidates, which match a pattern and are not proven",
 		"How much to trust this",
 		"Level D (field names): the subject is input.user",
 		"The write model covers 6 of 11 paths read (54%).",
@@ -122,7 +122,7 @@ func TestWithoutAWriteModelTheSummarySaysWhy(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		"none named: without a write model nobody is declared able to write",
-		"No write model: every match stays a candidate",
+		"No write model: a match that rests on who writes a path stays a candidate",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the summary does not say %q:\n%s", want, out)

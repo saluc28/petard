@@ -28,6 +28,7 @@ func TestExplainPrintsThePatternBehindAFinding(t *testing.T) {
 		"What it looks for",
 		"It needs a write model",
 		"Where it fires with nothing behind it",
+		"What closes it",
 		"taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml",
 		registry.URL,
 	} {
@@ -40,6 +41,40 @@ func TestExplainPrintsThePatternBehindAFinding(t *testing.T) {
 	// noise, and the sentence is the same without it.
 	if strings.Contains(out, "**") {
 		t.Errorf("markdown emphasis reached the terminal:\n%s", out)
+	}
+}
+
+// What a pattern needs from whoever runs it is the first thing to know when it
+// reports nothing: the declaration of the enforcement point, the data, or both.
+func TestExplainSaysWhatAPatternNeedsToRun(t *testing.T) {
+	const pep, data = "It needs the enforcement point declared", "It needs concrete data"
+	tests := []struct {
+		id      string
+		wants   []string
+		absents []string
+	}{
+		{"PTD-OPA-002", []string{data}, []string{pep}},
+		{"PTD-OPA-009", []string{pep}, []string{data}},
+		{"PTD-OPA-012", nil, []string{pep, data}},
+		{"PTD-OPA-013", []string{pep, data}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := Run([]string{tt.id}, &stdout, &stderr); code != exitOK {
+				t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+			}
+			for _, want := range tt.wants {
+				if !strings.Contains(stdout.String(), want) {
+					t.Errorf("the explanation does not say %q", want)
+				}
+			}
+			for _, absent := range tt.absents {
+				if strings.Contains(stdout.String(), absent) {
+					t.Errorf("the explanation says %q, and the pattern does not need it", absent)
+				}
+			}
+		})
 	}
 }
 

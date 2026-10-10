@@ -73,6 +73,15 @@ func Print(out io.Writer, text, indent string) {
 	}
 }
 
+// Count writes a number and what it counts, plural when it has to be. A line
+// that reads "1 files" is a line somebody wrote without looking at it.
+func Count(n int, thing string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, thing)
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
+}
+
 // Plain takes the markdown emphasis out of registry prose.
 //
 // The files are read on GitHub as well as here, and there the asterisks are
@@ -102,8 +111,8 @@ func Terminal(w io.Writer) bool {
 // Style says whether the report may use escape sequences.
 //
 // The rule is the one the ecosystem settled on: not a terminal, TERM=dumb or
-// NO_COLOR set means plain text (fatih/color color.go:18-23 at v1.18.0, which
-// is what regal uses). On Windows there is one more condition, because the
+// NO_COLOR set means plain text (fatih/color color.go:22 at v1.19.0, which is
+// what regal v0.42.0 uses). On Windows there is one more condition, because the
 // classic console only interprets these sequences when something turned that
 // on, and a terminal that does not is a report full of bracket codes. The
 // terminals that do announce themselves in the environment.
@@ -128,8 +137,8 @@ func styleFor(terminal, noColor bool) Style {
 
 // Bold is for the few words that carry the structure of a report: the headings,
 // and the two names of an escalation. There is no other color in the output,
-// because a color scale would be a severity scale, and severity is not
-// something this tool computes yet.
+// because a color scale would be a severity scale, and this tool assigns no
+// severity.
 func (s Style) Bold(text string) string {
 	if !s.escapes {
 		return text

@@ -112,4 +112,11 @@ func TestHelpGoesToStdout(t *testing.T) {
 			t.Errorf("the usage does not list %s:\n%s", command, stdout.String())
 		}
 	}
+	// Somebody who has only the binary learns here what it is for and where to
+	// start.
+	for _, want := range []string{"Petard reads Rego (OPA) policies", `Start with "petard demo"`} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("the help does not say %q:\n%s", want, stdout.String())
+		}
+	}
 }

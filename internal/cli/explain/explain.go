@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -44,6 +45,7 @@ type entry struct {
 	Title  string `yaml:"title"`
 	Engine string `yaml:"engine"`
 	Status string `yaml:"status"`
+	Closes string `yaml:"closes"`
 
 	Category struct {
 		ID      string `yaml:"id"`
@@ -59,7 +61,8 @@ type entry struct {
 	} `yaml:"preconditions"`
 
 	Detection struct {
-		Signals []struct {
+		Requires []string `yaml:"requires"`
+		Signals  []struct {
 			Check     string `yaml:"check"`
 			Rationale string `yaml:"rationale"`
 		} `yaml:"signals"`
@@ -77,6 +80,14 @@ type entry struct {
 		} `yaml:"case"`
 	} `yaml:"false_positives"`
 }
+
+// The two capabilities of detection.requires that whoever runs the analysis
+// has to supply. The others, binding-resolution, rule-graph and taint, are the
+// engine's own.
+const (
+	requiresEnforcementPoint = "enforcement-point"
+	requiresConcreteData     = "concrete-data"
+)
 
 // Run prints the pattern the argument names.
 func Run(args []string, stdout, stderr io.Writer) int {
@@ -176,8 +187,18 @@ func printEntry(out io.Writer, e entry, file string) {
 		}
 		if e.Detection.RequiresWriteModel {
 			fmt.Fprintln(out)
-			render.Print(out, "It needs a write model. Without one every match stays a candidate, "+
+			render.Print(out, "It needs a write model. Without one it reports candidates at most, "+
 				"because the last signal is about who can write, and that is not in the policy.", "  ")
+		}
+		if slices.Contains(e.Detection.Requires, requiresEnforcementPoint) {
+			fmt.Fprintln(out)
+			render.Print(out, "It needs the enforcement point declared, with -pep, and does not run "+
+				"without it: who sets each part of the request is not in the policy.", "  ")
+		}
+		if slices.Contains(e.Detection.Requires, requiresConcreteData) {
+			fmt.Fprintln(out)
+			render.Print(out, "It needs concrete data, the files the bundle carries or the documents "+
+				"under -data, and does not run without it.", "  ")
 		}
 		if e.Detection.Confidence != "" {
 			fmt.Fprintf(out, "\n  Confidence %s by default, and per finding after that.\n", e.Detection.Confidence)
@@ -196,6 +217,11 @@ func printEntry(out io.Writer, e entry, file string) {
 			}
 			render.Print(out, settled(fp.Measurement, fp.Case != nil && fp.Case.Reports), "    ")
 		}
+	}
+
+	if e.Closes != "" {
+		section(out, "What closes it")
+		render.Print(out, render.Plain(e.Closes), "  ")
 	}
 
 	section(out, "Written down in")

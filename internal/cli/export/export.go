@@ -1,4 +1,5 @@
-// Command petard export turns a policy into a BloodHound OpenGraph.
+// Package export is the petard export command, which turns a policy into a
+// BloodHound OpenGraph.
 //
 // It runs the same analysis petard analyze reports on, assembles the internal
 // graph, and writes it as an ingest payload. Pointed at a BloodHound instance
@@ -29,6 +30,7 @@ import (
 	"github.com/saluc28/bhgraph"
 	"github.com/saluc28/bhgraph/client"
 
+	"github.com/saluc28/petard/internal/cli/render"
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
@@ -83,7 +85,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	subject := flags.String("subject", "", "the part of the request that names who is asking, as input.user; without it, it is recognized")
 	enforcementPoint := flags.String("pep", "", "the product that asks for the decisions: an id from pep-registry, as spacelift-login, or a declaration of your own ending in .yaml")
 	dataPath := flags.String("data", "", "path to the concrete data, in place of the data.json and data.yaml files of the bundle; without any there are no principals and no capabilities")
-	writeModelPath := flags.String("write-model", "", "path to the write model; without it every match stays a candidate")
+	writeModelPath := flags.String("write-model", "", "path to the write model; without it a match that rests on who writes a path stays a candidate")
 	maxCallDepth := flags.Int("max-call-depth", 0, "how many calls deep to follow an argument (0 for the default)")
 	maxCallPaths := flags.Int("max-call-paths", 0, "how many call paths to explore per reference (0 for the default)")
 	maxResiduals := flags.Int("max-residuals", 0, "how many residual conditions to report per decision (0 for the default)")
@@ -145,7 +147,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "petard export: %v\n", err)
 		return exitFailure
 	}
-	fmt.Fprintf(stdout, "graph: %d nodes, %d edges\n", len(payload.Nodes), len(payload.Edges))
+	fmt.Fprintf(stdout, "graph: %s, %s\n",
+		render.Count(len(payload.Nodes), "node"), render.Count(len(payload.Edges), "edge"))
 	if analysis.DecisionsInferred {
 		fmt.Fprintf(stdout, "decisions: %d, inferred as the rules no other rule uses (-entrypoint names them)\n",
 			len(analysis.Reads.Decisions))
@@ -307,7 +310,7 @@ func send(ctx context.Context, out io.Writer, url string, payload bhgraph.Graph,
 //
 // A query is left alone when the owner already has one under its name:
 // BloodHound refuses a second query with a name the user has (CreateSavedQuery,
-// cmd/api/src/api/v2/saved_queries.go:481 at v9.7.0), and one saved by an
+// cmd/api/src/api/v2/saved_queries.go:481 at v9.7.1), and one saved by an
 // earlier version keeps its text until it is deleted.
 func installQueries(ctx context.Context, api *client.Client) (added, present int, err error) {
 	saved, err := savedQueries(ctx, api)

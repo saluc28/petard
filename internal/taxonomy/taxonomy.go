@@ -252,9 +252,11 @@ const (
 	// included.
 	VerdictFinding Verdict = "finding"
 
-	// VerdictCandidate means the policy side held but nothing said who can
-	// write the data. It is not a weaker finding, it is a different claim:
-	// "this would be one if somebody can write here".
+	// VerdictCandidate means the policy side held and the rest was neither
+	// declared nor proven: who can write the data, who sets a part of the
+	// request, who can assume an identity, what bounds an authority. It is not
+	// a weaker finding, it is a different claim: "this would be one if that
+	// holds".
 	VerdictCandidate Verdict = "candidate"
 )
 

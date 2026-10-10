@@ -84,6 +84,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `bounded_by`, naming the requested authority and the ceilings it must sit under. A requested
   authority with no ceiling declared is a candidate. The fixture mints a credential bounded by the
   role and not by the edge.
+- `petard explain` says what a pattern needs to run, the enforcement point declared with `-pep`,
+  concrete data, or both, and what closes it, the `closes` line of its file.
 
 ### Changed
 
@@ -109,6 +111,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The `kuadrant-mcp-gateway` declaration marks the `x-mcp-annotation-hints` header
   `identifier: name`, since the upstream server picks what the annotations of its tools say, so
   `PTD-OPA-010` reports a decision that compares the header with a value the policy writes.
+- `petard analyze` heads its candidates `Candidates, which match a pattern and are not proven`,
+  and without a write model says that a match resting on who writes a path stays a candidate.
+  Both lines said every candidate waits for a write model, and some wait for the declaration of
+  the enforcement point, or for a judgment.
+- `petard` and `petard help` say what the tool is for and where to start, before the list of
+  commands.
 
 ### Fixed
 
@@ -126,6 +134,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   missing from the patterns that did not run, so it read as a pattern that ran and found nothing.
   It is now listed among them, and says it needs a write model naming the decision that allows
   each write.
+- A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
 
 ## [0.4.0] - 2026-09-30
 

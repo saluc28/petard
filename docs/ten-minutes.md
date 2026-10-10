@@ -35,7 +35,7 @@ Escalations
 Findings
   nothing
 
-Candidates, which need a write model to become findings
+Candidates, which match a pattern and are not proven
     2  PTD-OPA-001  The subject writes an attribute the policy reads to decide about them
 
 Questions, which turn candidates into findings
@@ -54,9 +54,9 @@ both documents decide the subject's own access.
 ## The question
 
 They come back as candidates, not findings. Whether `data.users[_].roles` is a
-hole depends on who can write it, and no policy contains that fact. It lives outside the Rego, in the profile API or the
-identity sync, and Petard will not guess it. It names the paths and asks you the
-one question only you can answer.
+hole depends on who can write it, and no policy contains that fact. It lives
+outside the Rego, in the profile API or the identity sync, and Petard will not
+guess it. It names the paths and asks you the one question only you can answer.
 
 So answer it. The `-questions` flag writes a write model with one entry per open
 question, ready to fill in:

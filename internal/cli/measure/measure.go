@@ -1,5 +1,5 @@
-// Command petard measure runs the analysis over a body of Rego written by
-// other people and reports what it could do with it.
+// Package measure is the petard measure command, which runs the analysis over
+// a body of Rego written by other people and reports what it could do with it.
 //
 // The fixture answers whether the engine finds what we planted; this answers
 // whether it survives contact with code nobody wrote for it. How many policies

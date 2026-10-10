@@ -51,6 +51,14 @@ func TestWrapDropsLeadingAndTrailingSpace(t *testing.T) {
 	}
 }
 
+func TestCountIsSingularForOne(t *testing.T) {
+	for n, want := range map[int]string{0: "0 edges", 1: "1 edge", 2: "2 edges"} {
+		if got := Count(n, "edge"); got != want {
+			t.Errorf("Count(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
+
 func TestPlainTakesOutTheEmphasis(t *testing.T) {
 	if got := Plain("the **whole** path, not the `prefix`"); got != "the whole path, not the `prefix`" {
 		t.Errorf("Plain() = %q", got)

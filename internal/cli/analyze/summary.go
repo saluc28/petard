@@ -137,7 +137,7 @@ func printSummary(out io.Writer, a taxonomy.Analysis, s summary, coverage taxono
 
 	if !quiet {
 		fmt.Fprintf(out, "%s, %s, parsed as rego %s\n",
-			count(len(a.Bundle.Files), "file"), count(len(a.Reads.Decisions), "decision"),
+			render.Count(len(a.Bundle.Files), "file"), render.Count(len(a.Reads.Decisions), "decision"),
 			a.Bundle.RegoVersion)
 	}
 
@@ -209,7 +209,7 @@ func printScopeNote(out io.Writer, a taxonomy.Analysis, s summary, style render.
 		render.Print(out, "They read neither the request nor any data.", "  ")
 	default:
 		render.Print(out, fmt.Sprintf("They decide on the request alone, over %s.",
-			count(len(a.Reads.InputPaths), "input path")), "  ")
+			render.Count(len(a.Reads.InputPaths), "input path")), "  ")
 	}
 
 	if s.empty() {
@@ -219,7 +219,8 @@ func printScopeNote(out io.Writer, a taxonomy.Analysis, s summary, style render.
 		render.Print(out, "If the caller controls part of the request, name the enforcement point with -pep, "+
 			"and the request-side patterns can speak to it.", "  ")
 	}
-	render.Print(out, "See docs/ten-minutes.md for a policy Petard is built for, worked end to end.", "  ")
+	render.Print(out, "See https://github.com/saluc28/petard/blob/main/docs/ten-minutes.md for a policy "+
+		"Petard is built for, worked end to end.", "  ")
 }
 
 // printEscalations puts who can take whose place at the top, because it is the
@@ -291,7 +292,7 @@ const (
 
 const (
 	headingFindings   = "Findings"
-	headingCandidates = "Candidates, which need a write model to become findings"
+	headingCandidates = "Candidates, which match a pattern and are not proven"
 )
 
 // printCounts prints one line per pattern that has something, with the count
@@ -327,8 +328,9 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 	if a.Shape.Subject != "" {
 		subject = "the subject is " + a.Shape.Subject
 	}
-	render.Print(out, fmt.Sprintf("Level %s (%s): %s. %d reads over %d data paths.",
-		a.Shape.Confidence, a.Shape.Recognizer, subject, len(a.Reads.Reads), len(coverage.Read)), "  ")
+	render.Print(out, fmt.Sprintf("Level %s (%s): %s. %s over %s.",
+		a.Shape.Confidence, a.Shape.Recognizer, subject,
+		render.Count(len(a.Reads.Reads), "read"), render.Count(len(coverage.Read), "data path")), "  ")
 
 	if a.DecisionsInferred {
 		render.Print(out, "No rule is annotated as an entrypoint and none was declared, so every rule no "+
@@ -337,36 +339,27 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 	}
 	if a.DataFromBundle {
 		render.Print(out, fmt.Sprintf("The data is what the bundle carries, %s called data.json, data.yaml "+
-			"or data.yml. -data replaces it.", count(len(a.Data.Files), "file")), "  ")
+			"or data.yml. -data replaces it.", render.Count(len(a.Data.Files), "file")), "  ")
 	}
 	if a.DataFromLive {
 		render.Print(out, fmt.Sprintf("The data is what the running OPA holds, read over its API for the %s "+
-			"the decisions read. -data replaces it.", count(len(a.Data.Files), "root")), "  ")
+			"the decisions read. -data replaces it.", render.Count(len(a.Data.Files), "root")), "  ")
 	}
 
 	if point := a.EnforcementPoint; point != nil {
 		request := taxonomy.RequestCoverageOf(a.Reads, point)
 		render.Print(out, fmt.Sprintf("The enforcement point is %s: it says who sets %d of the %s of the "+
 			"request the decisions read, and the caller sets %d of them.",
-			point.ID, len(request.Declared), count(len(request.Read), "part"), len(request.ByCaller)), "  ")
+			point.ID, len(request.Declared), render.Count(len(request.Read), "part"), len(request.ByCaller)), "  ")
 	}
 
 	if a.Model == nil {
-		render.Print(out, "No write model: every match stays a candidate, because nobody is named "+
-			"as able to write what the decisions read.", "  ")
+		render.Print(out, "No write model: a match that rests on who writes a path stays a candidate, "+
+			"because nobody is named as able to write what the decisions read.", "  ")
 		return
 	}
-	render.Print(out, fmt.Sprintf("The write model covers %d of %d paths read (%d%%).",
-		len(coverage.Covered), len(coverage.Read), coverage.Percent()), "  ")
-}
-
-// count writes a number and what it counts, plural when it has to be. A line
-// that reads "1 files" is a line somebody wrote without looking at it.
-func count(n int, thing string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, thing)
-	}
-	return fmt.Sprintf("%d %ss", n, thing)
+	render.Print(out, fmt.Sprintf("The write model covers %d of %s read (%d%%).",
+		len(coverage.Covered), render.Count(len(coverage.Read), "path"), coverage.Percent()), "  ")
 }
 
 // titleOf names a pattern the way a report should, and falls back to the id

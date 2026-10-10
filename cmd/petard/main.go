@@ -89,12 +89,19 @@ var commands = []command{
 	{"demo", "analyze the vulnerable bundle built into this binary", demo.Run},
 }
 
+// about is what the program is for, in the lines somebody reads before they
+// know any of its commands.
+const about = "Petard reads Rego (OPA) policies and reports where a decision rests on something\n" +
+	"somebody else controls: data a principal can write, a part of the request the caller\n" +
+	"sets, an identity somebody can assume. What it finds goes to BloodHound as a graph.\n"
+
 func usage(out io.Writer) {
-	fmt.Fprint(out, "usage: petard <command> [flags] <path>...\n\nCommands:\n")
+	fmt.Fprint(out, about+"\nusage: petard <command> [flags] <path>...\n\nCommands:\n")
 	for _, command := range commands {
 		fmt.Fprintf(out, "  %-9s %s\n", command.name, command.does)
 	}
 	fmt.Fprint(out, "  version   print the version, the commit and the build date\n\n"+
+		"Start with \"petard demo\", then point \"petard analyze\" at a policy of your own.\n"+
 		"Run \"petard help <command>\" for the flags of that command.\n")
 }
 
