@@ -23,9 +23,9 @@ fixtures/vulnerable-bundle/
 └── EXPECTED.md           this file
 ```
 
-> ⚠️ `data/` and `policy-*/` go to `opa eval` as **two separate `-d`**. A single
+> ⚠️ `data/` and `policy-*/` go to `opa eval` as two separate `-d`. A single
 > `-d fixtures/vulnerable-bundle` would mount the JSON under `data.data.*` and the policy would
-> stop finding it, **with no error**: `allow` would quietly fall back on its `default`.
+> stop finding it, with no error: `allow` would quietly fall back on its `default`.
 
 ### The two variants are the same policy
 
@@ -54,21 +54,21 @@ Nothing else changes. No privileged access anywhere. Measured:
 
 | | documents reached |
 |---|---|
-| mallory, before | **0** |
-| mallory, after | **18**, the whole dataset |
+| mallory, before | 0 |
+| mallory, after | 18, the whole dataset |
 
 The mechanism, and the reason two separate patterns are not enough:
 
-1. `PTD-OPA-001` says **how the position is obtained**: `profile.department` is read by
+1. `PTD-OPA-001` says how the position is obtained: `profile.department` is read by
    `is_member` to derive membership, and the subject writes it (`write-model.yaml`).
-2. `PTD-OPA-003` says **what the position is worth**: `root` holds no document of its own, but
+2. `PTD-OPA-003` says what the position is worth: `root` holds no document of its own, but
    it is an ancestor of all eighteen.
 
 On their own they are two observations, *"this field is writable"* and *"this position is
 powerful"*. Neither one is an attack path. Together they are a route, and the graph is the only
 place where the two facts meet.
 
-> **Expected edge:** `PTD_CanEscalateTo` from `PTD_Principal(mallory)` to `PTD_Principal(dave)`,
+> Expected edge: `PTD_CanEscalateTo` from `PTD_Principal(mallory)` to `PTD_Principal(dave)`,
 > or to the position `dave` occupies, with `via_write_path` pointing at the
 > `data.users.{owner}.profile.department` entry of the write model, the endpoint
 > (`PATCH /api/v1/me/profile`) beside it, and the three places to look: the two reads of the
@@ -79,13 +79,13 @@ place where the two facts meet.
 > and counts as one.
 
 The value to write is not invented. The document `data.users.mallory.profile.department` is left
-**unknown** and OPA is asked what is left of the decision. The answer, read as a count of
+unknown and OPA is asked what is left of the decision. The answer, read as a count of
 residual conditions:
 
 | | ways the decision grants to `mallory` |
 |---|---|
-| as the data stands | **0** |
-| with the document unknown | **55** |
+| as the data stands | 0 |
+| with the document unknown | 55 |
 | with the document unknown and `data.projects[_].parent` cut away | 19 |
 
 The 36 ways that disappear when the hierarchy is cut are what ties the write to the position
@@ -99,26 +99,26 @@ something out of that decision, so writing the field widens what they hold inste
 them in. Saying what a widening is worth needs a threshold, which is the open question 003
 declares.
 
-> ⚠️ The `via_chain` property, the `team* → div* → root` ancestry, is **not emitted**: it is
+> ⚠️ The `via_chain` property, the `team* → div* → root` ancestry, is not emitted: it is
 > exactly the reconstruction of the hierarchy that section 5 says not to do. The edge carries
-> the **relation** instead, `data.projects[_].parent`, which is the thing to act on to close it.
+> the relation instead, `data.projects[_].parent`, which is the thing to act on to close it.
 
 ---
 
 ## 3. Case and counter case, pattern by pattern
 
-The rule: **every pattern has at least one case to find and at least one to stay quiet about.**
+The rule: every pattern has at least one case to find and at least one to stay quiet about.
 Without the second only recall gets measured, and precision matters as much.
 
 ### PTD-OPA-001, attribute self-write
 
 | | where | expected |
 |---|---|---|
-| **case** | `authz.rego`, `allow` on `profile.department == "security"` | **finding**, the write model has the field as writable by the subject |
-| **counter case** | `authz.rego`, `allow` on `"admin" in ...roles` | **nothing**, same record, but `roles` is written by a role, `role:admin` or `role:support`, and not by the subject as such |
-| **counter case** | `authz.rego`, `is_member` on `user in ...members` | **nothing**, the requester is searched among the members, and the model says the project owner writes that list |
+| case | `authz.rego`, `allow` on `profile.department == "security"` | finding, the write model has the field as writable by the subject |
+| counter case | `authz.rego`, `allow` on `"admin" in ...roles` | nothing, same record, but `roles` is written by a role, `role:admin` or `role:support`, and not by the subject as such |
+| counter case | `authz.rego`, `is_member` on `user in ...members` | nothing, the requester is searched among the members, and the model says the project owner writes that list |
 
-The first counter case is the most important one in the fixture: signal 2 fires on **both**,
+The first counter case is the most important one in the fixture: signal 2 fires on both,
 because in each of them the reference is indexed by the subject. Only signal 3, against a write
 model with field granularity, tells them apart. A model with record granularity would report
 both.
@@ -138,15 +138,15 @@ profile.department = "security"                                allow = TRUE
 profile.department = "platform"                                allow = TRUE   ← through the chain
 ```
 
-The same writable field opens **two different routes** depending on the value: a direct grant
+The same writable field opens two different routes depending on the value: a direct grant
 with `"security"`, transitive membership with `"platform"`.
 
 ### PTD-OPA-002, fail-open on data that is not there
 
 | | where | expected |
 |---|---|---|
-| **case** | `tenant_policy.rego`, `denied_mfa` on `data.tenants[t].policy.require_mfa` | **finding**, `uncovered_keys: ["dolm"]` |
-| **counter case** | `tenant_policy.rego`, `denied_suspended` on `data.tenants[t].status` | **nothing**, the path is there for every tenant |
+| case | `tenant_policy.rego`, `denied_mfa` on `data.tenants[t].policy.require_mfa` | finding, `uncovered_keys: ["dolm"]` |
+| counter case | `tenant_policy.rego`, `denied_suspended` on `data.tenants[t].status` | nothing, the path is there for every tenant |
 
 Measured:
 
@@ -176,14 +176,14 @@ belongs in a test and not in the pattern, because it is the effect and not the s
 
 | | where | expected |
 |---|---|---|
-| **case** | `dave`, member of `root` and nothing else | **candidate**, `reach_direct: 0`, `reach_transitive: 18` |
-| **counter case** | `alice`, member of the `team11` leaf | **nothing**, amplification of 1 |
+| case | `dave`, member of `root` and nothing else | candidate, `reach_direct: 0`, `reach_transitive: 18` |
+| counter case | `alice`, member of the `team11` leaf | nothing, amplification of 1 |
 
 Measured across every principal:
 
 | principal | position | direct | transitive |
 |---|---|---|---|
-| `dave` | member of `root` | **0** | **18** |
+| `dave` | member of `root` | 0 | 18 |
 | `alice` | member of `team11` | 3 | 3 |
 | `carol` | member of `team21` | 3 | 3 |
 | `bob` | *owner* of the projects, member of none | 0 | 0 |
@@ -192,18 +192,18 @@ Measured across every principal:
 `bob` is deliberate noise: owner of nearly every project, while the policy decides on `members`
 and not on `owner`. An engine that confuses the two fields reports `bob`, and is wrong.
 
-**`dave` stays a `candidate` and does not become a `finding`**, and not out of any doubt about
+`dave` stays a `candidate` and does not become a `finding`, and not out of any doubt about
 the data, which is measured. The pattern says *"whoever gets here gets everything underneath"*,
 not *"X can get here"*. Only the chain with 001 produces the second statement.
 
 The engine measures this a different way from the table above. That table counts the transitive
-branch alone, with `verify/measure.rego`; the engine evaluates the **whole decision** twice, once
+branch alone, with `verify/measure.rego`; the engine evaluates the whole decision twice, once
 with the data as it stands and once with `data.projects[_].parent` cut away, and counts the
 residual conditions, which are the ways the decision grants:
 
 | principal | with the hierarchy | without | reported |
 |---|---|---|---|
-| `dave` | **18** | **0** | candidate |
+| `dave` | 18 | 0 | candidate |
 | `alice` | 7 | 7 | no |
 | `bob` | 13 | 13 | no |
 | `carol` | 5 | 5 | no |
@@ -220,17 +220,17 @@ differential measurement closes it without needing a list of privileged roles.
 
 | | where | expected |
 |---|---|---|
-| **case** | `enrichment.rego`, `allow` on `enrichment.body.clearance` | **finding**, plus a `PTD_Principal` node for `idp.petard-fixture.invalid` |
-| **second case** | `risk.rego`, `allow_positive_side` on `enrichment.body.risk_score` | **finding**, plus a `PTD_Principal` node for `risk.petard-fixture.invalid` |
-| **denying cases** | `risk.rego`, `allow_vulnerable`, `allow_defensive` and `allow_default_option`, through their `denied_*` rules | **a finding each**, on the same host |
-| **counter case** | `enrichment.rego`, `audit_trace` | **nothing**, the result reaches no decision |
+| case | `enrichment.rego`, `allow` on `enrichment.body.clearance` | finding, plus a `PTD_Principal` node for `idp.petard-fixture.invalid` |
+| second case | `risk.rego`, `allow_positive_side` on `enrichment.body.risk_score` | finding, plus a `PTD_Principal` node for `risk.petard-fixture.invalid` |
+| denying cases | `risk.rego`, `allow_vulnerable`, `allow_defensive` and `allow_default_option`, through their `denied_*` rules | a finding each, on the same host |
+| counter case | `enrichment.rego`, `audit_trace` | nothing, the result reaches no decision |
 
 The counter case tells the taint apart from the mere presence of the builtin: both rules call
 `http.send`, and only one of them contributes to a decision.
 
 `allow_positive_side` grants access when the service answers with a low score, so whoever
 controls that host grants access to anybody, which is 004 exactly. Section 4 lists that rule
-among the ones not to report, but for the reason **005** gives, which is fail-closed with
+among the ones not to report, but for the reason 005 gives, which is fail-closed with
 respect to the source being down, and that reason says nothing about the content of the answer.
 
 The three denying decisions reach the answer only under a `not`, and they are findings all the
@@ -240,8 +240,8 @@ is 005's question, and not when somebody picks it (`taxonomy-registry/README.md`
 `allow_defensive` reads the answer in three places, the error and the score in one branch and the
 error in the other, and it is one finding with three places to look.
 
-Worth keeping in mind when writing other fixtures: **every rule 005 looks at is also a 004
-case**, on either side, because both start from a call to an external source. It is not an
+Worth keeping in mind when writing other fixtures: every rule 005 looks at is also a 004
+case, on either side, because both start from a call to an external source. It is not an
 overlap to be removed, it is the same rule seen through two different questions, and the
 registry has made a rule of it (`taxonomy-registry/README.md` section 3).
 
@@ -256,12 +256,12 @@ unreachable:
 
 | rule | what | `allow` | expected |
 |---|---|---|---|
-| `allow_vulnerable` | consumed on the denying side, error never checked | **true** | **finding**, `mitigation_available: false` |
-| `allow_defensive` | one branch consumes `enrichment.error` and denies | false | **nothing** |
-| `allow_positive_side` | the same call on the side that **grants** | false | **nothing**, fail-closed, this is availability |
-| `allow_default_option` | the same vulnerable form, **without** `raise_error: false` | **true** | **finding**, `mitigation_available: true` |
+| `allow_vulnerable` | consumed on the denying side, error never checked | true | finding, `mitigation_available: false` |
+| `allow_defensive` | one branch consumes `enrichment.error` and denies | false | nothing |
+| `allow_positive_side` | the same call on the side that grants | false | nothing, fail-closed, this is availability |
+| `allow_default_option` | the same vulnerable form, without `raise_error: false` | true | finding, `mitigation_available: true` |
 
-The last row is the **inverted** counter case, and it is the one that matters most: the engine
+The last row is the inverted counter case, and it is the one that matters most: the engine
 has to report it even though there is no `raise_error: false` in it. It is the only
 way to prove the pattern is not a lint rule on that option dressed up as graph analysis. The
 fail-open happens identically in both forms; the option only changes whether
@@ -278,8 +278,8 @@ Two decisions, each of them sound on its own: `admin.rego` lets support staff as
 
 | | where | expected |
 |---|---|---|
-| **case** | `admin.rego` lets `carol` write `editor` into her own `roles`; `publish.rego` grants `publish` on `"editor" in ...roles` | **finding**, `PTD_CanEscalateTo` from `carol` to `alice`, who holds `editor` |
-| **counter case** | `publish.rego`, `withdraw` on `"admin" in ...roles` | **nothing**, the assignment decision does not let support write `admin` |
+| case | `admin.rego` lets `carol` write `editor` into her own `roles`; `publish.rego` grants `publish` on `"editor" in ...roles` | finding, `PTD_CanEscalateTo` from `carol` to `alice`, who holds `editor` |
+| counter case | `publish.rego`, `withdraw` on `"admin" in ...roles` | nothing, the assignment decision does not let support write `admin` |
 
 Measured with `data.quill.verify.split_grant`:
 
@@ -313,8 +313,8 @@ vacuously true and the merge goes through, reviewed by nobody. The engine report
 
 | | where | expected |
 |---|---|---|
-| **case** | `review.rego`, `allow_unguarded` on `every review in input.reviews` | **finding**, the domain can be empty and nothing guards it |
-| **counter case** | `review.rego`, `allow_guarded`, the same every behind `count(input.reviews) > 0` | **nothing**, the guard denies the empty case |
+| case | `review.rego`, `allow_unguarded` on `every review in input.reviews` | finding, the domain can be empty and nothing guards it |
+| counter case | `review.rego`, `allow_guarded`, the same every behind `count(input.reviews) > 0` | nothing, the guard denies the empty case |
 
 Measured with `data.quill.verify.empty_every`:
 
@@ -338,8 +338,8 @@ The console setting next to it is just as global and is the counter case.
 
 | | where | expected |
 |---|---|---|
-| **case** | `platform.rego`, `allow_reading_room` on `data.settings.reading_room.open` | **finding**, the setting decides for somebody no document names, and `system:config-sync` writes it |
-| **counter case** | `platform.rego`, `allow_console` on `data.settings.console.enabled`, next to `"admin" in ...roles` | **nothing**, somebody with no record gets nothing whatever the setting says |
+| case | `platform.rego`, `allow_reading_room` on `data.settings.reading_room.open` | finding, the setting decides for somebody no document names, and `system:config-sync` writes it |
+| counter case | `platform.rego`, `allow_console` on `data.settings.console.enabled`, next to `"admin" in ...roles` | nothing, somebody with no record gets nothing whatever the setting says |
 
 Measured with `data.quill.verify.global_switch`, where `petard:nobody` is a principal no document
 names:
@@ -368,9 +368,9 @@ declaration of the gateway, tells them apart: the gateway sets `mfa` from the se
 
 | | where | expected |
 |---|---|---|
-| **case** | `tenant_policy.rego`, `allow_export`, `not input.scheduled` in `export_needs_mfa` | **finding**, the caller sets it, at confidence A |
-| **counter case** | the same rule, `not input.mfa` | **nothing**, the gateway sets it |
-| **counter case** | `tenant_policy.rego`, `allow`, `not input.mfa` in `denied_mfa` | **nothing**, for the same reason |
+| case | `tenant_policy.rego`, `allow_export`, `not input.scheduled` in `export_needs_mfa` | finding, the caller sets it, at confidence A |
+| counter case | the same rule, `not input.mfa` | nothing, the gateway sets it |
+| counter case | `tenant_policy.rego`, `allow`, `not input.mfa` in `denied_mfa` | nothing, for the same reason |
 
 Measured with `data.quill.verify.self_asserted`:
 
@@ -396,8 +396,8 @@ pick a name, with an entry on `input.groups[_]`.
 
 | | where | expected |
 |---|---|---|
-| **case** | `platform.rego`, `allow_audit_log`, `"security" in input.groups` | **finding**, `role:viewer` can create a group of that name, at confidence A |
-| **counter case** | the same decision, `"grp-5821" in input.group_ids` | **nothing**, the directory assigns the id |
+| case | `platform.rego`, `allow_audit_log`, `"security" in input.groups` | finding, `role:viewer` can create a group of that name, at confidence A |
+| counter case | the same decision, `"grp-5821" in input.group_ids` | nothing, the directory assigns the id |
 
 Measured with `data.quill.verify.uncontrolled_name`:
 
@@ -423,8 +423,8 @@ first a runtime identity assumable by `role:deployer` and the second a pinned on
 
 | | where | expected |
 |---|---|---|
-| **case** | `mesh.rego`, `allow_sync`, `input.caller.spiffe == "spiffe://.../sa/sync"` | **finding**, `role:deployer` can assume it, at confidence A |
-| **counter case** | the same decision, `input.caller.attested == "agent:indexer"` | **nothing**, the mesh pins it to a verified credential |
+| case | `mesh.rego`, `allow_sync`, `input.caller.spiffe == "spiffe://.../sa/sync"` | finding, `role:deployer` can assume it, at confidence A |
+| counter case | the same decision, `input.caller.attested == "agent:indexer"` | nothing, the mesh pins it to a verified credential |
 
 Measured with `data.quill.verify.assumable_identity`:
 
@@ -451,8 +451,8 @@ point: the looseness is in the match, and the shape recognizer names `input.doc`
 
 | | where | expected |
 |---|---|---|
-| **case** | `library.rego`, `allow_doc`, `contains(input.doc, "public")` | **finding**, a substring is matched more loosely than the id |
-| **counter case** | the same decision, `"public" in split(input.doc, "/")` | **nothing**, a whole path component, matched by membership over a computed value |
+| case | `library.rego`, `allow_doc`, `contains(input.doc, "public")` | finding, a substring is matched more loosely than the id |
+| counter case | the same decision, `"public" in split(input.doc, "/")` | nothing, a whole path component, matched by membership over a computed value |
 
 Measured with `data.quill.verify.loose_match`:
 
@@ -478,8 +478,8 @@ its ceilings, the edge and the role.
 
 | | where | expected |
 |---|---|---|
-| **case** | `delegation.rego`, `allow_mint`, bounded by `input.role_scopes` and not by `input.delegation_edge.scopes` | **finding**, the edge does not bound the request, at the subject's confidence |
-| **counter case** | the same mint, `allow_mint_narrowed`, bounded by the edge as well | **nothing**, a scope the edge does not carry is refused |
+| case | `delegation.rego`, `allow_mint`, bounded by `input.role_scopes` and not by `input.delegation_edge.scopes` | finding, the edge does not bound the request, at the subject's confidence |
+| counter case | the same mint, `allow_mint_narrowed`, bounded by the edge as well | nothing, a scope the edge does not carry is refused |
 
 Measured with `data.quill.verify.delegation`:
 
@@ -500,8 +500,8 @@ candidate, asking what bounds it.
 
 ## 4. What the engine must not report
 
-Every row here is a false positive if it shows up in the output **of the pattern named in the
-middle column**. The column is doing real work: row 8 is a false positive for one pattern and a
+Every row here is a false positive if it shows up in the output of the pattern named in the
+middle column. The column is doing real work: row 8 is a false positive for one pattern and a
 legitimate finding for another.
 
 | # | Construct | For which pattern | Why it is not a finding |
@@ -512,8 +512,8 @@ legitimate finding for another.
 | 4 | `alice`, `carol` in a leaf | 003 | amplification of 1 |
 | 5 | `bob` as `owner` | 003 | the policy does not decide on `owner` |
 | 6 | `audit_trace` | 004 | an `http.send` that reaches no decision |
-| 7 | `allow_defensive` | 005 | the error is handled. **For 004 it is a finding**, because whoever answers decides the denial |
-| 8 | `allow_positive_side` | 005 | fail-closed, this is availability. **For 004 it is a finding**, because the content of the answer grants |
+| 7 | `allow_defensive` | 005 | the error is handled. For 004 it is a finding, because whoever answers decides the denial |
+| 8 | `allow_positive_side` | 005 | fail-closed, this is availability. For 004 it is a finding, because the content of the answer grants |
 | 9 | `data.users.{owner}.profile.*` | 001 | writable, but no decision reads it |
 | 10 | `withdraw` on `"admin" in ...roles` | 006 | support cannot assign `admin`, so no allowed write reaches the branch |
 | 11 | `allow_guarded` | 007 | `count(input.reviews) > 0` denies the empty case, so the every never goes vacuous |
@@ -525,8 +525,8 @@ legitimate finding for another.
 | 17 | `"public" in split(input.doc, "/")` | 012 | a whole path component, not a loose match |
 | 18 | `allow_mint_narrowed` | 013 | the request is bounded by the delegating edge as well |
 
-Expected precision, with the gateway declared: **two `PTD_CanEscalateTo`** (mallory and carol),
-**eighteen findings and one candidate**, and none of the rows above under the pattern they belong
+Expected precision, with the gateway declared: two `PTD_CanEscalateTo` (mallory and carol),
+eighteen findings and one candidate, and none of the rows above under the pattern they belong
 to.
 
 The eighteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
@@ -543,8 +543,8 @@ to the delegating edge under 013. The two escalations are the two findings that 
 
 Checked on 2026-08-03 with `opa 1.19.0`:
 
-> **`graph.reachable` puts a node in the result only if that node is a key of the graph
-> object.** A node that is reachable but has no entry of its own never shows up, not even when
+> `graph.reachable` puts a node in the result only if that node is a key of the graph
+> object. A node that is reachable but has no entry of its own never shows up, not even when
 > it is the node the walk starts from.
 
 ```
@@ -553,18 +553,18 @@ graph.reachable({"a":["b"],"b":["c"],"c":[]},   {"a"})  →  ["a","b","c"]
 graph.reachable({"a":["b"],"b":["c"]},          {"c"})  →  []
 ```
 
-In a `child → parent` hierarchy the **root is exactly a node with no entry of its own**. Written
+In a `child → parent` hierarchy the root is exactly a node with no entry of its own. Written
 the way that comes naturally, the adjacency list leaves `root` out and the policy climbs one
-level short of where it should **without raising anything**. The fixture uses a comprehension
+level short of where it should without raising anything. The fixture uses a comprehension
 that gives `[]` to the nodes with no parent.
 
 What the trap forces on the engine matters more than the trap. Signal 3 of `PTD-OPA-003` says to
 build the relation from the concrete data and work out the resources reached. An engine that
-computes that with an implementation of its own gets **mathematical** reachability, and on an
-incomplete adjacency list that **is not what the policy actually grants**.
+computes that with an implementation of its own gets mathematical reachability, and on an
+incomplete adjacency list that is not what the policy actually grants.
 
 On this very fixture, with the naive form of `parent_of`, such an engine would say *"dave reaches
-18 documents"* while the real policy grants **0**. A systematic false positive, on a pattern that
+18 documents"* while the real policy grants 0. A systematic false positive, on a pattern that
 emits a traversable edge.
 
 The engine replicates no semantics at all. It evaluates the decision partially against this data
@@ -577,7 +577,7 @@ with the naive form of `parent_of`:
 
 | principal | the fixture hierarchy | the naive hierarchy |
 |---|---|---|
-| `dave`, member of `root` | **18** | **0** |
+| `dave`, member of `root` | 18 | 0 |
 | `alice`, member of the `team11` leaf | 7 | 7 |
 
 `alice` is the control, and the control is needed: if that count dropped too, the test would be
@@ -595,26 +595,26 @@ own would report in both cases.
 
 ## 5a. The fixture lints clean, and that is the point
 
-The registry rests on one claim: **if `regal` can find it by reading a file, it is not a
-pattern.**
+The registry rests on one claim: if `regal` can find it by reading a file, it is not a
+pattern.
 
-Run on 2026-09-25 with **regal v0.42.0** (which embeds OPA 1.18.2, irrelevant here, but worth
+Run on 2026-09-25 with regal v0.42.0 (which embeds OPA 1.18.2, irrelevant here, but worth
 saying):
 
 ```
 regal lint fixtures/vulnerable-bundle/policy-v1   →  11 files linted. No violations found.
 ```
 
-The rule categories were confirmed **at the source**, by listing the directories in the pinned
+The rule categories were confirmed at the source, by listing the directories in the pinned
 version rather than reading them off a documentation page: `bugs`, `custom`, `idiomatic`,
-`imports`, `performance`, `style`, `testing`. **No `security`.**
+`imports`, `performance`, `style`, `testing`. No `security`.
 
 Two rules are turned off in `.regal/config.yaml`, `directory-package-mismatch` and
 `unresolved-reference`, each with its reason written next to it. Neither can apply to a fixture
 that is laid out by syntax variant and that reads data the lint does not see.
 
-That the fixture lints clean is not cosmetic. The claim the project makes is that **the code is
-correct and idiomatic and the defect is somewhere else**: in the data somebody can write, in the
+That the fixture lints clean is not cosmetic. The claim the project makes is that the code is
+correct and idiomatic and the defect is somewhere else: in the data somebody can write, in the
 key that is missing, in the source that does not answer. A fixture the linter complains about
 would weaken exactly that claim.
 
@@ -632,7 +632,7 @@ default allow := false
 
 Readable with `opa inspect -a`. They serve three purposes:
 
-1. **They make the most fragile signal in the registry explicit.** `PTD-OPA-002` and
+1. They make the most fragile signal in the registry explicit. `PTD-OPA-002` and
    `PTD-OPA-005` both declare *"how do you establish which side applies the check"* as an open
    question, because the answer depends on the PEP. With the annotation it is declared rather
    than inferred.
@@ -642,7 +642,7 @@ Readable with `opa inspect -a`. They serve three purposes:
 There are no `schemas:`, and that is deliberate: they would raise the confidence of a finding
 artificially. The realistic case is that nobody writes them.
 
-**Nineteen decisions are annotated**, among them all four rules of `risk.rego`, the two halves
+Nineteen decisions are annotated, among them all four rules of `risk.rego`, the two halves
 of the split grant, `admin` and `publish`, the guarded and unguarded merge decisions of `review`,
 the reading room, the console and the audit log of `platform`, the export of `tenant_policy`, the
 internal sync of `mesh`, the document serving of `library`, and the mint and the mint narrowed to
@@ -663,15 +663,15 @@ The 001 to 003 chain runs through a function:
 is_member(user, proj) if data.users[user].profile.department == data.projects[proj].department
 ```
 
-`user` is a **formal parameter**. In the compiled form it becomes `__local0__`, and **nothing
-inside the function body binds it to a term**: the binding lives at the call site,
+`user` is a formal parameter. In the compiled form it becomes `__local0__`, and nothing
+inside the function body binds it to a term: the binding lives at the call site,
 `is_member(input.user, anc)`, which is in the body of another rule.
 
 A resolver that works on one `ast.Body` at a time stops at the formal parameter on that
 reference, and cannot say it comes from `input`.
 
-> **Consequence:** without interprocedural analysis the engine **does not recognize this
-> fixture's chain**, and fails the central criterion of section 2, not through a defect in the
+> Consequence: without interprocedural analysis the engine does not recognize this
+> fixture's chain, and fails the central criterion of section 2, not through a defect in the
 > fixture but through a hole in the resolver.
 >
 > The fixture is written this way on purpose and stays this way: using a function is the normal
@@ -684,7 +684,7 @@ call site, and a path that reaches `input` wins over one that does not.
 
 ## 6. Write-model coverage
 
-The number is reported and not left implied. What is counted: **distinct** paths rooted at
+The number is reported and not left implied. What is counted: distinct paths rooted at
 `data.`, read from the body of a rule that contributes to a decision, normalized to the field
 path with the index as a capture.
 
@@ -708,13 +708,13 @@ covered by the write model:           6  (54%)
 not covered:                          5
 ```
 
-A low number, and it is left low: **54% is realistic**, and a fixture that declared 100% would
+A low number, and it is left low: 54% is realistic, and a fixture that declared 100% would
 teach the engine to run only against complete models, which do not exist in practice.
 
 Two of the uncovered paths are deliberate rather than forgotten:
 
 - `data.projects.{p}.department`, which if it were declared writable by the subject would open a
-  **second** route into the same chain, and the fixture would measure two paths instead of one.
+  second route into the same chain, and the fixture would measure two paths instead of one.
 - `data.projects.{p}.parent`, because being able to restructure the hierarchy is a different
   capability and probably a pattern of its own.
 
@@ -725,7 +725,7 @@ The write model has a seventh entry, `input.groups[_]`, which is a part of the r
 than a document: it says who can make the single sign-on say the name of a group, for
 `PTD-OPA-010`. No read of data matches it, so it is neither in the table nor in the count.
 
-> Note for the engine: `data.documents.{d}.project` is read **through an alias**,
+> Note for the engine: `data.documents.{d}.project` is read through an alias,
 > `doc := data.documents[input.doc]` and then `doc.project` in a later expression. It is not
 > visible to anything looking for whole references inside a single expression: it needs binding
 > resolution. It is the path that exercises that ability on the fixture.
@@ -734,7 +734,7 @@ than a document: it says who can make the single sign-on say the name of a group
 
 ## 7. How to regenerate the numbers
 
-The measurements live in `verify/measure.rego`, which is **not part of the bundle**: load it in
+The measurements live in `verify/measure.rego`, which is not part of the bundle: load it in
 addition to the policy, never in place of it. The strings live in the rules rather than in the
 queries, because on Windows PowerShell quoting breaks queries passed as an argument to
 `opa eval`.

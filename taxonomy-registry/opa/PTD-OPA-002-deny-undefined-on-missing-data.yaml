@@ -20,7 +20,7 @@ category:
 
 summary: >
   In a two sided architecture, `allow` granting and `deny` winning, a `deny` rule whose body
-  refers to a path in `data` that for some keys **does not exist** stays undefined. In Rego
+  refers to a path in `data` that for some keys does not exist stays undefined. In Rego
   undefined is not `false`: the rule simply does not contribute, the `not denied` above it
   succeeds, and access goes through.
   The result is a check that applies to some tenants and not to others, with the very same
@@ -33,7 +33,7 @@ preconditions:
       shape `violation contains ...`, where the empty set means admitted.
   - capability: The path in `data` the deny rule reads is absent for at least one key
     note: >
-      This is a fact about the **data**, not about the policy. Tenants migrated and never
+      This is a fact about the data, not about the policy. Tenants migrated and never
       reconfigured, records created before the field existed, defaults never applied, partial
       imports.
   - capability: No rule requires that path to exist
@@ -45,7 +45,7 @@ mechanism:
   description: >
     The body of the deny rule evaluates `data.<collection>[<key>].<field>`. If the key or the
     field is not there, the expression is undefined; a body with an undefined expression is not
-    satisfied; the rule produces nothing. Not `false`: **nothing**.
+    satisfied; the rule produces nothing. Not `false`: nothing.
     Above it, `not denied` on a rule that never got defined always succeeds.
     It is the same fact as in the document model: a document no body produces does not exist,
     and it is not worth `false`.
@@ -76,14 +76,14 @@ detection:
   requires_note: >
     Signal 3 asks for a reference to be evaluated against the data, which is `concrete-data`,
     and partial evaluation says nothing about which keys are missing. Partial evaluation is how
-    the **consequence** of the finding gets measured instead, and that is where the fixture uses
+    the consequence of the finding gets measured instead, and that is where the fixture uses
     it: with `input.tenant=berq` the decision stays conditional on `input.mfa`, with `dolm` it
     grants with nothing left to check. A pattern that evaluated every key in order to report one
     would be measuring the effect instead of the cause.
   signals:
     - order: 1
       check: >
-        Identify the reads that sit on the **negative side** of the decision: the ones in a rule
+        Identify the reads that sit on the negative side of the decision: the ones in a rule
         an entrypoint reaches only by crossing a `not`, or a comparison of a set or object the
         policy builds with nothing, `count(violations) == 0` or `violations == set()`, which asks
         of every element what a `not` asks; and that are not themselves inside a negated
@@ -102,7 +102,7 @@ detection:
         that denies.
         The symmetric shape, a negated read inside a rule the decision reaches with no negations
         (`allow if not data.blocklist[input.user]`), has the same parity and the same outcome,
-        and is **not reported**: the fixture does not contain it, and a signal with no case and
+        and is not reported: the fixture does not contain it, and a signal with no case and
         counter case in the bundle would not be verifiable. It is recorded as a known false
         negative.
     - order: 2
@@ -112,14 +112,14 @@ detection:
       rationale: The same resolved references pattern 001 uses, put to another question.
     - order: 3
       check: >
-        For each reference, enumerate the documents of the collections it crosses **against the
-        concrete data that was loaded**, and separate the ones where the path resolves from the
+        For each reference, enumerate the documents of the collections it crosses against the
+        concrete data that was loaded, and separate the ones where the path resolves from the
         ones where it does not exist.
       rationale: >
         This is the signal no purely static analysis can produce: it needs the real `data`, and
         it is the second reason a linter is not enough.
         The absence is OPA's own, from its store, and not a comparison of ours, so a document
-        holding `false` or `null` is **present**: a value that says no is a check answering, a
+        holding `false` or `null` is present: a value that says no is a check answering, a
         value that is missing is a check that never ran.
     - order: 4
       check: >
@@ -147,7 +147,7 @@ detection:
     per-instance confidence will drop on its own.
   requires_write_model: false
   requires_write_model_note: >
-    **This is the first pattern that can emit a finding on its own.** Knowing who writes is not
+    This is the first pattern that can emit a finding on its own. Knowing who writes is not
     needed: it is enough to observe that for some keys the check does not apply. A write model,
     where there is one, makes it worse, since whoever can *make the path absent* can switch the
     check off on demand, but it is not needed for the basic finding.
@@ -159,7 +159,7 @@ graph:
       properties: [uncovered_keys, keys_checked, enforcing_side, confidence]
   marks_note: >
     It does not emit `PTD_CanEscalateTo`: there is no principal reaching another one. This is a
-    **missing coverage**, not a route. The pattern marks the read the check depends on, from the
+    missing coverage, not a route. The pattern marks the read the check depends on, from the
     rule to the attribute that is absent, with the keys where it is absent and how many were
     tried.
   edge: PTD_Reads
@@ -190,7 +190,7 @@ false_positives:
   - condition: >
       Another rule of the same decision denies when the path, or a prefix of it, is missing.
     discriminator: >
-      Signal 4 looks at the **whole decision**, meaning any rule the decision negates that
+      Signal 4 looks at the whole decision, meaning any rule the decision negates that
       denies when the path is missing, prefixes included: whoever denies on the absence of
       `policy` covers `policy.require_mfa` as well. That is the normal way to write the defence,
       and reporting it would have been the easiest false positive to produce.
@@ -331,7 +331,7 @@ fixture:
     PTD_Reads from `data.quill.tenant_policy.denied_mfa` to `data.tenants[_].policy.require_mfa`,
     marked with the id of this pattern, `uncovered_keys: dolm` and `keys_checked: 2`.
   expected_note: >
-    The fixture also holds the counter case: a second check where the key exists for **every**
+    The fixture also holds the counter case: a second check where the key exists for every
     tenant and which therefore must not be reported.
 
 references:
@@ -356,11 +356,11 @@ verified:
     `opa check` accepts the policy without any warning.
     The implementation is `internal/taxonomy/missingdata.go`, with `Data.Presence` in
     `internal/opaengine/partial.go` for signal 3 and the decisions each read reaches for signal
-    1. On the fixture, with the same numbers in both syntax variants: **one finding**,
+    1. On the fixture, with the same numbers in both syntax variants: one finding,
     `data.tenants[_].policy.require_mfa` on `data.quill.tenant_policy.allow`, `uncovered_keys:
     [dolm]`, 2 keys checked, confidence A. The counter case `data.tenants[_].status` stays
     silent, and so do the four reads in `authz.rego`, which sit on the granting side.
-    regal v0.42.0 reports **no violations** on the fixture, which holds the case and the counter
+    regal v0.42.0 reports no violations on the fixture, which holds the case and the counter
     case of this pattern. This is the pattern where that result is most predictable, and for
     exactly that reason worth saying: the policy is correct, `opa check` accepts it, and the
     linter has no reason to complain either. The defect is not in the file, it is in the meeting
@@ -382,12 +382,12 @@ notes:
 related:
   - id: PTD-OPA-001
     note: >
-      Complementary and not overlapping: 001 is about data that is **present and writable**, 002
-      about data that is **absent**. They chain if whoever can write a path can also make it
+      Complementary and not overlapping: 001 is about data that is present and writable, 002
+      about data that is absent. They chain if whoever can write a path can also make it
       absent, which the write model has no way to declare yet.
   - id: PTD-OPA-005
     note: >
-      **Same abstract category, disjoint cause.** 002 is absence in the data, persistent and
+      Same abstract category, disjoint cause. 002 is absence in the data, persistent and
       visible in a snapshot; 005 is absence caused by the network, transient and visible in no
       snapshot. They share the signal about the negative side, and therefore its weak point,
       and diverge on everything else, to the point that 002 requires `concrete-data` and 005
@@ -401,13 +401,13 @@ open_questions:
       are recognizable. The general case is not. The engine does not try to establish it: it
       demands that it be declared, and on a bundle with no annotations it stops rather than
       guessing.
-      That is not a workaround. Entrypoints are **declared from outside**, the way `opa build`
+      That is not a workaround. Entrypoints are declared from outside, the way `opa build`
       accepts them with `-e` alongside annotations, and the engine exposes `Bundle.RulesNamed`
       to say which rules carry a given name without ever deciding that the name is a decision.
       Applying a convention stays a gesture of whoever is analyzing, and it is checkable in the
       runtime source: the Gatekeeper driver queries `data.template.violation`
       (`frameworks/constraint/pkg/client/drivers/rego/rego.go:34` at revision `241c4a079fc8`,
-      which is what Gatekeeper v3.21.0 vendors). The per-instance confidence **does not drop**: a
+      which is what Gatekeeper v3.21.0 vendors). The per-instance confidence does not drop: a
       decision
       declared by the analyst is as declared as one annotated by the author.
       The direction is declared the same way: `-deny-entrypoint` names a decision the PEP reads

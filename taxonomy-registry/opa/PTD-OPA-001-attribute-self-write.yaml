@@ -53,7 +53,7 @@ mechanism:
     the subject rather than by being keyed on them, and what the subject writes there is their
     own membership: joining a team the decision grants to is the same defect reached the other
     way.
-    This is why the pattern is **not detectable by looking at the policy alone**, and it is the
+    This is why the pattern is not detectable by looking at the policy alone, and it is the
     reason `requires_write_model` exists.
   example: |
     package quill.authz
@@ -83,7 +83,7 @@ detection:
     - order: 2
       check: >
         In the body of the rule there is a reference rooted at `data.` which, once the local
-        bindings are resolved, holds a term derived from `input` in **index position**, or is
+        bindings are resolved, holds a term derived from `input` in index position, or is
         compared with one: an equality against the value it reads, or a search for that value
         among its elements, in either case on a segment that ranges over its collection.
       example: >
@@ -94,7 +94,7 @@ detection:
         other side of the comparison, which in Chef Automate sits two calls away, inside
         `common.subject_matches`.
       rationale: >
-        This is the signal that the subject **selects** the record being read, by naming it or
+        This is the signal that the subject selects the record being read, by naming it or
         by being in it. On its own it is not a defect, it is a lookup. Signal 3 is what needs it.
         A comparison on a segment something else names is left out: the owner of the document
         the request asks about is a check on that document, not a search for the requester.
@@ -103,9 +103,9 @@ detection:
         subject writes is a suspension the subject lifts.
     - order: 3
       check: >
-        The **whole field path** of the resolved reference, not merely its collection prefix,
+        The whole field path of the resolved reference, not merely its collection prefix,
         appears in the `WrittenBy` model with the subject of the decision among those who can
-        write it. Where signal 2 held by a search, the path asked about is the **element**:
+        write it. Where signal 2 held by a search, the path asked about is the element:
         `data.teams.{team}.members.{member}` writable by `{member}` is a principal who can add
         themselves, and an entry on the list alone says who writes the list, not who may join it.
       rationale: >
@@ -113,7 +113,7 @@ detection:
         automated from the policy alone.
   confidence: C
   confidence_note: >
-    The level depends on how it was established that `input.user` **is** the subject: with a
+    The level depends on how it was established that `input.user` is the subject: with a
     `# METADATA schemas` block, or declared from outside with `-subject`, it rises to A, with an
     AuthZEN shaped request to B, with a domain recognizer to C, with a heuristic on field names
     to D. The value here is the cautious default, and the engine has to write it per instance
@@ -125,7 +125,7 @@ detection:
 graph:
   emits: finding
   emits_note: >
-    `finding` **only** when the `WrittenBy` model is present and covers the field path. With no
+    `finding` only when the `WrittenBy` model is present and covers the field path. With no
     model the engine emits `candidate` and says so. A model whose granularity is the record
     covers every field of it, so the engine emits a `finding` on a field the subject cannot
     really write: that is the first of the false positives below, and the model is where it is
@@ -148,7 +148,7 @@ false_positives:
       The subject can write the record but not the field being read. A writable `displayName`
       and a server-side `tier` live in the same object.
     discriminator: >
-      The `WrittenBy` model has to have **field granularity**, not record granularity. A model
+      The `WrittenBy` model has to have field granularity, not record granularity. A model
       at collection level produces systematic false positives on every pattern in this family.
     measurement: case
     case:
@@ -282,7 +282,7 @@ false_positives:
 not_a_lint_rule: >
   A linter sees one policy file. Here the policy is correct and idiomatic: `regal` has nothing
   to report, and it should not have. The defect lives in the relation between a path in `data`
-  and whoever can write it, a fact that sits **outside** the Rego, in the system around OPA.
+  and whoever can write it, a fact that sits outside the Rego, in the system around OPA.
   That takes the graph, not the analysis of one file.
 
 fixture:
@@ -297,7 +297,7 @@ fixture:
     write opens is the `PTD_CanEscalateTo` from `mallory` to `dave` that the chain draws, marked
     with `PTD-OPA-003`.
   expected_note: >
-    The fixture also holds the **counter case**: a second field of the same record, read by a
+    The fixture also holds the counter case: a second field of the same record, read by a
     decision but NOT writable by the user, which the engine must not report. Without a counter
     case only recall is being measured.
 
@@ -306,16 +306,16 @@ references:
     note: >
       The structural model for this taxonomy. Consulted on 2026-08-01: around 21 methods in a
       numbered list with no categories, three parts each (description, command, impact), and no
-      per-method mitigation. What makes them actionable is the **required permissions** built
+      per-method mitigation. What makes them actionable is the required permissions built
       into each description, and that is where the `preconditions` field comes from.
   - title: OPA, Security documentation
     note: >
       Consulted on 2026-08-01: it covers TLS, binding to localhost, credentials, and the
-      authorization policy of the API itself. It **does not cover** this class of risk.
+      authorization policy of the API itself. It does not cover this class of risk.
   - title: regal, rule categories
     note: >
       Checked on 2026-08-01 and again at the source of v0.42.0: `bugs`, `custom`, `idiomatic`,
-      `imports`, `performance`, `style`, `testing`. **No `security` category.**
+      `imports`, `performance`, `style`, `testing`. No `security` category.
 
 verified:
   date: 2026-10-10
@@ -328,7 +328,7 @@ verified:
     returns `true` for the user whose field is "security" and `false` for the other. The policy
     works exactly as described, and that is the point: there is nothing broken to look at.
     On the fixture the engine emits one finding on `data.users[_].profile.department` and
-    **stays silent on the counter case** `data.users[_].roles`. The counter case is the
+    stays silent on the counter case `data.users[_].roles`. The counter case is the
     measurement that counts: the first two signals fire on both, since both are read by a
     decision and indexed by the subject, and only signal 3 against the field-granular model
     separates them. A test checks that the first two signals really do hold on the counter
@@ -348,7 +348,7 @@ verified:
     function. One finding per fact and not per line, so the two reads of the same field are two
     places to look inside a single finding; counting them separately would double every
     precision number.
-    regal v0.42.0 (which embeds OPA 1.18.2) reports **no violations** on the fixture, which
+    regal v0.42.0 (which embeds OPA 1.18.2) reports no violations on the fixture, which
     holds the case and the counter case of this pattern and of the others. The central
     claim of the registry is executed rather than argued.
     On generated worlds the chain this pattern starts reaches the planted principals and no
@@ -362,17 +362,17 @@ verified:
 related:
   - id: PTD-OPA-003
     note: >
-      Transitive grant through ownership **chains** with this one: write an attribute, get a
+      Transitive grant through ownership chains with this one: write an attribute, get a
       position in an ancestor, inherit the children. The chain is more interesting than either
       link, and it is why the edge is traversable.
       The chain lives in `internal/taxonomy/escalation.go`, and its finding comes out under the
       id of `PTD-OPA-003`, which is where the registry says a candidate becomes a finding once
       somebody can take the position.
       This pattern brings two things to the chain, and that is why it is the first link: the
-      writable path, and the **position of the capture** that the model binds to the subject,
+      writable path, and the position of the capture that the model binds to the subject,
       which is what turns everybody's path into one person's document
       (`data.users[_].profile.department` becomes `data.users.mallory.profile.department`).
-      What the chain needs from here is a **finding** and not a candidate. With no write model
+      What the chain needs from here is a finding and not a candidate. With no write model
       this pattern emits candidates, and building a path on top of one would rest the strongest
       claim in the registry on a declaration nobody made.
 

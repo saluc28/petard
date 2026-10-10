@@ -3,7 +3,7 @@
 > The fields of an instance file. `schema_version: 1` is mandatory in every one of them.
 >
 > Changing this schema means bumping `schema_version` and writing the migration. Do not do it
-> before there are **at least three patterns**: freezing a schema on a single example is the
+> before there are at least three patterns: freezing a schema on a single example is the
 > classic way of freezing the wrong thing.
 
 ---
@@ -21,12 +21,12 @@
 | `status` | enum | `draft` → `implemented` → `verified`, see below |
 | `category` | object | the abstract level: `id`, `title`, `summary` |
 | `summary` | string | one paragraph: what it lets somebody do, not how it is implemented |
-| `preconditions` | list | **what the attacker has to hold already.** See below |
+| `preconditions` | list | what the attacker has to hold already. See below |
 | `mechanism` | object | `description` plus `example`, which is real Rego that compiles |
-| `detection` | object | **the field that makes the pattern executable.** See below |
+| `detection` | object | the field that makes the pattern executable. See below |
 | `graph` | object | what it emits in the data model |
 | `false_positives` | list | conditions where the signal fires with no abuse behind it, and how each one is settled. See below |
-| `not_a_lint_rule` | string | why `regal` cannot find it. **If you cannot write this line, the pattern does not go in** |
+| `not_a_lint_rule` | string | why `regal` cannot find it. If you cannot write this line, the pattern does not go in |
 | `fixture` | object | the case in the vulnerable bundle |
 | `references` | list | sources, with the date each was consulted |
 | `verified` | object | `date` plus `tool_version` plus `how`. See below |
@@ -50,23 +50,23 @@ the start of a fix and takes the rest from the bundle it analyzed.
 
 ### `preconditions`
 
-This is the field that makes a pattern **actionable** instead of interesting, and it is the
+This is the field that makes a pattern actionable instead of interesting, and it is the
 lesson of the Rhino Security Labs IAM taxonomy, where every method reads *"an attacker with
 `iam:CreatePolicyVersion` can..."*. Without the precondition a pattern is a generic risk. With
 it, it is an attack path you can tell applies to you or not.
 
-Each entry names **one capability the attacker has to hold already**, in the terms of the system
+Each entry names one capability the attacker has to hold already, in the terms of the system
 around OPA rather than in the terms of Rego.
 
 ### `detection`
 
 | Subfield | What |
 |---|---|
-| `ast_source` | `compiled` \| `raw`. In practice **always `compiled`**: on the raw AST a nested builtin call is not an expression of its own, so a pass over the expressions never sees it |
+| `ast_source` | `compiled` \| `raw`. In practice always `compiled`: on the raw AST a nested builtin call is not an expression of its own, so a pass over the expressions never sees it |
 | `requires` | which engine capabilities are needed: `binding-resolution`, `rule-graph`, `concrete-data`, `taint`, `enforcement-point`, the last being the declaration of who sets each part of the request, in the format of `pep-registry/` |
 | `signals` | an ordered list of checks. Each one has to be computable rather than interpretable |
 | `confidence` | `A` to `E`, on how the shape of the request was recognized: A is a declaration, a `METADATA` schema or a subject declared with `-subject`, B an AuthZEN shaped request, C a domain convention, D a heuristic on field names, E syntax alone |
-| `requires_write_model` | bool. If `true`, without the `WrittenBy` model the pattern **cannot** emit `PTD_CanEscalateTo` |
+| `requires_write_model` | bool. If `true`, without the `WrittenBy` model the pattern cannot emit `PTD_CanEscalateTo` |
 
 > A `signals` entry written as *"the policy trusts its input"* is not a signal, it is an opinion.
 > A signal is *"there is a reference rooted at `data.` whose term in index position derives from
@@ -74,17 +74,17 @@ around OPA rather than in the terms of Rego.
 
 Partial evaluation is deliberately not in `requires`. It is a tool the engine uses to measure
 what a decision grants today, and no pattern needs it in order to find a defect: `requires` says
-what it takes to **find** a defect, not what it takes to show its effect.
+what it takes to find a defect, not what it takes to show its effect.
 
 ### `graph`
 
 | Subfield | What |
 |---|---|
-| `emits` | `finding` \| `candidate`. **`finding` only when `requires_write_model` is false, or the model is there.** Otherwise `candidate` |
+| `emits` | `finding` \| `candidate`. `finding` only when `requires_write_model` is false, or the model is there. Otherwise `candidate` |
 | `marks` | where the pattern leaves its id in the exported graph, one entry per `kind` of node or edge, with the `properties` a reader finds there. The id goes in `patterns` for a finding and in `candidate_patterns` for a candidate. A test holds every entry against what the engine does on the fixture |
 | `edge` | the edge kind in the data model the finding is about, when it is about one |
 | `from` / `to` | which nodes it joins |
-| `traversable` | bool: it becomes `is_traversable` in the OpenGraph schema. Marking an edge traversable when it does not stand for a capability produces **paths in the interface that nobody can walk** |
+| `traversable` | bool: it becomes `is_traversable` in the OpenGraph schema. Marking an edge traversable when it does not stand for a capability produces paths in the interface that nobody can walk |
 
 ### `false_positives`
 
@@ -92,8 +92,8 @@ Every entry has a `condition`, which is when the signal fires for nothing, and a
 `discriminator`, which is what it would take to tell the two apart. An empty `discriminator` is
 an honest admission and is worth more than a condition left unsaid.
 
-A pattern that wants `status: verified` also says, per condition, **how that condition is
-settled**, in `measurement`:
+A pattern that wants `status: verified` also says, per condition, how that condition is
+settled, in `measurement`:
 
 | Value | Means |
 |---|---|
@@ -154,6 +154,6 @@ Something measured but still open goes in `notes`; something not measured at all
 
 | Absent | Why |
 |---|---|
-| `severity` or a score | False precision. How bad an escalation is depends on what it gives you, which is the client's context and not the pattern's. BloodHound itself assigns no severity to its edges: it assigns **traversability**, which is an objective property, and that is what `graph.traversable` holds |
+| `severity` or a score | False precision. How bad an escalation is depends on what it gives you, which is the client's context and not the pattern's. BloodHound itself assigns no severity to its edges: it assigns traversability, which is an objective property, and that is what `graph.traversable` holds |
 | `remediation` | The system-specific fix would be a second source of truth against the documentation of the system being analyzed, and it would age. It belongs in the report, generated from the context. The pattern-level line, what structurally closes the pattern, is the `closes` field above |
 | `cvss` or `cwe` | A pattern is not a vulnerability in a product. Forced mappings onto taxonomies built for something else make a thing look rigorous when it is not. If a mapping is useful it goes in `references` |

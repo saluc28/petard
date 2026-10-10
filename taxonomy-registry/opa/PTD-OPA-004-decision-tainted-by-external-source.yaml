@@ -24,8 +24,8 @@ summary: >
   that endpoint: whoever controls it, whoever can impersonate it, whoever can get in the middle
   of the connection, or simply whoever can write its content, decides in place of the policy. A
   blocklist served from outside is decided by whoever serves it, like a clearance is.
-  The finding is not "it uses `http.send`", which anyone can see. It is **which decision**
-  depends on **which endpoint**, and therefore who has to be added to the graph as a principal.
+  The finding is not "it uses `http.send`", which anyone can see. It is which decision
+  depends on which endpoint, and therefore who has to be added to the graph as a principal.
 
 preconditions:
   - capability: Control, even partial, over the response of the external source
@@ -65,7 +65,7 @@ mechanism:
         enrichment.body.clearance == "high"
     }
   example_note: >
-    `opa check` accepts it **without any warning**. There is nothing syntactically wrong with
+    `opa check` accepts it without any warning. There is nothing syntactically wrong with
     it, and that is why the pattern exists.
 
 detection:
@@ -73,7 +73,7 @@ detection:
   ast_source_note: >
     The compiled form is mandatory here, and this pattern is the reason the rule is stated that
     way for the whole registry. In the raw AST, `x := http.send(...)` is a single expression
-    `assign(x, http.send(...))` and the nested call **is not an Expr**, so a pass over
+    `assign(x, http.send(...))` and the nested call is not an Expr, so a pass over
     `WalkExprs` of the raw tree never sees it. The compiler pulls it out into a separate
     expression with an output variable, and that is where it becomes followable.
   requires:
@@ -94,14 +94,14 @@ detection:
         Follow the chain of bindings from the output variable of the call, and establish whether
         a term derived from that output reaches the decision.
       rationale: >
-        This is **the taint signal**, and no other pattern in the registry exercises it.
+        This is the taint signal, and no other pattern in the registry exercises it.
         Checked as computable: on a compiled body the resolver follows
         `http.send({...}, __local2__)` to `__local0__ = __local2__` to
         `__local0__.body.privileged`, and returns the provenance `http.send` for that reference.
     - order: 3
       check: >
         Extract the URL or the host from the call, where it is a constant. Where it is computed,
-        record it as a **dynamic destination** and report it separately.
+        record it as a dynamic destination and report it separately.
       rationale: >
         A destination computed from `input` is a pattern of its own and a worse one: whoever
         makes the request also chooses who the policy goes and asks. To be promoted to its own
@@ -119,7 +119,7 @@ detection:
     inheriting it from the shape recognizers, because nothing here is claimed about a subject.
   requires_write_model: false
   requires_write_model_note: >
-    Not needed. The external source **is** the writer, and its identity is the URL.
+    Not needed. The external source is the writer, and its identity is the URL.
 
 graph:
   emits: finding
@@ -151,7 +151,7 @@ false_positives:
     discriminator: >
       None automatic from the code. The report has to list the endpoints and ask for them to be
       classified once, exactly as with the privileged positions of 003.
-      **It still gets reported**: that a decision depends on a service, even a trusted one, is
+      It still gets reported: that a decision depends on a service, even a trusted one, is
       an architectural fact the analyst has to see.
     measurement: out-of-band
   - condition: >
@@ -193,9 +193,9 @@ false_positives:
 
 not_a_lint_rule: >
   A linter can say "this policy uses `http.send`", and that would be noise, because every policy
-  that enriches uses it. It cannot say **which decision** depends on **which endpoint**, which
+  that enriches uses it. It cannot say which decision depends on which endpoint, which
   takes following the alias chain through several expressions of the compiled body.
-  Above all it cannot do the thing that counts: **add the endpoint to the graph as a principal**,
+  Above all it cannot do the thing that counts: add the endpoint to the graph as a principal,
   putting whoever controls that host next to the users in the same view. A linter produces a
   warning; here the result is one more actor in the authorization model.
 
@@ -208,7 +208,7 @@ fixture:
     PTD_Reads from the rule to the value, marked with the id of this pattern, and the value joined
     by PTD_TaintedBy to a PTD_Principal named after the endpoint.
   expected_note: >
-    The counter case is indispensable: a second `http.send` call whose result reaches **no**
+    The counter case is indispensable: a second `http.send` call whose result reaches no
     decision, used for a log or assigned and never used. The engine must not report it. It is
     the counter case that tells the taint apart from the mere presence of the builtin, and the
     only way to prove signal 2 really works.
@@ -231,19 +231,19 @@ verified:
     `opa check` accepts the example policy without any warning. The taint mechanism was checked
     on the compiled body: the resolver identifies `__local0__.body.privileged` as coming from
     the output of `http.send()`, following `http.send({...}, __local2__)` to
-    `__local0__ = __local2__`. Real output. It was also checked that the raw AST does **not**
+    `__local0__ = __local2__`. Real output. It was also checked that the raw AST does not
     see the nested call under a pass over the expressions, while the compiled form does.
-    On the fixture, in Rego v1 and v0 with the same numbers, the engine measures **7 values read
-    from outside the policy**, all of them from `http.send`, and all 7 reach a decision. 5 of
+    On the fixture, in Rego v1 and v0 with the same numbers, the engine measures 7 values read
+    from outside the policy, all of them from `http.send`, and all 7 reach a decision. 5 of
     them reach the three denying decisions of `quill.risk` under a `not`, and 2 do not, in
     `quill.enrichment.allow` from `idp.petard-fixture.invalid` and in
     `quill.risk.allow_positive_side` from `risk.petard-fixture.invalid`. Counted by parity with
     the negation of the read itself, 3 are in granting position, those 2 and the error
-    `denied_defensive` reads under a `not`, and 4 only deny. They make **5 findings**, one per
+    `denied_defensive` reads under a `not`, and 4 only deny. They make 5 findings, one per
     decision and host. Signal 2 is what counts here: the propagation arrives at the decision
     across the rule graph, so the pattern separates "the policy calls `http.send`" from "this
     decision depends on that endpoint".
-    **The counter case `audit_trace` stays silent, and for the right reason.** On the fixture
+    The counter case `audit_trace` stays silent, and for the right reason. On the fixture
     alone that silence would prove nothing: the rule is not annotated and nobody calls it, so
     the walk never visits it, and "does not contribute to a decision" would be
     indistinguishable from "the engine does not look at that builtin". There is therefore a test
@@ -259,7 +259,7 @@ verified:
     decisions are reported all the same.
     One finding per fact: the fact is the pair of a decision and an external party, and the
     places to look sit inside the finding. Two paths to the same host are the same party.
-    regal v0.42.0 reports **no violations** on the fixture, which holds the case and the counter
+    regal v0.42.0 reports no violations on the fixture, which holds the case and the counter
     case of this pattern, and it has no rule about `http.send` at all.
     The two declared false positives are settled as the status requires. A trusted internal
     endpoint is `out-of-band`: the perimeter is not written in the policy, and the finding stays
@@ -274,7 +274,7 @@ notes:
       Recognizing custom builtins registered by the host is untested, and it depends on the
       collector knowing the capabilities of the deployment being analyzed, which today it does
       not. The list of builtins that carry data in from outside is closed at `http.send` and
-      `net.lookup_ip_addr`: that is **narrower than nondeterminism**, on purpose, because
+      `net.lookup_ip_addr`: that is narrower than nondeterminism, on purpose, because
       `time.now_ns` and `rand.intn` are nondeterministic without having another end to them.
 
 related:
@@ -285,22 +285,22 @@ related:
       deserve a shared super-category.
   - id: PTD-OPA-005
     note: >
-      **Same builtin, opposite question.** 005 is about the response not arriving; 004 is about
+      Same builtin, opposite question. 005 is about the response not arriving; 004 is about
       its content. `raise_error: false` does not cause the fail-open of 005, and the pattern
       that matters there is which side of the decision consumes the response.
       Operationally, signal 1 of this pattern and signal 1 of 005 are the same computation and
       are run once.
-      **The two overlap on every rule of `quill.risk`.** `allow_positive_side` grants access when
+      The two overlap on every rule of `quill.risk`. `allow_positive_side` grants access when
       the service answers with a low score, so it is a case of 004: whoever controls the host
       grants access to anybody. It is at the same time a correct counter case of 005, where the
-      source being unavailable makes it fail closed, because **005 is about the absence of the
-      response and 004 about its content**. On the three denying rules the two agree for
+      source being unavailable makes it fail closed, because 005 is about the absence of the
+      response and 004 about its content. On the three denying rules the two agree for
       different reasons: 005 reports what happens when the answer does not come, 004 what whoever
       answers can decide. Both statements hold on the same rule and neither silences the other.
       In general every rule 005 looks at is also a case of 004, whichever side it sits on,
       because both start from a call to an external source and only 005 asks about the side.
       How two rules hitting the same site are usually treated, checked by running it: `regal`
-      v0.42.0 on a line that violates two rules reports **two distinct violations**, one per
+      v0.42.0 on a line that violates two rules reports two distinct violations, one per
       rule (`use-in-operator` and `prefer-snake-case`, same line, different columns).
       Deduplication in an analysis tool is per rule and site, not per site. Silencing 004
       because 005 is quiet on that rule would introduce a dependency between patterns that this

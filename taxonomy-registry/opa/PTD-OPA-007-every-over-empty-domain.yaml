@@ -72,7 +72,7 @@ detection:
     It does not require `concrete-data`, like `PTD-OPA-005` and unlike `PTD-OPA-002`. The defect
     is structural: an `every` in a granting position over a domain that can be empty is fail-open
     whatever the snapshot holds, because the request decides whether the domain is empty. Concrete
-    data is how the **consequence** would be shown, the way 002 uses partial evaluation, not how
+    data is how the consequence would be shown, the way 002 uses partial evaluation, not how
     the defect is found.
   signals:
     - order: 1

@@ -17,11 +17,11 @@ network calls of its own except the ones you point it at.
 
 Two consequences worth knowing, because both are choices rather than oversights:
 
-- **Analyzing a policy never calls the endpoints that policy names.** Partial evaluation leaves
+- Analyzing a policy never calls the endpoints that policy names. Partial evaluation leaves
   a call to `http.send` in the residual condition instead of making it, which is OPA's default
   and is kept deliberately: analyzing somebody's policy must not send requests to the hosts
   written in it.
-- **The upload path talks to the BloodHound instance you give it**, with credentials read from
+- The upload path talks to the BloodHound instance you give it, with credentials read from
   the environment. They are never accepted as command line flags, so they stay out of the shell
   history and the process list.
 
