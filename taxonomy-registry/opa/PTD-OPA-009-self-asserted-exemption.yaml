@@ -79,9 +79,10 @@ detection:
     - order: 1
       check: >
         A decision reaches a check on a part of the request, an equality, a search, or a loose match
-        with `startswith`, `glob.match` or an unanchored `regex.match` against a value the policy
-        writes, or the part of the request asked to be true, that lands on the side that grants after
-        crossing a negation: it holds inside something that would refuse, so it lifts the refusal.
+        with `contains`, `startswith`, `endswith`, `glob.match` or an unanchored `regex.match`
+        against a value the policy writes, or the part of the request asked to be true, that lands
+        on the side that grants after crossing a negation: it holds inside something that would
+        refuse, so it lifts the refusal.
         The engine reports it among the checks on the request, as lifting a refusal in that decision.
       rationale: >
         The negation is what tells an exemption from a condition of the grant. `input.action ==
@@ -130,8 +131,9 @@ false_positives:
       the meaning of the fields. A declaration that puts the whole object on the caller reports
       compliance as exemption, which is why the pattern needs a declaration to run and why
       `pep-registry/` holds none for Gatekeeper. Measured on open-policy-agent/gatekeeper-library
-      at e4d3bd2 with a declaration that asks for `violation` and covers no field: 26 candidates in
-      14 of the 49 units, among them the container's own `resources.limits` in `containerlimits`.
+      at e4d3bd2, one run for each unit under `src/` with a declaration that asks for `violation`
+      on the side that denies and covers no field: 53 candidates in 27 of the 49 units that hold
+      a `violation`, among them the container's own `resources.limits` in `containerlimits`.
   - condition: >
       The enforcement point lets only the caller the exemption is meant for reach the endpoint,
       the scheduler on a network nobody else is on, and the declaration still says the caller sets

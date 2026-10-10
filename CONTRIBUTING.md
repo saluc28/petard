@@ -68,9 +68,10 @@ pull request which BloodHound version answered.
 
 ## Changing a pattern
 
-A pattern is data. Editing the YAML changes what the report says, and the engine
-reads the id, the title, the category, `graph.emits` and
-`detection.requires_write_model` out of it.
+A pattern is data. Editing the YAML changes what the report says. The engine
+reads the id, the name, the title, the status, the category, `closes`,
+`detection.requires_write_model` and the `graph` block out of it, and runs the
+case of each declared false positive. `petard explain` prints the prose.
 
 If you add a case the engine has to find, add the counter case too. Without one
 only recall is measured, and precision is the half that decides whether the tool

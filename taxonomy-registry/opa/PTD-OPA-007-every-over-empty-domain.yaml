@@ -119,8 +119,9 @@ detection:
     knowing which side applies the check, which depends on the PEP, the same weak point as 002 and
     005. The engine computes A on a bundle whose entrypoints are annotated or declared, because
     the granting side is then a known edge of the descent rather than a guess. The file stays at B
-    because that is the level of the pattern when decisions have to be recognized, which is the
-    general case.
+    because that is the level of the pattern when decisions have to be recognized. A bundle that
+    annotates no entrypoint and is given none is that case: the decisions are inferred, the
+    report says so, and the level printed on the finding stays A, so read such a finding at B.
   requires_write_model: false
   requires_write_model_note: >
     Not needed, for the same reason as 002 and 005: the defect is that a check does not apply, not
@@ -211,7 +212,7 @@ fixture:
 references:
   - title: regal, rule list at v0.42.0
     note: >
-      StyraInc/regal at v0.42.0, the rule directories under bundle/regal/rules, checked on
+      open-policy-agent/regal at v0.42.0, the rule directories under bundle/regal/rules, checked on
       2026-09-14: no rule about `every` over an empty domain, and none about vacuous quantifiers.
 
 verified:
@@ -232,7 +233,7 @@ verified:
     a domain something upstream always fills, and an empty case that is meant to pass, both of
     them intent rather than policy. The third carries a case that runs on every build, an every
     guarded by iterating its domain, and the engine reports it: the false positive is measured
-    where it used to be only declared.
+    and not only declared.
 
 related:
   - id: PTD-OPA-002
@@ -254,9 +255,9 @@ open_questions:
       iteration of the domain or a `some` over it, is not recognized, so the every behind it is
       reported as if unguarded, which is a false positive, not a false negative. Matching more
       shapes stays fragile, because the `every` itself iterates the domain and an iteration guard
-      has to be told from that. The robust answer is to stop reading the body and evaluate the
-      decision with the domain empty: if it still grants, the every is fail-open; if it denies, a
-      guard closed it, whatever its shape. That is left undone because it would make the pattern
-      need the bundle and a data store, where today it is static, and that trade is not yet
-      settled. What changed is the price of leaving it open: the false positive has a case that
-      runs, so the day the evaluation arrives, the case turns from reporting to quiet and says so.
+      has to be told from that. The answer that does not depend on the shape of the guard is to
+      stop reading the body and evaluate the decision with the domain empty: if it still grants,
+      the every is fail-open; if it denies, a guard closed it. That is left undone because it
+      would make the pattern need the bundle and a data store, where today it is static. The
+      false positive has a case that runs, so once the evaluation exists the case goes from
+      reporting to quiet and says so.

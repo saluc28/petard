@@ -95,8 +95,8 @@ const (
 
 // Loose reports whether the operator matches a part of the request more loosely
 // than equality or membership, so a value the policy did not write can satisfy
-// it. These are the forms PTD-OPA-012 reads, and the ones PTD-OPA-009 and
-// PTD-OPA-010 missed while only == and in counted as checks.
+// it. These are the forms PTD-OPA-012 reports on, and PTD-OPA-009, PTD-OPA-010
+// and PTD-OPA-011 read them as checks like == and in.
 func (o CheckOperator) Loose() bool {
 	switch o {
 	case CheckSubstring, CheckPrefix, CheckSuffix, CheckGlob, CheckRegex:

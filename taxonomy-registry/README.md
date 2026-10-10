@@ -192,7 +192,7 @@ For `PTD-OPA-001` the write model is then asked about the element:
 `data.teams.{team}.members.{member}` writable by `{member}` says anybody can add themselves,
 while an entry on the list alone says who writes the list and nothing about who may join it.
 BloodHound keeps the two apart for the same reason, `AddSelf` next to `AddMember`
-(`packages/cue/bh/ad/ad.cue:1337` and `1427` at `v9.7.0`).
+(`packages/cue/bh/ad/ad.cue:1337` and `1427` at `v9.7.1`).
 
 `PTD-OPA-006` reads the same search from the other side: there the writer is not the subject but
 an endpoint with a decision behind it, and joining is what that decision authorizes. What varies
@@ -253,14 +253,17 @@ to say it. Gatekeeper queries `violation` on every constraint template
 `241c4a079fc8`, the revision Gatekeeper `v3.21.0` vendors) and refuses the request when a result
 carries the deny action (`pkg/webhook/policy.go:206` at `v3.21.0`). conftest counts every element
 of a rule named `deny` or `violation`, with a suffix or without, as a failure
-(`policy/engine.go:48` and `390` at `v0.70.0`). OPA's annotations mark an entrypoint and carry no
+(`policy/engine.go:48` and `393` at `v0.71.0`). OPA's annotations mark an entrypoint and carry no
 direction (`v1/ast/annotations.go:28` at `v1.21.1`).
 
 So a decision that refuses is declared, `-deny-entrypoint k8sallowedrepos/violation`, like the
-decision itself and the subject, and never inferred from a name: a rule called `deny` can just as
-well be one an `allow` negates. The engine reads it as its own negation, a set asked to be empty
-or a rule asked not to hold, so `violation` declared to deny and `allow if count(violation) == 0`
-declared to grant put every value on the same side.
+decision itself and the subject. A name alone does not say it: a rule called `deny` can just as
+well be one an `allow` negates. Only where nothing names a decision at all does the engine read
+names, on the rules no other rule uses: one called `deny`, `violation` or `warn`, alone or with a
+suffix, is taken to refuse, and the report says the decisions were inferred. The engine reads a
+decision that refuses as its own negation, a set asked to be empty or a rule asked not to hold,
+so `violation` declared to deny and `allow if count(violation) == 0` declared to grant put every
+value on the same side.
 
 What partial evaluation leaves of a decision that denies are the ways to be refused. The patterns
 that measure access with it, `PTD-OPA-003` and `PTD-OPA-006`, leave such a decision out, and so
@@ -340,7 +343,7 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-001` | ATTR-SELF-WRITE | opa | finding | C | `verified`, with the case and the counter case separated on the fixture |
 | `PTD-OPA-002` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, the one that emits findings on its own, with no write model |
 | `PTD-OPA-003` | TRANSITIVE-GRANT | opa | candidate | B | `verified`, and it chains with 001, which is where a route comes from |
-| `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `verified`, and the one that exercises taint |
+| `PTD-OPA-004` | EXTERNAL-SOURCE-TAINT | opa | finding | A | `verified`, a value from outside the policy followed to the decision it reaches, the taint 005 follows too |
 | `PTD-OPA-005` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, and it needs no attacker and nothing wrong beforehand: a slow endpoint is enough |
 | `PTD-OPA-006` | SPLIT-GRANT | opa | finding | C | `verified`, the second edge that means escalation, from a write a decision authorizes rather than a position: a value in the subject's record, the subject added to a collection, or a field of a record a list names them in |
 | `PTD-OPA-007` | FAIL-OPEN-ON-ABSENCE | opa | finding | B | `verified`, the third instance of the category: an `every` over a domain the request can empty |
@@ -443,10 +446,10 @@ limit in the engine:
 | `PTD-OPA-006` | needs a write model naming the decision behind a write, and the corpus ships none |
 | `PTD-OPA-007` | not one `every` in the corpus: the keyword does not appear in any of the 142 files |
 | `PTD-OPA-008` | it measures against concrete data, and the corpus ships none. One read in the whole corpus names a document every request shares, the storage classes Gatekeeper replicates into its inventory |
-| `PTD-OPA-009` | it runs only with the enforcement point declared, and `pep-registry/` declares none for Gatekeeper, since an admission review is the object the policy judges, written whole by the caller. With a declaration that covers no field it reports 26 candidates in 14 units, among them a container's own resource limits |
+| `PTD-OPA-009` | it runs only with the enforcement point declared, and `pep-registry/` declares none for Gatekeeper, since an admission review is the object the policy judges, written whole by the caller. With a declaration that asks for `violation` and covers no field it reports 53 candidates in 27 units, among them a container's own resource limits |
 | `PTD-OPA-010` | it runs only with the enforcement point declared, too. The one policy that reads who is asking, `noupdateserviceaccount`, compares the user's name and groups with the lists the constraint passes in its parameters, and never with a name the policy writes |
 | `PTD-OPA-011` | it runs only with the enforcement point declared as well, and none is declared for Gatekeeper. An admission policy judges the object being admitted, and grants on no runtime identity of the caller, which is what this pattern keys on |
-| `PTD-OPA-012` | the engine reads six loose matches in the corpus, a suffix on a cpu limit and a regex on an image digest among them, but reports none: every one is in a `violation`, on the side that refuses, and this pattern reports only the grant side. A Gatekeeper policy validates the object it is handed; it does not grant |
+| `PTD-OPA-012` | the engine reads 58 loose matches in the corpus, twelve of them on `input.review.object`, a suffix on a cpu limit and a regex on an image digest among them, but reports none: every one is in a `violation`, a decision that refuses, and this pattern reports only in a decision that grants. A Gatekeeper policy validates the object it is handed; it does not grant |
 | `PTD-OPA-013` | it runs only with the enforcement point declared, and none is declared for Gatekeeper. An admission policy judges the object being admitted and mints no credential for a delegated agent, so there is no requested authority to bound, which is what this pattern keys on |
 
 A zero against a real corpus is neither a confirmation nor a refutation of the declared false
@@ -480,7 +483,13 @@ the write model is where that gets declared.
 No value from outside the policy reaches any of the 16 decisions, so `PTD-OPA-004` and
 `PTD-OPA-005` have nothing to look at, and no policy in contrib uses `every` either, so
 `PTD-OPA-007` has nothing to find in its 49 files. No decision reads a document every request
-shares, so `PTD-OPA-008` has nowhere to start. The two candidates of the AuthZEN policy stay
+shares, so `PTD-OPA-008` has nowhere to start. `PTD-OPA-009`, `PTD-OPA-010`, `PTD-OPA-011` and
+`PTD-OPA-013` run only with the enforcement point declared, and `pep-registry/` declares none of
+these products. `PTD-OPA-012` needs none and reports nothing: the engine reads three loose
+matches on the request, two prefixes in the Puppet example on the side that refuses, and a glob
+on `input.path` that grants in the Kong example
+(`kong_api_authz/integration/testdata/opa/bundle/httpapi/authz/policy.rego:11`), where no part
+of the request is recognized as the resource. The two candidates of the AuthZEN policy stay
 candidates: whether a user can change their own `roles` depends on the application that stores
 them, and the write model is where that is declared.
 
@@ -517,7 +526,8 @@ and `authz/introspection/authorized_project`. The subject is recognized from fie
 `input.subjects[_]`, level D, and the candidate is `data.policies[_].members[_]` at
 `authz.rego:10`, where a policy applies to a request when one of the request's subjects is among
 its members. Whoever can add a member to a policy decides who it applies to. The repository ships
-no data, so the four patterns that evaluate against it did not run.
+no data, so the five patterns that evaluate against it, `PTD-OPA-002`, `PTD-OPA-003`,
+`PTD-OPA-006`, `PTD-OPA-008` and `PTD-OPA-013`, did not run.
 
 [`SAP/InfraBox`](https://github.com/SAP/InfraBox), at commit
 `946edc0871c3b04e477ed216ffb47db4d11ef089`, keeps 25 policies and one test in
@@ -562,12 +572,7 @@ there are executed, not estimated.
 
 ### Candidates not yet written
 
-None open. The two the registry used to list are both resolved.
-
-`every` over an empty collection became `PTD-OPA-007`. The signals do not overlap 002 or 005:
-the construct is `ast.Every` with an empty domain, an empty set rather than 002's missing key, and
-there is no network source, so 005's taint does not apply. It earned a file, now `verified`: a
-case and a counter case in the fixture, and its three declared false positives settled.
+None open.
 
 Role hierarchy expansion is not a pattern of its own. It is `PTD-OPA-003`. The
 relation the transitive signals cut is named by what the rule building it reads, whatever that

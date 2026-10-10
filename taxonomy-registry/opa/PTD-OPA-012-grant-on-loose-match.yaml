@@ -57,8 +57,9 @@ mechanism:
     }
   example_note: >
     The document rule of the fixture has the same shape, and it was measured with the rego package
-    of OPA v1.21.1: a request for `welcome-public` is allowed, and a request for `public-incident-q3`,
-    a document that is not public, is allowed too, because its id embeds the marker.
+    of OPA v1.21.1: a request for `handbook/public/intro` is allowed, and a request for
+    `public-incident-q3`, a document that is not public, is allowed too, because its id embeds the
+    marker.
 
 detection:
   ast_source: compiled
@@ -144,9 +145,10 @@ false_positives:
     discriminator: >
       The pattern reports only the grant side. A deny that matches loosely under-blocks, which is a
       different concern from a grant that reaches more than the value it names. On
-      open-policy-agent/gatekeeper-library at e4d3bd2 the engine reads six loose matches across its
-      violation rules, a suffix on a cpu limit and a regex on an image digest among them, and reports
-      none of them, because they are all on the side that refuses.
+      open-policy-agent/gatekeeper-library at e4d3bd2, run unit by unit with `violation` declared
+      to deny, the engine reads 58 loose matches, twelve of them on `input.review.object`, a suffix
+      on a cpu limit and a regex on an image digest among them, and the pattern reports none: each
+      sits in a `violation`, a decision that refuses, and it reports only in one that grants.
 
 not_a_lint_rule: >
   A linter sees `contains(input.path, "/admin")` and `input.path == "/admin"` as a function call
@@ -162,18 +164,19 @@ fixture:
     `library.rego`, `allow_doc`: a document is served when its id contains `public`, a substring,
     so a document whose id merely embeds the marker is served too.
   counter_case: >
-    The same decision, `input.doc == "welcome-public"`: the exact id, which a document that embeds
-    the marker does not match.
+    The same decision, `"public" in split(input.doc, "/")`: the marker as a whole path component,
+    which a document whose id merely embeds it does not match.
   expected: >
-    A finding on `input.doc` for `data.quill.library.allow_doc`, and nothing on the exact id.
+    A finding on `input.doc` for `data.quill.library.allow_doc`, and nothing on the match by
+    component.
 
 references:
   - title: defenseclaw, F-0543, a substring match on a path
     note: >
-      At commit 9bc62550, `policies/rego/admission.rego`: the fix comment at lines 210 to 220
+      At commit 9bc62550, `policies/rego/admission.rego`: the fix comment at lines 210 to 215
       records the old test `contains(lower(input.path), lower(prefix))`, a substring match that
-      "accepted attacker paths whose components merely embedded the marker (e.g. `.defenseclaw-evil`
-      satisfying a `.defenseclaw` allow)". The fix matches whole path components
+      "accepted attacker paths whose components merely embedded the marker", `.defenseclaw-evil`
+      satisfying a `.defenseclaw` allow for one. The fix matches whole path components
       (`_provenance_prefix_matches` at 218, `_path_components` at 231). The real instance folds the
       case and reads the marker from a configuration document, which this pattern reports when the
       marker is written in the policy; see the notes. Consulted 2026-10-05.
@@ -192,11 +195,13 @@ verified:
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture. The checks on
     the request list `contains(input.doc, "public")` as granting in `data.quill.library.allow_doc`,
-    read as a substring, and `input.doc == "welcome-public"` as an equality, which is not a loose
-    match. The shape recognizer names `input.doc` the resource at level C, so the substring is a
-    finding at that level and the equality is nothing.
-    The numbers behind it, measured with the rego package of OPA v1.21.1: a request for the exact id
-    is allowed, and a request for an id that embeds the marker is allowed too.
+    read as a substring. `"public" in split(input.doc, "/")` is a membership over a value the
+    policy computes and is not among them. The shape recognizer names `input.doc` the resource at
+    level D, from its field name, so the substring is a finding at that level.
+    The numbers behind it, `data.quill.verify.loose_match`, measured with the rego package of OPA
+    v1.21.1: a request for `handbook/public/intro`, where the marker is a whole component, is
+    allowed, a request for `public-incident-q3`, which embeds the marker, is allowed too, and a
+    request for `secret-report` is refused.
     `regal` v0.42.0 reports no violations on `policy-v1`.
     On generated worlds the verdict rests on the policy and not on the data: the same substring is a
     finding and the same prefix a candidate, whatever the dataset.
@@ -209,9 +214,9 @@ related:
       uses. A loose match on a name an issuer sets is 010's, on a resource or an action is this one.
   - id: PTD-OPA-009
     note: >
-      The same engine reading of the loose-match builtins closes a false negative in 009 too: an
-      exemption lifted by `not startswith(input.kind, "exempt-")` is now read as a check, where only
-      `==` and `in` were read before.
+      The same reading of the loose-match builtins serves 009: an exemption lifted by
+      `not startswith(input.kind, "exempt-")` is a check on the request like one lifted by `==` or
+      `in`.
 
 notes:
   - >

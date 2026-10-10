@@ -15,7 +15,7 @@ though nothing here is a network service.
 Petard analyzes policies. It does not evaluate them against real requests, and it makes no
 network calls of its own except the ones you point it at.
 
-Two consequences worth knowing, because both are choices rather than oversights:
+Three consequences worth knowing, because each is a choice rather than an oversight:
 
 - Analyzing a policy never calls the endpoints that policy names. Partial evaluation leaves
   a call to `http.send` in the residual condition instead of making it, which is OPA's default
@@ -24,8 +24,12 @@ Two consequences worth knowing, because both are choices rather than oversights:
 - The upload path talks to the BloodHound instance you give it, with credentials read from
   the environment. They are never accepted as command line flags, so they stay out of the shell
   history and the process list.
+- A URL given in place of a path is read over OPA's REST API, read only: `GET /v1/policies`,
+  and `GET /v1/data/<root>` for each top-level document the decisions read. The server is never
+  asked to decide anything. A bearer token is read from `$PETARD_OPA_TOKEN`, never from a flag,
+  and travels in the `Authorization` header and nowhere else.
 
-If either of those turns out not to hold, that is a vulnerability and worth reporting.
+If any of those turns out not to hold, that is a vulnerability and worth reporting.
 
 ## Supported versions
 

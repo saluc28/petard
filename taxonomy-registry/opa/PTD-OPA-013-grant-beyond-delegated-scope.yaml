@@ -70,7 +70,13 @@ detection:
   requires:
     - binding-resolution
     - rule-graph
+    - concrete-data
+    - enforcement-point
   requires_note: >
+    `enforcement-point` for signal 1: which part of the request is a requested authority and which
+    ceilings bound it are declared per product in `pep-registry/`, or in a file of the same format
+    named with `-pep`. `concrete-data` because the decision is evaluated, against the documents it
+    reads. Without either the pattern does not run, and the report says so.
     No reading of the narrowing form: the pattern asks the decision itself. It pins the requested
     authority to one synthetic element every declared ceiling holds, lets partial evaluation solve
     the other conditions a grant needs, and then asks whether the decision still grants once the
@@ -148,6 +154,7 @@ not_a_lint_rule: >
 fixture:
   bundle: fixtures/vulnerable-bundle/
   scenario: quill
+  pep: fixtures/vulnerable-bundle/pep.yaml
   case: >
     `delegation.rego`, `allow_mint`: the mint bounds the requested scopes by the agent's own role and
     not by the delegating edge, so a scope within the role but outside the edge is minted.
@@ -171,11 +178,11 @@ references:
       (line 92), bounds the request by the agent's own role, the bound the vulnerable case keeps while
       dropping the edge. The sound decision is the counter case; this pattern reports the grant with
       the edge narrowing absent. Consulted 2026-10-09.
-  - title: OWASP Top 10 for Agentic Applications 2026, ASI03
+  - title: OWASP Top 10 for Agentic Applications 2026, ASI03 Identity and Privilege Abuse
     note: >
-      Identity and Privilege Abuse: "agents act with borrowed, over-scoped, or long-lived
-      credentials; a compromised agent inherits far more access than its task needs." The over-scope
-      half of ASI03 is this pattern. Consulted 2026-10-09.
+      OWASP's announcement of the list (genai.owasp.org, 2025-12-09) gives the case of ASI03 as
+      leaked credentials that let agents "operate far beyond their intended scope". The over-scope
+      half of ASI03 is this pattern. Consulted 2026-10-10.
 
 verified:
   date: 2026-10-10

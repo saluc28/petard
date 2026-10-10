@@ -19,7 +19,7 @@ category:
     request, where the attribute is a name rather than an identifier the issuer assigns.
   category_note: >
     The first instance. The same category covers a name matched rather than compared whole, a
-    prefix or a glob over a group name, which the engine now reads as a loose match: see the notes.
+    prefix or a glob over a group name, which the engine reads as a loose match: see the notes.
 
 summary: >
   A decision grants when a part of the request holds a name the policy writes, a group called
@@ -74,9 +74,10 @@ detection:
     - order: 1
       check: >
         A decision reaches a check that holds a part of the request against a value the policy
-        writes, an equality or a search with `in` in either direction, and the check holding moves
-        the decision towards granting. The engine reports it among the checks on the request, as
-        granting in that decision.
+        writes, an equality, a search with `in` in either direction, or a loose match with
+        `contains`, `startswith`, `endswith`, `glob.match` or an unanchored `regex.match`, and the
+        check holding moves the decision towards granting. The engine reports it among the checks
+        on the request, as granting in that decision or as lifting a refusal in it.
       rationale: >
         The value the policy writes is the name the grant is keyed on. A part of the request asked
         to be true is compared with no name, and a check that refuses grants nothing.
@@ -221,11 +222,10 @@ notes:
     read it as a check on the request. The same set bound to a local variable in the body is read.
   - >
     A name matched rather than compared whole, with `startswith`, `glob.match` or an unanchored
-    `regex.match`, is now read as a loose match and reported: whoever can make the issuer say a name
+    `regex.match`, is read as a loose match and reported: whoever can make the issuer say a name
     that satisfies the match reaches the grant, a group named `admin-anything` for a prefix of
-    `admin-`. Only an equality and a search with `in` were read before. A match read through a case
-    fold, `startswith(lower(input.group), ...)`, stays a false negative: the compiler hoists the
-    fold into a binding the reader does not follow.
+    `admin-`. A match read through a case fold, `startswith(lower(input.group), ...)`, is a false
+    negative: the compiler hoists the fold into a binding the reader does not follow.
   - >
     Known false negative: a refusal keyed on a name, `deny if "contractors" in input.groups`.
     Whoever can rename the group takes its members out of the refusal, and the pattern looks at the

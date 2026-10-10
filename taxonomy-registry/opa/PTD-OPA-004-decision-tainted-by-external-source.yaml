@@ -94,10 +94,10 @@ detection:
         Follow the chain of bindings from the output variable of the call, and establish whether
         a term derived from that output reaches the decision.
       rationale: >
-        This is the taint signal, and no other pattern in the registry exercises it.
+        This is the taint signal, which `PTD-OPA-005` follows the same way.
         Checked as computable: on a compiled body the resolver follows
-        `http.send({...}, __local2__)` to `__local0__ = __local2__` to
-        `__local0__.body.privileged`, and returns the provenance `http.send` for that reference.
+        `http.send({...}, __local1__)` to `__local0__ = __local1__` to
+        `__local0__.body.clearance`, and returns the provenance `http.send` for that reference.
     - order: 3
       check: >
         Extract the URL or the host from the call, where it is a constant. Where it is computed,
@@ -113,8 +113,8 @@ detection:
       rationale: "Same limitation as the analogous signal in 001: it covers the simple case."
   confidence: A
   confidence_note: >
-    The highest in the registry, and the only case where it does not depend on recognizing the
-    subject: the chain from builtin to decision is a structural fact of the compiled AST, not an
+    The highest level, and it does not depend on recognizing the subject: the chain from
+    builtin to decision is a structural fact of the compiled AST, not an
     inference about who the principal is. The pattern writes the level itself rather than
     inheriting it from the shape recognizers, because nothing here is claimed about a subject.
   requires_write_model: false
@@ -229,9 +229,9 @@ verified:
   tool_version: opa 1.21.1
   how: >
     `opa check` accepts the example policy without any warning. The taint mechanism was checked
-    on the compiled body: the resolver identifies `__local0__.body.privileged` as coming from
-    the output of `http.send()`, following `http.send({...}, __local2__)` to
-    `__local0__ = __local2__`. Real output. It was also checked that the raw AST does not
+    on the compiled body: the resolver identifies `__local0__.body.clearance` as coming from
+    the output of `http.send()`, following `http.send({...}, __local1__)` to
+    `__local0__ = __local1__`. Real output. It was also checked that the raw AST does not
     see the nested call under a pass over the expressions, while the compiled form does.
     On the fixture, in Rego v1 and v0 with the same numbers, the engine measures 7 values read
     from outside the policy, all of them from `http.send`, and all 7 reach a decision. 5 of

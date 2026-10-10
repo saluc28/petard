@@ -10,8 +10,8 @@ import (
 // than equality: a substring, a prefix or suffix, a glob, an unanchored regex.
 // A linter sees startswith(input.path, "/admin") as a function call; the engine
 // reads it as a check on the request, because a value that merely embeds the one
-// the policy writes can satisfy it. It is what PTD-OPA-012 looks for, and what
-// PTD-OPA-009 and PTD-OPA-010 missed while only == and in counted as checks.
+// the policy writes can satisfy it. It is what PTD-OPA-012 looks for, and
+// PTD-OPA-009, PTD-OPA-010 and PTD-OPA-011 read it as a check like == and in.
 
 // looseMatchBuiltin says, for one boolean string-matching builtin, which operand
 // carries the part of the request, which carries the value the policy writes,

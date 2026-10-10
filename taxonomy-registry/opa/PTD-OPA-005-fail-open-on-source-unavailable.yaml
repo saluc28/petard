@@ -169,13 +169,12 @@ detection:
     weakness as `PTD-OPA-002`, and it stays the fragile point until it is declared in the
     entrypoints. It does not depend on recognizing the subject, because there is no subject to
     identify here.
-    The engine computes A, for the same reason as `PTD-OPA-002`: it starts only from rules
-    annotated `entrypoint: true` and stops with an error if there are none, so the denying side
-    is counted on a declared descent rather than guessed. The file stays at `B`
-    because that is the level of the pattern when decisions have to be recognized, which is the
-    general case. A bundle with no annotations is analyzable because entrypoints can be
-    declared from outside, not because the engine learned to recognize them, so the descent
-    stays declared and the computed level stays A.
+    The engine computes A, for the same reason as `PTD-OPA-002`: where the entrypoints are
+    annotated or declared from outside, the denying side is counted on a declared descent rather
+    than guessed. The file stays at `B` because that is the level of the pattern when decisions
+    have to be recognized. A bundle that annotates no entrypoint and is given none is that case:
+    the engine takes the rules no other rule uses as the decisions and the report says they were
+    inferred. The level printed on the finding stays A there, so read such a finding at `B`.
   requires_write_model: false
   requires_write_model_note: >
     Not needed, and for a different reason from all the others: there is nobody writing. The

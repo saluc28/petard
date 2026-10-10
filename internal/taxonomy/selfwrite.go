@@ -27,7 +27,7 @@ const AttrSelfWrite = "PTD-OPA-001"
 // team are written by whoever can add members, and joining is a write of one
 // element: data.teams.{team}.members.{member} writable by {member} says that a
 // principal can add themselves, which is what BloodHound draws as AddSelf next
-// to AddMember (packages/cue/bh/ad/ad.cue:1337 and 1427 at v9.7.0). An entry on
+// to AddMember (packages/cue/bh/ad/ad.cue:1337 and 1427 at v9.7.1). An entry on
 // the list alone names no element, so it says nothing about joining.
 //
 // The side of the decision the read sits on is not among them. The subject

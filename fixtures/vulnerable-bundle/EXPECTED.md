@@ -37,7 +37,7 @@ The same pair of trees is also the test of dual parsing:
 | | v1 parser | v0 parser (`--v0-compatible`) |
 |---|---|---|
 | `policy-v1/` | passes | 23 errors |
-| `policy-v0/` | 38 errors, "`if` keyword is required before rule body" | passes |
+| `policy-v0/` | 38 errors, 36 of them "`if` keyword is required before rule body" and 2 the same before a function body | passes |
 
 ---
 
@@ -663,7 +663,7 @@ The 001 to 003 chain runs through a function:
 is_member(user, proj) if data.users[user].profile.department == data.projects[proj].department
 ```
 
-`user` is a formal parameter. In the compiled form it becomes `__local0__`, and nothing
+`user` is a formal parameter. In the compiled form it becomes `__local6__`, and nothing
 inside the function body binds it to a term: the binding lives at the call site,
 `is_member(input.user, anc)`, which is in the body of another rule.
 
@@ -753,6 +753,10 @@ opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy
 
 ```bash
 opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.split_grant'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.empty_every'
 ```
 
 ```bash

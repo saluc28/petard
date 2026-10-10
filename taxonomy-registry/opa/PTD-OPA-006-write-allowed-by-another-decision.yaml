@@ -444,7 +444,7 @@ verified:
     the data stands; the assignment decision allows her editor and not admin; with roles
     ["support", "editor"] she publishes and still cannot withdraw.
     The fixture holds two `PTD_CanEscalateTo`, this one and the 001 to 003 chain, with the write
-    model covering 4 of 9 paths. `PTD-OPA-001` reports nothing on `roles`, which a role writes and
+    model covering 6 of 11 paths. `PTD-OPA-001` reports nothing on `roles`, which a role writes and
     the subject does not.
     regal v0.42.0 reports no violations on `policy-v1`.
     On generated worlds, which give everybody the viewer role, the engine reports no split grant
@@ -487,11 +487,11 @@ related:
 
 notes:
   - >
-    How the write model names the decision an endpoint consumes is settled: the writer's
-    `authorized_by` names it by its data path, `data.quill.admin.allow`, the way every PEP
-    configures the decision it queries (opa.authorizer.url ending /v1/data/kafka/authz/allow,
-    POLICY_PATH /v1/data/httpapi/authz, authz_endpoint /v1/data/sshd/authz, in
-    open-policy-agent/contrib at 90f7ca9), and names the input fields the decision reads the
+    The write model names the decision an endpoint consumes on the writer: `authorized_by`
+    names it by its data path, `data.quill.admin.allow`, the way three enforcement points in
+    open-policy-agent/contrib at 90f7ca9 configure the decision they query (opa.authorizer.url
+    ending /v1/data/kafka/authz/allow, POLICY_PATH /v1/data/httpapi/authz, authz_endpoint
+    /v1/data/sshd/authz), and names the input fields the decision reads the
     written value and the target from, since a decision speaks of input while the write model
     speaks of data paths. The target is optional, since a decision that never reads who a write is
     aimed at needs none, and it is set to the subject for a write to one's own record.

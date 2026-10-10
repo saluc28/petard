@@ -15,7 +15,7 @@ import (
 // selected. The second half is a Go template BloodHound evaluates against the
 // selected entity, with .Properties for a node and .Source, .Target and
 // .Properties for a relationship (server/graphdb/internal/services/template.go
-// at v9.7.0). It uses the functions text/template has built in and nothing
+// at v9.7.1). It uses the functions text/template has built in and nothing
 // else, so that a test can render it the way the server does.
 
 // registryURL is where the file of each pattern is read on GitHub.

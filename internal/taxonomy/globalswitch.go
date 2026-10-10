@@ -44,7 +44,7 @@ const stranger = "petard:nobody"
 // decides for anybody, since anybody who can send a request is somebody no
 // document names. BloodHound draws the same shape for a group policy object,
 // which applies its settings to everything in the container it is linked to
-// (GPLink, packages/cue/bh/ad/ad.cue:1352 at v9.7.0).
+// (GPLink, packages/cue/bh/ad/ad.cue:1352 at v9.7.1).
 //
 // Without a recognized subject nobody can be named in a request, and the
 // question falls back to any request at all, with the confidence of a shape

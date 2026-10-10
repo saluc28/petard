@@ -54,7 +54,7 @@ func TestEveryKindSaysWhatItMeans(t *testing.T) {
 }
 
 // What BloodHound hands a template, as server/graphdb/internal/services/template.go
-// declares it at v9.7.0.
+// declares it at v9.7.1.
 type (
 	kindContext struct {
 		KindID *int32

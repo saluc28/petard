@@ -279,8 +279,8 @@ type Inputs struct {
 	// the patterns that measure against documents cannot run, and say so.
 	DataPath string
 
-	// WriteModelPath declares who can write what. Without it every match stays
-	// a candidate, because who writes what is not in the policy.
+	// WriteModelPath declares who can write what. Without it a match that rests
+	// on who writes a path stays a candidate, because that is not in the policy.
 	WriteModelPath string
 
 	// EnforcementPoint names the product that asks for the decisions, the id

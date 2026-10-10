@@ -31,7 +31,7 @@ const Version = "v0.2.4"
 //
 // BloodHound appends the underscore itself: it accepts a kind only if the name
 // starts with the namespace followed by "_" (cmd/api/src/model/graphschema.go:508
-// at v9.7.0). Declaring PTD_ therefore makes the server look for PTD__Principal
+// at v9.7.1). Declaring PTD_ therefore makes the server look for PTD__Principal
 // and refuse the whole schema with a 400 that names the first kind. The kind
 // names do not change either way: they are PTD_Principal and friends, and it is
 // only the declared namespace that leaves the underscore out.

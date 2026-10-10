@@ -87,8 +87,8 @@ detection:
         compared with one: an equality against the value it reads, or a search for that value
         among its elements, in either case on a segment that ranges over its collection.
       example: >
-        The compiled form shows `data.users[__local4__].profile.department` and, in the same
-        body, `__local4__ = input.user`. After substitution the resolved reference is
+        The compiled form shows `data.users[__local0__].profile.department` and, in the same
+        body, `__local0__ = input.user`. After substitution the resolved reference is
         `data.users[input.user].profile.department`.
         The search reads `data.policies[pol_id].members[_]` with `input.subjects[_]` on the
         other side of the comparison, which in Chef Automate sits two calls away, inside
@@ -322,8 +322,8 @@ verified:
   tool_version: opa 1.21.1
   how: >
     Signals 1 and 2 are executable, not argued: the resolver rebuilds
-    `data.profiles[input.subject.id].tier` out of `data.profiles[__local4__].tier` plus the
-    binding `__local4__ = input.subject.id` in the same body. The example in
+    `data.users[input.user].profile.department` out of `data.users[__local0__].profile.department`
+    plus the binding `__local0__ = input.user` in the same body. The example in
     `mechanism.example` was run: `opa check` accepts it without a warning, and `opa eval`
     returns `true` for the user whose field is "security" and `false` for the other. The policy
     works exactly as described, and that is the point: there is nothing broken to look at.

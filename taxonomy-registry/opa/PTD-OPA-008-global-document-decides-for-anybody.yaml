@@ -314,7 +314,7 @@ references:
       that kind.
   - title: BloodHound CE, GPLink
     note: >
-      SpecterOps/BloodHound at v9.7.0, `packages/cue/bh/ad/ad.cue:1352` and the help text of the
+      SpecterOps/BloodHound at v9.7.1, `packages/cue/bh/ad/ad.cue:1352` and the help text of the
       edge: a linked GPO applies its settings to objects in the linked container. One object that
       applies to many, and whoever controls it controls all of them, is the same shape.
   - title: AWX, the enforcement point of those policies

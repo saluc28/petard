@@ -551,7 +551,7 @@ notes:
       cardinality of the data and not the depth of the hierarchy.
   - note: >
       The fixture instantiates form A only. B and C are checked in isolation but are not in the
-      bundle, and the cost of adding them is now known: `walk` is recognized as a construct, but
+      bundle, and adding them has a known cost: `walk` is recognized as a construct, but
       its first argument is the document being traversed rather than a relation to cut, so
       signal 3 on that form is exercised by nothing.
   - note: >

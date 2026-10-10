@@ -80,9 +80,10 @@ detection:
     - order: 1
       check: >
         A decision reaches a check that holds a part of the request against a value the policy
-        writes, an equality or a search with `in` in either direction, and the check holding moves
-        the decision towards granting. The engine reports it among the checks on the request, as
-        granting in that decision.
+        writes, an equality, a search with `in` in either direction, or a loose match with
+        `contains`, `startswith`, `endswith`, `glob.match` or an unanchored `regex.match`, and the
+        check holding moves the decision towards granting. The engine reports it among the checks
+        on the request, as granting in that decision.
       rationale: >
         The value the policy writes is the identity the grant is keyed on. A part of the request
         asked to be true is compared with no identity, and a check that refuses grants nothing.
@@ -196,9 +197,10 @@ references:
       credential, which is the shape the pattern must leave alone. Consulted 2026-10-05.
   - title: OWASP Top 10 for Agentic Applications 2026, ASI03 Identity and Privilege Abuse
     note: >
-      Consulted 2026-10-05: agents act with borrowed, over-scoped or long-lived credentials, and a
-      compromised agent inherits far more access than its task needs. The identity half of ASI03 is
-      this pattern, a grant on an identity whose assumption is not pinned.
+      OWASP's announcement of the list (genai.owasp.org, 2025-12-09) gives the case of ASI03 as
+      leaked credentials that let agents "operate far beyond their intended scope". The identity
+      half of ASI03 is this pattern, a grant on an identity whose assumption is not pinned.
+      Consulted 2026-10-10.
 
 verified:
   date: 2026-10-10
@@ -240,20 +242,22 @@ related:
 
 notes:
   - >
-    Known false negative: an identity matched rather than compared, with `startswith`, `glob.match`
-    or `regex.match`, a prefix over a SPIFFE trust domain for instance. Only an equality and a
-    search with `in` are checks.
+    An identity matched rather than compared whole, with `startswith`, `glob.match` or an unanchored
+    `regex.match`, a prefix over a SPIFFE trust domain for instance, is read as a loose match and
+    reported the same way. A match read through a case fold, `startswith(lower(input.caller.spiffe),
+    ...)`, is a false negative: the compiler hoists the fold into a binding the reader does not
+    follow.
   - >
     Known false negative: a refusal keyed on an identity, `deny if input.caller.spiffe ==
     "spiffe://.../sa/quarantined"`. Whoever can assume another identity leaves the refusal behind,
     and the pattern looks at the side that grants only.
   - >
-    Design note: who can assume an identity is declared in the enforcement point, with `assumable_by`,
-    and not in the write model. The write model says who can write a document; assuming an identity
-    is a fact about the request the enforcement point builds, deploying a workload or obtaining a
-    credential rather than writing data, so it lives with the rest of what the enforcement point
-    declares. PTD-OPA-010 declares who can pick a name in the write model because picking a name is
-    of a kind with writing a document; becoming an identity in another layer is not.
+    Who can assume an identity is declared in the enforcement point, with `assumable_by`, and not
+    in the write model. The write model says who can write a document; assuming an identity is
+    deploying a workload or obtaining a credential, a fact about the request the enforcement point
+    builds, so it sits with the rest of what the enforcement point declares. Who can pick a name,
+    for PTD-OPA-010, goes in the write model, because picking a name is of a kind with writing a
+    document.
 
 open_questions:
   - >

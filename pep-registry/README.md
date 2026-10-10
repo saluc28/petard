@@ -61,6 +61,14 @@ constrained, pinned to a credential the enforcement point verifies, is marked `p
 alone. A caller who sets an identity forges it, so `identity` belongs only on a part an issuer or
 the enforcement point sets.
 
+A part of the request can instead be marked an `authority`, for a decision that grants a
+delegated principal more or less of it. `requested` is the authority the principal asks for, the
+scopes a delegated agent requests. `ceiling` is one that bounds it, the scopes the delegating edge
+carries or the role the agent already holds. `bounded_by`, on a requested authority, lists the
+ceilings it must sit under, each a part of the request or a document in the data. It is what
+`PTD-OPA-013` asks the decision about, and with none named the grant is a candidate. A part is an
+identity or an authority, not both.
+
 The first entry that covers a part of the request is the one that answers for it, so the more
 specific entries come first. A part no entry covers is one the declaration does not speak about,
 and the patterns treat it as unknown rather than as safe.

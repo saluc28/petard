@@ -138,13 +138,14 @@ detection:
     Higher than 001 because the decisive signal, this path is absent for these keys, is a fact
     observed in the data rather than an inference about the shape of the policy. It drops if
     identifying the negative side, signal 1, becomes heuristic instead of declared.
-    The engine computes A on the fixture, and that is not a promotion of the pattern. The
-    implementation starts only from rules annotated `entrypoint: true`, and with no annotations
-    it stops with an error instead of guessing; the denying side is a negated edge of that
-    descent. Signal 1 is therefore never heuristic on a bundle this engine accepts. The file
-    stays at `B` because that is the level of the pattern when decisions are recognized rather
-    than declared, which is the general case: the day a heuristic recognizer exists, the
-    per-instance confidence will drop on its own.
+    The engine computes A on the fixture, and that is not a promotion of the pattern: the
+    entrypoints there are annotated, and the denying side is a negated edge of a descent that
+    starts from declared decisions. The file stays at `B` because that is the level of the
+    pattern when decisions are recognized rather than declared. A bundle that annotates no
+    entrypoint and is given none is that case: the engine takes the rules no other rule uses as
+    the decisions, one called `deny`, `violation` or `warn` as refusing, and the report says
+    they were inferred. The level printed on the finding stays A there, so read such a finding
+    at `B`.
   requires_write_model: false
   requires_write_model_note: >
     This is the first pattern that can emit a finding on its own. Knowing who writes is not
@@ -398,10 +399,11 @@ open_questions:
       How do you establish which side applies the check, when the PEP is not visible?
     note: >
       The known shapes (`not denied` inside an `allow`, a non-empty `violation` in Gatekeeper)
-      are recognizable. The general case is not. The engine does not try to establish it: it
-      demands that it be declared, and on a bundle with no annotations it stops rather than
-      guessing.
-      That is not a workaround. Entrypoints are declared from outside, the way `opa build`
+      are recognizable. The general case is not, so the engine asks for it to be declared. On
+      a bundle where nothing names a decision it falls back on the rules no other rule uses,
+      reads one called `deny`, `violation` or `warn` as refusing, and says in the report that
+      the decisions were inferred.
+      Entrypoints are declared from outside, the way `opa build`
       accepts them with `-e` alongside annotations, and the engine exposes `Bundle.RulesNamed`
       to say which rules carry a given name without ever deciding that the name is a decision.
       Applying a convention stays a gesture of whoever is analyzing, and it is checkable in the
