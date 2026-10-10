@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -439,12 +440,39 @@ entries:
 	}
 }
 
+// A key the format does not have is refused with its name. Read as nothing,
+// authorised_by would leave the writer with no decision behind the write, and
+// the pattern that asks that decision would have nothing to ask.
+func TestLoadRefusesAKeyTheFormatDoesNotHave(t *testing.T) {
+	const content = "schema_version: 1\nmodel: write-paths\nentries:\n" +
+		"  - path: data.users.{owner}.roles\n    writable_by:\n" +
+		"      - principal: role:support\n        via: PUT /roles\n" +
+		"        authorised_by:\n          decision: data.quill.admin.allow\n"
+	path := filepath.Join(t.TempDir(), "write-model.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing the file: %v", err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() error = nil, want the misspelled key refused")
+	}
+	if !strings.Contains(err.Error(), "authorised_by") {
+		t.Errorf("Load() error = %v, want it to name the key", err)
+	}
+}
+
 func TestLoadRejects(t *testing.T) {
 	tests := []struct {
 		name        string
 		content     string
 		expectedErr error
 	}{
+		{
+			name:        "an empty file",
+			content:     "",
+			expectedErr: ErrNotAWriteModel,
+		},
 		{
 			name:        "another kind of file",
 			content:     "schema_version: 1\nmodel: taxonomy\nentries: []\n",

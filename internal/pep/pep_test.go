@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	pepregistry "github.com/saluc28/petard/pep-registry"
@@ -95,12 +96,34 @@ func TestEntrypointsSplitsTheDecisionsBySide(t *testing.T) {
 	}
 }
 
+// A key the format does not have is refused with its name. Read as nothing,
+// bounded-by would leave the requested authority with no ceiling, and
+// PTD-OPA-013 would report a candidate where the declaration meant a finding.
+func TestLoadRefusesAKeyTheFormatDoesNotHave(t *testing.T) {
+	const content = "schema_version: 1\nid: x\ndecisions:\n  - rule: allow\n    side: grants\n" +
+		"fields:\n  - path: input.scope\n    set_by: caller\n    authority: requested\n" +
+		"    bounded-by: [input.edge]\n    evidence: [x]\n"
+	path := filepath.Join(t.TempDir(), "x.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing the file: %v", err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() error = nil, want the misspelled key refused")
+	}
+	if !strings.Contains(err.Error(), "bounded-by") {
+		t.Errorf("Load() error = %v, want it to name the key", err)
+	}
+}
+
 func TestLoadRejects(t *testing.T) {
 	const header = "schema_version: 1\nid: x\nengine: opa\ndecisions:\n  - rule: allow\n    side: grants\n"
 	tests := []struct {
 		name    string
 		content string
 	}{
+		{"an empty file", ""},
 		{"another version", "schema_version: 2\nid: x\ndecisions:\n  - rule: allow\n    side: grants\n"},
 		{"no id", "schema_version: 1\ndecisions:\n  - rule: allow\n    side: grants\n"},
 		{"no decision", "schema_version: 1\nid: x\n"},

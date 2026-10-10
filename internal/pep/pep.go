@@ -19,8 +19,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	yaml "go.yaml.in/yaml/v3"
-
 	"github.com/saluc28/petard/internal/writemodel"
 	pepregistry "github.com/saluc28/petard/pep-registry"
 )
@@ -269,7 +267,7 @@ func List(fsys fs.FS) ([]*EnforcementPoint, error) {
 
 func parse(file string, content []byte) (*EnforcementPoint, error) {
 	var point EnforcementPoint
-	if err := yaml.Unmarshal(content, &point); err != nil {
+	if err := writemodel.DecodeStrict(content, &point); err != nil {
 		return nil, fmt.Errorf("pep: parsing %s: %w", file, err)
 	}
 	point.File = file

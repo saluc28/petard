@@ -102,6 +102,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on `data.settings.open == true` no longer holds over `open: yes`. It also types an empty object,
   array or set literal as empty, so a policy that selects a key from one, or iterates one, no
   longer compiles, and the analysis stops with the compiler's error.
+- A write model, and an enforcement point declaration given with `-pep`, is refused when it holds
+  a key its format does not have, and the error names the key and its line. Such a key was
+  ignored: `identifer: name` in place of `identifier: name` dropped the `PTD-OPA-010` finding that
+  rests on it and said nothing.
 
 ### Fixed
 

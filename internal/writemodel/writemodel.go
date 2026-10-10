@@ -1,8 +1,10 @@
 package writemodel
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -84,13 +86,13 @@ type Writer struct {
 // how the request to that decision is shaped.
 //
 // The link between an endpoint and the decision it consumes is not in the
-// policy: it lives in the configuration of the enforcement point. Every PEP in
-// the wild names that decision the same way, by its full data path, the path it
-// queries: the Kafka authorizer takes opa.authorizer.url ending in
-// /v1/data/kafka/authz/allow, the sample HTTP API takes POLICY_PATH
-// /v1/data/httpapi/authz, the PAM module takes authz_endpoint /v1/data/sshd/authz
-// (open-policy-agent/contrib at 90f7ca9). So the write model names it the same
-// way, as data.quill.admin.allow, which is also how the rest of Petard spells a
+// policy: it lives in the configuration of the enforcement point. Three of the
+// ones in open-policy-agent/contrib at 90f7ca9 name the decision by its data
+// path, the path they query: the Kafka authorizer takes opa.authorizer.url
+// ending in /v1/data/kafka/authz/allow, the sample HTTP API takes POLICY_PATH
+// /v1/data/httpapi/authz, the PAM module takes authz_endpoint
+// /v1/data/sshd/authz. So the write model names it the same way, as
+// data.quill.admin.allow, which is also how the rest of Petard spells a
 // decision.
 //
 // A decision reads the value and the target from its input, while the write
@@ -202,7 +204,7 @@ func Load(path string) (*Model, error) {
 	}
 
 	var model Model
-	if err := yaml.Unmarshal(content, &model); err != nil {
+	if err := DecodeStrict(content, &model); err != nil {
 		return nil, fmt.Errorf("writemodel: parsing %s: %w", path, err)
 	}
 	if model.Kind != modelKind {
@@ -218,6 +220,23 @@ func Load(path string) (*Model, error) {
 		}
 	}
 	return &model, nil
+}
+
+// DecodeStrict reads a declaration and refuses a key its format does not have.
+//
+// A declaration states facts the analysis cannot get anywhere else, so a key
+// spelled wrong is a fact that goes missing: authorised_by read as nothing
+// leaves a write with no decision behind it, and the run reports less without
+// saying why. The error names the key and its line.
+func DecodeStrict(content []byte, into any) error {
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
+	decoder.KnownFields(true)
+	// An empty file decodes to nothing, which the caller refuses in its own
+	// words.
+	if err := decoder.Decode(into); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
 }
 
 // parse fills in the parsed path and checks what the format calls mandatory.
