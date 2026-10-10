@@ -236,5 +236,13 @@ notes:
   - >
     A grant that keys on a capability a tool declares about itself, an MCP server's advertised
     scope or `readOnlyHint`, is this pattern with the server as the issuer: whoever controls the
-    server picks the value the grant trusts, as whoever creates a group picks its name. Validating
-    the declaration rather than granting on it is admission, which this pattern does not read.
+    server picks the value the grant trusts, as whoever creates a group picks its name. The part
+    of the request that carries it is declared `set_by: issuer` with `identifier: name`, and a
+    comparison of it that lifts a check is on the side that grants, so it is reported like one
+    that grants. Validating the declaration rather than granting on it is admission, which this
+    pattern does not read.
+  - >
+    Known false negative: a part an issuer sets that is asked to be true rather than compared,
+    `not input.tool.read_only` for a flag a tool declares about itself. It is held against no value
+    the policy writes, so signal 1 does not hold, and `PTD-OPA-009` leaves alone a part an issuer
+    sets.

@@ -68,8 +68,9 @@ type Identifier string
 
 const (
 	// IdentifierName is a name somebody picks: a team called "DevOps", a
-	// username. Whoever can create or rename the thing it names can make the
-	// issuer say it, and a name let go can be taken by somebody else.
+	// username, what a tool declares about itself. Whoever can create or rename
+	// the thing it names can make the issuer say it, and a name let go can be
+	// taken by somebody else.
 	IdentifierName Identifier = "name"
 
 	// IdentifierID is a value the issuer assigns and nobody picks, never given

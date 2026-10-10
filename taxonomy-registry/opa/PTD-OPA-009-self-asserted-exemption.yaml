@@ -239,7 +239,8 @@ notes:
     the AAP policies, and an exemption searched in a set the policy builds from the request.
   - >
     A tool that declares a property about itself, an MCP server's `readOnlyHint` or a schema
-    annotation, is this pattern when a decision lets the property lift a check: declare it a part
-    of the request `set_by: issuer` with the server as the issuer, and whoever controls the server
-    asserts the exemption. A policy that validates such a declaration rather than granting on it is
-    admission, the deny side this pattern does not read.
+    annotation, is this pattern only where the client sends the property with its request: declared
+    `set_by: caller`, a check it lifts is reported. Where the enforcement point copies the property
+    from the server it is a part an issuer sets, which signal 2 leaves alone, and `PTD-OPA-010`
+    reads it. A policy that validates such a declaration rather than granting on it is admission,
+    the deny side this pattern does not read.

@@ -63,9 +63,11 @@ fields:
   - path: input.request.headers["x-mcp-annotation-hints"]
     set_by: issuer
     issuer: the upstream MCP server that declares the tool
+    identifier: name
     note: >
       The annotations the upstream server declared for the tool, readOnly, destructive, idempotent
-      and openWorld, as the router keeps them in its table.
+      and openWorld, as the router keeps them in its table. Whoever runs the server picks what
+      they say, which is what makes them a name.
     evidence:
       - "Kuadrant/mcp-gateway at v0.9.0, internal/routing/router_202511.go:143 to 159."
   - path: input.request.*

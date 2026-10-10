@@ -94,11 +94,17 @@ A tool that declares a property about itself, an MCP server's `readOnlyHint`, an
 capability or a schema annotation, invites a pattern of its own, "the policy trusts what the tool
 says it is." It does not get one, by the disjoint cause rule above.
 
-A decision that grants on such a property is `PTD-OPA-009` when the property lifts a check, the
-tool asserting an exemption, or `PTD-OPA-010` when the grant keys on a value the declarer picks.
-The only new element is who the issuer is, the tool rather than an identity provider, which is a
-flavor of issuer and not a disjoint cause: declare the property a part of the request `set_by:
-issuer` with the server as the issuer, and the two patterns read it.
+A decision that grants on such a property is read by `PTD-OPA-010`: the declarer picks the value
+the decision trusts, as whoever creates a group picks its name. The only new element is who the
+issuer is, the tool rather than an identity provider, which is a flavor of issuer and not a
+disjoint cause. Declare the property a part of the request `set_by: issuer`, with the server as
+the issuer and `identifier: name`, and the pattern reports a comparison of it with a value the
+policy writes, whether the comparison grants or lifts a check. Where the client itself sends the
+property it is `set_by: caller`, and a check it lifts is `PTD-OPA-009`.
+
+One shape is read by neither: a property an issuer sets that is asked to be true,
+`not input.tool.read_only`, with no value to compare it with. `PTD-OPA-010` reads a comparison
+with a value the policy writes, and `PTD-OPA-009` a part the caller sets.
 
 A policy that validates the declaration instead of granting on it, a readiness rule that flags a
 tool with too many capabilities or no error schema, is admission: a `violation` on the object it is

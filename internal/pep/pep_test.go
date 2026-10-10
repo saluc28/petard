@@ -55,6 +55,7 @@ func TestFieldForTakesTheFirstEntryThatCovers(t *testing.T) {
 		{spacelift, "input.session.machine", SetByEnforcementPoint, ""},
 		{gateway, `input.request.headers["x-mcp-toolname"]`, SetByCaller, ""},
 		{gateway, `input.request.headers["x-mcp-servername"]`, SetByEnforcementPoint, ""},
+		{gateway, `input.request.headers["x-mcp-annotation-hints"]`, SetByIssuer, IdentifierName},
 		{gateway, `input.request.headers["x-forwarded-for"]`, SetByCaller, ""},
 		{gateway, "input.auth.identity.preferred_username", SetByIssuer, ""},
 	}

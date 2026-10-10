@@ -47,9 +47,10 @@ Each entry of `fields` has a `path` in the notation of the write model, `input.s
 
 A part an issuer sets can also say what kind of value it is, in `identifier`. A `name` is picked
 by somebody, a team called "DevOps" or a username, so whoever can create or rename what it names
-can make the issuer say it, and a name let go can be taken by somebody else. An `id` is assigned
-by the issuer and never given to anything else. Where nothing verified says which, `identifier` is
-left out.
+can make the issuer say it, and a name let go can be taken by somebody else. What a tool declares
+about itself is a `name` in the same sense, since whoever runs the server picks what it says. An
+`id` is assigned by the issuer and never given to anything else. Where nothing verified says
+which, `identifier` is left out.
 
 A part an issuer or the enforcement point sets can be marked an `identity`, a runtime identity a
 decision may grant on, a workload's SPIFFE id or an agent principal. Who can assume it in another

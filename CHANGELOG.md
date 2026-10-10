@@ -106,6 +106,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a key its format does not have, and the error names the key and its line. Such a key was
   ignored: `identifer: name` in place of `identifier: name` dropped the `PTD-OPA-010` finding that
   rests on it and said nothing.
+- The `kuadrant-mcp-gateway` declaration marks the `x-mcp-annotation-hints` header
+  `identifier: name`, since the upstream server picks what the annotations of its tools say, so
+  `PTD-OPA-010` reports a decision that compares the header with a value the policy writes.
 
 ### Fixed
 
