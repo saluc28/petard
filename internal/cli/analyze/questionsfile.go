@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	yaml "go.yaml.in/yaml/v3"
 
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/taxonomy"
@@ -14,9 +17,8 @@ import (
 // per question, so a reader answers them in the file rather than building it from
 // scratch.
 //
-// It refuses to overwrite an existing file, the way terraform plan
-// -generate-config-out does, since a write model somebody has already filled in
-// is the last thing to clobber.
+// It refuses to overwrite an existing file, since a write model somebody has
+// already filled in is the last thing to clobber.
 
 // writeQuestions writes the skeleton to path and returns how many entries it
 // holds. It refuses a path that already exists.
@@ -58,7 +60,7 @@ func skeleton(subject string, questions []taxonomy.Question, endpoints []opaengi
 
 	for _, question := range questions {
 		fmt.Fprintf(&b, "  # %s (%s)\n", question.Asks(), strings.Join(question.Patterns, ", "))
-		fmt.Fprintf(&b, "  - path: %s\n", question.Writable)
+		fmt.Fprintf(&b, "  - path: %s\n", yamlScalar(question.Writable))
 		b.WriteString("    writable_by:\n")
 		fmt.Fprintf(&b, "      - principal: %q\n", question.Writer)
 		b.WriteString("        via: \"\"\n")
@@ -66,6 +68,21 @@ func skeleton(subject string, questions []taxonomy.Question, endpoints []opaengi
 
 	writeEndpoints(&b, endpoints)
 	return b.String()
+}
+
+// yamlScalar writes a string the way YAML reads it back whole. A data path is
+// written bare, and one whose key would read as something else, a mapping
+// after ": " or a comment after " #", is quoted.
+func yamlScalar(s string) string {
+	out, err := yaml.Marshal(s)
+	scalar := strings.TrimSuffix(string(out), "\n")
+	if err != nil || strings.Contains(scalar, "\n") {
+		// A key that holds a line break comes out as a block over several
+		// lines, which does not fit after "path:". Go quotes a string with the
+		// escapes YAML reads between double quotes.
+		return strconv.Quote(s)
+	}
+	return scalar
 }
 
 // writeEndpoints appends, as a comment, the writes the bundle authorizes, each as

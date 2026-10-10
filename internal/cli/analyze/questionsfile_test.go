@@ -52,6 +52,38 @@ func TestWriteQuestionsSkeleton(t *testing.T) {
 	}
 }
 
+// A key of the data is any string, and YAML reads some of them as something
+// else: ": " opens a mapping, " #" a comment, and a line break ends the value.
+// The skeleton quotes those, so the path the loader reads back is the path the
+// question was about.
+func TestSkeletonKeepsAKeyYAMLReadsAsSomethingElse(t *testing.T) {
+	for _, writable := range []string{
+		"data.cfg.a: b.{owner}.role",
+		"data.cfg.x #y.{owner}.role",
+		"data.cfg.two\nlines.{owner}.role",
+		`data.cfg["a.b"].{owner}.role`,
+	} {
+		t.Run(writable, func(t *testing.T) {
+			questions := []taxonomy.Question{
+				{Path: "data.cfg[_][_].role", Patterns: []string{"PTD-OPA-001"}, Writable: writable, Writer: "{owner}"},
+			}
+			filled := strings.ReplaceAll(skeleton("input.user", questions, nil), `via: ""`, `via: "PUT /filled"`)
+			path := filepath.Join(t.TempDir(), "write-model.yaml")
+			if err := os.WriteFile(path, []byte(filled), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			model, err := writemodel.Load(path)
+			if err != nil {
+				t.Fatalf("the skeleton does not load: %v\n%s", err, filled)
+			}
+			if len(model.Entries) != 1 || model.Entries[0].RawPath != writable {
+				t.Errorf("entries = %+v, want the one path %q", model.Entries, writable)
+			}
+		})
+	}
+}
+
 // The writes a bundle authorizes are appended as commented authorized_by blocks,
 // each with the decision and the method, so declaring a write allowed by another
 // decision is attaching one rather than writing it from scratch. A branch whose
