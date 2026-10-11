@@ -21,7 +21,7 @@ func graphOn(t *testing.T, a Analysis) *graph.Graph {
 	if _, err := AddWritePaths(g, a.Reads, a.Model); err != nil {
 		t.Fatalf("AddWritePaths() error = %v", err)
 	}
-	if _, err := AddCapabilities(t.Context(), g, a); err != nil {
+	if _, _, err := AddCapabilities(t.Context(), g, a); err != nil {
 		t.Fatalf("AddCapabilities() error = %v", err)
 	}
 	return g
@@ -142,7 +142,7 @@ func TestAddCapabilitiesNeedsData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildGraph() error = %v", err)
 	}
-	if _, err := AddCapabilities(t.Context(), g, a); !errors.Is(err, ErrNeedsData) {
+	if _, _, err := AddCapabilities(t.Context(), g, a); !errors.Is(err, ErrNeedsData) {
 		t.Errorf("AddCapabilities() error = %v, want ErrNeedsData", err)
 	}
 }
@@ -157,7 +157,7 @@ func TestAddCapabilitiesLeavesOutWhatAnEdgeCannotSay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildGraph() error = %v", err)
 	}
-	conditional, err := AddCapabilities(t.Context(), g, a)
+	conditional, _, err := AddCapabilities(t.Context(), g, a)
 	if err != nil {
 		t.Fatalf("AddCapabilities() error = %v", err)
 	}

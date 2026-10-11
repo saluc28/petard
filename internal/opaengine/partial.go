@@ -49,6 +49,52 @@ var (
 	ErrPartial = errors.New("opaengine: partial evaluation failed")
 )
 
+// EvaluatorPanicError is returned when OPA panics while it evaluates a decision.
+//
+// A panic inside the evaluator is a defect of OPA and says nothing about the
+// policy: at v1.21.1, partial evaluation of a negated rule whose body holds an
+// every over a value left unknown panics (containsNestedRefOrCall,
+// v1/topdown/eval.go:4891). It comes back as an error so that the question it
+// interrupted is reported as one nobody could ask, and the ones around it are
+// still asked.
+type EvaluatorPanicError struct {
+	// Decision is the decision OPA was asked about.
+	Decision string
+
+	// Cause is what the panic carried.
+	Cause string
+}
+
+func (e *EvaluatorPanicError) Error() string {
+	return fmt.Sprintf("opaengine: OPA panicked while evaluating %s: %s", e.Decision, e.Cause)
+}
+
+// panicAs turns a panic of the evaluator into the error of the evaluation it
+// interrupted. It is deferred by the function that calls OPA.
+func panicAs(err *error, decision string) {
+	if cause := recover(); cause != nil {
+		*err = &EvaluatorPanicError{Decision: decision, Cause: fmt.Sprint(cause)}
+	}
+}
+
+// evaluated runs one evaluation of OPA inside a read of the data that it opens
+// and closes itself, and turns a panic of the evaluator into an
+// EvaluatorPanicError.
+//
+// OPA closes the transaction it opens once the evaluation has returned, not in
+// a defer (Partial, v1/rego/rego.go:1641 and :1642 at v1.21.1), so a panic would
+// leave its read of the store open. A transaction handed to it is closed here,
+// whichever way the evaluation ends.
+func evaluated[T any](ctx context.Context, data *Data, decision string, evaluate func(storage.Transaction) (T, error)) (result T, err error) {
+	txn, err := data.store.NewTransaction(ctx)
+	if err != nil {
+		return result, fmt.Errorf("opaengine: opening a read of the data: %w", err)
+	}
+	defer data.store.Abort(ctx, txn)
+	defer panicAs(&err, decision)
+	return evaluate(txn)
+}
+
 // Data are the concrete documents the decisions are evaluated against: the
 // users, the roles, the ownerships, the equivalent of the dump a graph of
 // Active Directory is built from.
@@ -936,12 +982,15 @@ func Holds(ctx context.Context, bundle *Bundle, data *Data, decision string, inp
 		return false, err
 	}
 
-	results, err := rego.New(
-		rego.Query(bundle.query(decision)),
-		rego.Compiler(compiler),
-		rego.Store(data.store),
-		rego.Input(input),
-	).Eval(ctx)
+	results, err := evaluated(ctx, data, decision, func(txn storage.Transaction) (rego.ResultSet, error) {
+		return rego.New(
+			rego.Query(bundle.query(decision)),
+			rego.Compiler(compiler),
+			rego.Store(data.store),
+			rego.Transaction(txn),
+			rego.Input(input),
+		).Eval(ctx)
+	})
 	if err != nil {
 		return false, fmt.Errorf("%w: %s: %w", ErrPartial, decision, err)
 	}
@@ -985,7 +1034,9 @@ func partial(ctx context.Context, bundle *Bundle, data *Data, ask Request) (*reg
 		options = append(options, rego.Input(ask.Input))
 	}
 
-	queries, err := rego.New(options...).Partial(ctx)
+	queries, err := evaluated(ctx, data, ask.Decision, func(txn storage.Transaction) (*rego.PartialQueries, error) {
+		return rego.New(append(options, rego.Transaction(txn))...).Partial(ctx)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", ErrPartial, ask.Decision, err)
 	}
@@ -1407,7 +1458,10 @@ func decided(ctx context.Context, query ast.Body) (holds, closed bool) {
 		return false, false
 	}
 
-	results, err := rego.New(rego.ParsedQuery(query)).Eval(ctx)
+	results, err := func() (results rego.ResultSet, err error) {
+		defer panicAs(&err, query.String())
+		return rego.New(rego.ParsedQuery(query)).Eval(ctx)
+	}()
 	if err != nil {
 		return false, false
 	}

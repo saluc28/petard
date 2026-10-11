@@ -2,8 +2,10 @@ package taxonomy
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/pep"
 )
@@ -151,6 +153,83 @@ fields:
 	}
 	if len(findings) != 1 || findings[0].Verdict != VerdictCandidate {
 		t.Fatalf("findings = %v, want one candidate: nothing says what bounds the authority", findings)
+	}
+}
+
+// A decision OPA panics on leaves the pattern that asks it skipped, with the
+// decision named, and the run goes on. OPA v1.21.1 panics on a negated rule
+// whose body holds an every over a value left unknown; an OPA that answers
+// instead lets the pattern report the edge the decision does not enforce.
+func TestRunSkipsAPatternWhenOPAPanics(t *testing.T) {
+	policy := `package p
+
+# METADATA
+# entrypoint: true
+default allow := false
+
+allow if {
+	every scope in input.requested_scopes {
+		scope in input.role_scopes
+	}
+	not revoked
+}
+
+revoked if {
+	every flag in input.flags {
+		flag == "off"
+	}
+}
+`
+	a := delegationAnalysis(t, policy, delegationGateway, `{"unused": true}`)
+
+	findings, err := Run(t.Context(), a)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	why, skipped := findings.Skipped[GrantBeyondDelegatedScope]
+	switch {
+	case skipped && !strings.Contains(why, "data.p.allow"):
+		t.Errorf("skipped because %q, want the decision OPA panicked on named", why)
+	case !skipped && len(findings.Delegation) != 1:
+		t.Errorf("findings = %v, want the edge the decision does not enforce", findings.Delegation)
+	}
+}
+
+// The same for the graph: a question OPA panics on is counted and left out, and
+// the graph is still built.
+func TestAssembleCountsWhatOPAPanicsOn(t *testing.T) {
+	policy := `package p
+
+# METADATA
+# entrypoint: true
+default allow := false
+
+allow if {
+	data.users[input.user].active
+	not revoked
+}
+
+revoked if {
+	every flag in input.flags {
+		flag == "off"
+	}
+}
+`
+	a := delegationAnalysis(t, policy, delegationGateway, `{"users": {"alice": {"active": true}}}`)
+
+	findings, err := Run(t.Context(), a)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	g, gaps, err := Assemble(t.Context(), a, findings)
+	if err != nil {
+		t.Fatalf("Assemble() error = %v", err)
+	}
+	if g == nil {
+		t.Fatal("no graph")
+	}
+	if gaps.UnaskedCapabilities == 0 && len(edgesOfKind(g, graph.EdgeKindCanPerform)) == 0 {
+		t.Error("alice has no capability and no question went unasked, want one or the other")
 	}
 }
 

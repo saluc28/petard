@@ -2,6 +2,7 @@ package taxonomy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -117,26 +118,29 @@ func addWriter(g *graph.Graph, read string, entry writemodel.Entry, writer write
 // somebody simply has. Those are counted and left out rather than stated
 // flatly, and the count is the honest size of the gap between this graph and
 // what the policy really does.
-func AddCapabilities(ctx context.Context, g *graph.Graph, a Analysis) (int, error) {
+//
+// The second count is of the questions nobody could ask, one principal against
+// one decision, because OPA panicked evaluating it. The edges of the others are
+// still drawn.
+func AddCapabilities(ctx context.Context, g *graph.Graph, a Analysis) (conditional, unasked int, err error) {
 	if a.Data == nil {
-		return 0, fmt.Errorf("%w: a capability is measured against documents", ErrNeedsData)
+		return 0, 0, fmt.Errorf("%w: a capability is measured against documents", ErrNeedsData)
 	}
 
 	fields, named := subjectFieldsOf(a.Shape)
 	if !named {
-		return 0, nil
+		return 0, 0, nil
 	}
 	unknowns := unknownsBesides(a.Shape, a.Reads.InputPaths)
 	if len(unknowns) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
 
 	principals, err := principalsOf(ctx, a.Shape, a.Reads, a.Data)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	conditional := 0
 	for _, principal := range principals {
 		for _, decision := range a.Reads.Decisions {
 			if a.Reads.Denies(decision) {
@@ -150,17 +154,22 @@ func AddCapabilities(ctx context.Context, g *graph.Graph, a Analysis) (int, erro
 				Unknowns: unknowns,
 				Input:    requestNaming(fields, principal),
 			}, a.Limits)
+			var panicked *opaengine.EvaluatorPanicError
+			if errors.As(err, &panicked) {
+				unasked++
+				continue
+			}
 			if err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 			left, err := addCapabilities(g, a.Shape, principal, decision, residuals)
 			if err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 			conditional += left
 		}
 	}
-	return conditional, nil
+	return conditional, unasked, nil
 }
 
 // grantingSide reports whether a decision reaches a read on the side that

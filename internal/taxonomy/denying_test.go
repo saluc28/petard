@@ -141,7 +141,7 @@ func TestADecisionThatDeniesDrawsNoCapability(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BuildGraph() error = %v", err)
 		}
-		if _, err := AddCapabilities(t.Context(), g, a); err != nil {
+		if _, _, err := AddCapabilities(t.Context(), g, a); err != nil {
 			t.Fatalf("AddCapabilities() error = %v", err)
 		}
 		return edgesOfKind(g, graph.EdgeKindCanPerform)

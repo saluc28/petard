@@ -1,6 +1,7 @@
 package opaengine
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,8 +9,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/open-policy-agent/opa/v1/ast"
+	"github.com/open-policy-agent/opa/v1/storage"
 
 	"github.com/saluc28/petard/internal/fixture"
 )
@@ -925,6 +928,74 @@ func TestResidualsOnAQueryThatDoesNotParse(t *testing.T) {
 	_, err = Residuals(t.Context(), bundle, fixtureData(t), Request{Decision: "data.quill.authz.["}, Limits{})
 	if !errors.Is(err, ErrPartial) {
 		t.Errorf("Residuals() error = %v, want ErrPartial", err)
+	}
+}
+
+// A panic inside an evaluation comes back as an error that names the decision,
+// and the read of the data the evaluation was inside is closed: a write waits
+// for every read, so one that opens proves it.
+func TestEvaluatedTurnsAPanicIntoAnError(t *testing.T) {
+	data := writeData(t, `{"settings": {"open": true}}`)
+
+	_, err := evaluated(t.Context(), data, "data.p.allow", func(storage.Transaction) (bool, error) {
+		panic("interface conversion")
+	})
+	var panicked *EvaluatorPanicError
+	if !errors.As(err, &panicked) {
+		t.Fatalf("evaluated() error = %v, want an EvaluatorPanicError", err)
+	}
+	if panicked.Decision != "data.p.allow" || panicked.Cause != "interface conversion" {
+		t.Errorf("the error names %q and carries %q, want data.p.allow and the panic", panicked.Decision, panicked.Cause)
+	}
+
+	opened := make(chan error, 1)
+	go func() {
+		txn, err := data.store.NewTransaction(context.Background(), storage.WriteParams)
+		if err == nil {
+			data.store.Abort(context.Background(), txn)
+		}
+		opened <- err
+	}()
+	select {
+	case err := <-opened:
+		if err != nil {
+			t.Errorf("a write of the data does not open: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("a write of the data never opens, so the read the evaluation was inside is still open")
+	}
+}
+
+// OPA v1.21.1 panics on the partial evaluation of a negated rule whose body
+// holds an every over a value left unknown. Whichever way the OPA in use
+// answers, the question returns: with what is left of the decision, or with the
+// panic as an error.
+func TestResidualsOnANegatedEveryOverAnUnknown(t *testing.T) {
+	policy := `package p
+
+# METADATA
+# entrypoint: true
+allow if not blocked
+
+blocked if {
+	every x in input.xs {
+		x == 1
+	}
+}
+`
+	bundle, err := Load([]string{writeSources(t, map[string]string{"policy.rego": policy})}, ParseModeV1)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	data := writeData(t, `{"settings": {"open": true}}`)
+
+	_, err = Residuals(t.Context(), bundle, data, Request{Decision: "data.p.allow"}, Limits{})
+	var panicked *EvaluatorPanicError
+	if err != nil && !errors.As(err, &panicked) {
+		t.Fatalf("Residuals() error = %v, want an answer or an EvaluatorPanicError", err)
+	}
+	if panicked != nil && panicked.Decision != "data.p.allow" {
+		t.Errorf("the error names %q, want data.p.allow", panicked.Decision)
 	}
 }
 

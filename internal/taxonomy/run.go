@@ -120,7 +120,9 @@ const needsWriteModel = "it asks which decision allows each write, and no write 
 // error: an analysis without concrete data is a perfectly good analysis of the
 // policy, and refusing to produce the half that does not need documents would
 // make the tool useless exactly where it is most often pointed, at a bundle
-// somebody handed over without a database.
+// somebody handed over without a database. A pattern that asks a decision OPA
+// panics on is recorded the same way, with the decision and the panic: the
+// defect is the evaluator's, and the other patterns still have their answers.
 func Run(ctx context.Context, a Analysis) (Findings, error) {
 	found := Findings{Skipped: map[string]string{}}
 
@@ -142,30 +144,21 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 			return Findings{}, err
 		}
 
-		positions, err := TransitiveGrant(ctx, a.Bundle, a.Reads, a.Shape, a.Data, a.Limits)
-		if err != nil {
+		transitive, err := transitiveGrants(ctx, a, selfWrite)
+		if err = found.asked(TransitiveGrantViaOwnership, &found.Transitive, transitive, err); err != nil {
 			return Findings{}, err
 		}
-		escalations, err := Escalations(ctx, a, selfWrite, positions)
-		if err != nil {
-			return Findings{}, err
-		}
-		found.Transitive = append(escalations, positions...)
 
 		if a.Model == nil {
 			found.Skipped[WriteAllowedByAnotherDecision] = needsWriteModel
 		} else {
-			splitGrant, err := SplitGrant(ctx, a)
-			if err != nil {
+			splitGrant, err := splitGrants(ctx, a)
+			if err = found.asked(WriteAllowedByAnotherDecision, &found.SplitGrant, splitGrant, err); err != nil {
 				return Findings{}, err
 			}
-			siblingGrant, err := SiblingGrant(ctx, a)
-			if err != nil {
-				return Findings{}, err
-			}
-			found.SplitGrant = sortedFindings(append(splitGrant, siblingGrant...))
 		}
-		if found.GlobalSwitch, err = GlobalSwitch(ctx, a); err != nil {
+		globalSwitch, err := GlobalSwitch(ctx, a)
+		if err = found.asked(GlobalDocumentDecides, &found.GlobalSwitch, globalSwitch, err); err != nil {
 			return Findings{}, err
 		}
 	}
@@ -188,11 +181,56 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 	}
 	found.AssumableIdentity = GrantsOnAssumableIdentities(a)
 	if a.Data != nil {
-		if found.Delegation, err = GrantsBeyondDelegatedScope(ctx, a); err != nil {
+		delegation, err := GrantsBeyondDelegatedScope(ctx, a)
+		if err = found.asked(GrantBeyondDelegatedScope, &found.Delegation, delegation, err); err != nil {
 			return Findings{}, err
 		}
 	}
 	return found, nil
+}
+
+// transitiveGrants returns what PTD-OPA-003 makes of an analysis: the chains
+// that reach a position first, then the positions.
+func transitiveGrants(ctx context.Context, a Analysis, selfWrite []Finding) ([]Finding, error) {
+	positions, err := TransitiveGrant(ctx, a.Bundle, a.Reads, a.Shape, a.Data, a.Limits)
+	if err != nil {
+		return nil, err
+	}
+	escalations, err := Escalations(ctx, a, selfWrite, positions)
+	if err != nil {
+		return nil, err
+	}
+	return append(escalations, positions...), nil
+}
+
+// splitGrants returns the three shapes of PTD-OPA-006 together, sorted.
+func splitGrants(ctx context.Context, a Analysis) ([]Finding, error) {
+	splitGrant, err := SplitGrant(ctx, a)
+	if err != nil {
+		return nil, err
+	}
+	siblingGrant, err := SiblingGrant(ctx, a)
+	if err != nil {
+		return nil, err
+	}
+	return sortedFindings(append(splitGrant, siblingGrant...)), nil
+}
+
+// asked keeps what a pattern that evaluates decisions found. When OPA panicked
+// on one of them the pattern is recorded as skipped instead, with the decision
+// and what the panic carried, and no error comes back; any other error does.
+func (f *Findings) asked(pattern string, into *[]Finding, found []Finding, err error) error {
+	var panicked *opaengine.EvaluatorPanicError
+	if errors.As(err, &panicked) {
+		f.Skipped[pattern] = fmt.Sprintf("OPA panicked while evaluating %s, so the decision could not be asked (%s)",
+			panicked.Decision, panicked.Cause)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	*into = found
+	return nil
 }
 
 // Gaps are what the analysis knows and the graph could not hold.
@@ -213,6 +251,10 @@ type Gaps struct {
 	// UnmatchedFindings are facts about something the graph does not hold,
 	// which is a defect in one of the two rather than nothing to report.
 	UnmatchedFindings int
+
+	// UnaskedCapabilities are the questions of what one principal gets out of
+	// one decision that could not be asked, because OPA panicked evaluating it.
+	UnaskedCapabilities int
 }
 
 // Assemble builds the internal graph from an analysis and what the patterns
@@ -234,7 +276,7 @@ func Assemble(ctx context.Context, a Analysis, findings Findings) (*graph.Graph,
 		return nil, gaps, err
 	}
 	if a.Data != nil {
-		if gaps.ConditionalWays, err = AddCapabilities(ctx, g, a); err != nil {
+		if gaps.ConditionalWays, gaps.UnaskedCapabilities, err = AddCapabilities(ctx, g, a); err != nil {
 			return nil, gaps, err
 		}
 	}

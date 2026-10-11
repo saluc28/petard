@@ -155,6 +155,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   declaration of the enforcement point can cover. A check is now read only where it names a
   part of the request.
 - A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
+- `petard analyze` and `petard export` ended in a Go panic on a decision OPA panics on: OPA
+  v1.21.1 panics on the partial evaluation of a negated rule whose body holds an `every` over a
+  value left unknown. The pattern that asked is now reported as not applied, with the decision
+  and the panic, `-v` says the same on the decision's row of residual conditions, and the graph
+  counts the questions it could not ask.
 
 ## [0.4.0] - 2026-09-30
 

@@ -509,6 +509,39 @@ func TestRunSaysWhenTheResidualBoundCuts(t *testing.T) {
 	}
 }
 
+// A decision OPA panics on does not end the report. OPA v1.21.1 panics on a
+// negated rule whose body holds an every over a value left unknown; the row of
+// the decision says so, and an OPA that answers prints what is left instead.
+func TestRunSurvivesADecisionOPAPanicsOn(t *testing.T) {
+	dir := t.TempDir()
+	policy := `package p
+
+# METADATA
+# entrypoint: true
+allow if not blocked
+
+blocked if {
+	every x in input.xs {
+		x == 1
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "policy.rego"), []byte(policy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{"settings": {"open": true}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run(detailed(dir), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+	if out := stdout.String(); !regexp.MustCompile(`data\.p\.allow\s+(not evaluated, OPA panicked|\d+|holds on the data alone)`).MatchString(out) {
+		t.Errorf("the report has no row for data.p.allow:\n%s", out)
+	}
+}
+
 func TestRunReportsWriteModelCoverage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{

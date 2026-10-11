@@ -5,6 +5,7 @@ package analyze
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -299,6 +300,7 @@ func printGraph(out io.Writer, g *graph.Graph, gaps taxonomy.Gaps) {
 		{gaps.DerivedWriters, "declared writers name a rule for finding somebody, not somebody, and have no edge"},
 		{gaps.ConditionalWays, "ways of granting depend on something an edge cannot say, and are left out"},
 		{gaps.UnmatchedFindings, "findings speak about something the graph does not hold"},
+		{gaps.UnaskedCapabilities, "questions of what a principal can do went unasked, because OPA panicked evaluating the decision"},
 	} {
 		if said.count > 0 {
 			fmt.Fprintf(out, "  %d %s\n", said.count, said.text)
@@ -366,6 +368,9 @@ func reportFindings(out io.Writer, a taxonomy.Analysis, findings taxonomy.Findin
 // get out of this decision, given these documents. Narrowing the unknown to one
 // part of the request is what turns the same call into a question about a
 // single principal, and that belongs to a pattern rather than to a summary.
+//
+// A decision OPA panics on has its row all the same, saying so, and the panic
+// is printed with the warnings: the other decisions still have their answers.
 func reportResiduals(ctx context.Context, out io.Writer, a taxonomy.Analysis) error {
 	fmt.Fprintf(out, "\nagainst %d data documents, with the request unknown:\n", len(a.Data.Files))
 
@@ -375,6 +380,12 @@ func reportResiduals(ctx context.Context, out io.Writer, a taxonomy.Analysis) er
 
 	for _, decision := range a.Reads.Decisions {
 		residuals, err := opaengine.Residuals(ctx, a.Bundle, a.Data, opaengine.Request{Decision: decision}, a.Limits)
+		var panicked *opaengine.EvaluatorPanicError
+		if errors.As(err, &panicked) {
+			fmt.Fprintf(table, "  %s\tnot evaluated, OPA panicked\t\n", decision)
+			warnings = append(warnings, fmt.Sprintf("OPA panicked while evaluating %s: %s", panicked.Decision, panicked.Cause))
+			continue
+		}
 		if err != nil {
 			return err
 		}
