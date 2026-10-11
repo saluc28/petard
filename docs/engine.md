@@ -55,6 +55,13 @@ enforcement point that refuses the request as soon as the decision holds or coll
 the way Gatekeeper reads `violation`: which side a read is on is then counted from the refusal
 (`taxonomy-registry/README.md` section 3).
 
+A decision whose default is a value other than `true` or `false`, `default result := {"decision":
+"deny"}` or `default verdict := "scan"`, is defined for every request, the ones it refuses
+included. Which of its answers is a grant is in what the enforcement point reads out of the value,
+and the policy does not say. Such a decision is taken to grant where it answers anything other
+than its default, and the report names it and that reading under `How much to trust this`. Where
+a field of the answer is `true` or `false`, that field is the decision to declare.
+
 A product that asks for decisions can be declared once instead, in the format of `pep-registry/`:
 the rules it asks for by name and the side each lands on, where it puts the requester, and who
 sets each part of the request. `-pep` names one, and the bundle is asked which of its rules carry

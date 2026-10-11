@@ -284,6 +284,43 @@ func TestTheSummarySaysTheDataCameFromTheBundle(t *testing.T) {
 	}
 }
 
+// Which answer of a decision that answers every request with a value is a grant
+// is not in the policy, and everything said about it rests on reading every
+// answer but the default as one. The summary names the decision, its default
+// and that reading.
+func TestTheSummarySaysWhenADecisionAnswersWithAValue(t *testing.T) {
+	dir := t.TempDir()
+	policy := `package sts
+
+# METADATA
+# entrypoint: true
+default result := {"decision": "deny"}
+
+result := {"decision": "allow"} if input.user == "root"
+`
+	if err := os.WriteFile(filepath.Join(dir, "sts.rego"), []byte(policy), 0o600); err != nil {
+		t.Fatalf("writing the policy: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{"users": {}}`), 0o600); err != nil {
+		t.Fatalf("writing the data: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-v", "-fail-on", failOnNone, dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+	out := strings.Join(strings.Fields(stdout.String()), " ")
+	for _, want := range []string{
+		`data.sts.result answers every request with a value, {"decision": "deny"} by default`,
+		"every answer other than that default is read as one",
+		"declare that field as the decision with -entrypoint",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the report does not say %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
 // Quiet is for the pipeline: a line in the log when there is something, and not
 // a byte when there is not.
 func TestQuietPrintsTheResultsAndNothingElse(t *testing.T) {

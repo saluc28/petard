@@ -155,6 +155,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   declaration of the enforcement point can cover. A check is now read only where it names a
   part of the request.
 - A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
+- A decision whose default is a value other than `true` or `false`, such as `default result :=
+  {"decision": "deny"}`, was taken to grant a fixed request whatever it answered, the default
+  included, because a defined value holds. `PTD-OPA-013` then reported a decision that bounds the
+  requested authority by every ceiling. Such a decision now grants a request it answers with
+  anything other than its default, which is how the conditions partial evaluation leaves of it
+  were already read, and the report names the decision and that reading under `How much to trust
+  this`.
 - `petard analyze` and `petard export` ended in a Go panic on a decision OPA panics on: OPA
   v1.21.1 panics on the partial evaluation of a negated rule whose body holds an `every` over a
   value left unknown. The pattern that asked is now reported as not applied, with the decision

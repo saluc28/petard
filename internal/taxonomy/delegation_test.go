@@ -2,6 +2,7 @@ package taxonomy
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 // delegationAnalysis compiles an inline policy, declares an inline gateway over
 // it, and gives it inline data, for the delegation pattern, which asks the
 // decision about a witness and so needs all three.
-func delegationAnalysis(t *testing.T, policy, gateway, data string) Analysis {
+func delegationAnalysis(t *testing.T, policy, gateway, data string, entrypoints ...string) Analysis {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -22,6 +23,7 @@ func delegationAnalysis(t *testing.T, policy, gateway, data string) Analysis {
 	if err != nil {
 		t.Fatalf("the policy does not compile: %v", err)
 	}
+	bundle.Entrypoints = entrypoints
 	reads, err := opaengine.Reads(bundle, opaengine.Limits{})
 	if err != nil {
 		t.Fatalf("Reads() error = %v", err)
@@ -153,6 +155,62 @@ fields:
 	}
 	if len(findings) != 1 || findings[0].Verdict != VerdictCandidate {
 		t.Fatalf("findings = %v, want one candidate: nothing says what bounds the authority", findings)
+	}
+}
+
+// A decision that answers every request with an object holds where it answers
+// something other than its default, the deny here. This one bounds the request
+// by the edge and by the role and answers the default when either fails, so
+// there is nothing to report on it, asked as the object or as the field of it
+// that is true or false.
+func TestDelegationReadsADecisionThatAnswersWithAValue(t *testing.T) {
+	policy := `package p
+
+# METADATA
+# entrypoint: true
+default allow := {"decision": "deny", "allowed": false}
+
+allow := {"decision": "allow", "allowed": true} if {
+	count(input.requested_scopes) > 0
+	every scope in input.requested_scopes {
+		scope in input.delegation_edge.scopes
+	}
+	every scope in input.requested_scopes {
+		scope in input.role_scopes
+	}
+}
+`
+	for _, entrypoints := range [][]string{nil, {"data.p.allow.allowed"}} {
+		a := delegationAnalysis(t, policy, delegationGateway, `{"unused": true}`, entrypoints...)
+
+		findings, err := GrantsBeyondDelegatedScope(t.Context(), a)
+		if err != nil {
+			t.Fatalf("GrantsBeyondDelegatedScope() error = %v", err)
+		}
+		if len(findings) != 0 {
+			t.Errorf("with %v declared, findings = %v, want none: the decision bounds the request by both ceilings",
+				entrypoints, findings)
+		}
+	}
+
+	// Without the bound by the edge the request past it is answered allow, and
+	// both ways of asking report it.
+	unbounded := strings.Replace(policy, `	every scope in input.requested_scopes {
+		scope in input.delegation_edge.scopes
+	}
+`, "", 1)
+	a := delegationAnalysis(t, unbounded, delegationGateway, `{"unused": true}`, "data.p.allow.allowed")
+
+	findings, err := GrantsBeyondDelegatedScope(t.Context(), a)
+	if err != nil {
+		t.Fatalf("GrantsBeyondDelegatedScope() error = %v", err)
+	}
+	var reported []string
+	for _, finding := range findings {
+		reported = append(reported, finding.Decision)
+	}
+	if !slices.Equal(reported, []string{"data.p.allow", "data.p.allow.allowed"}) {
+		t.Errorf("findings on %v, want one on data.p.allow and one on data.p.allow.allowed", reported)
 	}
 }
 

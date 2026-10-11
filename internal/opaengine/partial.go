@@ -973,6 +973,9 @@ func Residuals(ctx context.Context, bundle *Bundle, data *Data, ask Request, lim
 // return, and the honest question is a plain yes or no. Asking Residuals instead
 // would trip its convenience that an empty set of unknowns means the whole
 // request is unknown, and answer about anybody rather than about this request.
+//
+// A decision whose default is a value other than true or false holds where it
+// answers something else: see NonBooleanDefault.
 func Holds(ctx context.Context, bundle *Bundle, data *Data, decision string, input map[string]any) (bool, error) {
 	if data == nil {
 		return false, ErrNoData
@@ -981,10 +984,14 @@ func Holds(ctx context.Context, bundle *Bundle, data *Data, decision string, inp
 	if err != nil {
 		return false, err
 	}
+	query := bundle.query(decision)
+	if fallback, valued := bundle.NonBooleanDefault(decision); valued {
+		query += " != " + fallback
+	}
 
 	results, err := evaluated(ctx, data, decision, func(txn storage.Transaction) (rego.ResultSet, error) {
 		return rego.New(
-			rego.Query(bundle.query(decision)),
+			rego.Query(query),
 			rego.Compiler(compiler),
 			rego.Store(data.store),
 			rego.Transaction(txn),
@@ -1004,6 +1011,59 @@ func Holds(ctx context.Context, bundle *Bundle, data *Data, decision string, inp
 		}
 	}
 	return false, nil
+}
+
+// NonBooleanDefault returns the default of a decision, as Rego, when it is a
+// value other than true or false, and reports whether the decision has one.
+//
+// Such a decision is defined whatever the request. default result :=
+// {"decision": "deny"} answers every request with an object, and in Rego only
+// false and undefined do not hold, so the plain question whether it holds would
+// be answered yes for everybody, the refusal it defaults to included. Which of
+// its answers is a grant is in what the enforcement point reads out of the
+// value, and not in the policy. What the policy does say is which answer a
+// request gets when no rule speaks for it, so the decision is taken to hold
+// where it answers anything else. Partial evaluation reads it the same way:
+// what it leaves of a decision are the rules besides the default.
+//
+// A decision declared as a field of what a rule answers is judged by the default
+// of that field: data.app.result.allowed over default result := {"allowed":
+// false} answers true or false, and has no such default.
+func (b *Bundle) NonBooleanDefault(decision string) (string, bool) {
+	compiler, err := b.forPartial()
+	if err != nil {
+		return "", false
+	}
+	query := decision
+	if field, found := b.fieldQueries[decision]; found {
+		query = field
+	}
+	ref, err := ast.ParseRef(query)
+	if err != nil {
+		return "", false
+	}
+
+	for _, rule := range compiler.GetRulesForVirtualDocument(ref) {
+		path := rulePath(rule)
+		if !rule.Default || len(path) > len(ref) {
+			continue
+		}
+		value := rule.Head.Value
+		for _, key := range ref[len(path):] {
+			object, isObject := value.Value.(ast.Object)
+			if !isObject {
+				return "", false
+			}
+			if value = object.Get(key); value == nil {
+				return "", false
+			}
+		}
+		if _, isBoolean := value.Value.(ast.Boolean); isBoolean {
+			return "", false
+		}
+		return value.String(), true
+	}
+	return "", false
 }
 
 // partial runs partial evaluation and returns what OPA left of the decision.

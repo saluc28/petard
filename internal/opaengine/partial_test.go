@@ -1189,6 +1189,105 @@ func TestWithTargetRisesToTheNearestNamedDocument(t *testing.T) {
 	}
 }
 
+// A decision whose default is a value other than true or false answers every
+// request, the one it refuses included, and a defined value holds. It is taken
+// to hold where it answers something other than that default, which is also
+// what partial evaluation leaves of it. A field of the answer that is true or
+// false is a decision like any other.
+func TestADecisionThatAnswersWithAValueHoldsOffItsDefault(t *testing.T) {
+	const policy = `package t
+
+import rego.v1
+
+default result := {"decision": "deny", "allowed": false}
+
+result := {"decision": "allow", "allowed": true} if input.role == "admin"
+
+default verdict := "scan"
+
+verdict := "allowed" if input.role == "admin"
+
+default allow := false
+
+allow if input.role == "admin"
+
+default open := true
+
+open := false if input.role == "guest"
+
+granted contains p if {
+	p := input.project
+	input.role == "admin"
+}
+`
+	bundle, err := Load([]string{writeSources(t, map[string]string{"policy.rego": policy})}, ParseModeV1)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	data := writeData(t, `{"unused": true}`)
+	admin := map[string]any{"role": "admin", "project": "p1"}
+	viewer := map[string]any{"role": "viewer", "project": "p1"}
+
+	tests := []struct {
+		decision string
+		value    string
+	}{
+		{decision: "data.t.result", value: `{"allowed": false, "decision": "deny"}`},
+		{decision: "data.t.result.decision", value: `"deny"`},
+		{decision: "data.t.verdict", value: `"scan"`},
+		{decision: "data.t.result.allowed"},
+		{decision: "data.t.allow"},
+		{decision: "data.t.granted"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.decision, func(t *testing.T) {
+			value, valued := bundle.NonBooleanDefault(tt.decision)
+			if value != tt.value || valued != (tt.value != "") {
+				t.Errorf("NonBooleanDefault() = %q, %t, want %q", value, valued, tt.value)
+			}
+
+			for _, asked := range []struct {
+				who   string
+				input map[string]any
+				holds bool
+			}{{"the admin", admin, true}, {"a viewer", viewer, false}} {
+				holds, err := Holds(t.Context(), bundle, data, tt.decision, asked.input)
+				if err != nil {
+					t.Fatalf("Holds() error = %v", err)
+				}
+				if holds != asked.holds {
+					t.Errorf("Holds() = %t for %s, want %t", holds, asked.who, asked.holds)
+				}
+			}
+
+			residuals, err := Residuals(t.Context(), bundle, data, Request{Decision: tt.decision}, Limits{})
+			if err != nil {
+				t.Fatalf("Residuals() error = %v", err)
+			}
+			if len(residuals.Conditions) != 1 {
+				t.Errorf("Residuals() leaves %d conditions, want the one rule besides the default", len(residuals.Conditions))
+			}
+		})
+	}
+
+	// A default of true is a yes, and the decision holds until a rule says no.
+	if value, valued := bundle.NonBooleanDefault("data.t.open"); valued {
+		t.Errorf("NonBooleanDefault() = %q for a default of true, want none", value)
+	}
+	for _, asked := range []struct {
+		role  string
+		holds bool
+	}{{"admin", true}, {"guest", false}} {
+		holds, err := Holds(t.Context(), bundle, data, "data.t.open", map[string]any{"role": asked.role})
+		if err != nil {
+			t.Fatalf("Holds() error = %v", err)
+		}
+		if holds != asked.holds {
+			t.Errorf("Holds() = %t for a %s, want %t", holds, asked.role, asked.holds)
+		}
+	}
+}
+
 // Holds answers a decision for a request with nothing left unknown, where
 // Residuals would read the empty set of unknowns as the whole request being
 // unknown and answer about anybody. A boolean decision is yes or no by its

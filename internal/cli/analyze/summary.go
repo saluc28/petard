@@ -7,6 +7,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/open-policy-agent/opa/v1/ast"
+
 	"github.com/saluc28/petard/internal/cli/render"
 	"github.com/saluc28/petard/internal/taxonomy"
 )
@@ -346,6 +348,15 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 			"the decisions read. -data replaces it.", render.Count(len(a.Data.Files), "root")), "  ")
 	}
 
+	for _, decision := range a.Reads.Decisions {
+		if value, valued := a.Bundle.NonBooleanDefault(decision); valued {
+			render.Print(out, fmt.Sprintf("%s answers every request with a value, %s by default, and the "+
+				"policy does not say which of its answers is a grant: every answer other than that default is "+
+				"read as one. If a field of the answer is true or false, declare that field as the decision "+
+				"with -entrypoint.", decision, shortValue(value)), "  ")
+		}
+	}
+
 	if point := a.EnforcementPoint; point != nil {
 		request := taxonomy.RequestCoverageOf(a.Reads, point)
 		render.Print(out, fmt.Sprintf("The enforcement point is %s: it says who sets %d of the %s of the "+
@@ -360,6 +371,35 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 	}
 	render.Print(out, fmt.Sprintf("The write model covers %d of %s read (%d%%).",
 		len(coverage.Covered), render.Count(len(coverage.Read), "path"), coverage.Percent()), "  ")
+}
+
+// maxValue is how much of a value a line of the report shows before it says what
+// kind of value it is instead.
+const maxValue = 32
+
+// shortValue writes a Rego value for a line of the report: as it is when it is
+// short, and by its kind when it is not, since the default of a decision that
+// answers with an object can run to several lines.
+func shortValue(value string) string {
+	if len(value) <= maxValue {
+		return value
+	}
+	term, err := ast.ParseTerm(value)
+	if err != nil {
+		return "a value"
+	}
+	switch term.Value.(type) {
+	case ast.Object:
+		return "an object"
+	case *ast.Array:
+		return "an array"
+	case ast.Set:
+		return "a set"
+	case ast.String:
+		return "a string"
+	default:
+		return "a value"
+	}
 }
 
 // titleOf names a pattern the way a report should, and falls back to the id
