@@ -83,14 +83,25 @@ const (
 	// endswith(input.name, ".read").
 	CheckSuffix CheckOperator = "suffix"
 
-	// CheckGlob is the request matched against a glob:
-	// glob.match("/do/**", [], input.path).
+	// CheckGlob is the request matched against a glob with a wildcard in it:
+	// glob.match("/do/**", [], input.path). A glob with none matches itself
+	// alone and is read as CheckEqual.
 	CheckGlob CheckOperator = "glob"
 
-	// CheckRegex is the request matched against an unanchored regex:
-	// regex.match("admin", input.path). An anchored pattern is a whole-string
-	// test and is not read as a loose match.
+	// CheckGlobEmbedded is the request matched against a glob that opens and
+	// closes with a wildcard, glob.match("*admin*", [], input.path), which
+	// holds for whatever embeds what is between them.
+	CheckGlobEmbedded CheckOperator = "glob-embedded"
+
+	// CheckRegex is the request matched against a regex with a branch that pins
+	// neither end: regex.match("admin", input.path). A pattern that pins both
+	// ends in every branch is a test of the whole value and is not read as a
+	// loose match.
 	CheckRegex CheckOperator = "regex"
+
+	// CheckRegexAnchored is the request matched against a regex that pins one
+	// end in every branch and not both: regex.match("^/admin", input.path).
+	CheckRegexAnchored CheckOperator = "regex-anchored"
 )
 
 // Loose reports whether the operator matches a part of the request more loosely
@@ -99,7 +110,7 @@ const (
 // and PTD-OPA-011 read them as checks like == and in.
 func (o CheckOperator) Loose() bool {
 	switch o {
-	case CheckSubstring, CheckPrefix, CheckSuffix, CheckGlob, CheckRegex:
+	case CheckSubstring, CheckPrefix, CheckSuffix, CheckGlob, CheckGlobEmbedded, CheckRegex, CheckRegexAnchored:
 		return true
 	default:
 		return false
@@ -108,10 +119,11 @@ func (o CheckOperator) Loose() bool {
 
 // MidString reports whether the match accepts the written value embedded
 // anywhere in the request, not only as the whole value, a prefix or a suffix. A
-// substring and an unanchored regex are the forms a crafted value slips through,
-// the confused deputy PTD-OPA-012 reports as a finding rather than a candidate.
+// substring, a regex with an end pinned in no branch and a glob with a wildcard
+// at each end are the forms a crafted value slips through, the confused deputy
+// PTD-OPA-012 reports as a finding rather than a candidate.
 func (o CheckOperator) MidString() bool {
-	return o == CheckSubstring || o == CheckRegex
+	return o == CheckSubstring || o == CheckRegex || o == CheckGlobEmbedded
 }
 
 // Expression writes the check back as Rego, the way a report prints it.
@@ -129,9 +141,9 @@ func (c Check) Expression() string {
 		return "startswith(" + c.Request + ", " + c.Value + ")"
 	case CheckSuffix:
 		return "endswith(" + c.Request + ", " + c.Value + ")"
-	case CheckGlob:
+	case CheckGlob, CheckGlobEmbedded:
 		return "glob.match(" + c.Value + ", _, " + c.Request + ")"
-	case CheckRegex:
+	case CheckRegex, CheckRegexAnchored:
 		return "regex.match(" + c.Value + ", " + c.Request + ")"
 	default:
 		return c.Request
@@ -266,10 +278,10 @@ func (r *refReader) checks(limits Limits) ([]Check, map[string]string, []string)
 		request, isRequest := r.requestOf(match.rule, match.request, match.bindings, budget)
 		if isRequest {
 			if value, isConstant := constantOf(match.value, match.bindings); isConstant {
-				// An anchored regex matches the whole string, so it is not a loose
-				// match; the other checks already read it as what it is.
-				if match.operator != CheckRegex || !anchoredRegex(value) {
-					keep(match.exprSite, request, value, match.operator)
+				// What a regex or a glob matches is in its pattern, down to no
+				// loose match at all.
+				if operator, isCheck := formOf(match.operator, value); isCheck {
+					keep(match.exprSite, request, value, operator)
 				}
 			}
 		}

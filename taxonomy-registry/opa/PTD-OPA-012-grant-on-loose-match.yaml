@@ -19,9 +19,10 @@ category:
     Abstract category: it holds for any engine that matches the value it authorizes more loosely
     than the value the enforcement point uses.
   category_note: >
-    The first instance. The same category covers the match forms: a substring and an unanchored
-    regex, which let a value embed the written one, and a prefix, suffix or glob, which is often
-    an intended wildcard and so is reported as a candidate.
+    The first instance. The same category covers the match forms: a substring, an unanchored regex
+    and a glob with a wildcard at each end, which let a value embed the written one, and a prefix,
+    a suffix, a regex anchored at one end or any other glob, which is often an intended wildcard
+    and so is reported as a candidate.
 
 summary: >
   A decision grants when a part of the request matches a value the policy writes with an operator
@@ -77,7 +78,10 @@ detection:
         A decision reaches a check that holds a part of the request against a value the policy
         writes with an operator wider than equality: a substring with `contains`, a prefix with
         `startswith`, a suffix with `endswith`, a glob with `glob.match`, or an unanchored regex
-        with `regex.match`. The engine records which form it is.
+        with `regex.match`. The engine records which form it is, and for a glob and a regex it
+        reads the form off the pattern: a glob with no wildcard is an equality, and a regex that
+        pins both ends in every branch of its alternations tests the whole value, so neither is a
+        loose match.
       rationale: >
         Each of these matches a value the policy did not write out: a substring matches it embedded
         anywhere, a prefix or suffix at one end, a glob or an unanchored regex by pattern. An
@@ -94,9 +98,11 @@ detection:
         pattern, PTD-OPA-010, about who controls the name rather than how widely it is matched.
     - order: 3
       check: >
-        A substring and an unanchored regex are a finding: the written value embedded anywhere
-        passes, so a crafted value slips through. A prefix, a suffix or a glob is a candidate: the
-        looseness is often the intended wildcard, to weigh against what the enforcement point does.
+        A substring, a regex with a branch that pins neither end and a glob with a wildcard at
+        each end are a finding: the written value embedded anywhere passes, so a crafted value slips
+        through. A prefix, a suffix, a regex that pins one end and any other glob are a candidate:
+        the looseness is often the intended wildcard, to weigh against what the enforcement point
+        does.
       rationale: >
         A mid-string match lets a crafted value through whatever the deployment does with it. A
         prefix route can be exactly what was meant, so it is reported as a candidate to check rather
@@ -126,9 +132,10 @@ false_positives:
       The loose match is the intended wildcard, a prefix route `/do/**` that the enforcement point
       resolves the same way the policy matches it, with no traversal or encoding to collapse.
     discriminator: >
-      Whether a prefix or a glob is intended is not in the policy, so an affix and a glob are
-      reported as candidates rather than findings, and a substring or an unanchored regex, which is
-      wrong whatever the intent, as a finding.
+      Whether a prefix or a glob is intended is not in the policy, so an affix, a regex anchored
+      at one end and a glob are reported as candidates rather than findings, and a substring, an
+      unanchored regex or a glob with a wildcard at each end, which is wrong whatever the intent,
+      as a finding.
   - condition: >
       The enforcement point canonicalizes the value the same way the policy matches it, lower-casing
       before a case-insensitive compare the policy also folds, so the two agree.
@@ -235,6 +242,11 @@ notes:
     enforcement point canonicalizes, collapsing `..` or decoding `%2e`, as yashigani's. Telling the
     sound form from the vulnerable one needs the enforcement point's canonicalization declared and
     the traversal guard read, which this instance does not do yet.
+  - >
+    A regex is read with the syntax OPA compiles it with. `^/public|/health$` pins one end in each
+    branch and both in neither, so it is a candidate; `^.*admin.*$` pins both ends and opens them
+    again, so it is a finding; under `(?m)` the two anchors match at every line of the value and
+    pin nothing.
   - >
     A match by whole components, `"admin" in split(input.path, "/")`, is a membership over a value
     the policy computes, not a loose match, and is not reported: it is one of the shapes that closes

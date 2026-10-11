@@ -2,6 +2,7 @@ package taxonomy
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/saluc28/petard/internal/opaengine"
@@ -104,13 +105,27 @@ func looseMatchFinding(check opaengine.Check, decision string, site ReadSite) Fi
 	if check.Operator.MidString() {
 		finding.Verdict = VerdictFinding
 		finding.Summary = fmt.Sprintf("%s grants on %s matched as %s, so a value that embeds %s passes",
-			decision, check.Request, looseness(check.Operator), check.Value)
+			decision, check.Request, looseness(check.Operator), embedded(check))
 		return finding
 	}
 	finding.Verdict = VerdictCandidate
 	finding.Summary = fmt.Sprintf("%s grants on %s matched by %s, wider than the value it names",
 		decision, check.Request, looseness(check.Operator))
 	return finding
+}
+
+// embedded is what a value has to hold for a mid-string match to pass, as Rego:
+// the value the policy writes, less the wildcards at the ends of a glob, which
+// are the match and not what is matched.
+func embedded(check opaengine.Check) string {
+	if check.Operator != opaengine.CheckGlobEmbedded {
+		return check.Value
+	}
+	pattern, err := strconv.Unquote(check.Value)
+	if err != nil {
+		return check.Value
+	}
+	return strconv.Quote(strings.Trim(pattern, "*"))
 }
 
 // looseness names a loose operator the way a report reads it.
@@ -124,8 +139,12 @@ func looseness(operator opaengine.CheckOperator) string {
 		return "a suffix"
 	case opaengine.CheckGlob:
 		return "a glob"
+	case opaengine.CheckGlobEmbedded:
+		return "a glob with a wildcard at each end"
 	case opaengine.CheckRegex:
 		return "an unanchored regex"
+	case opaengine.CheckRegexAnchored:
+		return "a regex anchored at one end"
 	default:
 		return "a loose match"
 	}

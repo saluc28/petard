@@ -382,6 +382,48 @@ func TestReadsFindTheLooseMatches(t *testing.T) {
 			expected: nil,
 		},
 		{
+			name: "a regex anchored at the start is a prefix",
+			body: "allow if regex.match(`^/admin`, input.path)\n",
+			expected: []Check{{
+				Request: "input.path", Value: `"^/admin"`, Operator: CheckRegexAnchored, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			// Each branch pins one end and neither pins both, so a value only
+			// has to start one way or end the other.
+			name: "an alternation anchored at one end in each branch",
+			body: "allow if regex.match(`^/public|/health$`, input.path)\n",
+			expected: []Check{{
+				Request: "input.path", Value: `"^/public|/health$"`, Operator: CheckRegexAnchored, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			name: "both ends pinned and opened again",
+			body: "allow if regex.match(`^.*admin.*$`, input.path)\n",
+			expected: []Check{{
+				Request: "input.path", Value: `"^.*admin.*$"`, Operator: CheckRegex, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			name: "a glob with a wildcard at each end",
+			body: "allow if glob.match(\"*admin*\", [], input.path)\n",
+			expected: []Check{{
+				Request: "input.path", Value: `"*admin*"`, Operator: CheckGlobEmbedded, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			name: "a glob with no wildcard is an equality",
+			body: "allow if glob.match(\"/admin\", [\"/\"], input.path)\n",
+			expected: []Check{{
+				Request: "input.path", Value: `"/admin"`, Operator: CheckEqual, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
 			name:     "a match against a value from the data is not a value the policy writes",
 			body:     "allow if contains(input.path, data.markers.admin)\n",
 			expected: nil,

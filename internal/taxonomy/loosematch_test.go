@@ -41,9 +41,11 @@ func TestLooseMatchVerdictFollowsTheForm(t *testing.T) {
 	}{
 		{opaengine.CheckSubstring, VerdictFinding},
 		{opaengine.CheckRegex, VerdictFinding},
+		{opaengine.CheckGlobEmbedded, VerdictFinding},
 		{opaengine.CheckPrefix, VerdictCandidate},
 		{opaengine.CheckSuffix, VerdictCandidate},
 		{opaengine.CheckGlob, VerdictCandidate},
+		{opaengine.CheckRegexAnchored, VerdictCandidate},
 	}
 	for _, tc := range cases {
 		a := Analysis{

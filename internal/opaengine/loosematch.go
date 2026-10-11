@@ -1,6 +1,7 @@
 package opaengine
 
 import (
+	"regexp/syntax"
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -74,15 +75,150 @@ func (r *refReader) markMatches(expr *ast.Expr, sc scope) {
 	})
 }
 
-// anchoredRegex reports whether a regex pattern pins both ends, which makes
-// regex.match a whole-string test rather than the loose mid-string one. A value
-// the policy writes anchored is matched as a whole, so it is left to the other
-// checks rather than read as a loose match.
-func anchoredRegex(value *ast.Term) bool {
-	str, isString := value.Value.(ast.String)
+// matchForm is how much of a value a pattern has to cover to match it.
+type matchForm int
+
+const (
+	// formEmbedded matches a value that holds the pattern anywhere inside it.
+	formEmbedded matchForm = iota
+
+	// formAffix matches a value pinned to the pattern at one end, or by a
+	// pattern with a wildcard somewhere other than at both ends.
+	formAffix
+
+	// formWhole matches the whole value and nothing wider.
+	formWhole
+)
+
+// formOf reads the pattern of a regex or a glob and says which check the match
+// is: the loose form it takes, an equality, or none.
+//
+// regex.match and glob.match are one builtin each for matches as far apart as
+// an equality and a substring, and the difference is in the pattern. The other
+// builtins say their form by their name, and are returned as they are.
+func formOf(operator CheckOperator, value *ast.Term) (CheckOperator, bool) {
+	pattern, isString := value.Value.(ast.String)
 	if !isString {
+		return operator, true
+	}
+	switch operator {
+	case CheckRegex:
+		switch regexForm(string(pattern)) {
+		case formWhole:
+			// Both ends pinned in every alternative: a test of the whole value,
+			// which may still be a pattern and so is no equality either.
+			return "", false
+		case formAffix:
+			return CheckRegexAnchored, true
+		}
+	case CheckGlob:
+		switch globForm(string(pattern)) {
+		case formWhole:
+			return CheckEqual, true
+		case formEmbedded:
+			return CheckGlobEmbedded, true
+		}
+	}
+	return operator, true
+}
+
+// globForm reads a glob. With no wildcard in it the pattern matches itself and
+// nothing else; with one at each end it matches whatever holds what is between
+// them; anything else is a wildcard a route is usually written with.
+func globForm(pattern string) matchForm {
+	switch {
+	case !strings.ContainsAny(pattern, `*?[{\`):
+		return formWhole
+	case strings.Trim(pattern, "*") == "":
+		// All wildcard: it matches anything, and embeds nothing to speak of.
+		return formAffix
+	case strings.HasPrefix(pattern, "*") && strings.HasSuffix(pattern, "*"):
+		return formEmbedded
+	default:
+		return formAffix
+	}
+}
+
+// regexForm reads a regex the way OPA compiles one, with Go's regexp syntax
+// (regex.match compiles its pattern with regexp.Compile, in getRegexp,
+// v1/topdown/regex.go:142 at v1.21.1).
+//
+// An alternation is as loose as its loosest branch: ^/public|/health$ pins one
+// end in each branch and both in neither, so a value only has to start one way
+// or end the other. A branch with no end pinned matches anywhere inside the
+// value. A pattern that does not parse is left as the loosest form, since OPA
+// would refuse it before it matched anything.
+func regexForm(pattern string) matchForm {
+	parsed, err := syntax.Parse(pattern, syntax.Perl)
+	if err != nil {
+		return formEmbedded
+	}
+	form := formWhole
+	for _, branch := range anchorsOf(parsed) {
+		switch {
+		case !branch.start && !branch.end:
+			return formEmbedded
+		case !branch.start || !branch.end:
+			form = formAffix
+		}
+	}
+	return form
+}
+
+// anchors says which ends of the value one branch of a regex is pinned to.
+type anchors struct{ start, end bool }
+
+// anchorsOf returns the ends each branch of a regex pins, one entry for every
+// way through its alternations.
+//
+// Only \A, \z and the ^ and $ that mean them pin an end: under (?m) the two
+// match at any line of the value, and a value can carry a newline. An end
+// pinned and then opened again with .* is not pinned: ^.*admin.*$ matches
+// whatever embeds admin.
+func anchorsOf(re *syntax.Regexp) []anchors {
+	switch re.Op {
+	case syntax.OpBeginText:
+		return []anchors{{start: true}}
+	case syntax.OpEndText:
+		return []anchors{{end: true}}
+	case syntax.OpCapture:
+		return anchorsOf(re.Sub[0])
+	case syntax.OpAlternate:
+		var branches []anchors
+		for _, sub := range re.Sub {
+			branches = append(branches, anchorsOf(sub)...)
+		}
+		return branches
+	case syntax.OpConcat:
+		if len(re.Sub) == 1 {
+			return anchorsOf(re.Sub[0])
+		}
+		first, last := re.Sub[0], re.Sub[len(re.Sub)-1]
+		opensStart := first.Op == syntax.OpBeginText && matchesAnything(re.Sub[1])
+		opensEnd := last.Op == syntax.OpEndText && matchesAnything(re.Sub[len(re.Sub)-2])
+
+		var branches []anchors
+		for _, head := range anchorsOf(first) {
+			for _, tail := range anchorsOf(last) {
+				branches = append(branches, anchors{start: head.start && !opensStart, end: tail.end && !opensEnd})
+			}
+		}
+		return branches
+	default:
+		return []anchors{{}}
+	}
+}
+
+// matchesAnything reports whether a piece of a regex matches any run of
+// characters, as .* and .+ do.
+func matchesAnything(re *syntax.Regexp) bool {
+	for re.Op == syntax.OpCapture {
+		re = re.Sub[0]
+	}
+	unbounded := re.Op == syntax.OpStar || re.Op == syntax.OpPlus || (re.Op == syntax.OpRepeat && re.Max == -1)
+	if !unbounded {
 		return false
 	}
-	pattern := string(str)
-	return strings.HasPrefix(pattern, "^") && strings.HasSuffix(pattern, "$")
+	any := re.Sub[0]
+	return any.Op == syntax.OpAnyChar || any.Op == syntax.OpAnyCharNotNL
 }

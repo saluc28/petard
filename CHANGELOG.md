@@ -155,6 +155,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   declaration of the enforcement point can cover. A check is now read only where it names a
   part of the request.
 - A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
+- `PTD-OPA-012` read a regex by its first and last character and a glob by its name. A regex
+  anchored at the start alone, `^/admin`, was a finding on a value said to embed the pattern, and
+  is a candidate, the prefix it is. An alternation that pins one end in each branch,
+  `^/public|/health$`, was taken for anchored and not read, and is a candidate too. A glob with a
+  wildcard at each end, `*admin*`, was a candidate and is a finding, like the substring it is. A
+  glob with no wildcard is read as the equality it is, and is no longer reported.
 - `PTD-OPA-013` asked only a decision that ranges over the requested authority with an `every`
   in the rule itself. One that bounds it by the role alone with `object.subset`, a set difference,
   a count of the offenders or an `every` inside a function went unreported, and so did one that
