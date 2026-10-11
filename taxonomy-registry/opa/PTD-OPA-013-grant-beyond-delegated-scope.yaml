@@ -76,7 +76,9 @@ detection:
     `enforcement-point` for signal 1: which part of the request is a requested authority and which
     ceilings bound it are declared per product in `pep-registry/`, or in a file of the same format
     named with `-pep`. `concrete-data` because the decision is evaluated, against the documents it
-    reads. Without either the pattern does not run, and the report says so.
+    reads: a decision that reads none, a token service deciding on the request alone, is asked
+    with no data given. Without the declaration, or without the data of a decision that reads
+    some, the pattern does not run, and the report says so.
     No reading of the narrowing form: the pattern asks the decision itself. It pins the requested
     authority to one synthetic element every declared ceiling holds, lets partial evaluation solve
     the other conditions a grant needs, and then asks whether the decision still grants once the

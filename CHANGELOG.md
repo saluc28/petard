@@ -170,6 +170,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `^/public|/health$`, was taken for anchored and not read, and is a candidate too. A glob with a
   wildcard at each end, `*admin*`, was a candidate and is a finding, like the substring it is. A
   glob with no wildcard is read as the equality it is, and is no longer reported.
+- `PTD-OPA-013` did not run without data, also where the decisions it asks read none, as a token
+  service that decides on the request alone does not, and an empty document was no way round it.
+  It now runs with no data given when no decision that reads a requested authority reads a
+  document, and still says the data is missing when one does. Without `-pep` it says the
+  enforcement point is what it needs, whatever the data.
 - A `PTD-OPA-013` result carried the level the subject was recognized at, `D` on the fixture,
   though it rests on the declaration of the enforcement point and on no subject. It carries level
   `A`, as the results of `PTD-OPA-009`, `PTD-OPA-010` and `PTD-OPA-011` that rest on the same

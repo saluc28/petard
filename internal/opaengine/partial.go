@@ -149,6 +149,16 @@ func LoadData(paths []string) (*Data, error) {
 	return &Data{store: inmem.NewFromObject(reader.documents), Files: reader.files}, nil
 }
 
+// NoData returns the store of an analysis with no document in it.
+//
+// LoadData refuses to hand one back, because a decision that reads documents
+// answers no to everything over an empty store, the way a sound one does. A
+// decision that reads no document answers the same over any store, and a caller
+// that has checked that it reads none evaluates it here.
+func NoData() *Data {
+	return &Data{store: inmem.New()}
+}
+
 // bundleDataNames are the files a bundle keeps its data in (dataFile,
 // yamlDataFile and ymlDataFile, v1/bundle/bundle.go:50 to :52 at v1.21.1).
 var bundleDataNames = []string{"data.json", "data.yaml", "data.yml"}

@@ -61,13 +61,23 @@ const (
 // cannot vary; and a decision that grants only specific named scopes, for which
 // a synthetic element builds no request the decision grants, so the bound cannot
 // be isolated.
+//
+// The decisions are evaluated against the documents they read. Where the ones
+// that read a requested authority read none, there is nothing to load, and an
+// analysis with no data asks them all the same: see DelegationNeedsData.
 func GrantsBeyondDelegatedScope(ctx context.Context, a Analysis) ([]Finding, error) {
-	if a.EnforcementPoint == nil || a.Data == nil {
+	if a.EnforcementPoint == nil {
 		return nil, nil
 	}
 	requested := requestedAuthorities(a.EnforcementPoint)
 	if len(requested) == 0 {
 		return nil, nil
+	}
+	if a.Data == nil {
+		if DelegationNeedsData(a) {
+			return nil, fmt.Errorf("%w: %s", ErrNeedsData, GrantBeyondDelegatedScope)
+		}
+		a.Data = opaengine.NoData()
 	}
 
 	var findings []Finding
@@ -83,6 +93,29 @@ func GrantsBeyondDelegatedScope(ctx context.Context, a Analysis) ([]Finding, err
 		}
 	}
 	return sortedFindings(findings), nil
+}
+
+// DelegationNeedsData reports whether PTD-OPA-013 has a decision to ask that
+// reads a document: a granting decision that reads an authority the enforcement
+// point declares requested, and reads the data too. A token service that
+// decides on the request alone reads none, and is asked with no data given.
+func DelegationNeedsData(a Analysis) bool {
+	if a.EnforcementPoint == nil {
+		return false
+	}
+	for _, field := range requestedAuthorities(a.EnforcementPoint) {
+		for _, decision := range grantingDecisions(a.Reads) {
+			if len(delegationSites(a.Reads, decision, field.Path)) == 0 {
+				continue
+			}
+			for _, read := range a.Reads.Reads {
+				if reachesDecision(read.Decisions, decision) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // requestedAuthorities returns the fields the enforcement point declares a

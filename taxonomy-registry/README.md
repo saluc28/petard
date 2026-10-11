@@ -361,8 +361,8 @@ nothing about, 009 needs the declaration of the enforcement point, which says wh
 of the request, 010 asks the same declaration what kind of value an issuer puts there, 011
 asks it whether a part is a runtime identity and who can assume it in another layer, 012 reads
 the loose-match builtins off the policy and needs no enforcement point at all, and 013 asks a
-granting decision whether it bounds a requested authority by the delegated one, needing both the
-concrete data and the enforcement point.
+granting decision whether it bounds a requested authority by the delegated one, needing the
+enforcement point and, where the decision reads any, the concrete data.
 
 `partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
 the engine measures with, and in 002 it is how the fixture checks the consequence of a
@@ -527,8 +527,9 @@ and `authz/introspection/authorized_project`. The subject is recognized from fie
 `input.subjects[_]`, level D, and the candidate is `data.policies[_].members[_]` at
 `authz.rego:10`, where a policy applies to a request when one of the request's subjects is among
 its members. Whoever can add a member to a policy decides who it applies to. The repository ships
-no data, so the five patterns that evaluate against it, `PTD-OPA-002`, `PTD-OPA-003`,
-`PTD-OPA-006`, `PTD-OPA-008` and `PTD-OPA-013`, did not run.
+no data, so the four patterns that evaluate against it, `PTD-OPA-002`, `PTD-OPA-003`,
+`PTD-OPA-006` and `PTD-OPA-008`, did not run, and neither did `PTD-OPA-013`, which waits for an
+enforcement point to be declared.
 
 [`SAP/InfraBox`](https://github.com/SAP/InfraBox), at commit
 `946edc0871c3b04e477ed216ffb47db4d11ef089`, keeps 25 policies and one test in
@@ -557,8 +558,8 @@ thirteen patterns start from a read of `data`, from a value from outside the pol
 `every`, and the 45 files contain none of them. Three more, `PTD-OPA-009`, `PTD-OPA-010` and
 `PTD-OPA-011`, run only with the enforcement point declared. `PTD-OPA-012` reads the request and
 needs none, but the files hold no loose match on a resource it grants on. The last,
-`PTD-OPA-013`, asks a decision whether it bounds a delegated authority and needs both the data and
-the enforcement point, and the files mint no delegated credential to ask about.
+`PTD-OPA-013`, asks a decision whether it bounds a delegated authority and needs the enforcement
+point declared, and the files mint no delegated credential to ask about.
 
 A corpus is not what `verified` waits for, and this is worth separating: a corpus says what other
 people write, which is why these six are here, while the conditions a pattern declares against

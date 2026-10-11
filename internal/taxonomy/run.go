@@ -138,7 +138,6 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		found.Skipped[TransitiveGrantViaOwnership] = needsData
 		found.Skipped[WriteAllowedByAnotherDecision] = needsData
 		found.Skipped[GlobalDocumentDecides] = needsData
-		found.Skipped[GrantBeyondDelegatedScope] = needsData
 	} else {
 		if found.MissingData, err = FailOpenOnMissingData(ctx, a.Reads, a.Data); err != nil {
 			return Findings{}, err
@@ -170,9 +169,7 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		found.Skipped[SelfAssertedExemption] = needsEnforcementPoint
 		found.Skipped[GrantOnUncontrolledName] = needsEnforcementPoint
 		found.Skipped[GrantOnAssumableIdentity] = needsEnforcementPoint
-		if a.Data != nil {
-			found.Skipped[GrantBeyondDelegatedScope] = needsEnforcementPoint
-		}
+		found.Skipped[GrantBeyondDelegatedScope] = needsEnforcementPoint
 		return found, nil
 	}
 	found.SelfAsserted = SelfAssertedExemptions(a)
@@ -180,11 +177,15 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 		return Findings{}, err
 	}
 	found.AssumableIdentity = GrantsOnAssumableIdentities(a)
-	if a.Data != nil {
-		delegation, err := GrantsBeyondDelegatedScope(ctx, a)
-		if err = found.asked(GrantBeyondDelegatedScope, &found.Delegation, delegation, err); err != nil {
-			return Findings{}, err
-		}
+	// The requested authority is in the declaration, so only with one can the
+	// pattern say whether the decisions it asks read any data to load.
+	if a.Data == nil && DelegationNeedsData(a) {
+		found.Skipped[GrantBeyondDelegatedScope] = needsData
+		return found, nil
+	}
+	delegation, err := GrantsBeyondDelegatedScope(ctx, a)
+	if err = found.asked(GrantBeyondDelegatedScope, &found.Delegation, delegation, err); err != nil {
+		return Findings{}, err
 	}
 	return found, nil
 }

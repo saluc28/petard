@@ -342,6 +342,60 @@ allow := {"decision": "allow", "allowed": true} if {
 	}
 }
 
+// A token service that decides on the request alone has no document to load, and
+// is asked with no data given. One whose decision reads the data is not, and
+// the run says the data is what is missing.
+func TestDelegationRunsWithoutDataWhenTheDecisionReadsNone(t *testing.T) {
+	onTheRequestAlone := `package p
+
+# METADATA
+# entrypoint: true
+default allow := false
+
+allow if {
+	every scope in input.requested_scopes {
+		scope in input.role_scopes
+	}
+}
+`
+	a := delegationAnalysis(t, onTheRequestAlone, delegationGateway, `{"unused": true}`)
+	a.Data = nil
+
+	findings, err := Run(t.Context(), a)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if why, skipped := findings.Skipped[GrantBeyondDelegatedScope]; skipped {
+		t.Errorf("skipped because %q, want it asked: the decision reads no data", why)
+	}
+	if len(findings.Delegation) != 1 {
+		t.Errorf("findings = %v, want the edge the decision does not enforce", findings.Delegation)
+	}
+
+	overTheData := `package p
+
+# METADATA
+# entrypoint: true
+default allow := false
+
+allow if {
+	every scope in input.requested_scopes {
+		scope in data.roles[input.role].scopes
+	}
+}
+`
+	a = delegationAnalysis(t, overTheData, delegationGateway, `{"roles": {"agent": {"scopes": ["read"]}}}`)
+	a.Data = nil
+
+	findings, err = Run(t.Context(), a)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if why := findings.Skipped[GrantBeyondDelegatedScope]; why != needsData {
+		t.Errorf("skipped because %q, want %q: the decision reads the roles", why, needsData)
+	}
+}
+
 // A decision OPA panics on leaves the pattern that asks it skipped, with the
 // decision named, and the run goes on. OPA v1.21.1 panics on a negated rule
 // whose body holds an every over a value left unknown; an OPA that answers
