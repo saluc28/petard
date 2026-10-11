@@ -194,12 +194,16 @@ func (r *refReader) markTruth(term *ast.Term, sc scope) {
 // checks judges every comparison and every lone term met while walking, and
 // keeps the ones that hold a part of the request against a value the policy
 // writes, with the decisions each reaches.
-func (r *refReader) checks() ([]Check, map[string]string) {
-	var checks []Check
-	pathShapes := map[string]string{}
-	keep := func(at exprSite, request string, value *ast.Term, operator CheckOperator) {
+//
+// A loose match against a value the decision reads from the data comes back
+// apart, with the path of that value where a check has the value written: see
+// ReadSet.DataMatches.
+func (r *refReader) checks() (checks, onData []Check, pathShapes map[string]string) {
+	pathShapes = map[string]string{}
+	found := func(into *[]Check, at exprSite, request, value string, operator CheckOperator) {
 		check := Check{
 			Request:       request,
+			Value:         value,
 			Operator:      operator,
 			Rule:          rulePath(at.rule).String(),
 			UnderNegation: at.negated,
@@ -207,9 +211,6 @@ func (r *refReader) checks() ([]Check, map[string]string) {
 		}
 		if len(check.Decisions) == 0 {
 			return
-		}
-		if value != nil {
-			check.Value = value.String()
 		}
 		location := at.location
 		if location == nil {
@@ -219,7 +220,14 @@ func (r *refReader) checks() ([]Check, map[string]string) {
 			check.File, check.Line = location.File, location.Row
 		}
 		check.Block = blockID(at.rule)
-		checks = append(checks, check)
+		*into = append(*into, check)
+	}
+	keep := func(at exprSite, request string, value *ast.Term, operator CheckOperator) {
+		written := ""
+		if value != nil {
+			written = value.String()
+		}
+		found(&checks, at, request, written, operator)
 	}
 
 	for _, compared := range r.foundComparisons {
@@ -270,19 +278,26 @@ func (r *refReader) checks() ([]Check, map[string]string) {
 
 	for _, match := range r.foundMatches {
 		request, isRequest := r.requestOf(match.rule, match.request, match.bindings)
-		if isRequest {
-			if value, isConstant := constantOf(match.value, match.bindings); isConstant {
-				// What a regex or a glob matches is in its pattern, down to no
-				// loose match at all.
-				if operator, isCheck := formOf(match.operator, value); isCheck {
-					keep(match.exprSite, request, value, operator)
-				}
+		if !isRequest {
+			continue
+		}
+		if value, isConstant := constantOf(match.value, match.bindings); isConstant {
+			// What a regex or a glob matches is in its pattern, down to no
+			// loose match at all.
+			if operator, isCheck := formOf(match.operator, value); isCheck {
+				keep(match.exprSite, request, value, operator)
 			}
+			continue
+		}
+		if document, isDocument := r.dataValueOf(match.rule, match.value, match.bindings); isDocument {
+			found(&onData, match.exprSite, request, document, match.operator)
 		}
 	}
 
+	same := func(a, b Check) bool { return compareChecks(a, b) == 0 }
 	slices.SortFunc(checks, compareChecks)
-	return slices.CompactFunc(checks, func(a, b Check) bool { return compareChecks(a, b) == 0 }), pathShapes
+	slices.SortFunc(onData, compareChecks)
+	return slices.CompactFunc(checks, same), slices.CompactFunc(onData, same), pathShapes
 }
 
 // blockID identifies a physical rule by its head's file and line, so two allow

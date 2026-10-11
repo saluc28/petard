@@ -278,6 +278,17 @@ type ReadSet struct {
 	// value the policy writes. See checks.go.
 	Checks []Check
 
+	// DataMatches are the places the decisions match a part of the request
+	// loosely, with a substring, an affix, a glob or a regex, against a value
+	// they read from the data. Each is written as a Check whose Value is the
+	// path of that value, data.markers[_], instead of a value.
+	//
+	// They are kept apart from Checks. A check holds the request against a value
+	// the policy writes, and the patterns that ask who can put that value in the
+	// request rest on its being written; here the value is whatever the document
+	// holds, and what is read off the policy is how loosely it is matched.
+	DataMatches []Check
+
 	// pathShapes is the shape of a request path held against an array, by the
 	// block it sits in: the fixed segments and the variable ones as placeholders.
 	// It is kept apart from Checks because an array with a variable in it is no
@@ -423,7 +434,7 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 	result.Taints = taints
 	result.Closures = reader.closures(result.Reads, reach)
 	result.Quantifiers = reader.quantifiers(reach)
-	result.Checks, result.pathShapes = reader.checks()
+	result.Checks, result.DataMatches, result.pathShapes = reader.checks()
 	result.Warnings = sortedUnique(append(result.Warnings, warnings...))
 
 	for _, decision := range decisions {

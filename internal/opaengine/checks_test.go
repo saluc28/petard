@@ -478,6 +478,87 @@ func TestReadsFindTheLooseMatches(t *testing.T) {
 	}
 }
 
+// A loose match against a value the decision reads from the data is no check on
+// a value the policy writes, and is kept apart with the path of the value: the
+// marker read where it is matched, through a case fold on both sides, or out of
+// a record a function is handed. A value that is another part of the request,
+// or something the policy computes, is neither.
+func TestReadsFindTheLooseMatchesOnData(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		expected []Check
+	}{
+		{
+			name: "a marker read from the data",
+			body: "allow if contains(input.path, data.markers[_])\n",
+			expected: []Check{{
+				Request: "input.path", Value: "data.markers[_]", Operator: CheckSubstring, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			// The shape the fix of defenseclaw's F-0543 replaced: both sides
+			// folded, the markers in the entry a function is handed.
+			name: "markers of a record handed to a function, both sides case folded",
+			body: `allow if {
+	some entry in data.allow_list
+	entry.name == input.target_name
+	path_matches(entry)
+}
+
+path_matches(entry) if {
+	some marker in entry.source_path_contains
+	contains(lower(input.path), lower(marker))
+}
+`,
+			expected: []Check{{
+				Request: "input.path", Value: "data.allow_list[_].source_path_contains[_]", Operator: CheckSubstring,
+				Rule: "data.checks.path_matches", Line: 13,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			name: "a prefix read from the data",
+			body: "allow if startswith(input.path, data.routes[input.tenant].prefix)\n",
+			expected: []Check{{
+				Request: "input.path", Value: "data.routes[_].prefix", Operator: CheckPrefix, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
+		},
+		{
+			name:     "another part of the request",
+			body:     "allow if startswith(input.path, input.prefix)\n",
+			expected: nil,
+		},
+		{
+			name:     "a value the policy computes from the data",
+			body:     "allow if startswith(input.path, concat(\"\", [data.routes.prefix, \"/\"]))\n",
+			expected: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := "package checks\n\n# METADATA\n# entrypoint: true\n" + tt.body
+			reads := readsOf(t, policy, Limits{})
+
+			var got []Check
+			for _, match := range reads.DataMatches {
+				match.File = ""
+				got = append(got, match)
+			}
+			if !slices.EqualFunc(got, tt.expected, sameCheck) {
+				t.Errorf("matches on the data =\n%+v\nwant\n%+v", got, tt.expected)
+			}
+			for _, check := range reads.Checks {
+				if check.Operator.Loose() {
+					t.Errorf("%s is read as a check against a value the policy writes", check.Expression())
+				}
+			}
+		})
+	}
+}
+
 // With not imported the negation holds a body of its own, and the check inside
 // it lands on the same side as the one written the old way.
 func TestReadsFindTheChecksInsideAnImportedNot(t *testing.T) {

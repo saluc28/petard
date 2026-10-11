@@ -25,11 +25,11 @@ category:
     and so is reported as a candidate.
 
 summary: >
-  A decision grants when a part of the request matches a value the policy writes with an operator
-  wider than equality, `contains(input.path, "/admin")`. A value that merely embeds the written one
-  passes: `/app/.admin-preview` embeds `.admin`, and the router serves a resource the policy never
-  meant to allow. The policy approved a path that matched; the enforcement point serves the path it
-  resolves to, and the two are not the same.
+  A decision grants when a part of the request matches a value the policy writes, or one it reads
+  from the data, with an operator wider than equality, `contains(input.path, "/admin")`. A value
+  that merely embeds the written one passes: `/app/.admin-preview` embeds `.admin`, and the router
+  serves a resource the policy never meant to allow. The policy approved a path that matched; the
+  enforcement point serves the path it resolves to, and the two are not the same.
   In the fixture, a document is served when its id contains the marker `public`, so a private
   document whose id embeds it is served all the same.
 
@@ -76,12 +76,12 @@ detection:
     - order: 1
       check: >
         A decision reaches a check that holds a part of the request against a value the policy
-        writes with an operator wider than equality: a substring with `contains`, a prefix with
-        `startswith`, a suffix with `endswith`, a glob with `glob.match`, or an unanchored regex
-        with `regex.match`. The engine records which form it is, and for a glob and a regex it
-        reads the form off the pattern: a glob with no wildcard is an equality, and a regex that
-        pins both ends in every branch of its alternations tests the whole value, so neither is a
-        loose match.
+        writes, or a value it reads from the data, with an operator wider than equality: a substring
+        with `contains`, a prefix with `startswith`, a suffix with `endswith`, a glob with
+        `glob.match`, or an unanchored regex with `regex.match`. The engine records which form it
+        is, and for a glob and a regex the policy writes it reads the form off the pattern: a glob
+        with no wildcard is an equality, and a regex that pins both ends in every branch of its
+        alternations tests the whole value, so neither is a loose match.
       rationale: >
         Each of these matches a value the policy did not write out: a substring matches it embedded
         anywhere, a prefix or suffix at one end, a glob or an unanchored regex by pattern. An
@@ -102,7 +102,8 @@ detection:
         each end are a finding: the written value embedded anywhere passes, so a crafted value slips
         through. A prefix, a suffix, a regex that pins one end and any other glob are a candidate:
         the looseness is often the intended wildcard, to weigh against what the enforcement point
-        does.
+        does. Against a value read from the data a substring is a finding and every other form a
+        candidate.
       rationale: >
         A mid-string match lets a crafted value through whatever the deployment does with it. A
         prefix route can be exactly what was meant, so it is reported as a candidate to check rather
@@ -186,9 +187,9 @@ references:
       records the old test `contains(lower(input.path), lower(prefix))`, a substring match that
       "accepted attacker paths whose components merely embedded the marker", `.defenseclaw-evil`
       satisfying a `.defenseclaw` allow for one. The fix matches whole path components
-      (`_provenance_prefix_matches` at 218, `_path_components` at 231). The real instance folds the
-      case and reads the marker from a configuration document, which this pattern reports when the
-      marker is written in the policy; see the notes. Consulted 2026-10-05.
+      (`_provenance_prefix_matches` at 221, `_path_components` at 231). The old test folds the case
+      and reads the marker from a configuration document, and the pattern reports that form; see
+      the notes. Consulted 2026-10-11.
   - title: yashigani, LAURA-OPA-001, a match before canonicalization
     note: >
       At commit f24fa84a, `helm/yashigani/files/policy/agents.rego`: `_agent_path_matches` (line 108)
@@ -233,10 +234,13 @@ notes:
     same part of the request: `lower` and `upper` hand back the value they are given. The real
     defenseclaw instance folds the case this way.
   - >
-    Known false negative: a loose match against a value from the data rather than one the policy
-    writes, `contains(input.path, data.markers[_])`. The value is not a value the policy writes, so
-    the check is not kept. The real defenseclaw instance reads its marker from a configuration
-    document.
+    A loose match against a value read from the data, `contains(input.path, data.markers[_])`, is
+    reported with the path of that value: a substring as a finding, and a prefix, a suffix, a glob
+    or a regex as a candidate, since the pattern of the last two is then in the document. The
+    marker can be read where it is matched or out of a record a function is handed. The real
+    defenseclaw instance reads its markers this way, from the entries of an allow list. Known
+    false negative: a match against a value the policy computes from the data, or against another
+    part of the request.
   - >
     Known false negative: the pre-canonicalization shape, a prefix or glob match on a path the
     enforcement point canonicalizes, collapsing `..` or decoding `%2e`, as yashigani's. Telling the

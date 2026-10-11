@@ -107,6 +107,71 @@ func TestLooseMatchNeedsAResourceOrAction(t *testing.T) {
 	}
 }
 
+// The marker a path is searched for is as often read from a document as written
+// in the policy, and the match is as loose either way. This is the shape the
+// fix of defenseclaw's F-0543 replaced: a path that embeds one of the markers of
+// an allow list entry passes. A prefix read from the data is a candidate, as a
+// written one is, and a match by whole components is neither.
+func TestLooseMatchOnAValueReadFromTheData(t *testing.T) {
+	tests := []struct {
+		name    string
+		match   string
+		verdict Verdict
+	}{
+		{name: "a substring", match: `contains(lower(input.path), lower(marker))`, verdict: VerdictFinding},
+		{name: "a prefix", match: `startswith(input.path, marker)`, verdict: VerdictCandidate},
+		{name: "whole components", match: `marker in split(input.path, "/")`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := `package admission
+
+# METADATA
+# entrypoint: true
+default allowed := false
+
+allowed if {
+	some entry in data.allow_list
+	entry.name == input.target_name
+	path_matches(entry)
+}
+
+path_matches(entry) if {
+	some marker in entry.source_path_contains
+	` + tt.match + `
+}
+`
+			dir := t.TempDir()
+			writeCaseFile(t, filepath.Join(dir, "p.rego"), policy)
+			bundle, err := opaengine.Load([]string{dir}, opaengine.ParseModeV1)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			reads, err := opaengine.Reads(bundle, opaengine.Limits{})
+			if err != nil {
+				t.Fatalf("Reads() error = %v", err)
+			}
+
+			findings := GrantsOnLooseMatches(Analysis{Bundle: bundle, Reads: reads, Shape: opaengine.RecognizeShape(reads)})
+			if tt.verdict == "" {
+				if len(findings) != 0 {
+					t.Errorf("findings = %v, want none", findings)
+				}
+				return
+			}
+			if len(findings) != 1 {
+				t.Fatalf("findings = %v, want one", findings)
+			}
+			finding := findings[0]
+			if finding.Verdict != tt.verdict || finding.Path != "input.path" ||
+				finding.Value != "data.allow_list[_].source_path_contains[_]" {
+				t.Errorf("a %s on %s against %s, want a %s on input.path against the markers of the entry",
+					finding.Verdict, finding.Path, finding.Value, tt.verdict)
+			}
+		})
+	}
+}
+
 // The resource and the action are recognized whoever is asking. A router that
 // grants on the method and the path reads no subject, and a subject declared
 // from outside replaces the recognized shape and says nothing about the rest of

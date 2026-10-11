@@ -50,18 +50,21 @@ func GrantsOnLooseMatches(a Analysis) []Finding {
 	if resource == "" && action == "" {
 		return nil
 	}
-	type key struct{ decision, request string }
+	type key struct {
+		decision, request string
+		onData            bool
+	}
 	byKey := map[key]int{}
 	var findings []Finding
 
-	for _, check := range a.Reads.Checks {
+	judge := func(check opaengine.Check, onData bool) {
 		if !check.Operator.Loose() {
-			continue
+			return
 		}
 		if !partUnder(check.Request, resource) && !partUnder(check.Request, action) {
 			// The loose match is on neither the resource nor the action, so it is
 			// not this pattern's concern: a name matched loosely is PTD-OPA-010.
-			continue
+			return
 		}
 		site := ReadSite{Ref: check.Expression(), Rule: check.Rule, File: check.File, Line: check.Line}
 
@@ -75,17 +78,29 @@ func GrantsOnLooseMatches(a Analysis) []Finding {
 				// handed, which is not the confused deputy this pattern reports.
 				continue
 			}
-			k := key{decision.Name, check.Request}
+			k := key{decision.Name, check.Request, onData}
 			if at, seen := byKey[k]; seen {
 				findings[at].Reads = append(findings[at].Reads, site)
 				continue
 			}
 			byKey[k] = len(findings)
 			finding := looseMatchFinding(check, decision.Name, site)
+			if onData {
+				finding = looseMatchOnDataFinding(check, decision.Name, site)
+			}
 			finding.Subject = a.Shape.Subject
 			finding.Confidence = target.Confidence.String()
 			findings = append(findings, finding)
 		}
+	}
+	for _, check := range a.Reads.Checks {
+		judge(check, false)
+	}
+	// The same matches against a value the decision reads from the data: the
+	// marker a path is searched for is as often a list in a configuration
+	// document as a string in the policy.
+	for _, match := range a.Reads.DataMatches {
+		judge(match, true)
 	}
 	return sortedFindings(findings)
 }
@@ -111,6 +126,38 @@ func looseMatchFinding(check opaengine.Check, decision string, site ReadSite) Fi
 	finding.Verdict = VerdictCandidate
 	finding.Summary = fmt.Sprintf("%s grants on %s matched by %s, wider than the value it names",
 		decision, check.Request, looseness(check.Operator))
+	return finding
+}
+
+// looseMatchOnDataFinding is looseMatchFinding for a match against a value read
+// from the data. A substring is a finding whatever the document holds: a value
+// that embeds one of its entries passes. A prefix or a suffix is a candidate as
+// it is when the policy writes it, and so is a glob or a regex, whose pattern is
+// in the document and not in the policy to be read.
+func looseMatchOnDataFinding(check opaengine.Check, decision string, site ReadSite) Finding {
+	finding := Finding{
+		PatternID: GrantOnLooseMatch,
+		Decision:  decision,
+		Path:      check.Request,
+		Value:     check.Value,
+		Reads:     []ReadSite{site},
+	}
+	if check.Operator == opaengine.CheckSubstring {
+		finding.Verdict = VerdictFinding
+		finding.Summary = fmt.Sprintf("%s grants on %s matched as a substring of a value read from %s, so a value that embeds one passes",
+			decision, check.Request, check.Value)
+		return finding
+	}
+	form := "a pattern"
+	switch check.Operator {
+	case opaengine.CheckPrefix:
+		form = "a prefix"
+	case opaengine.CheckSuffix:
+		form = "a suffix"
+	}
+	finding.Verdict = VerdictCandidate
+	finding.Summary = fmt.Sprintf("%s grants on %s matched by %s read from %s, wider than the value it names",
+		decision, check.Request, form, check.Value)
 	return finding
 }
 

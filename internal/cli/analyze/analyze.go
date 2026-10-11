@@ -655,6 +655,17 @@ func report(out io.Writer, a taxonomy.Analysis) {
 		}
 	}
 
+	// The same matches where the value is read from the data and not written.
+	if len(reads.DataMatches) > 0 {
+		fmt.Fprintf(out, "\nloose matches of the request against values read from the data: %d\n", len(reads.DataMatches))
+		for _, match := range reads.DataMatches {
+			fmt.Fprintf(out, "  %s at %s:%d\n", match.Expression(), match.File, match.Line)
+			for _, decision := range match.Decisions {
+				fmt.Fprintf(out, "    %s\n", describeCheckSide(decision))
+			}
+		}
+	}
+
 	if endpoints := opaengine.WriteEndpoints(reads); len(endpoints) > 0 {
 		fmt.Fprintf(out, "\nwrites the bundle authorizes, to point a write model's authorized_by at:\n")
 		table := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)

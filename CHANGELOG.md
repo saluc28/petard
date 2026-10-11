@@ -117,6 +117,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the enforcement point, or for a judgment.
 - `petard` and `petard help` say what the tool is for and where to start, before the list of
   commands.
+- `PTD-OPA-012` reports a loose match against a value the decision reads from the data,
+  `contains(input.path, data.markers[_])`, where it reported only one against a value the policy
+  writes: a substring as a finding, and a prefix, a suffix, a glob or a regex as a candidate. The
+  value can be read where it is matched or out of a record a function is handed, and the finding
+  names its path. `petard analyze -v` lists these matches after the checks on the request.
 - A part of the request passed through `lower` or `upper` is read as that part, so a check made
   on the folded value, `contains(lower(input.path), "/admin")` or `upper(input.method) == "GET"`,
   is a check on `input.path` or `input.method`. The patterns that read the request,

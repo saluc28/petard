@@ -441,6 +441,49 @@ func rangingInside(rule *ast.Rule, ref ast.Ref, bindings map[ast.Var]binding) (i
 	return 0, false
 }
 
+// dataValueOf returns the path of the document a term stands for, when the term
+// is a value read from the data: a reference into it, the same through a case
+// fold, or a field of a parameter the callers hand a document for.
+func (r *refReader) dataValueOf(rule *ast.Rule, term *ast.Term, bindings map[ast.Var]binding) (string, bool) {
+	if v, isVar := varOf(term); isVar {
+		if _, isParam := parameterPlaceOf(rule, v); isParam {
+			for _, passed := range r.arguments(rule, v) {
+				if base, isRef := passed.term.Value.(ast.Ref); isRef && isDataRooted(base) && !r.namesRule(base) {
+					return normalize(base), true
+				}
+			}
+			return "", false
+		}
+		switch resolved := resolveVar(v, bindings); resolved.status {
+		case resolvedTerm:
+			return r.dataValueOf(rule, resolved.term, bindings)
+		case resolvedOutput:
+			if folded, isFold := caseFolded(resolved.source); isFold {
+				return r.dataValueOf(rule, folded, bindings)
+			}
+		}
+		return "", false
+	}
+	ref, isRef := term.Value.(ast.Ref)
+	if !isRef {
+		return "", false
+	}
+	resolved := substituteRef(ref, bindings)
+	if resolved.root == nil && isDataRooted(resolved.ref) {
+		return normalize(resolved.ref), !r.namesRule(resolved.ref)
+	}
+	if param, isParam := parameterHead(rule, resolved); isParam {
+		for _, passed := range r.arguments(rule, param) {
+			base, isRef := passed.term.Value.(ast.Ref)
+			if !isRef || !isDataRooted(base) || r.namesRule(base) {
+				continue
+			}
+			return normalize(base.Concat(resolved.ref[1:])), true
+		}
+	}
+	return "", false
+}
+
 // caseFolds are the builtins that hand back the string they are given with the
 // case of its letters changed.
 var caseFolds = []string{ast.Lower.Name, ast.Upper.Name}
