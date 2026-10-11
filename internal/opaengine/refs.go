@@ -317,6 +317,27 @@ type ReadSet struct {
 	// InputPaths are the parts of the request the decisions touch, sorted and
 	// distinct. They are what the shape recognizers read.
 	InputPaths []string
+
+	// RequestReads are the same parts, each where a rule touches it and with the
+	// decisions that reach it there. A pattern that asks whether one decision
+	// reads one part of the request starts here: InputPaths says what the
+	// bundle reads, and not which decision does.
+	RequestReads []RequestRead
+}
+
+// RequestRead is one place a decision touches a part of the request.
+type RequestRead struct {
+	// Path is the part of the request, as a path with every dynamic segment
+	// written [_].
+	Path string
+
+	// Rule is the rule that touches it, File and Line where.
+	Rule string
+	File string
+	Line int
+
+	// Decisions are the entrypoints that reach it, sorted by name.
+	Decisions []ReachedDecision
 }
 
 // Paths returns the distinct normalized paths, sorted.

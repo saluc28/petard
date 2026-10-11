@@ -155,6 +155,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   declaration of the enforcement point can cover. A check is now read only where it names a
   part of the request.
 - A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
+- `PTD-OPA-013` asked only a decision that ranges over the requested authority with an `every`
+  in the rule itself. One that bounds it by the role alone with `object.subset`, a set difference,
+  a count of the offenders or an `every` inside a function went unreported, and so did one that
+  bounds it by nothing. Every granting decision that reads the requested authority is now asked,
+  and a finding names each ceiling the decision does not enforce.
 - A field read through the parameter of a function was not a read: `privileged(user)` testing
   `user.role`, called with `data.users[input.user]`, left the role out of what the decision
   reads, so `PTD-OPA-001` reported nothing on a role the subject can write, and no write model

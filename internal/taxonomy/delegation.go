@@ -151,20 +151,27 @@ func delegationFinding(ctx context.Context, a Analysis, decision string, field p
 		return nil, nil
 	}
 
+	var past []string
 	for _, ceiling := range ceilings {
 		over, err := reachesPast(ctx, a, decision, base, field.Path, ceiling, ceilings)
 		if err != nil {
 			return nil, err
 		}
 		if over {
-			finding.Verdict = VerdictFinding
-			finding.Summary = fmt.Sprintf("%s grants the authority requested in %s without bounding it by %s",
-				decision, field.Path, ceiling)
-			finding.Note = "a request asking for one element outside " + ceiling + " is granted all the same"
-			return &finding, nil
+			past = append(past, ceiling)
 		}
 	}
-	return nil, nil
+	if len(past) == 0 {
+		return nil, nil
+	}
+	finding.Verdict = VerdictFinding
+	finding.Summary = fmt.Sprintf("%s grants the authority requested in %s without bounding it by %s",
+		decision, field.Path, strings.Join(past, " or by "))
+	finding.Note = "a request asking for one element outside " + past[0] + " is granted all the same"
+	for _, ceiling := range past[1:] {
+		finding.Note += ", and so is one outside " + ceiling
+	}
+	return &finding, nil
 }
 
 // inputCeilings keeps the ceilings that live in the request, the ones a witness
@@ -236,15 +243,20 @@ func reachesPast(ctx context.Context, a Analysis, decision string, base map[stri
 }
 
 // delegationSites returns the places the decision reads the requested
-// authority: the every expressions that iterate it. A field read nowhere the
-// decision reaches is not one it grants on.
+// authority, or anything inside it. A field read nowhere the decision reaches is
+// not one it grants on.
+//
+// How the decision reads it is not asked. A bound is as often an object.subset,
+// a set difference or a count of the offenders as it is an every, and a decision
+// with no bound at all reads the authority to count it or to hand it on: each of
+// them reads it, and the witness is what tells the bounded from the others.
 func delegationSites(reads *opaengine.ReadSet, decision, path string) []ReadSite {
 	var sites []ReadSite
-	for _, quantifier := range reads.Quantifiers {
-		if quantifier.Domain != path || !reachesDecision(quantifier.Decisions, decision) {
+	for _, read := range reads.RequestReads {
+		if !partUnder(read.Path, path) || !reachesDecision(read.Decisions, decision) {
 			continue
 		}
-		sites = append(sites, ReadSite{Ref: quantifier.Domain, Rule: quantifier.Rule, File: quantifier.File, Line: quantifier.Line})
+		sites = append(sites, ReadSite{Ref: read.Path, Rule: read.Rule, File: read.File, Line: read.Line})
 	}
 	return sites
 }

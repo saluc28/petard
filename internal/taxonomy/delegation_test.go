@@ -116,6 +116,130 @@ allow if {
 	}
 }
 
+// The verdict does not rest on how a bound is written, or on there being one to
+// read. A decision that reads the requested authority is asked, and each of
+// these grants a request one scope past the edge: bounded by the role alone as
+// a subset, a difference, a count of the offenders or an every in a function,
+// or not bounded at all.
+func TestDelegationAsksWhateverTheBoundLooksLike(t *testing.T) {
+	const role = "input.role_scopes"
+	const edge = "input.delegation_edge.scopes"
+	tests := []struct {
+		name string
+		body string
+		past string
+	}{
+		{
+			name: "no bound",
+			body: `	count(input.requested_scopes) > 0
+`,
+			past: edge + " or by " + role,
+		},
+		{
+			name: "a subset",
+			body: `	object.subset({s | some s in input.role_scopes}, {s | some s in input.requested_scopes})
+`,
+			past: edge,
+		},
+		{
+			name: "a difference",
+			body: `	count({s | some s in input.requested_scopes} - {s | some s in input.role_scopes}) == 0
+`,
+			past: edge,
+		},
+		{
+			name: "a count of the offenders",
+			body: `	count([s | some s in input.requested_scopes; not s in input.role_scopes]) == 0
+`,
+			past: edge,
+		},
+		{
+			name: "an every in a function",
+			body: `	within(input.requested_scopes, input.role_scopes)
+`,
+			past: edge,
+		},
+		{
+			name: "the whole request handed to a function",
+			body: `	role_bounds(input)
+`,
+			past: edge,
+		},
+		{
+			name: "both ceilings, one as a difference and one in a function",
+			body: `	count({s | some s in input.requested_scopes} - {s | some s in input.delegation_edge.scopes}) == 0
+	within(input.requested_scopes, input.role_scopes)
+`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := `package p
+
+# METADATA
+# entrypoint: true
+default allow := false
+
+allow if {
+	input.action == "mint"
+` + tt.body + `}
+
+within(asked, held) if {
+	every scope in asked {
+		scope in held
+	}
+}
+
+role_bounds(request) if {
+	every scope in request.requested_scopes {
+		scope in request.role_scopes
+	}
+}
+`
+			a := delegationAnalysis(t, policy, delegationGateway, `{"unused": true}`)
+
+			findings, err := GrantsBeyondDelegatedScope(t.Context(), a)
+			if err != nil {
+				t.Fatalf("GrantsBeyondDelegatedScope() error = %v", err)
+			}
+			if tt.past == "" {
+				if len(findings) != 0 {
+					t.Errorf("findings = %v, want none: both ceilings bound the request", findings)
+				}
+				return
+			}
+			if len(findings) != 1 || findings[0].Verdict != VerdictFinding {
+				t.Fatalf("findings = %v, want one finding", findings)
+			}
+			if want := "without bounding it by " + tt.past; !strings.HasSuffix(findings[0].Summary, want) {
+				t.Errorf("the finding says %q, want it to end %q", findings[0].Summary, want)
+			}
+		})
+	}
+}
+
+// A decision that never reads the requested authority does not grant on it,
+// whatever it grants: there is nothing to ask it.
+func TestDelegationLeavesADecisionThatDoesNotReadTheAuthority(t *testing.T) {
+	policy := `package p
+
+# METADATA
+# entrypoint: true
+default allow := false
+
+allow if input.action == "read"
+`
+	a := delegationAnalysis(t, policy, delegationGateway, `{"unused": true}`)
+
+	findings, err := GrantsBeyondDelegatedScope(t.Context(), a)
+	if err != nil {
+		t.Fatalf("GrantsBeyondDelegatedScope() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Errorf("findings = %v, want none: the decision does not read the requested scopes", findings)
+	}
+}
+
 // With a requested authority declared and no ceiling, the question is open: what
 // bounds this authority? The pattern reports a candidate rather than a finding.
 func TestDelegationWithoutACeilingIsACandidate(t *testing.T) {

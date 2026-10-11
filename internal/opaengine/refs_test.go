@@ -978,6 +978,48 @@ owns(doc, user) if user in doc.editors
 	}
 }
 
+// The parts of the request are listed for the bundle, and each place one is
+// touched says which decisions reach it: a part two decisions read through the
+// same function belongs to both, and one a single decision reads to that one.
+func TestRequestReadsNameTheDecisions(t *testing.T) {
+	policy := `package t
+
+# METADATA
+# entrypoint: true
+allow if {
+	input.action == "read"
+	known
+}
+
+# METADATA
+# entrypoint: true
+mint if {
+	count(input.requested_scopes) > 0
+	known
+}
+
+known if input.user != ""
+`
+	reads := readsOf(t, policy, Limits{})
+
+	got := map[string]string{}
+	for _, read := range reads.RequestReads {
+		var decisions []string
+		for _, decision := range read.Decisions {
+			decisions = append(decisions, decision.Name)
+		}
+		got[read.Path] = strings.Join(decisions, " ")
+	}
+	expected := map[string]string{
+		"input.action":           "data.t.allow",
+		"input.requested_scopes": "data.t.mint",
+		"input.user":             "data.t.allow data.t.mint",
+	}
+	if !maps.Equal(got, expected) {
+		t.Errorf("request reads = %v, want %v", got, expected)
+	}
+}
+
 // violationsPolicy is a check written as a violation, the form a decision takes
 // when it answers with its violations as well as with a verdict.
 const violationsPolicy = `package t

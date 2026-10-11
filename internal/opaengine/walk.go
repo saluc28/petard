@@ -94,6 +94,11 @@ type refReader struct {
 	// data ones.
 	inputPaths map[*ast.Rule][]string
 
+	// requestReads are the same paths, each where the walk met it, so that the
+	// decisions that read a part of the request can be named once the walk is
+	// over.
+	requestReads []requestRead
+
 	// underWith holds the rules some expression reaches through a with
 	// modifier. Being in here is not enough to be skipped: a rule reached both
 	// ways is a normal dependency.
@@ -255,6 +260,20 @@ type foundRef struct {
 
 	// top is the expression of the rule's own body the reference sits in.
 	top int
+}
+
+// requestRead is one place a rule touches a part of the request.
+type requestRead struct {
+	rule     *ast.Rule
+	path     string
+	location *ast.Location
+	top      int
+}
+
+// touch records that the current rule touches a part of the request.
+func (r *refReader) touch(path string, location *ast.Location) {
+	r.inputPaths[r.current] = append(r.inputPaths[r.current], path)
+	r.requestReads = append(r.requestReads, requestRead{rule: r.current, path: path, location: location, top: r.top})
 }
 
 // paramRef is a reference met while walking that starts at a formal parameter
@@ -625,7 +644,7 @@ func (r *refReader) walkExpr(expr *ast.Expr, sc scope, found *[]foundRef) {
 		if path, ok := objectGetPath(expr, sc.bindings); ok {
 			switch {
 			case isInputRooted(path):
-				r.inputPaths[r.current] = append(r.inputPaths[r.current], normalize(path))
+				r.touch(normalize(path), expr.Loc())
 			case isDataRooted(path) && !r.namesRule(path):
 				// The document the call lands on is the read, and the one it is
 				// handed is only the way there, which dropPrefixes then leaves
@@ -698,7 +717,7 @@ func (r *refReader) walkTerm(term *ast.Term, sc scope, found *[]foundRef) {
 			// What the decisions touch of input is not a read of data, but it
 			// is what tells subject from resource later on, and it is free to
 			// collect while the body is already being walked.
-			r.inputPaths[r.current] = append(r.inputPaths[r.current], normalize(resolved.ref))
+			r.touch(normalize(resolved.ref), term.Loc())
 		}
 		// A reference rooted in what a call returned is kept too, and it is the
 		// only way a value from outside the policy is ever seen: it reads no

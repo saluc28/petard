@@ -100,11 +100,13 @@ detection:
       rationale: >
         Asking the decision rather than reading the narrowing form makes the verdict independent of
         how the bound is written: an every, an object.subset, a set difference or a comprehension all
-        refuse the request that reaches past, and a bound a later branch leaves open grants it.
+        refuse the request that reaches past, a bound a later branch leaves open grants it, and so
+        does a decision that reads the authority and bounds it by nothing.
     - order: 3
       check: >
-        A ceiling the decision does not enforce is a finding; a requested authority declared with no
-        ceiling is a candidate, asking what bounds it.
+        A ceiling the decision does not enforce is a finding, and the finding names every ceiling it
+        does not enforce; a requested authority declared with no ceiling is a candidate, asking what
+        bounds it.
       rationale: >
         A grant that reaches past the delegator's edge mints authority the delegator never held. With
         no ceiling declared the question is open rather than answered, so it is a candidate.

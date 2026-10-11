@@ -49,7 +49,52 @@ func (r *refReader) resolve(limits Limits, reach map[*ast.Rule]decisionPaths) *R
 		result.InputPaths = append(result.InputPaths, dropPrefixPaths(paths)...)
 	}
 	result.InputPaths = sortedUnique(result.InputPaths)
+	result.RequestReads = r.requestReadsOf(reach)
 	return result
+}
+
+// requestReadsOf names the decisions that reach each place a rule touches a
+// part of the request, and leaves out the places no decision reaches. The same
+// part touched twice on one line is one place.
+//
+// A field of a parameter is a part of the request where a call hands the
+// function one, the whole request included, and is listed for the decisions
+// that reach the function through that call.
+func (r *refReader) requestReadsOf(reach map[*ast.Rule]decisionPaths) []RequestRead {
+	var reads []RequestRead
+	keep := func(rule *ast.Rule, path string, location *ast.Location, decisions []ReachedDecision) {
+		if len(decisions) == 0 {
+			return
+		}
+		read := RequestRead{Path: path, Rule: rulePath(rule).String(), Decisions: decisions}
+		if location == nil {
+			location = rule.Loc()
+		}
+		if location != nil {
+			read.File, read.Line = location.File, location.Row
+		}
+		if !slices.ContainsFunc(reads, func(other RequestRead) bool {
+			return other.Path == read.Path && other.Rule == read.Rule && other.File == read.File && other.Line == read.Line
+		}) {
+			reads = append(reads, read)
+		}
+	}
+
+	for _, touched := range r.requestReads {
+		keep(touched.rule, touched.path, touched.location, r.decisionsAt(touched.rule, touched.top, reach))
+	}
+	for _, found := range r.foundParams {
+		decisions := r.decisionsAt(found.rule, found.top, reach)
+		for _, passed := range r.arguments(found.rule, found.param) {
+			base, isRef := passed.term.Value.(ast.Ref)
+			if !isRef || !isInputRooted(base) {
+				continue
+			}
+			keep(found.rule, normalize(base.Concat(found.resolved.ref[1:])), found.location,
+				reachedBy(decisions, r.decisionsAt(passed.site.caller, passed.site.top, reach)))
+		}
+	}
+	return reads
 }
 
 // paramReads are the reads made through a parameter: a function that is handed
