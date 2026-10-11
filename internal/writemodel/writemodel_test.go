@@ -174,6 +174,48 @@ func TestPathMatching(t *testing.T) {
 	}
 }
 
+// A read with a dynamic segment stands for every key there, and an entry that
+// names one key covers that one of them: it overlaps the read without matching
+// it. With no dynamic segment in the read the two are the same question.
+func TestPathOverlapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		entry    string
+		read     string
+		overlaps bool
+		matches  bool
+	}{
+		{name: "one key of a dynamic segment", entry: "input.flags.mfa", read: "input.flags[_]", overlaps: true},
+		{name: "one field of the request", entry: "input.mfa", read: "input[_]", overlaps: true},
+		{name: "a subtree over a dynamic segment", entry: "input.*", read: "input[_]", overlaps: true, matches: true},
+		{name: "a capture over a dynamic segment", entry: "input.flags.{flag}", read: "input.flags[_]", overlaps: true, matches: true},
+		{name: "a key below a dynamic segment", entry: "input.tenants.acme.plan", read: "input.tenants[_].plan", overlaps: true},
+		{name: "another collection", entry: "input.groups.*", read: "input.flags[_]"},
+		{name: "another field below", entry: "input.tenants.acme.owner", read: "input.tenants[_].plan"},
+		{name: "a shorter entry", entry: "input.flags", read: "input.flags[_]"},
+		{name: "no dynamic segment, the same path", entry: "input.mfa", read: "input.mfa", overlaps: true, matches: true},
+		{name: "no dynamic segment, another path", entry: "input.mfa", read: "input.scheduled"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry, err := ParsePath(tt.entry)
+			if err != nil {
+				t.Fatalf("ParsePath(%q) error = %v", tt.entry, err)
+			}
+			read, err := ParsePath(tt.read)
+			if err != nil {
+				t.Fatalf("ParsePath(%q) error = %v", tt.read, err)
+			}
+			if got := entry.Overlaps(read); got != tt.overlaps {
+				t.Errorf("%q overlaps %q = %t, want %t", tt.entry, tt.read, got, tt.overlaps)
+			}
+			if got := entry.Matches(read); got != tt.matches {
+				t.Errorf("%q matches %q = %t, want %t", tt.entry, tt.read, got, tt.matches)
+			}
+		})
+	}
+}
+
 // A variable in brackets is refused wherever it sits, the second level of a
 // nested collection included, and so is a number OPA would not parse.
 func TestParsePathRefusesAVariableIndex(t *testing.T) {

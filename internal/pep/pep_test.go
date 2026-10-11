@@ -76,6 +76,37 @@ func TestFieldForTakesTheFirstEntryThatCovers(t *testing.T) {
 	}
 }
 
+// A part of the request under a dynamic segment stands for every key there, and
+// the declarations that speak for some of them all answer: any header of a
+// request through the MCP Gateway is the tool name the caller sends, the server
+// name the gateway writes and the annotations an issuer vouches for, before the
+// rest of the headers, which are the caller's.
+func TestFieldsForAnswersForEveryPathAPartStandsFor(t *testing.T) {
+	gateway, err := Find(pepregistry.Files, "kuadrant-mcp-gateway")
+	if err != nil {
+		t.Fatalf("Find() error = %v", err)
+	}
+
+	fields, whole := gateway.FieldsFor("input.request.headers[_]")
+	setters := map[SetBy]bool{}
+	for _, field := range fields {
+		setters[field.SetBy] = true
+	}
+	if !whole || !setters[SetByCaller] || !setters[SetByEnforcementPoint] || !setters[SetByIssuer] {
+		t.Errorf("FieldsFor(any header) = %d fields, whole %t, set by %v, want the three setters and all of it covered",
+			len(fields), whole, setters)
+	}
+
+	fields, whole = gateway.FieldsFor(`input.request.headers["x-mcp-servername"]`)
+	if !whole || len(fields) != 1 || fields[0].SetBy != SetByEnforcementPoint {
+		t.Errorf("FieldsFor(the server name) = %+v, whole %t, want the one declaration FieldFor returns", fields, whole)
+	}
+
+	if fields, whole := gateway.FieldsFor("input.nothing.declared"); whole || len(fields) != 0 {
+		t.Errorf("FieldsFor(a part nobody declared) = %+v, whole %t, want nothing", fields, whole)
+	}
+}
+
 // The decisions are named, and a bundle says which of its rules have that name.
 func TestEntrypointsSplitsTheDecisionsBySide(t *testing.T) {
 	spacelift, err := Find(pepregistry.Files, "spacelift-login")

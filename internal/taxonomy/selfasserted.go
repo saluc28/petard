@@ -26,7 +26,10 @@ const SelfAssertedExemption = "PTD-OPA-009"
 // grants themselves when the body carries it, and a second factor the gateway
 // proved when the session does. A part the declaration puts elsewhere is left
 // alone, and a part it does not cover is a candidate, since whoever sets it may
-// be the caller.
+// be the caller. So is a part that stands for several, input.flags[_], when the
+// declaration gives some of them to the caller and others to somebody else:
+// which one the policy reads is in a key, and the key is not the caller's by
+// that.
 //
 // With no declaration at all it finds nothing, on purpose. The first signal is
 // also how every condition of a policy on a request the caller writes whole
@@ -43,8 +46,8 @@ func SelfAssertedExemptions(a Analysis) []Finding {
 	var findings []Finding
 
 	for _, check := range a.Reads.Checks {
-		field, _, declared := fieldOfCheck(a.EnforcementPoint, check)
-		if declared && field.SetBy != pep.SetByCaller {
+		setBy := whoSets(a.EnforcementPoint, check)
+		if setBy == setBySomebodyElse {
 			continue
 		}
 		site := ReadSite{Ref: check.Expression(), Rule: check.Rule, File: check.File, Line: check.Line}
@@ -59,10 +62,60 @@ func SelfAssertedExemptions(a Analysis) []Finding {
 				continue
 			}
 			byKey[k] = len(findings)
-			findings = append(findings, exemptionFinding(a, check, decision.Name, site, declared))
+			findings = append(findings, exemptionFinding(a, check, decision.Name, site, setBy))
 		}
 	}
 	return sortedFindings(findings)
+}
+
+// setter is what an enforcement point says about who sets the part of the
+// request a check reads.
+type setter int
+
+const (
+	// setByNobodyDeclared is a part no declaration speaks for.
+	setByNobodyDeclared setter = iota
+
+	// setByCaller is a part whoever sends the request sets, all of it.
+	setByCaller
+
+	// setBySomebodyElse is a part the enforcement point or an issuer sets, all
+	// of it.
+	setBySomebodyElse
+
+	// setByCallerInPart is a part that stands for several, of which the caller
+	// sets some, or of which only some are declared at all.
+	setByCallerInPart
+)
+
+// whoSets asks the enforcement point about the part of the request a check
+// reads, over every path that part stands for.
+func whoSets(point *pep.EnforcementPoint, check opaengine.Check) setter {
+	fields, whole := point.FieldsFor(check.Request)
+	if check.Operator == opaengine.CheckContains {
+		// A value searched in a collection of the request is one of its
+		// elements, and the declaration may speak about the elements.
+		if ofElements, wholeElements := point.FieldsFor(check.Request + "[_]"); len(ofElements) > 0 {
+			fields, whole = ofElements, wholeElements
+		}
+	}
+	if len(fields) == 0 {
+		return setByNobodyDeclared
+	}
+	callers := 0
+	for _, field := range fields {
+		if field.SetBy == pep.SetByCaller {
+			callers++
+		}
+	}
+	switch {
+	case whole && callers == len(fields):
+		return setByCaller
+	case whole && callers == 0:
+		return setBySomebodyElse
+	default:
+		return setByCallerInPart
+	}
 }
 
 // fieldOfCheck returns what an enforcement point says about the part of the
@@ -82,7 +135,7 @@ func fieldOfCheck(point *pep.EnforcementPoint, check opaengine.Check) (pep.Field
 
 // exemptionFinding says what was found: the part of the request, the decision
 // whose refusal it lifts, and who sets it.
-func exemptionFinding(a Analysis, check opaengine.Check, decision string, site ReadSite, declared bool) Finding {
+func exemptionFinding(a Analysis, check opaengine.Check, decision string, site ReadSite, setBy setter) Finding {
 	finding := Finding{
 		PatternID:  SelfAssertedExemption,
 		Verdict:    VerdictCandidate,
@@ -92,9 +145,14 @@ func exemptionFinding(a Analysis, check opaengine.Check, decision string, site R
 		Subject:    a.Shape.Subject,
 		Confidence: a.Shape.Confidence.String(),
 	}
-	if !declared {
+	switch setBy {
+	case setByNobodyDeclared:
 		finding.Summary = fmt.Sprintf("%s lifts a refusal in %s, and no enforcement point says who sets it",
 			check.Request, decision)
+		return finding
+	case setByCallerInPart:
+		finding.Summary = fmt.Sprintf("%s lifts a refusal in %s, and the enforcement point does not give all of it to one setter (%s)",
+			check.Request, decision, a.EnforcementPoint.File)
 		return finding
 	}
 

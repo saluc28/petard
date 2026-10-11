@@ -99,7 +99,10 @@ detection:
         The case and the counter case differ only here, and the policy does not say it. A part the
         enforcement point sets, or copies from an issuer, is left alone: the caller cannot write
         it, and what an issuer lets people choose is the question of another pattern. A part the
-        declaration does not cover is a candidate, since whoever sets it may be the caller.
+        declaration does not cover is a candidate, since whoever sets it may be the caller. So is a
+        part read under a key the policy computes, `input.flags[name]`, when the declaration gives
+        some of the flags to the caller and others to somebody else: which one is read is in the
+        key, and a finding would say the caller sets them all.
   confidence: A
   confidence_note: >
     The claim rests on the declaration of the enforcement point, which declares the request, and

@@ -71,7 +71,9 @@ identity or an authority, not both.
 
 The first entry that covers a part of the request is the one that answers for it, so the more
 specific entries come first. A part no entry covers is one the declaration does not speak about,
-and the patterns treat it as unknown rather than as safe.
+and the patterns treat it as unknown rather than as safe. A part a policy reads under a key it
+computes, `input.request.headers[name]`, stands for every key there, and `PTD-OPA-009` asks each
+entry that covers one of them: it claims the caller sets the part only where they all say so.
 
 `evidence` is mandatory on every field, and a declaration without it does not load.
 

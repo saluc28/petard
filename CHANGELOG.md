@@ -170,6 +170,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `^/public|/health$`, was taken for anchored and not read, and is a candidate too. A glob with a
   wildcard at each end, `*admin*`, was a candidate and is a finding, like the substring it is. A
   glob with no wildcard is read as the equality it is, and is no longer reported.
+- `PTD-OPA-009` reported a finding at level `A` on a part of the request read under a key the
+  policy computes, `not input[data.settings.flag]`, whenever a catch-all entry of the declaration
+  gives the request to the caller, though an entry before it gives one field, the second factor
+  for one, to the enforcement point. Such a part stands for every field the key could name, and
+  is now a finding only where every entry that covers one of them says the caller sets it, and a
+  candidate where they disagree.
 - `PTD-OPA-013` did not run without data, also where the decisions it asks read none, as a token
   service that decides on the request alone does not, and an empty document was no way round it.
   It now runs with no data given when no decision that reads a requested authority reads a

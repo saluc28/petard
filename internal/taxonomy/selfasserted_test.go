@@ -60,6 +60,70 @@ func TestSelfAssertedExemptionWithoutADeclaration(t *testing.T) {
 	}
 }
 
+// A part of the request read under a key the policy computes stands for every
+// field the key could name. Where the declaration gives all of them to the
+// caller the exemption is the caller's to claim; where it gives one of them to
+// the gateway, as the fixture gives the second factor, the key decides which is
+// read and the caller does not by that, so it is a candidate; and where it
+// gives them all to somebody else there is nothing to report.
+func TestSelfAssertedExemptionOnAPartThatStandsForSeveral(t *testing.T) {
+	gateway := `schema_version: 1
+id: test-gateway
+engine: opa
+source:
+  kind: documentation
+  note: a gateway for the test
+decisions:
+  - rule: allow
+    side: grants
+fields:
+  - path: input.mfa
+    set_by: enforcement-point
+    evidence:
+      - the test
+  - path: input.session.*
+    set_by: enforcement-point
+    evidence:
+      - the test
+  - path: input.*
+    set_by: caller
+    evidence:
+      - the test
+`
+	tests := []struct {
+		name     string
+		part     string
+		expected []string
+	}{
+		{name: "any field of the request", part: "input[data.settings.flag]", expected: []string{"candidate input[_]"}},
+		{name: "any flag of the body", part: "input.flags[data.settings.flag]", expected: []string{"finding input.flags[_]"}},
+		{name: "any field of the session", part: "input.session[data.settings.flag]", expected: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := `package p
+
+# METADATA
+# entrypoint: true
+default allow := false
+
+allow if not needs_second_factor
+
+needs_second_factor if not ` + tt.part + `
+`
+			a := analysisWithGateway(t, policy, gateway)
+
+			var got []string
+			for _, finding := range SelfAssertedExemptions(a) {
+				got = append(got, string(finding.Verdict)+" "+finding.Path)
+			}
+			if !slices.Equal(got, tt.expected) {
+				t.Errorf("findings = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 // A declaration that does not cover a part leaves it a candidate, since whoever
 // sets it may be the caller. Here it speaks about the second factor alone.
 func TestSelfAssertedExemptionOnAPartNobodyDeclared(t *testing.T) {

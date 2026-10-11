@@ -271,6 +271,32 @@ func (p Path) Matches(other Path) bool {
 	return len(p.Segments) == len(other.Segments)
 }
 
+// Overlaps reports whether this path covers at least one of the paths the other
+// one stands for.
+//
+// A read with a dynamic segment stands for every key at that segment:
+// input.flags[_] is each of the flags. An entry that names one of them,
+// input.flags.mfa, covers that one and not the rest, so it does not match the
+// read and still speaks for part of it. A read with no dynamic segment stands
+// for itself, and overlapping it is matching it.
+func (p Path) Overlaps(other Path) bool {
+	for i, segment := range p.Segments {
+		if segment.Kind == SegmentSubtree {
+			return true
+		}
+		if i >= len(other.Segments) {
+			return false
+		}
+		if segment.Kind == SegmentCapture || other.Segments[i].Kind != SegmentLiteral {
+			continue
+		}
+		if other.Segments[i].Name != segment.Name {
+			return false
+		}
+	}
+	return len(p.Segments) == len(other.Segments)
+}
+
 // Fill replaces every capture named in a template with the segment one
 // document holds there, and is how a request the endpoint fills in itself
 // turns into the request it sends for one document.

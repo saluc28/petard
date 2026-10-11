@@ -412,6 +412,38 @@ func (p *EnforcementPoint) FieldFor(path string) (Field, bool) {
 	return Field{}, false
 }
 
+// FieldsFor returns the declarations that answer for a part of the request
+// which stands for more than one path, and whether they answer for all of it.
+//
+// input.flags[_] is every key of the flags, and a declaration may speak for
+// some of them: input.flags.mfa set by the enforcement point, ahead of
+// input.* set by the caller. FieldFor answers with the first declaration that
+// covers the path as written, the caller here, which is true of every flag but
+// one. This returns each declaration that covers some of what the path stands
+// for, in the order they are declared, down to the first that covers it whole.
+// Nothing after that one is reached by any of those paths.
+//
+// For a path with no dynamic segment it is the declaration FieldFor returns.
+func (p *EnforcementPoint) FieldsFor(path string) ([]Field, bool) {
+	if p == nil {
+		return nil, false
+	}
+	parsed, err := writemodel.ParsePath(path)
+	if err != nil {
+		return nil, false
+	}
+	var fields []Field
+	for _, field := range p.Fields {
+		if field.path.Matches(parsed) {
+			return append(fields, field), true
+		}
+		if field.path.Overlaps(parsed) {
+			fields = append(fields, field)
+		}
+	}
+	return fields, false
+}
+
 // Entrypoints turns the decisions into the ones a bundle holds, given how the
 // bundle answers which of its rules have a name, and splits them by side.
 func (p *EnforcementPoint) Entrypoints(rulesNamed func(string) []string) (grants, denies []string) {
