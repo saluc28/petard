@@ -163,7 +163,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `object.get`, or the name of a local list. `PTD-OPA-009` then reported candidates on parts no
   declaration of the enforcement point can cover. A check is now read only where it names a
   part of the request.
-- A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
+- A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`,
+  `against 1 data document`.
 - `PTD-OPA-012` read a regex by its first and last character and a glob by its name. A regex
   anchored at the start alone, `^/admin`, was a finding on a value said to embed the pattern, and
   is a candidate, the prefix it is. An alternation that pins one end in each branch,
@@ -176,17 +177,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   empty and the rest of the request left open, and dropped when nothing can make the decision
   hold. A match that cannot be asked about stays as before: a domain in the data or under an
   element of a list, a decision declared to deny, a decision that reads documents when none were
-  given. `petard analyze -v` names the domain on the line of each place to look, which printed
-  blank.
+  given. `petard analyze -v` names the domain on the line of each place to look, where it left
+  a blank.
 - `PTD-OPA-009` reported a finding at level `A` on a part of the request read under a key the
   policy computes, `not input[data.settings.flag]`, whenever a catch-all entry of the declaration
   gives the request to the caller, though an entry before it gives one field, the second factor
   for one, to the enforcement point. Such a part stands for every field the key could name, and
   is now a finding only where every entry that covers one of them says the caller sets it, and a
   candidate where they disagree.
-- `PTD-OPA-013` did not run without data, also where the decisions it asks read none, as a token
-  service that decides on the request alone does not, and an empty document was no way round it.
-  It now runs with no data given when no decision that reads a requested authority reads a
+- `PTD-OPA-013` did not run without data, even where the decisions it asks read none, as in a
+  token service that decides on the request alone, and an empty document was no way round it. It
+  now runs with no data given when no decision that reads a requested authority reads a
   document, and still says the data is missing when one does. Without `-pep` it says the
   enforcement point is what it needs, whatever the data.
 - A `PTD-OPA-013` result carried the level the subject was recognized at, `D` on the fixture,

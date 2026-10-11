@@ -372,7 +372,7 @@ func reportFindings(out io.Writer, a taxonomy.Analysis, findings taxonomy.Findin
 // A decision OPA panics on has its row all the same, saying so, and the panic
 // is printed with the warnings: the other decisions still have their answers.
 func reportResiduals(ctx context.Context, out io.Writer, a taxonomy.Analysis) error {
-	fmt.Fprintf(out, "\nagainst %d data documents, with the request unknown:\n", len(a.Data.Files))
+	fmt.Fprintf(out, "\nagainst %s, with the request unknown:\n", render.Count(len(a.Data.Files), "data document"))
 
 	table := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(table, "  DECISION\tRESIDUAL CONDITIONS\tDEFAULT")
