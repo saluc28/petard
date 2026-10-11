@@ -472,7 +472,7 @@ configuration checks, libraries, test inputs and a bundle signing demo.
 | 1, the AuthZEN interop policy | `data.users[input.subject.id].roles` and `.email` | `PTD-OPA-001`: two candidates, confidence B |
 | 2, Puppet and a Kubernetes node selector | a document the request picks, with no recognizable subject | nothing |
 | 6, data filtering over SQL, Elasticsearch, MongoDB and Azure, and an image policy | documents that other data picks, and in two of them a record the requester is searched for | `PTD-OPA-001`: three candidates over those two |
-| 7, an HTTP API, Kafka, Kong, PAM, a Kubernetes authorizer, Dart, Wasm | no `data` | nothing |
+| 7, an HTTP API, Kafka, Kong, PAM, a Kubernetes authorizer, Dart, Wasm | no `data` | `PTD-OPA-012`: one candidate in the Kong example, confidence D |
 
 The three candidates are what a lookup by value finds. The Elasticsearch example keeps the posts
 whose `author` is the requester, and the MongoDB one the employees whose `name` is, plus the ones
@@ -485,11 +485,12 @@ No value from outside the policy reaches any of the 16 decisions, so `PTD-OPA-00
 `PTD-OPA-007` has nothing to find in its 49 files. No decision reads a document every request
 shares, so `PTD-OPA-008` has nowhere to start. `PTD-OPA-009`, `PTD-OPA-010`, `PTD-OPA-011` and
 `PTD-OPA-013` run only with the enforcement point declared, and `pep-registry/` declares none of
-these products. `PTD-OPA-012` needs none and reports nothing: the engine reads three loose
+these products. `PTD-OPA-012` needs none and reports one candidate: the engine reads three loose
 matches on the request, two prefixes in the Puppet example on the side that refuses, and a glob
 on `input.path` that grants in the Kong example
-(`kong_api_authz/integration/testdata/opa/bundle/httpapi/authz/policy.rego:11`), where no part
-of the request is recognized as the resource. The two candidates of the AuthZEN policy stay
+(`kong_api_authz/integration/testdata/opa/bundle/httpapi/authz/policy.rego:11`).
+`glob.match("/status**", ["/"], input.path)` is written for the `/status` endpoints, and a path
+such as `/status-other` matches it too. The two candidates of the AuthZEN policy stay
 candidates: whether a user can change their own `roles` depends on the application that stores
 them, and the write model is where that is declared.
 

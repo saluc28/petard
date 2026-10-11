@@ -155,6 +155,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   declaration of the enforcement point can cover. A check is now read only where it names a
   part of the request.
 - A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
+- `PTD-OPA-012` said nothing about a decision that grants on a loosely matched path unless some
+  decision of the bundle also read a field named like a subject, and nothing at all when the
+  subject was declared with `-subject` or by the enforcement point: the resource and the action
+  were recognized only along with a subject. They are now recognized on their own, and `-v`
+  prints them on a line of their own, `asked for:`, when the request shape names neither.
 - A decision whose default is a value other than `true` or `false`, such as `default result :=
   {"decision": "deny"}`, was taken to grant a fixed request whatever it answered, the default
   included, because a defined value holds. `PTD-OPA-013` then reported a decision that bounds the

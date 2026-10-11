@@ -38,8 +38,14 @@ const GrantOnLooseMatch = "PTD-OPA-012"
 // the shape says which part of the request is the resource or the action. Where
 // neither is recognized there is nothing to call the enforced value, so it
 // stays quiet.
+//
+// The resource and the action are recognized on their own, whoever is asking:
+// a router that grants on input.path and input.method reads no subject, and a
+// subject declared from outside says nothing about the rest of the request. A
+// finding carries the level they were recognized at.
 func GrantsOnLooseMatches(a Analysis) []Finding {
-	resource, action := a.Shape.Resource, a.Shape.Action
+	target := opaengine.RecognizeTarget(a.Reads)
+	resource, action := target.Resource, target.Action
 	if resource == "" && action == "" {
 		return nil
 	}
@@ -74,7 +80,10 @@ func GrantsOnLooseMatches(a Analysis) []Finding {
 				continue
 			}
 			byKey[k] = len(findings)
-			findings = append(findings, looseMatchFinding(a, check, decision.Name, site))
+			finding := looseMatchFinding(check, decision.Name, site)
+			finding.Subject = a.Shape.Subject
+			finding.Confidence = target.Confidence.String()
+			findings = append(findings, finding)
 		}
 	}
 	return sortedFindings(findings)
@@ -84,15 +93,13 @@ func GrantsOnLooseMatches(a Analysis) []Finding {
 // and how loosely it is matched. A mid-string match is a finding, since a value
 // embedding the written one passes; an affix or a glob is a candidate, since the
 // looseness may be the intended wildcard.
-func looseMatchFinding(a Analysis, check opaengine.Check, decision string, site ReadSite) Finding {
+func looseMatchFinding(check opaengine.Check, decision string, site ReadSite) Finding {
 	finding := Finding{
-		PatternID:  GrantOnLooseMatch,
-		Decision:   decision,
-		Path:       check.Request,
-		Value:      check.Value,
-		Reads:      []ReadSite{site},
-		Subject:    a.Shape.Subject,
-		Confidence: a.Shape.Confidence.String(),
+		PatternID: GrantOnLooseMatch,
+		Decision:  decision,
+		Path:      check.Request,
+		Value:     check.Value,
+		Reads:     []ReadSite{site},
 	}
 	if check.Operator.MidString() {
 		finding.Verdict = VerdictFinding

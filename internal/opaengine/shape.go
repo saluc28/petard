@@ -178,6 +178,32 @@ func RecognizeShape(reads *ReadSet) Shape {
 	return Shape{Confidence: ConfidenceNone, Recognizer: "none"}
 }
 
+// RecognizeTarget recognizes what a request asks for, its action and its
+// resource, whether or not anything in it names who is asking.
+//
+// RecognizeShape is about the subject first: reading field names it answers
+// only when one looks like a subject, and a subject declared from outside
+// replaces what it recognized altogether. A decision that grants on input.path
+// and input.method reads no subject, and what it grants on is the resource and
+// the action all the same. The recognizers are the ones RecognizeShape asks, in
+// the same order, and the level is the one the action and the resource were
+// recognized at. The subject is left out of what comes back.
+func RecognizeTarget(reads *ReadSet) Shape {
+	for _, recognize := range []func([]string) (Shape, bool){
+		recognizeAuthZEN,
+		recognizeAdmissionReview,
+	} {
+		if shape, ok := recognize(reads.InputPaths); ok {
+			return Shape{Action: shape.Action, Resource: shape.Resource, Confidence: shape.Confidence, Recognizer: shape.Recognizer}
+		}
+	}
+	named, _ := recognizeByName(reads.InputPaths)
+	if named.Action == "" && named.Resource == "" {
+		return Shape{Confidence: ConfidenceNone, Recognizer: "none"}
+	}
+	return Shape{Action: named.Action, Resource: named.Resource, Confidence: named.Confidence, Recognizer: named.Recognizer}
+}
+
 // ShapeOf returns the shape of the request: the subject declared from outside
 // when there is one, and what the recognizers make of the request otherwise.
 //

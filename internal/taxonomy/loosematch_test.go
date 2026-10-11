@@ -1,6 +1,7 @@
 package taxonomy
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/saluc28/petard/internal/opaengine"
@@ -46,14 +47,16 @@ func TestLooseMatchVerdictFollowsTheForm(t *testing.T) {
 	}
 	for _, tc := range cases {
 		a := Analysis{
-			Shape: opaengine.Shape{Resource: "input.doc", Confidence: opaengine.ConfidenceNames},
-			Reads: &opaengine.ReadSet{Checks: []opaengine.Check{{
-				Request:   "input.doc",
-				Value:     `"public"`,
-				Operator:  tc.operator,
-				Rule:      "data.t.allow",
-				Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
-			}}},
+			Reads: &opaengine.ReadSet{
+				InputPaths: []string{"input.doc"},
+				Checks: []opaengine.Check{{
+					Request:   "input.doc",
+					Value:     `"public"`,
+					Operator:  tc.operator,
+					Rule:      "data.t.allow",
+					Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
+				}},
+			},
 		}
 		findings := GrantsOnLooseMatches(a)
 		if len(findings) != 1 || findings[0].Verdict != tc.verdict {
@@ -66,14 +69,16 @@ func TestLooseMatchVerdictFollowsTheForm(t *testing.T) {
 // action is not this pattern's concern: a name matched loosely is PTD-OPA-010.
 func TestLooseMatchLeavesNonResourceFieldsAlone(t *testing.T) {
 	a := Analysis{
-		Shape: opaengine.Shape{Resource: "input.doc", Action: "input.action", Confidence: opaengine.ConfidenceNames},
-		Reads: &opaengine.ReadSet{Checks: []opaengine.Check{{
-			Request:   "input.group",
-			Value:     `"admin-"`,
-			Operator:  opaengine.CheckPrefix,
-			Rule:      "data.t.allow",
-			Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
-		}}},
+		Reads: &opaengine.ReadSet{
+			InputPaths: []string{"input.action", "input.doc", "input.group"},
+			Checks: []opaengine.Check{{
+				Request:   "input.group",
+				Value:     `"admin-"`,
+				Operator:  opaengine.CheckPrefix,
+				Rule:      "data.t.allow",
+				Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
+			}},
+		},
 	}
 	if findings := GrantsOnLooseMatches(a); len(findings) != 0 {
 		t.Errorf("findings = %v, want none: the match is on neither the resource nor the action", findings)
@@ -84,16 +89,73 @@ func TestLooseMatchLeavesNonResourceFieldsAlone(t *testing.T) {
 // enforced value, so the pattern stays quiet rather than guess.
 func TestLooseMatchNeedsAResourceOrAction(t *testing.T) {
 	a := Analysis{
-		Shape: opaengine.Shape{Confidence: opaengine.ConfidenceNone},
-		Reads: &opaengine.ReadSet{Checks: []opaengine.Check{{
-			Request:   "input.doc",
-			Value:     `"public"`,
-			Operator:  opaengine.CheckSubstring,
-			Rule:      "data.t.allow",
-			Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
-		}}},
+		Reads: &opaengine.ReadSet{
+			InputPaths: []string{"input.ref"},
+			Checks: []opaengine.Check{{
+				Request:   "input.ref",
+				Value:     `"public"`,
+				Operator:  opaengine.CheckSubstring,
+				Rule:      "data.t.allow",
+				Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
+			}},
+		},
 	}
 	if findings := GrantsOnLooseMatches(a); len(findings) != 0 {
 		t.Errorf("findings = %v, want none with no resource or action recognized", findings)
+	}
+}
+
+// The resource and the action are recognized whoever is asking. A router that
+// grants on the method and the path reads no subject, and a subject declared
+// from outside replaces the recognized shape and says nothing about the rest of
+// the request: either way the path matched as a substring is reported, at the
+// level its name was recognized at.
+func TestLooseMatchNeedsNoSubject(t *testing.T) {
+	const policy = `package example
+
+# METADATA
+# entrypoint: true
+default allow_route := false
+
+allow_route if {
+	input.method == "GET"
+	contains(input.path, "/public/")
+}
+
+# METADATA
+# entrypoint: true
+default allow_admin := false
+
+allow_admin if input.operator == "root"
+`
+	dir := t.TempDir()
+	writeCaseFile(t, filepath.Join(dir, "p.rego"), policy)
+	bundle, err := opaengine.Load([]string{dir}, opaengine.ParseModeV1)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	reads, err := opaengine.Reads(bundle, opaengine.Limits{})
+	if err != nil {
+		t.Fatalf("Reads() error = %v", err)
+	}
+
+	for _, subject := range []string{"", "input.operator"} {
+		shape, err := opaengine.ShapeOf(reads, subject)
+		if err != nil {
+			t.Fatalf("ShapeOf() error = %v", err)
+		}
+		if shape.Resource != "" || shape.Action != "" {
+			t.Fatalf("the shape names %q and %q, and the test is about one that names neither", shape.Resource, shape.Action)
+		}
+
+		findings := GrantsOnLooseMatches(Analysis{Bundle: bundle, Reads: reads, Shape: shape})
+		if len(findings) != 1 {
+			t.Fatalf("with the subject %q, findings = %v, want one", subject, findings)
+		}
+		finding := findings[0]
+		if finding.Path != "input.path" || finding.Verdict != VerdictFinding || finding.Confidence != "D" {
+			t.Errorf("with the subject %q, a %s on %s at level %s, want a finding on input.path at level D",
+				subject, finding.Verdict, finding.Path, finding.Confidence)
+		}
 	}
 }

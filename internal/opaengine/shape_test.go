@@ -242,6 +242,54 @@ func TestConfidenceLevels(t *testing.T) {
 	}
 }
 
+// What a request asks for is recognized whether or not it names who is asking,
+// by the same recognizers and at the level each of them is worth.
+func TestRecognizeTarget(t *testing.T) {
+	tests := []struct {
+		name       string
+		inputPaths []string
+		expected   Shape
+	}{
+		{
+			name:       "a method and a path, and nobody named",
+			inputPaths: []string{"input.method", "input.path"},
+			expected:   Shape{Action: "input.method", Resource: "input.path", Confidence: ConfidenceNames, Recognizer: "field names"},
+		},
+		{
+			name:       "a resource alone",
+			inputPaths: []string{"input.doc", "input.claims.role"},
+			expected:   Shape{Resource: "input.doc", Confidence: ConfidenceNames, Recognizer: "field names"},
+		},
+		{
+			name:       "the subject is left out",
+			inputPaths: []string{"input.action", "input.doc", "input.user"},
+			expected:   Shape{Action: "input.action", Resource: "input.doc", Confidence: ConfidenceNames, Recognizer: "field names"},
+		},
+		{
+			name:       "the AuthZEN shape",
+			inputPaths: []string{"input.action.name", "input.resource.id", "input.subject.id"},
+			expected:   Shape{Action: "input.action", Resource: "input.resource", Confidence: ConfidenceAuthZEN, Recognizer: "authzen"},
+		},
+		{
+			name:       "an admission review",
+			inputPaths: []string{"input.review.object.spec.containers[_].image"},
+			expected:   Shape{Resource: "input.review.object", Confidence: ConfidenceDomain, Recognizer: "kubernetes admission review"},
+		},
+		{
+			name:       "names that say nothing",
+			inputPaths: []string{"input.ref", "input.claims.role"},
+			expected:   Shape{Confidence: ConfidenceNone, Recognizer: "none"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RecognizeTarget(&ReadSet{InputPaths: tt.inputPaths}); got != tt.expected {
+				t.Errorf("RecognizeTarget() = %+v, want %+v", got, tt.expected)
+			}
+		})
+	}
+}
+
 // A request read through object.get is read at the field the call names. The
 // compiler hands the call a variable bound to input, and that binding is the
 // way to the field rather than a read of the whole request.

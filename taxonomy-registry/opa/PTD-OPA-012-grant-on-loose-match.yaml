@@ -69,6 +69,8 @@ detection:
   requires_note: >
     No enforcement point and no data: the looseness is in the match, which the engine reads off the
     policy, and the shape recognizer says which part of the request is the resource or the action.
+    The two are recognized on their own, whether or not the request names who is asking: a router
+    that grants on `input.method` and `input.path` reads no subject.
   signals:
     - order: 1
       check: >
