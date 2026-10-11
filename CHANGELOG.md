@@ -170,6 +170,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `^/public|/health$`, was taken for anchored and not read, and is a candidate too. A glob with a
   wildcard at each end, `*admin*`, was a candidate and is a finding, like the substring it is. A
   glob with no wildcard is read as the equality it is, and is no longer reported.
+- `PTD-OPA-007` reported an `every` guarded against the empty case by anything but a count of
+  the domain next to it: an iteration of the domain, a `some` that binds an element, a count in
+  another rule the decision also asks for. Each match is now put to the decision, with the domain
+  empty and the rest of the request left open, and dropped when nothing can make the decision
+  hold. A match that cannot be asked about stays as before: a domain in the data or under an
+  element of a list, a decision declared to deny, a decision that reads documents when none were
+  given. `petard analyze -v` names the domain on the line of each place to look, which printed
+  blank.
 - `PTD-OPA-009` reported a finding at level `A` on a part of the request read under a key the
   policy computes, `not input[data.settings.flag]`, whenever a catch-all entry of the declaration
   gives the request to the caller, though an entry before it gives one field, the second factor

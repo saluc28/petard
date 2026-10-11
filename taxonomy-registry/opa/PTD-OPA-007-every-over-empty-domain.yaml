@@ -71,9 +71,9 @@ detection:
   requires_note: >
     It does not require `concrete-data`, like `PTD-OPA-005` and unlike `PTD-OPA-002`. The defect
     is structural: an `every` in a granting position over a domain that can be empty is fail-open
-    whatever the snapshot holds, because the request decides whether the domain is empty. Concrete
-    data is how the consequence would be shown, the way 002 uses partial evaluation, not how
-    the defect is found.
+    whatever the snapshot holds, because the request decides whether the domain is empty. Signal
+    5 asks the decision, and a decision that reads documents is asked only when they are given:
+    without them the match stays as the body reads it.
   signals:
     - order: 1
       check: >
@@ -108,11 +108,21 @@ detection:
         `count(input.reviews) > 0`.
       rationale: >
         A guard that requires at least one element closes the hole, so the guarded form is the
-        counter case and must not be reported. Only a `count` of the domain is recognized. A guard
-        written another way, an iteration of the domain or a `some` that binds one of its elements,
-        is not, and the every behind it is then reported as if unguarded: a false positive. The fix
-        is not a longer list of shapes to match but evaluating the decision with the domain empty,
-        which the open questions weigh.
+        counter case and must not be reported. Only a `count` of the domain is recognized by
+        reading the body. A guard written another way is left to signal 5.
+    - order: 5
+      check: >
+        The decision still holds for some request that carries the domain empty: with the domain an
+        empty list, and then an empty object, and every other part of the request left open,
+        partial evaluation leaves at least one way for it to hold. When it leaves none the match is
+        dropped.
+      rationale: >
+        A guard is as often an iteration of the domain, a `some` that binds one of its elements or
+        a count in another rule the decision also asks for, and a longer list of shapes to match
+        stays fragile, because the `every` itself iterates the domain. Asking the decision does not
+        depend on how the guard is written. It is asked where the request can carry the domain
+        empty: a domain in the data, or under an element of a list, and a decision declared to deny
+        are not asked, and stay as the body reads them.
   confidence: B
   confidence_note: >
     The construct and its domain are structural and would be worth more, but signal 2 rests on
@@ -157,13 +167,13 @@ false_positives:
       empty-passes tells them apart, kept next to the bundle as for the other patterns.
     measurement: out-of-band
   - condition: >
-      The `every` is guarded against the empty case by something other than a count of the domain,
-      an iteration of it or a `some` that binds an element.
+      The `every` is guarded against the empty case by something other than a count of the domain
+      next to it: an iteration of the domain, a `some` that binds an element, or a count in
+      another rule the decision also asks for.
     discriminator: >
-      Not recognized: only a `count` of the domain is. Such an every is reported as if unguarded,
-      which is a false positive. Telling it apart for certain means evaluating the decision with
-      the domain empty rather than reading the body, the move 003 and 006 make with partial
-      evaluation, and it is the open question below.
+      Signal 5. The body does not show such a guard where the every is, so the decision is asked:
+      with the domain empty and the rest of the request left open, nothing can make it hold, and
+      the match is dropped.
     measurement: case
     case:
       policy: |
@@ -181,13 +191,73 @@ false_positives:
                 review.approved
             }
         }
-      reports: true
+      reports: false
       note: >
         `input.reviews[_]` is undefined for an empty list, so this decision denies the empty case
         exactly as the counter case in the fixture does, and the every behind it can never be
         vacuous. Run with opa 1.21.1: empty list `false`, one approved review `true`, one rejected
-        `false`, no `reviews` key at all `false`. The engine reports it anyway, because signal 4
-        matches a `count` of the domain and nothing else.
+        `false`, no `reviews` key at all `false`. Signal 4 matches a `count` of the domain and
+        nothing else, and signal 5 finds that the decision refuses the empty list.
+  - condition: >
+      The `every` is guarded by something other than a count next to it, and another rule of the
+      same decision grants whatever the domain holds.
+    discriminator: >
+      Not told apart. The decision is asked as a whole, and it holds with the domain empty through
+      the other rule, so the guard on the way through the every goes unseen and the match stays.
+      Telling it apart means asking about one way to the decision rather than about the decision.
+    measurement: case
+    case:
+      policy: |
+        package guarded_on_one_way
+
+        # METADATA
+        # scope: document
+        # title: Merge approval, with a way in for the release manager
+        # entrypoint: true
+        default allow := false
+
+        allow if input.role == "release-manager"
+
+        allow if {
+            input.reviews[_]
+            every review in input.reviews {
+                review.approved
+            }
+        }
+      reports: true
+      note: >
+        The second rule denies the empty list as the case above does, and the first grants the
+        release manager whatever the reviews are. Run with opa 1.21.1: a developer with an empty
+        list `false`, the release manager with an empty list `true`, by the first rule alone.
+  - condition: >
+      The `every` is guarded by something other than a count next to it, and the decision cannot
+      be asked with the domain empty: the domain is a document or sits under an element of a
+      list, the decision is declared to deny, or it reads documents and none were given.
+    discriminator: >
+      Not told apart. The request the question is asked with can carry an empty list at a path of
+      its own, and not inside the data or inside every element of another list, so the match stays
+      as the body reads.
+    measurement: case
+    case:
+      policy: |
+        package guarded_domain_in_data
+
+        # METADATA
+        # scope: document
+        # title: Merge approval, with the reviews kept in the data
+        # entrypoint: true
+        default allow := false
+
+        allow if {
+            data.reviews[input.change][_]
+            every review in data.reviews[input.change] {
+                review.approved
+            }
+        }
+      reports: true
+      note: >
+        The iteration guards the every as in the first of these cases, and the domain is the reviews
+        of a change in the data, which the request cannot carry empty.
 
 not_a_lint_rule: >
   A linter sees the `every` in one file, but not whether it applies a check. Whether the rule
@@ -229,11 +299,13 @@ verified:
     quantifier itself was run with opa 1.21.1: `every` over an empty list is true.
     `regal` v0.42.0 reports no violations on `policy-v1`, and its rule list at that tag holds
     nothing for this construct.
-    The three declared false positives are settled as the status requires. Two are `out-of-band`:
+    The five declared false positives are settled as the status requires. Two are `out-of-band`:
     a domain something upstream always fills, and an empty case that is meant to pass, both of
-    them intent rather than policy. The third carries a case that runs on every build, an every
-    guarded by iterating its domain, and the engine reports it: the false positive is measured
-    and not only declared.
+    them intent rather than policy. The other three carry a case that runs on every build. An
+    every guarded by iterating its domain is told apart: the decision is asked with the domain
+    empty, refuses, and nothing is reported. The same guard next to a rule that grants whatever
+    the domain holds, and the same guard over a domain in the data, are reported: those two false
+    positives are measured and not only declared.
 
 related:
   - id: PTD-OPA-002
@@ -246,18 +318,3 @@ related:
       The same category again, and the closest in shape: both are structural rather than needing
       concrete data, and both rest on the enforcing side. 005 is an answer that never arrives from
       the network; this is a domain that is simply empty.
-
-open_questions:
-  - question: >
-      Should the guard be recognized structurally or by evaluation?
-    note: >
-      Signal 4 recognizes one guard, a `count` of the domain. A guard written another way, an
-      iteration of the domain or a `some` over it, is not recognized, so the every behind it is
-      reported as if unguarded, which is a false positive, not a false negative. Matching more
-      shapes stays fragile, because the `every` itself iterates the domain and an iteration guard
-      has to be told from that. The answer that does not depend on the shape of the guard is to
-      stop reading the body and evaluate the decision with the domain empty: if it still grants,
-      the every is fail-open; if it denies, a guard closed it. That is left undone because it
-      would make the pattern need the bundle and a data store, where today it is static. The
-      false positive has a case that runs, so once the evaluation exists the case goes from
-      reporting to quiet and says so.

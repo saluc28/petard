@@ -408,12 +408,14 @@ of a test file with `ruleid` where the rule has to fire and `ok` where it must n
 beside every rule of its bundle, `impossible_not.rego` next to `impossible_not_test.rego`. In
 both, precision is a small case per condition rather than a corpus.
 
-The table above says which patterns are there. In `PTD-OPA-007`, two of the three conditions are
-intent and are declared as such. The third, an `every` guarded by iterating its domain instead of
-counting it, is a policy in the file that the engine runs on every build, and it reports: the
-false positive is measured rather than only admitted. A case can also come out quiet, like the
-fail-open in 005 that the rule writes down by reading `error`: a condition the engine already
-tells apart, and running it keeps that true.
+The table above says which patterns are there. In `PTD-OPA-007`, two of the five conditions are
+intent and are declared as such. The other three are policies in the file that the engine runs on
+every build. An `every` guarded by iterating its domain instead of counting it comes out quiet:
+the decision is asked with the domain empty, and refuses. The same guard beside a rule that
+grants whatever the domain holds, and the same guard over a domain kept in the data, report: those
+false positives are measured rather than only admitted. A quiet case is a condition the engine
+tells apart, like the fail-open in 005 that the rule writes down by reading `error`, and running
+it keeps that true.
 
 ### What generated worlds answer instead
 

@@ -164,7 +164,9 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 
 	found.Tainted = TaintedByExternalSource(a.Reads)
 	found.Unavailable = GrantsWhenSourceFails(a.Reads)
-	found.EveryEmpty = FailOpenOnEmptyEvery(a.Reads)
+	if found.EveryEmpty, err = GrantsOnEmptyEvery(ctx, a); err != nil {
+		return Findings{}, err
+	}
 	if a.EnforcementPoint == nil {
 		found.Skipped[SelfAssertedExemption] = needsEnforcementPoint
 		found.Skipped[GrantOnUncontrolledName] = needsEnforcementPoint
