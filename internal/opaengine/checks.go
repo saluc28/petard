@@ -194,9 +194,8 @@ func (r *refReader) markTruth(term *ast.Term, sc scope) {
 // checks judges every comparison and every lone term met while walking, and
 // keeps the ones that hold a part of the request against a value the policy
 // writes, with the decisions each reaches.
-func (r *refReader) checks(limits Limits) ([]Check, map[string]string, []string) {
+func (r *refReader) checks() ([]Check, map[string]string) {
 	var checks []Check
-	var warnings []string
 	pathShapes := map[string]string{}
 	keep := func(at exprSite, request string, value *ast.Term, operator CheckOperator) {
 		check := Check{
@@ -224,7 +223,6 @@ func (r *refReader) checks(limits Limits) ([]Check, map[string]string, []string)
 	}
 
 	for _, compared := range r.foundComparisons {
-		budget := &callBudget{limits: limits}
 		// An equality is symmetric and either side can be the request. A
 		// search is not, and either side can be the request there too: the
 		// request searched for a value, or searched in a list of values. The
@@ -240,7 +238,7 @@ func (r *refReader) checks(limits Limits) ([]Check, map[string]string, []string)
 			orientations[0].operator, orientations[1].operator = CheckIn, CheckContains
 		}
 		for _, oriented := range orientations {
-			request, isRequest := r.requestOf(compared.rule, oriented.request, compared.bindings, budget)
+			request, isRequest := r.requestOf(compared.rule, oriented.request, compared.bindings)
 			if !isRequest {
 				continue
 			}
@@ -262,20 +260,16 @@ func (r *refReader) checks(limits Limits) ([]Check, map[string]string, []string)
 			}
 			keep(compared.exprSite, request, value, oriented.operator)
 		}
-		warnings = append(warnings, budget.warnings...)
 	}
 
 	for _, truth := range r.foundTruths {
-		budget := &callBudget{limits: limits}
-		if request, isRequest := r.requestOf(truth.rule, truth.term, truth.bindings, budget); isRequest {
+		if request, isRequest := r.requestOf(truth.rule, truth.term, truth.bindings); isRequest {
 			keep(truth.exprSite, request, nil, CheckTrue)
 		}
-		warnings = append(warnings, budget.warnings...)
 	}
 
 	for _, match := range r.foundMatches {
-		budget := &callBudget{limits: limits}
-		request, isRequest := r.requestOf(match.rule, match.request, match.bindings, budget)
+		request, isRequest := r.requestOf(match.rule, match.request, match.bindings)
 		if isRequest {
 			if value, isConstant := constantOf(match.value, match.bindings); isConstant {
 				// What a regex or a glob matches is in its pattern, down to no
@@ -285,11 +279,10 @@ func (r *refReader) checks(limits Limits) ([]Check, map[string]string, []string)
 				}
 			}
 		}
-		warnings = append(warnings, budget.warnings...)
 	}
 
 	slices.SortFunc(checks, compareChecks)
-	return slices.CompactFunc(checks, func(a, b Check) bool { return compareChecks(a, b) == 0 }), pathShapes, warnings
+	return slices.CompactFunc(checks, func(a, b Check) bool { return compareChecks(a, b) == 0 }), pathShapes
 }
 
 // blockID identifies a physical rule by its head's file and line, so two allow

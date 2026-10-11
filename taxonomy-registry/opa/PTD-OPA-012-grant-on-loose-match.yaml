@@ -229,9 +229,9 @@ related:
 
 notes:
   - >
-    Known false negative: a case-folded match, `contains(lower(input.path), "/admin")`. The compiler
-    hoists `lower(input.path)` into a binding the loose-match reader does not follow, so the match is
-    not read. The real defenseclaw instance folds the case this way.
+    A case-folded match, `contains(lower(input.path), "/admin")`, is read as the same match on the
+    same part of the request: `lower` and `upper` hand back the value they are given. The real
+    defenseclaw instance folds the case this way.
   - >
     Known false negative: a loose match against a value from the data rather than one the policy
     writes, `contains(input.path, data.markers[_])`. The value is not a value the policy writes, so

@@ -244,9 +244,8 @@ notes:
   - >
     An identity matched rather than compared whole, with `startswith`, `glob.match` or an unanchored
     `regex.match`, a prefix over a SPIFFE trust domain for instance, is read as a loose match and
-    reported the same way. A match read through a case fold, `startswith(lower(input.caller.spiffe),
-    ...)`, is a false negative: the compiler hoists the fold into a binding the reader does not
-    follow.
+    reported the same way. A match made through a case fold, `startswith(lower(input.caller.spiffe),
+    ...)`, is read as the same match on the same identity.
   - >
     Known false negative: a refusal keyed on an identity, `deny if input.caller.spiffe ==
     "spiffe://.../sa/quarantined"`. Whoever can assume another identity leaves the refusal behind,

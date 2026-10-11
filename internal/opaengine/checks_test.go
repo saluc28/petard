@@ -275,7 +275,7 @@ allowed(user) if startswith(user.email, "ops-")
 			// part of the request, and a check names a part or it is not one.
 			name: "a value a builtin made of the request, tested in a function",
 			body: `violation contains "wildcard" if {
-	hostname := lower(input.review.object.spec.host)
+	hostname := trim_prefix(input.review.object.spec.host, "www.")
 	wildcard(hostname)
 }
 
@@ -283,6 +283,31 @@ wildcard(hostname) if contains(hostname, "*")
 `,
 			deny:     []string{"checks/violation"},
 			expected: nil,
+		},
+		{
+			// A case fold is the same part of the request with its letters
+			// changed, in the body that folds it and in a function handed it.
+			name: "a case fold of the request, tested in a function",
+			body: `violation contains "wildcard" if {
+	hostname := lower(input.review.object.spec.host)
+	wildcard(hostname)
+}
+
+wildcard(hostname) if contains(hostname, "*")
+`,
+			deny: []string{"checks/violation"},
+			expected: []Check{{
+				Request: "input.review.object.spec.host", Value: `"*"`, Operator: CheckSubstring, Rule: "data.checks.wildcard", Line: 10,
+				Decisions: []CheckedDecision{{Name: "data.checks.violation"}},
+			}},
+		},
+		{
+			name: "a case fold compared with a value the policy writes",
+			body: "allow if upper(input.method) == \"GET\"\n",
+			expected: []Check{{
+				Request: "input.method", Value: `"GET"`, Operator: CheckEqual, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
 		},
 		{
 			name:     "a part of the request compared with a document",
@@ -345,12 +370,14 @@ func TestReadsFindTheLooseMatches(t *testing.T) {
 			}},
 		},
 		{
-			// The compiler hoists lower(input.path) into a binding the loose-match
-			// reader does not follow, so a case-folded match is a known false
-			// negative, declared in the registry.
-			name:     "a case-folded match is not read",
-			body:     "allow if contains(lower(input.path), \"/admin\")\n",
-			expected: nil,
+			// The compiler hoists lower(input.path) into a binding, and the fold
+			// is followed back to the part it was given.
+			name: "a case-folded match",
+			body: "allow if contains(lower(input.path), \"/admin\")\n",
+			expected: []Check{{
+				Request: "input.path", Value: `"/admin"`, Operator: CheckSubstring, Rule: "data.checks.allow", Line: 5,
+				Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+			}},
 		},
 		{
 			name: "a prefix of the request",

@@ -224,8 +224,8 @@ notes:
     A name matched rather than compared whole, with `startswith`, `glob.match` or an unanchored
     `regex.match`, is read as a loose match and reported: whoever can make the issuer say a name
     that satisfies the match reaches the grant, a group named `admin-anything` for a prefix of
-    `admin-`. A match read through a case fold, `startswith(lower(input.group), ...)`, is a false
-    negative: the compiler hoists the fold into a binding the reader does not follow.
+    `admin-`. A match made through a case fold, `startswith(lower(input.group), ...)`, is read as
+    the same match on the same name.
   - >
     Known false negative: a refusal keyed on a name, `deny if "contractors" in input.groups`.
     Whoever can rename the group takes its members out of the refusal, and the pattern looks at the

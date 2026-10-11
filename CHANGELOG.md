@@ -117,6 +117,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the enforcement point, or for a judgment.
 - `petard` and `petard help` say what the tool is for and where to start, before the list of
   commands.
+- A part of the request passed through `lower` or `upper` is read as that part, so a check made
+  on the folded value, `contains(lower(input.path), "/admin")` or `upper(input.method) == "GET"`,
+  is a check on `input.path` or `input.method`. The patterns that read the request,
+  `PTD-OPA-009` to `PTD-OPA-012`, no longer miss a match made after a case fold.
 - A part of the request read with `object.get` is followed as the field it names, through one
   call inside another too: `object.get(object.get(input, "parameters", {}), "exemptImages", [])`
   is `input.parameters.exemptImages`. A check on what the call returned is a check on that

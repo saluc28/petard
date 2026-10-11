@@ -16,8 +16,7 @@ import (
 func (r *refReader) resolve(limits Limits, reach map[*ast.Rule]decisionPaths) *ReadSet {
 	result := &ReadSet{}
 
-	matches, warnings := r.matches(limits)
-	result.Warnings = append(result.Warnings, warnings...)
+	matches := r.matches()
 
 	through := r.paramReads(limits, reach)
 	result.Warnings = append(result.Warnings, through.warnings...)

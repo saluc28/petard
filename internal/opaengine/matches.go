@@ -278,20 +278,15 @@ type refMatch struct {
 
 // matches judges every comparison met while walking, and keeps the ones where
 // one side is a document of the data and the other a part of the request.
-//
-// Each comparison gets the budget one reference gets for its indexes, since
-// judging it is the same walk: where a parameter comes from.
-func (r *refReader) matches(limits Limits) (map[*ast.Rule][]refMatch, []string) {
+func (r *refReader) matches() map[*ast.Rule][]refMatch {
 	found := make(map[*ast.Rule][]refMatch)
-	var warnings []string
 	for _, compared := range r.foundComparisons {
-		budget := &callBudget{limits: limits}
 		keep := func(document, request *ast.Term) {
-			if match, ref, ok := r.matchOf(compared, document, request, budget); ok {
+			if match, ref, ok := r.matchOf(compared, document, request); ok {
 				found[compared.rule] = append(found[compared.rule], refMatch{ref: ref, match: match})
 				return
 			}
-			r.keepParamMatch(compared, document, request, budget)
+			r.keepParamMatch(compared, document, request)
 		}
 
 		// An equality is symmetric and either side can be the document. A
@@ -301,18 +296,17 @@ func (r *refReader) matches(limits Limits) (map[*ast.Rule][]refMatch, []string) 
 		if !compared.member {
 			keep(compared.left, compared.right)
 		}
-		warnings = append(warnings, budget.warnings...)
 	}
-	return found, warnings
+	return found
 }
 
 // matchOf judges one orientation of a comparison.
-func (r *refReader) matchOf(compared foundComparison, document, request *ast.Term, budget *callBudget) (Match, ast.Ref, bool) {
+func (r *refReader) matchOf(compared foundComparison, document, request *ast.Term) (Match, ast.Ref, bool) {
 	ref, isDocument := r.documentOf(document, compared.bindings)
 	if !isDocument {
 		return Match{}, nil, false
 	}
-	term, isRequest := r.requestOf(compared.rule, request, compared.bindings, budget)
+	term, isRequest := r.requestOf(compared.rule, request, compared.bindings)
 	if !isRequest {
 		return Match{}, nil, false
 	}
@@ -348,12 +342,12 @@ type paramMatch struct {
 
 // keepParamMatch records one orientation of a comparison when the side that
 // could be a document is a field of a parameter.
-func (r *refReader) keepParamMatch(compared foundComparison, document, request *ast.Term, budget *callBudget) {
+func (r *refReader) keepParamMatch(compared foundComparison, document, request *ast.Term) {
 	ref, isField := paramField(compared.rule, document, compared.bindings)
 	if !isField {
 		return
 	}
-	term, isRequest := r.requestOf(compared.rule, request, compared.bindings, budget)
+	term, isRequest := r.requestOf(compared.rule, request, compared.bindings)
 	if !isRequest {
 		return
 	}
@@ -447,6 +441,19 @@ func rangingInside(rule *ast.Rule, ref ast.Ref, bindings map[ast.Var]binding) (i
 	return 0, false
 }
 
+// caseFolds are the builtins that hand back the string they are given with the
+// case of its letters changed.
+var caseFolds = []string{ast.Lower.Name, ast.Upper.Name}
+
+// caseFolded returns the term a value was case folded from, when the binding is
+// what one of those builtins returned.
+func caseFolded(source binding) (*ast.Term, bool) {
+	if source.kind != bindingOutput || len(source.args) != 1 || !slices.Contains(caseFolds, source.origin.String()) {
+		return nil, false
+	}
+	return source.args[0], true
+}
+
 // documentOf returns the data reference a term stands for, when it names a
 // document rather than something the policy computes.
 func (r *refReader) documentOf(term *ast.Term, bindings map[ast.Var]binding) (ast.Ref, bool) {
@@ -470,26 +477,28 @@ func (r *refReader) documentOf(term *ast.Term, bindings map[ast.Var]binding) (as
 // requestOf returns the part of the request a term stands for, asking the call
 // sites when the term is a parameter.
 //
-// A parameter is a part of the request only when the call site names one. A
-// value that comes from the request through a builtin, object.get taking a field
-// out of it, has the provenance of the request and no path in it: the trace then
-// says what made the value, the builtin or the name the caller gave it, which is
-// for a reader of the report and names nothing a declaration could cover.
-func (r *refReader) requestOf(rule *ast.Rule, term *ast.Term, bindings map[ast.Var]binding, budget *callBudget) (string, bool) {
+// A parameter is a part of the request only when a call site names one. A value
+// a builtin made of the request, a concatenation or a count, has the provenance
+// of the request and no path in it, and names nothing a declaration could
+// cover. A case fold is the exception: lower(input.path) is input.path with its
+// letters changed, the same part to whoever asks which part a check is on.
+func (r *refReader) requestOf(rule *ast.Rule, term *ast.Term, bindings map[ast.Var]binding) (string, bool) {
 	if v, isVar := varOf(term); isVar {
 		if _, isParam := parameterPlaceOf(rule, v); isParam {
-			provenance, trace := r.parameterProvenance(rule, v, budget, 0)
-			if provenance != ProvenanceInput || trace == nil {
-				return "", false
+			for _, passed := range r.arguments(rule, v) {
+				if base, isRef := passed.term.Value.(ast.Ref); isRef && isInputRooted(base) {
+					return normalize(base), true
+				}
 			}
-			passed, err := ast.ParseRef(trace.Term)
-			if err != nil || !isInputRooted(passed) {
-				return "", false
-			}
-			return normalize(passed), true
+			return "", false
 		}
-		if resolved := resolveVar(v, bindings); resolved.status == resolvedTerm {
-			return r.requestOf(rule, resolved.term, bindings, budget)
+		switch resolved := resolveVar(v, bindings); resolved.status {
+		case resolvedTerm:
+			return r.requestOf(rule, resolved.term, bindings)
+		case resolvedOutput:
+			if folded, isFold := caseFolded(resolved.source); isFold {
+				return r.requestOf(rule, folded, bindings)
+			}
 		}
 		return "", false
 	}

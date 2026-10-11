@@ -163,6 +163,12 @@ func (r *refReader) argumentsAt(site callSite, term *ast.Term) []argument {
 			term = resolved.term
 		case unresolvedUnbound:
 			return r.arguments(site.caller, v)
+		case resolvedOutput:
+			// A case fold hands on the part of the request it was given.
+			if folded, isFold := caseFolded(resolved.source); isFold {
+				return r.argumentsAt(site, folded)
+			}
+			return nil
 		default:
 			return nil
 		}

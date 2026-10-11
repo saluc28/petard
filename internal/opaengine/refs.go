@@ -423,10 +423,8 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 	result.Taints = taints
 	result.Closures = reader.closures(result.Reads, reach)
 	result.Quantifiers = reader.quantifiers(reach)
-	checks, pathShapes, checkWarnings := reader.checks(limits)
-	result.Checks = checks
-	result.pathShapes = pathShapes
-	result.Warnings = sortedUnique(append(append(result.Warnings, warnings...), checkWarnings...))
+	result.Checks, result.pathShapes = reader.checks()
+	result.Warnings = sortedUnique(append(result.Warnings, warnings...))
 
 	for _, decision := range decisions {
 		result.Decisions = append(result.Decisions, decision.name)

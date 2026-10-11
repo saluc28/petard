@@ -42,15 +42,29 @@ func analysisWithGateway(t *testing.T, policy, gateway string) Analysis {
 // Reading the loose-match builtins closes a false negative in PTD-OPA-010: a
 // group name matched by a prefix is a name an issuer hands over just as a whole
 // name is, and whoever can make the issuer say a name starting with the prefix
-// reaches the grant. Only == and in were read before, so this went unseen.
+// reaches the grant. Only == and in were read before, so this went unseen. The
+// match made through a case fold is the same match on the same name.
 func TestUncontrolledNameReadsALoosePrefix(t *testing.T) {
+	for _, match := range []string{
+		`startswith(input.groups[_], "admin-")`,
+		`startswith(lower(input.groups[_]), "admin-")`,
+	} {
+		t.Run(match, func(t *testing.T) {
+			uncontrolledNameReadsALoosePrefix(t, match)
+		})
+	}
+}
+
+func uncontrolledNameReadsALoosePrefix(t *testing.T, match string) {
+	t.Helper()
+
 	policy := `package p
 
 # METADATA
 # entrypoint: true
 default allow := false
 
-allow if startswith(input.groups[_], "admin-")
+allow if ` + match + `
 `
 	gateway := `schema_version: 1
 id: test-gateway
