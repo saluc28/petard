@@ -110,11 +110,11 @@ detection:
       rationale: >
         A grant that reaches past the delegator's edge mints authority the delegator never held. With
         no ceiling declared the question is open rather than answered, so it is a candidate.
-  confidence: C
+  confidence: A
   confidence_note: >
-    The claim rests on the enforcement point naming the requested authority and its ceilings, so a
-    finding carries the level that recognition of the subject reached. The reach past the ceiling is
-    measured against the decision and is not a guess.
+    The claim rests on the enforcement point naming the requested authority and its ceilings, which
+    is a declaration of the request, so a finding and a candidate carry level A. The reach past the
+    ceiling is measured against the decision and is not a guess.
   requires_write_model: false
   requires_write_model_note: >
     Nobody writes a document here: the defect is the missing bound, in the policy and the request. It

@@ -478,7 +478,7 @@ its ceilings, the edge and the role.
 
 | | where | expected |
 |---|---|---|
-| case | `delegation.rego`, `allow_mint`, bounded by `input.role_scopes` and not by `input.delegation_edge.scopes` | finding, the edge does not bound the request, at the subject's confidence |
+| case | `delegation.rego`, `allow_mint`, bounded by `input.role_scopes` and not by `input.delegation_edge.scopes` | finding, the edge does not bound the request, at confidence A |
 | counter case | the same mint, `allow_mint_narrowed`, bounded by the edge as well | nothing, a scope the edge does not carry is refused |
 
 Measured with `data.quill.verify.delegation`:

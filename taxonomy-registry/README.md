@@ -352,7 +352,7 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-010` | UNCONTROLLED-IDENTIFIER | opa | finding | A | `implemented`, a grant on a group name an issuer hands over, where whoever creates or renames the group picks the name |
 | `PTD-OPA-011` | ASSUMABLE-IDENTITY | opa | finding | A | `implemented`, a grant on a runtime identity an enforcement point proves, where whoever can deploy the workload it names or hold its credential assumes it |
 | `PTD-OPA-012` | LOOSE-ENFORCEMENT-MATCH | opa | finding | C | `implemented`, a grant on a resource matched as a substring, a prefix, a glob or an unanchored regex, wider than the value the enforcement point serves |
-| `PTD-OPA-013` | DELEGATION-NOT-NARROWED | opa | finding | C | `implemented`, a grant of a requested authority not bounded by the delegator's, so a delegated agent mints scopes the delegating user never held |
+| `PTD-OPA-013` | DELEGATION-NOT-NARROWED | opa | finding | A | `implemented`, a grant of a requested authority not bounded by the delegator's, so a delegated agent mints scopes the delegating user never held |
 
 Between them the thirteen exercise `binding-resolution`, `concrete-data`, `enforcement-point`,
 `rule-graph` and `taint`. 007 adds no new capability, only a new construct within `rule-graph`,

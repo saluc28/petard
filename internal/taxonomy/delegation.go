@@ -120,13 +120,17 @@ func delegationFinding(ctx context.Context, a Analysis, decision string, field p
 		// grant on it.
 		return nil, nil
 	}
+	// The claim rests on the declaration of the enforcement point, which names
+	// the requested authority, and a declaration of the request is the first of
+	// the levels, as for PTD-OPA-009 to PTD-OPA-011. Who the subject is plays
+	// no part in it.
 	finding := Finding{
 		PatternID:  GrantBeyondDelegatedScope,
 		Decision:   decision,
 		Path:       field.Path,
 		Reads:      sites,
 		Subject:    a.Shape.Subject,
-		Confidence: a.Shape.Confidence.String(),
+		Confidence: opaengine.ConfidenceDeclared.String(),
 	}
 	if len(field.BoundedBy) == 0 {
 		finding.Verdict = VerdictCandidate

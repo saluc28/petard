@@ -84,6 +84,10 @@ allow if {
 	if finding.Summary == "" || finding.Reads == nil {
 		t.Errorf("finding carries no summary or no place to look: %+v", finding)
 	}
+	// The request names no subject, and the finding rests on the declaration.
+	if finding.Confidence != "A" {
+		t.Errorf("confidence %s, want A: the enforcement point declares the requested authority", finding.Confidence)
+	}
 }
 
 // The same decision, narrowed by the delegating edge as well, bounds the
