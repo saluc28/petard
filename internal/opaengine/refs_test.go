@@ -806,6 +806,178 @@ member if {
 	}
 }
 
+// A function handed a document reads the field it names, of the document each
+// call hands over. The read sits in the function, the document that led to it
+// is no read of its own, and the decisions are the ones that reach the function
+// through that call.
+func TestReadsFollowAFieldOfAParameter(t *testing.T) {
+	type read struct {
+		path, ref, rule string
+		provenance      Provenance
+		decisions       string
+	}
+	tests := []struct {
+		name     string
+		body     string
+		expected []read
+	}{
+		{
+			name: "a record handed to a function",
+			body: `allow if {
+	user := data.users[input.user]
+	privileged(user)
+}
+
+privileged(user) if user.role == "admin"
+`,
+			expected: []read{
+				{"data.users[_].role", "data.users[input.user].role", "data.t.privileged", ProvenanceInput, "data.t.allow"},
+			},
+		},
+		{
+			name: "a field read in the body and another in the function",
+			body: `allow if {
+	user := data.users[input.user]
+	user.active == true
+	privileged(user)
+}
+
+privileged(user) if user.role == "admin"
+`,
+			expected: []read{
+				{"data.users[_].active", "data.users[input.user].active", "data.t.allow", ProvenanceInput, "data.t.allow"},
+				{"data.users[_].role", "data.users[input.user].role", "data.t.privileged", ProvenanceInput, "data.t.allow"},
+			},
+		},
+		{
+			name: "a parameter passed on, and a field of one",
+			body: `allow if outer(data.users[input.user])
+
+outer(user) if {
+	inner(user)
+	in_team(user.profile)
+}
+
+inner(user) if user.role == "admin"
+
+in_team(profile) if profile.team == "platform"
+`,
+			expected: []read{
+				{"data.users[_].role", "data.users[input.user].role", "data.t.inner", ProvenanceInput, "data.t.allow"},
+				{"data.users[_].profile.team", "data.users[input.user].profile.team", "data.t.in_team", ProvenanceInput, "data.t.allow"},
+			},
+		},
+		{
+			name: "two decisions, each with its own document",
+			body: `allow if enabled(data.tenants[input.tenant])
+
+# METADATA
+# entrypoint: true
+audit if enabled(data.settings.audit)
+
+enabled(document) if document.on == true
+`,
+			expected: []read{
+				{"data.tenants[_].on", "data.tenants[input.tenant].on", "data.t.enabled", ProvenanceInput, "data.t.allow"},
+				{"data.settings.audit.on", "data.settings.audit.on", "data.t.enabled", ProvenanceStatic, "data.t.audit"},
+			},
+		},
+		{
+			name: "a list of the record the function ranges over",
+			body: `allow if {
+	some team in data.teams
+	lists(team)
+}
+
+lists(team) if team.members[_] == input.user
+`,
+			expected: []read{
+				{"data.teams[_].members[_]", "", "data.t.lists", ProvenanceData, "data.t.allow"},
+			},
+		},
+		{
+			// The function reads no field of it, so the record is the read, where
+			// the body names it.
+			name: "a record the function takes whole",
+			body: `allow if {
+	user := data.users[input.user]
+	known(user)
+}
+
+known(user) if count(user) > 0
+`,
+			expected: []read{
+				{"data.users[_]", "data.users[input.user]", "data.t.allow", ProvenanceInput, "data.t.allow"},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := "package t\n\n# METADATA\n# entrypoint: true\n" + tt.body
+			reads := readsOf(t, policy, Limits{})
+
+			var got []read
+			for _, found := range reads.Reads {
+				var decisions []string
+				for _, decision := range found.Decisions {
+					decisions = append(decisions, decision.Name)
+				}
+				ref := found.Ref
+				if strings.Contains(ref, "__local") {
+					// A name the compiler made up, which the test has no way to
+					// write.
+					ref = ""
+				}
+				got = append(got, read{found.Path, ref, found.Rule, found.Provenance, strings.Join(decisions, " ")})
+			}
+			if !slices.Equal(got, tt.expected) {
+				t.Errorf("reads =\n%+v\nwant\n%+v", got, tt.expected)
+			}
+			if len(reads.Warnings) != 0 {
+				t.Errorf("warnings = %v, want none", reads.Warnings)
+			}
+		})
+	}
+}
+
+// A function that looks the requester up in a field of the record it is handed
+// is a lookup by value, the same as the comparison written where the record is
+// named: the read carries the match, at the segment that ranges.
+func TestReadsMatchAFieldOfAParameterWithTheSubject(t *testing.T) {
+	policy := `package t
+
+# METADATA
+# entrypoint: true
+allow if {
+	some doc in data.docs
+	doc.id == input.doc
+	owns(doc, input.user)
+}
+
+owns(doc, user) if doc.owner == user
+
+owns(doc, user) if user in doc.editors
+`
+	reads := readsOf(t, policy, Limits{})
+	shape := RecognizeShape(reads)
+	if shape.Subject != "input.user" {
+		t.Fatalf("subject = %q, want input.user", shape.Subject)
+	}
+
+	matched := map[string]Match{}
+	for _, read := range SubjectMatchedReads(shape, reads) {
+		match, _ := shape.MatchedBySubject(read)
+		matched[read.Path] = match
+	}
+	expected := map[string]Match{
+		"data.docs[_].owner":   {Term: "input.user", Position: 2},
+		"data.docs[_].editors": {Term: "input.user", Position: 4, Member: true},
+	}
+	if !maps.Equal(matched, expected) {
+		t.Errorf("searched for the subject = %+v, want %+v", matched, expected)
+	}
+}
+
 // violationsPolicy is a check written as a violation, the form a decision takes
 // when it answers with its violations as well as with a verdict.
 const violationsPolicy = `package t

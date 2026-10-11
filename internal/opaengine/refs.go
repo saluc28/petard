@@ -387,6 +387,9 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 		callSites:  make(map[*ast.Rule][]callSite),
 		edges:      make(map[*ast.Rule][]callEdge),
 		summaries:  make(map[string][]paramComparison),
+
+		paramMatches: make(map[*ast.Rule][]paramMatch),
+		passed:       make(map[paramKey][]argument),
 	}
 	// Two passes, and the order matters: the call sites of a rule are only
 	// trustworthy once the walk knows which rules are part of the decisions at
@@ -858,15 +861,21 @@ func (r *refReader) readable(ref ast.Ref) (string, bool) {
 // read, not two: the shorter reference is the way to the longer one. Keeping
 // both would count a path the policy never uses on its own, and the write
 // model would be asked to cover it.
-func dropPrefixes(found []foundRef) []foundRef {
+//
+// The longer reference can also be in a function the rule hands the document
+// to, which reads the field there: those are passed in as extended (see
+// paramReads).
+func dropPrefixes(found []foundRef, extended []ast.Ref) []foundRef {
 	kept := make([]foundRef, 0, len(found))
 	for i, candidate := range found {
-		isPrefix := false
+		isPrefix := slices.ContainsFunc(extended, func(longer ast.Ref) bool {
+			return strictPrefix(candidate.resolved.ref, longer)
+		})
 		for j, other := range found {
-			if i != j && strictPrefix(candidate.resolved.ref, other.resolved.ref) {
-				isPrefix = true
+			if isPrefix {
 				break
 			}
+			isPrefix = i != j && strictPrefix(candidate.resolved.ref, other.resolved.ref)
 		}
 		if !isPrefix {
 			kept = append(kept, candidate)

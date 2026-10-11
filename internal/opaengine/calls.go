@@ -74,6 +74,138 @@ type callSite struct {
 
 	// bindings are those of the body holding the call.
 	bindings map[ast.Var]binding
+
+	// top is the expression of the caller's own body the call sits in.
+	top int
+}
+
+// argument is what one call hands a function for one of its parameters: the
+// term as the body that writes it out writes it, and the call it is written at.
+// A caller that only passes on a parameter of its own is followed up to the call
+// that hands that one over, so the site is where the value is named.
+type argument struct {
+	term *ast.Term
+	site callSite
+
+	// via are the fields of their own parameters the callers in between passed
+	// on, each as its body writes it: outer(user) calling inner(user.profile)
+	// leaves user.profile here. They are the way to whatever the function goes
+	// on to read, and no read of their own once it reads something.
+	via []passedField
+}
+
+// passedField is a field of a parameter a rule passes on to a function.
+type passedField struct {
+	rule *ast.Rule
+	ref  ast.Ref
+}
+
+// same reports whether two arguments are the same term written at the same
+// call.
+func (a argument) same(other argument) bool {
+	return a.site.caller == other.site.caller && a.site.top == other.site.top && a.term.Equal(other.term) &&
+		slices.EqualFunc(a.via, other.via, func(x, y passedField) bool { return x.rule == y.rule && x.ref.Equal(y.ref) })
+}
+
+// paramKey names one formal parameter of one rule.
+type paramKey struct {
+	rule  *ast.Rule
+	param ast.Var
+}
+
+// arguments returns what the callers of a rule pass for one of its parameters,
+// one for every call that passes something.
+//
+// parameterProvenance answers where the value comes from and keeps the best
+// answer among the call sites. This keeps every answer and the term itself,
+// because a field of the parameter reads a different document at each call, and
+// each of those is a read.
+//
+// It takes no budget. What a parameter is handed is worked out once and kept,
+// so every call site is visited once, however many call paths run through it.
+func (r *refReader) arguments(rule *ast.Rule, param ast.Var) []argument {
+	key := paramKey{rule: rule, param: param}
+	if known, done := r.passed[key]; done {
+		return known
+	}
+	// Rego refuses recursion between rules, so this is never met on the way
+	// back to the same parameter. It is set anyway, for the reason summary sets
+	// its own.
+	r.passed[key] = nil
+
+	place, ok := parameterPlaceOf(rule, param)
+	if !ok {
+		return nil
+	}
+	var passed []argument
+	for _, site := range r.callSites[rule] {
+		term, picked := place.pick(site.args, site.bindings)
+		if !picked {
+			continue
+		}
+		for _, found := range r.argumentsAt(site, term) {
+			if !slices.ContainsFunc(passed, found.same) {
+				passed = append(passed, found)
+			}
+		}
+	}
+	r.passed[key] = passed
+	return passed
+}
+
+// argumentsAt says what one actual argument is, in the body that passes it: the
+// term a variable stands for there, or what the callers of that body pass in
+// turn when the argument is a parameter of its own or a field of one.
+func (r *refReader) argumentsAt(site callSite, term *ast.Term) []argument {
+	if v, isVar := varOf(term); isVar {
+		switch resolved := resolveVar(v, site.bindings); resolved.status {
+		case resolvedTerm:
+			term = resolved.term
+		case unresolvedUnbound:
+			return r.arguments(site.caller, v)
+		default:
+			return nil
+		}
+	}
+
+	ref, isRef := term.Value.(ast.Ref)
+	if !isRef {
+		return nil
+	}
+	resolved := substituteRef(ref, site.bindings)
+	param, isParam := parameterHead(site.caller, resolved)
+	if !isParam {
+		return []argument{{term: ast.NewTerm(resolved.ref), site: site}}
+	}
+	// A field of the caller's own parameter: what its callers pass, with the
+	// field on the end.
+	var passed []argument
+	for _, outer := range r.arguments(site.caller, param) {
+		if base, isRef := outer.term.Value.(ast.Ref); isRef {
+			passed = append(passed, argument{
+				term: ast.NewTerm(base.Concat(resolved.ref[1:])),
+				site: outer.site,
+				via:  append(slices.Clone(outer.via), passedField{rule: site.caller, ref: resolved.ref}),
+			})
+		}
+	}
+	return passed
+}
+
+// parameterHead returns the formal parameter a substituted reference starts at,
+// when it starts at one and goes on into it.
+func parameterHead(rule *ast.Rule, resolved substitutedRef) (ast.Var, bool) {
+	if resolved.root != nil || len(resolved.ref) < 2 {
+		return "", false
+	}
+	head, isVar := varOf(resolved.ref[0])
+	if !isVar || isRoot(head) {
+		return "", false
+	}
+	if _, isParam := parameterPlaceOf(rule, head); !isParam {
+		return "", false
+	}
+	return head, true
 }
 
 // callBudget is what a single reference is allowed to spend looking for where

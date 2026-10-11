@@ -69,6 +69,20 @@ type refReader struct {
 	found     []ruleRefs
 	callSites map[*ast.Rule][]callSite
 
+	// foundParams are the references met while walking that start at a formal
+	// parameter, user.role in privileged(user). Which document one reads is in
+	// the calls, and those are only all known once the walk is over. See
+	// paramReads.
+	foundParams []paramRef
+
+	// paramMatches are the comparisons a function makes of a field of one of
+	// its parameters with a part of the request, by the function. See matches.go.
+	paramMatches map[*ast.Rule][]paramMatch
+
+	// passed is what each parameter is handed by the callers of its rule, worked
+	// out once. See arguments.
+	passed map[paramKey][]argument
+
 	// edges are the rules each rule reaches, recorded while walking so that a
 	// value found deep in a helper can be traced back to the decisions that
 	// depend on it. Which decision is asking is not a detail of presentation:
@@ -241,6 +255,15 @@ type foundRef struct {
 
 	// top is the expression of the rule's own body the reference sits in.
 	top int
+}
+
+// paramRef is a reference met while walking that starts at a formal parameter
+// of the rule it sits in and goes on into it. The reference is kept as the body
+// writes it, the parameter at its head.
+type paramRef struct {
+	rule  *ast.Rule
+	param ast.Var
+	foundRef
 }
 
 func (r *refReader) walk() {
@@ -698,6 +721,21 @@ func (r *refReader) walkTerm(term *ast.Term, sc scope, found *[]foundRef) {
 				top:      r.top,
 			})
 		}
+		// A field of a parameter reads whatever the callers hand over, and
+		// nothing in this body says what that is.
+		if param, isParam := parameterHead(r.current, resolved); isParam {
+			r.foundParams = append(r.foundParams, paramRef{
+				rule:  r.current,
+				param: param,
+				foundRef: foundRef{
+					resolved: resolved,
+					bindings: sc.bindings,
+					negated:  sc.negated,
+					location: term.Loc(),
+					top:      r.top,
+				},
+			})
+		}
 		for _, inner := range value[1:] {
 			r.walkTerm(inner, sc, found)
 		}
@@ -818,6 +856,7 @@ func (r *refReader) followCall(operator ast.Ref, operands []*ast.Term, sc scope)
 			caller:   r.current,
 			args:     operands[:arity],
 			bindings: sc.bindings,
+			top:      r.top,
 		})
 	}
 }

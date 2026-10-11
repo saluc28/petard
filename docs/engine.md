@@ -73,7 +73,10 @@ From the decisions it walks the rules they depend on, following calls into funct
 alone the expressions that mock the world with a `with` modifier, and reports:
 
 - every place a decision reads `data`, with the normalized path, the reference as the author
-  wrote it, the file and the line, and whether the read sits under a negation
+  wrote it, the file and the line, and whether the read sits under a negation. A function handed
+  a document reads the field it names: `privileged(user)` testing `user.role`, called with
+  `data.users[input.user]`, reads `data.users[input.user].role`, in the function and for the
+  decisions that reach it through that call
 - who chooses the document each read lands on: the caller, other data, a builtin, or nobody
   the analysis can name
 - the values a decision depends on that the policy did not compute, such as the body of an

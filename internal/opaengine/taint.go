@@ -143,7 +143,7 @@ func (r *refReader) taints(reach map[*ast.Rule]decisionPaths, limits Limits) ([]
 		warnings []string
 	)
 	for _, entry := range r.found {
-		for _, candidate := range dropPrefixes(entry.refs) {
+		for _, candidate := range dropPrefixes(entry.refs, nil) {
 			if candidate.resolved.root == nil {
 				continue
 			}

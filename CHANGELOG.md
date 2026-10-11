@@ -155,6 +155,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   declaration of the enforcement point can cover. A check is now read only where it names a
   part of the request.
 - A count of one is written in the singular: `1 read over 1 data path`, `graph: 1 node, 1 edge`.
+- A field read through the parameter of a function was not a read: `privileged(user)` testing
+  `user.role`, called with `data.users[input.user]`, left the role out of what the decision
+  reads, so `PTD-OPA-001` reported nothing on a role the subject can write, and no write model
+  entry on the field could apply. The read is now made of each document a call hands over, a
+  comparison of the field with the requester is a lookup by value as it is in the body that
+  names the document, and a field of a part of the request handed to a function is a check on
+  that part. Policies that keep their tests in functions report more checks and more reads.
 - `PTD-OPA-012` said nothing about a decision that grants on a loosely matched path unless some
   decision of the bundle also read a field named like a subject, and nothing at all when the
   subject was declared with `-subject` or by the enforcement point: the resource and the action

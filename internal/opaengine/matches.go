@@ -289,7 +289,9 @@ func (r *refReader) matches(limits Limits) (map[*ast.Rule][]refMatch, []string) 
 		keep := func(document, request *ast.Term) {
 			if match, ref, ok := r.matchOf(compared, document, request, budget); ok {
 				found[compared.rule] = append(found[compared.rule], refMatch{ref: ref, match: match})
+				return
 			}
+			r.keepParamMatch(compared, document, request, budget)
 		}
 
 		// An equality is symmetric and either side can be the document. A
@@ -326,6 +328,123 @@ func (r *refReader) matchOf(compared foundComparison, document, request *ast.Ter
 		return Match{}, nil, false
 	}
 	return Match{Term: term, Position: position}, ref, true
+}
+
+// paramMatch is a comparison a function makes between a field of one of its
+// parameters and a part of the request. Whether the field is a document, and
+// which, is in the calls, so it waits for the read the field becomes (see
+// paramReads).
+type paramMatch struct {
+	// ref is the field as the function writes it, the parameter at its head.
+	ref ast.Ref
+
+	// term is the part of the request, written the way Match writes it.
+	term   string
+	member bool
+
+	// bindings are those of the body that makes the comparison.
+	bindings map[ast.Var]binding
+}
+
+// keepParamMatch records one orientation of a comparison when the side that
+// could be a document is a field of a parameter.
+func (r *refReader) keepParamMatch(compared foundComparison, document, request *ast.Term, budget *callBudget) {
+	ref, isField := paramField(compared.rule, document, compared.bindings)
+	if !isField {
+		return
+	}
+	term, isRequest := r.requestOf(compared.rule, request, compared.bindings, budget)
+	if !isRequest {
+		return
+	}
+	r.paramMatches[compared.rule] = append(r.paramMatches[compared.rule],
+		paramMatch{ref: ref, term: term, member: compared.member, bindings: compared.bindings})
+}
+
+// paramField returns the reference a term stands for when it starts at a
+// parameter of the rule and goes on into it.
+func paramField(rule *ast.Rule, term *ast.Term, bindings map[ast.Var]binding) (ast.Ref, bool) {
+	if v, isVar := varOf(term); isVar {
+		if resolved := resolveVar(v, bindings); resolved.status == resolvedTerm {
+			return paramField(rule, resolved.term, bindings)
+		}
+		return nil, false
+	}
+	ref, isRef := term.Value.(ast.Ref)
+	if !isRef {
+		return nil, false
+	}
+	resolved := substituteRef(ref, bindings)
+	if _, isParam := parameterHead(rule, resolved); !isParam {
+		return nil, false
+	}
+	return resolved.ref, true
+}
+
+// matchesThrough returns the matches of a read made through a parameter: the
+// comparisons the function makes of that field with a part of the request.
+//
+// The element being kept or dropped is the last dynamic segment of the read,
+// and it can sit in the function, which ranges over a list of the document it
+// is handed, or in the body that names the document and ranges over the
+// collection it comes from.
+func (r *refReader) matchesThrough(found paramRef, site callSite, document substitutedRef, ref ast.Ref) []Match {
+	var matches []Match
+	for _, compared := range r.paramMatches[found.rule] {
+		if !compared.ref.Equal(found.resolved.ref) {
+			continue
+		}
+		match := Match{Term: compared.term, Position: len(ref), Member: compared.member}
+		if !compared.member {
+			position, ranges := rangingInside(found.rule, compared.ref, compared.bindings)
+			if position > 0 {
+				position += len(document.ref) - 1
+			} else {
+				position, ranges = rangingElement(document.ref, site.bindings)
+			}
+			if !ranges {
+				continue
+			}
+			match.Position = position
+		}
+		if !slices.Contains(matches, match) {
+			matches = append(matches, match)
+		}
+	}
+	return matches
+}
+
+// rangingInside is rangingElement for a reference that starts at a parameter.
+// It returns the position of the last dynamic segment whether or not it ranges,
+// and zero when the function names every segment, so that the caller knows to
+// look for the element in the document the function is handed.
+//
+// An index no body binds ranges here too. The binding table marks such a
+// variable only under data or input (see addIterations), and under a parameter
+// it is the same thing unless it is a parameter itself.
+func rangingInside(rule *ast.Rule, ref ast.Ref, bindings map[ast.Var]binding) (int, bool) {
+	for i := len(ref) - 1; i > 0; i-- {
+		switch value := ref[i].Value.(type) {
+		case ast.String, ast.Number:
+			continue
+		case ast.Var:
+			if value.IsWildcard() {
+				return i, true
+			}
+			switch resolveVar(value, bindings).status {
+			case resolvedIteration:
+				return i, true
+			case unresolvedUnbound:
+				_, isParam := parameterPlaceOf(rule, value)
+				return i, !isParam
+			default:
+				return i, false
+			}
+		default:
+			return i, false
+		}
+	}
+	return 0, false
 }
 
 // documentOf returns the data reference a term stands for, when it names a
@@ -379,10 +498,19 @@ func (r *refReader) requestOf(rule *ast.Rule, term *ast.Term, bindings map[ast.V
 		return "", false
 	}
 	resolved := substituteRef(ref, bindings)
-	if resolved.root != nil || !isInputRooted(resolved.ref) {
-		return "", false
+	if resolved.root == nil && isInputRooted(resolved.ref) {
+		return normalize(resolved.ref), true
 	}
-	return normalize(resolved.ref), true
+	// A field of a parameter is a part of the request where a call hands the
+	// function one: user.role in allowed(user), called with input.user.
+	if param, isParam := parameterHead(rule, resolved); isParam {
+		for _, passed := range r.arguments(rule, param) {
+			if base, isRef := passed.term.Value.(ast.Ref); isRef && isInputRooted(base) {
+				return normalize(base.Concat(resolved.ref[1:])), true
+			}
+		}
+	}
+	return "", false
 }
 
 // rangingElement returns the last dynamic segment of a reference, when that

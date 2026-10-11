@@ -19,8 +19,11 @@ func (r *refReader) resolve(limits Limits, reach map[*ast.Rule]decisionPaths) *R
 	matches, warnings := r.matches(limits)
 	result.Warnings = append(result.Warnings, warnings...)
 
+	through := r.paramReads(limits, reach)
+	result.Warnings = append(result.Warnings, through.warnings...)
+
 	for _, entry := range r.found {
-		for _, candidate := range dropPrefixes(entry.refs) {
+		for _, candidate := range dropPrefixes(entry.refs, through.extends[entry.rule]) {
 			if candidate.resolved.root != nil {
 				// Not a read of a document: the reference hangs off what a call
 				// returned. Where that value came from is taint.go's question,
@@ -39,6 +42,7 @@ func (r *refReader) resolve(limits Limits, reach map[*ast.Rule]decisionPaths) *R
 			result.Reads = append(result.Reads, read)
 			result.Warnings = append(result.Warnings, budget.warnings...)
 		}
+		result.Reads = append(result.Reads, through.reads[entry.rule]...)
 	}
 
 	for _, paths := range r.inputPaths {
@@ -46,6 +50,187 @@ func (r *refReader) resolve(limits Limits, reach map[*ast.Rule]decisionPaths) *R
 	}
 	result.InputPaths = sortedUnique(result.InputPaths)
 	return result
+}
+
+// paramReads are the reads made through a parameter: a function that is handed
+// a document and reads a field of it.
+type paramReads struct {
+	// reads are the reads, by the function each sits in.
+	reads map[*ast.Rule][]Read
+
+	// extends are the references those reads go on from, written out to the
+	// field, by the rule whose body names the document. There the document is
+	// only the way to the field, as it is when the field is read in the same
+	// body.
+	extends map[*ast.Rule][]ast.Ref
+
+	warnings []string
+}
+
+// paramReads turns the references that start at a parameter into reads, one for
+// every document a caller hands over.
+//
+// privileged(user) reads user.role, and nothing in its body says whose role.
+// The call does: privileged(data.users[input.user]) makes it
+// data.users[input.user].role, the read a pattern needs to see, since a
+// function is where a policy puts a test it makes of more than one record. The
+// read sits in the function, where the field is named, and belongs to the
+// decisions that reach the function through that call.
+//
+// A parameter handed something other than a document reads no data here: a part
+// of the request is a check's concern (see requestOf), and what a call returned
+// is where a value from outside the policy is followed (see taint.go).
+func (r *refReader) paramReads(limits Limits, reach map[*ast.Rule]decisionPaths) paramReads {
+	through := paramReads{reads: map[*ast.Rule][]Read{}, extends: map[*ast.Rule][]ast.Ref{}}
+
+	// The reads of each reference first, since a function further down can
+	// turn one of them into the way to its own: outer(user) passing
+	// user.profile to a function that reads profile.team reads the team, and
+	// the profile only on the way there.
+	made := make([][]Read, len(r.foundParams))
+	passedOn := map[*ast.Rule][]ast.Ref{}
+	for i, found := range r.foundParams {
+		budget := &callBudget{limits: limits}
+		decisions := r.decisionsAt(found.rule, found.top, reach)
+		for _, passed := range r.arguments(found.rule, found.param) {
+			base, isRef := passed.term.Value.(ast.Ref)
+			if !isRef {
+				continue
+			}
+			document := substituteRef(base, passed.site.bindings)
+			if document.root != nil || !isDataRooted(document.ref) || r.namesRule(document.ref) {
+				continue
+			}
+			ref := document.ref.Concat(found.resolved.ref[1:])
+			if r.namesRule(ref) {
+				continue
+			}
+
+			read := r.paramRead(found, passed.site, document, ref, budget)
+			read.Decisions = reachedBy(decisions, r.decisionsAt(passed.site.caller, passed.site.top, reach))
+			if len(read.Decisions) == 0 {
+				continue
+			}
+			through.extends[passed.site.caller] = append(through.extends[passed.site.caller], ref)
+			for _, field := range passed.via {
+				passedOn[field.rule] = append(passedOn[field.rule], field.ref)
+			}
+			made[i] = withRead(made[i], read)
+		}
+		through.warnings = append(through.warnings, budget.warnings...)
+	}
+
+	for i, found := range r.foundParams {
+		if slices.ContainsFunc(passedOn[found.rule], func(field ast.Ref) bool { return field.Equal(found.resolved.ref) }) {
+			continue
+		}
+		for _, read := range made[i] {
+			through.reads[found.rule] = withRead(through.reads[found.rule], read)
+		}
+	}
+	return through
+}
+
+// paramRead is the read a field of a parameter makes of one document a call
+// hands over.
+//
+// Who picks the document is asked of the body that names it, and who picks what
+// the function goes on to inside it is asked of the function. The stronger of
+// the two answers is the read's, as among the indexes of any reference.
+func (r *refReader) paramRead(found paramRef, site callSite, document substitutedRef, ref ast.Ref, budget *callBudget) Read {
+	caller := rulePath(site.caller).String()
+	trace := &Trace{Callers: []string{caller}}
+
+	outside, origin := r.indexProvenance(document, site.bindings, budget, 0)
+	if outside == ProvenanceUnresolved {
+		var asked *Trace
+		if outside, asked = r.throughCallers(site.caller, document, budget); asked != nil {
+			trace = &Trace{Term: asked.Term, Callers: append([]string{caller}, asked.Callers...)}
+		}
+	}
+
+	// The parameter itself is answered for by the call. An index nothing binds
+	// ranges over what the document holds, which is the data's to pick.
+	field, ranges := found.resolved, false
+	field.unresolved = slices.DeleteFunc(slices.Clone(field.unresolved), func(v ast.Var) bool {
+		if v == found.param {
+			return true
+		}
+		if _, isParam := parameterPlaceOf(found.rule, v); isParam {
+			return false
+		}
+		ranges = true
+		return true
+	})
+	inside, insideOrigin := r.indexProvenance(field, found.bindings, budget, 0)
+	if inside == ProvenanceUnresolved {
+		var asked *Trace
+		if inside, asked = r.throughCallers(found.rule, field, budget); asked != nil && trace.Term == "" {
+			trace = asked
+		}
+	}
+	if ranges && !better(inside, ProvenanceData) {
+		inside, insideOrigin = ProvenanceData, ""
+	}
+
+	provenance := outside
+	switch {
+	case better(inside, outside) && inside != ProvenanceStatic:
+		provenance, origin = inside, insideOrigin
+	case outside == ProvenanceStatic && inside == ProvenanceUnresolved:
+		// Nothing says who picks the field the function goes on to.
+		provenance = ProvenanceUnresolved
+	}
+
+	readable, _ := r.readable(ref)
+	read := Read{
+		Path:          normalize(ref),
+		Ref:           readable,
+		Rule:          rulePath(found.rule).String(),
+		Provenance:    provenance,
+		Origin:        origin,
+		Trace:         trace,
+		Indexes:       r.indexesOf(ref, trace),
+		Matches:       r.matchesThrough(found, site, document, ref),
+		UnderNegation: found.negated,
+		RuleDefault:   r.defaultOf(found.rule),
+	}
+	loc := found.location
+	if loc == nil {
+		loc = found.rule.Loc()
+	}
+	if loc != nil {
+		read.File, read.Line = loc.File, loc.Row
+	}
+	return read
+}
+
+// reachedBy keeps the decisions that also reach the call a read comes through.
+// A function called by two decisions with two documents reads each of them for
+// the decision that hands it over, and not for the other.
+func reachedBy(decisions, throughCall []ReachedDecision) []ReachedDecision {
+	return slices.DeleteFunc(slices.Clone(decisions), func(decision ReachedDecision) bool {
+		return !slices.ContainsFunc(throughCall, func(other ReachedDecision) bool { return other.Name == decision.Name })
+	})
+}
+
+// withRead adds a read to the reads of a function, or its decisions to the same
+// read made through another call.
+func withRead(reads []Read, read Read) []Read {
+	for i := range reads {
+		same := reads[i].Ref == read.Ref && reads[i].Line == read.Line && reads[i].File == read.File
+		if !same {
+			continue
+		}
+		for _, decision := range read.Decisions {
+			if !slices.Contains(reads[i].Decisions, decision) {
+				reads[i].Decisions = append(reads[i].Decisions, decision)
+			}
+		}
+		slices.SortFunc(reads[i].Decisions, func(a, b ReachedDecision) int { return strings.Compare(a.Name, b.Name) })
+		return reads
+	}
+	return append(reads, read)
 }
 
 // dropPrefixPaths removes the paths of input that are a strict prefix of

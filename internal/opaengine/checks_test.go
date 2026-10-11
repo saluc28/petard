@@ -249,6 +249,27 @@ restricted(collection, kind) if {
 			expected: nil,
 		},
 		{
+			// A function handed a part of the request tests a field of it, and
+			// the check is on that field of the part each call hands over.
+			name: "a field of a part of the request handed to a function",
+			body: `allow if allowed(input.user)
+
+allowed(user) if user.role == "admin"
+
+allowed(user) if startswith(user.email, "ops-")
+`,
+			expected: []Check{
+				{
+					Request: "input.user.role", Value: `"admin"`, Operator: CheckEqual, Rule: "data.checks.allowed", Line: 7,
+					Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+				},
+				{
+					Request: "input.user.email", Value: `"ops-"`, Operator: CheckPrefix, Rule: "data.checks.allowed", Line: 9,
+					Decisions: []CheckedDecision{{Name: "data.checks.allow", Grants: true}},
+				},
+			},
+		},
+		{
 			// What another builtin made of the request has the request behind it
 			// and no path in it. The call site can name the builtin and not a
 			// part of the request, and a check names a part or it is not one.
