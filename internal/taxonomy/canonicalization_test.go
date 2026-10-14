@@ -101,12 +101,22 @@ func TestGrantsBeforeCanonicalization(t *testing.T) {
 			expected: nil,
 		},
 		{
-			// A known false negative. The first component is public for a path
-			// that then climbs out of it, so this decision is bypassed too, and
-			// nothing is reported: the value the path is held against is computed,
-			// and no request the decision grants is built to start from.
+			// The first component is public for a path that then climbs out of
+			// it, so this decision is bypassed too. What the path is held against
+			// is computed, and no request the decision grants is built to start
+			// from: it could not be asked, and that is what is reported. Given
+			// one, it is asked: see the test of a given request below.
 			name:     "a component at a fixed place",
 			body:     "allow if split(input.path, \"/\")[1] == \"public\"\n",
+			forms:    []string{"dot-segments"},
+			expected: []string{"candidate input.path"},
+		},
+		{
+			// The paths are in the conditions partial evaluation leaves, and one
+			// of them is where the question starts. An equality lets no traversal
+			// through.
+			name:     "one of the values a rule lists",
+			body:     "allow if input.path in {\"/public/index\", \"/public/about\"}\n",
 			forms:    []string{"dot-segments"},
 			expected: nil,
 		},
@@ -171,9 +181,14 @@ matches(accepted, asked) if startswith(asked, concat("", [accepted, "/"]))
 				t.Errorf("results = %v, want %v", got, tt.expected)
 			}
 			for _, finding := range findings {
-				if finding.PatternID != GrantOnLooseMatch || finding.Confidence != "A" || len(finding.Reads) == 0 ||
-					!strings.HasPrefix(finding.Note, "proven by {") {
-					t.Errorf("finding = %+v, want one of PTD-OPA-012 at level A, with where the part is read and the request that proves it", finding)
+				if finding.PatternID != GrantOnLooseMatch || finding.Confidence != "A" || len(finding.Reads) == 0 {
+					t.Errorf("result = %+v, want one of PTD-OPA-012 at level A, with where the part is read", finding)
+				}
+				if finding.Verdict == VerdictFinding && !strings.HasPrefix(finding.Note, "proven by {") {
+					t.Errorf("finding = %+v, want the request that proves it", finding)
+				}
+				if finding.Verdict == VerdictCandidate && !strings.Contains(finding.Summary, "no request it grants could be built") {
+					t.Errorf("candidate = %+v, want it to say no request was built to ask about", finding)
 				}
 			}
 		})
@@ -208,6 +223,40 @@ func TestGrantsBeforeCanonicalizationOnAPrefixFromTheData(t *testing.T) {
 	}
 }
 
+// The paths a decision grants can be listed in a document and compared whole.
+// Nothing in the policy writes one of them, and none is a prefix to stand
+// under: with the path left open, partial evaluation leaves each of them as a
+// condition, and that is where the question starts. Asked, the decision
+// refuses a traversal out of any of them.
+func TestGrantsBeforeCanonicalizationOnPathsADocumentLists(t *testing.T) {
+	policy := canonicalPolicy("allow if {\n\tsome route in data.routes\n\troute.path == input.path\n\troute.method == input.method\n}\n")
+	a := delegationAnalysis(t, policy, canonicalGateway("input.path", "dot-segments"),
+		`{"routes": [{"path": "/public/index", "method": "GET"}, {"path": "/public/about", "method": "GET"}]}`)
+
+	findings, err := GrantsBeforeCanonicalization(t.Context(), a)
+	if err != nil {
+		t.Fatalf("GrantsBeforeCanonicalization() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Errorf("results = %v, want none: the decision was asked, and grants the listed paths alone", summaries(findings))
+	}
+
+	granted, err := requestsGrantingAnyValue(t.Context(), a, "data.p.allow")
+	if err != nil {
+		t.Fatalf("requestsGrantingAnyValue() error = %v", err)
+	}
+	var paths []string
+	for _, request := range granted {
+		if path, isString := request["path"].(string); isString {
+			paths = append(paths, path)
+		}
+	}
+	slices.Sort(paths)
+	if !slices.Equal(paths, []string{"/public/about", "/public/index"}) {
+		t.Errorf("requests built with the path left open carry %v, want the two paths of the document", paths)
+	}
+}
+
 // A decision OPA panics on cannot be asked either, and is a candidate that says
 // why. OPA v1.21.1 panics on the partial evaluation of a negated rule whose
 // body holds an every over a part of the request left unknown.
@@ -232,6 +281,77 @@ blocked if {
 	if len(findings) != 1 || findings[0].Verdict != VerdictCandidate ||
 		!strings.Contains(findings[0].Summary, "OPA panicked evaluating it") {
 		t.Errorf("results = %v, want a candidate saying OPA panicked", findings)
+	}
+}
+
+// A decision that holds the path against something it computes leaves no
+// condition to build a granted request from. Given one, the question starts
+// there: the path the request carries is the place the traversal leaves.
+func TestGrantsBeforeCanonicalizationStartsFromAGivenRequest(t *testing.T) {
+	const component = "allow if {\n\tinput.method == \"GET\"\n\tsplit(input.path, \"/\")[1] == \"public\"\n}\n"
+	const guarded = "allow if {\n\tinput.method == \"GET\"\n\tnot contains(input.path, \"..\")\n\tsplit(input.path, \"/\")[1] == \"public\"\n}\n"
+	const unasked = "candidate input.path"
+
+	given := func(decision string, input map[string]any) []GrantedRequest {
+		return []GrantedRequest{{File: "granted.json", Input: input, Decisions: []string{decision}}}
+	}
+	intro := map[string]any{"method": "GET", "path": "/public/docs/intro"}
+
+	tests := []struct {
+		name     string
+		body     string
+		granted  []GrantedRequest
+		expected []string
+	}{
+		{
+			name:     "no request given",
+			body:     component,
+			expected: []string{unasked},
+		},
+		{
+			name:     "a request the decision grants",
+			body:     component,
+			granted:  given("data.p.allow", intro),
+			expected: []string{`finding input.path "/public/docs/intro/../../../petard-beyond"`},
+		},
+		{
+			// The decision was asked, and refuses the traversal.
+			name:    "the same request, and a guard on the dot segments",
+			body:    guarded,
+			granted: given("data.p.allow", intro),
+		},
+		{
+			name:     "a request another decision grants",
+			body:     component,
+			granted:  given("data.p.other", intro),
+			expected: []string{unasked},
+		},
+		{
+			// There is no place for a traversal to leave.
+			name:     "a request that carries no path",
+			body:     component,
+			granted:  given("data.p.allow", map[string]any{"method": "GET"}),
+			expected: []string{unasked},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := analysisWithGateway(t, canonicalPolicy(tt.body), canonicalGateway("input.path", "dot-segments"))
+			a.Granted = tt.granted
+
+			findings, err := GrantsBeforeCanonicalization(t.Context(), a)
+			if err != nil {
+				t.Fatalf("GrantsBeforeCanonicalization() error = %v", err)
+			}
+			if got := summaries(findings); !slices.Equal(got, tt.expected) {
+				t.Errorf("results = %v, want %v", got, tt.expected)
+			}
+			for _, finding := range findings {
+				if finding.Verdict == VerdictFinding && !strings.Contains(finding.Note, `"method":"GET"`) {
+					t.Errorf("note = %q, want the request given, with the path that leaves it", finding.Note)
+				}
+			}
+		})
 	}
 }
 

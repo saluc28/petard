@@ -388,6 +388,10 @@ type Inputs struct {
 	// nobody said. See DeclareEnforcementPoint.
 	EnforcementPoint string
 
+	// Granted are files that each hold a request the decisions grant, as the
+	// policy reads it. See GrantedRequest.
+	Granted []string
+
 	Limits opaengine.Limits
 }
 
@@ -460,37 +464,50 @@ func Load(ctx context.Context, inputs Inputs) (Analysis, error) {
 			return Analysis{}, err
 		}
 	}
+	if err := analysis.loadData(ctx, inputs, remote, token); err != nil {
+		return Analysis{}, err
+	}
+	// Last, since a request is granted against the data.
+	if analysis.Granted, err = loadGranted(ctx, analysis, inputs.Granted); err != nil {
+		return Analysis{}, err
+	}
+	return analysis, nil
+}
+
+// loadData gives an analysis its data, from the first place that has any: the
+// path given, the running OPA the policies were read from, the bundle itself.
+// Finding none is not an error, and leaves the analysis without data.
+func (a *Analysis) loadData(ctx context.Context, inputs Inputs, remote, token string) error {
+	var err error
 	if inputs.DataPath != "" {
-		if analysis.Data, err = opaengine.LoadData([]string{inputs.DataPath}); err != nil {
-			return Analysis{}, err
-		}
-		return analysis, nil
+		a.Data, err = opaengine.LoadData([]string{inputs.DataPath})
+		return err
 	}
 	if remote != "" {
 		// The data is what the running OPA holds, read over its API for the
 		// roots the decisions read, the same way the bundle's data is read from
 		// disk. A server with nothing under those roots is an analysis without
 		// data.
-		analysis.Data, err = opaengine.FetchData(ctx, remote, token, dataRoots(reads))
+		a.Data, err = opaengine.FetchData(ctx, remote, token, dataRoots(a.Reads))
 		switch {
 		case err == nil:
-			analysis.DataFromLive = true
+			a.DataFromLive = true
 		case !errors.Is(err, opaengine.ErrNoData):
-			return Analysis{}, err
+			return err
 		}
-		return analysis, nil
+		return nil
 	}
 
 	// Without -data, the data is what the bundle carries, if anything, the way
 	// opa run reads a bundle. A bundle without data is an analysis without it.
-	analysis.Data, err = opaengine.LoadBundleData(inputs.Paths)
+	a.Data, err = opaengine.LoadBundleData(inputs.Paths)
 	switch {
 	case err == nil:
-		analysis.DataFromBundle = true
+		a.DataFromBundle = true
 	case !errors.Is(err, opaengine.ErrNoData):
-		return Analysis{}, err
+		return err
 	}
-	return analysis, nil
+	return nil
 }
 
 // dataRoots returns the distinct top-level documents the decisions read, as the

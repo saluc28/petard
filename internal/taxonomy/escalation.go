@@ -49,6 +49,11 @@ type Analysis struct {
 	// which rules are decisions, so a report has to say when they were inferred.
 	DecisionsInferred bool
 
+	// Granted are the requests given from outside as ones the decisions grant,
+	// each with the decisions that do. A question that starts from a granted
+	// request starts from these before the ones it builds.
+	Granted []GrantedRequest
+
 	Limits opaengine.Limits
 }
 

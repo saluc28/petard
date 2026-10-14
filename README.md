@@ -327,6 +327,19 @@ When a bundle authorizes its own writes, `-v` lists the branches of a decision t
 method, and the skeleton appends each as a commented `authorized_by` block. Attaching one to a writer
 is how a write allowed by another decision gets declared without writing the block by hand.
 
+Some questions are put to a decision starting from a request it grants, and the engine builds
+that request from the policy. A decision that holds a part of the request against something it
+computes leaves nothing to build one from, and the report says it could not be asked. `-granted`
+gives it a request to start from: a JSON or YAML file holding what the policy reads as `input`,
+the one a test of the policy sends or one out of an access log.
+
+```
+petard analyze -pep gateway.yaml -granted request.json path/to/policy
+```
+
+A request no decision grants is refused, and the report names the decisions that grant each one
+given.
+
 A bundle archive, such as the `bundle.tar.gz` that `opa build` writes, can be given in place of
 the directory. The policies and the data inside it are read the same way:
 

@@ -104,8 +104,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the second and refusing the third is a finding at level `A`, with the request that proves it,
   whatever form the match and the guard take: a prefix the policy writes, one from the data, one
   taken from another part of the request. A candidate the form of the match left on the same
-  decision and the same part is dropped. A decision that reads documents when none were given,
-  or that OPA panics on, is a candidate saying so.
+  decision and the same part is dropped. A decision that could not be asked is a candidate
+  saying so: it reads documents and none were given, OPA panics on it, or no request it grants
+  was built or given.
+- `-granted <file>`, on `petard analyze` and `petard export`, gives a request the decisions
+  grant: a JSON or YAML file holding what the policy reads as `input`, repeated for more than
+  one. The fourth signal of `PTD-OPA-012` starts from a request the decision grants, and builds
+  none for a decision that holds the path against something it computes,
+  `split(input.path, "/")[1] == "public"`. It starts from the ones given first, and the report
+  names the decisions that grant each. A request no decision grants is refused on the command
+  line.
 - `-action` and `-resource`, on `petard analyze` and `petard export`, declare the parts of the
   request that name what is asked for, as `-subject` declares who is asking, and an enforcement
   point declaration takes them as `action` and `resource`. A gateway that hands the policy the

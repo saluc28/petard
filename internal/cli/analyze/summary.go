@@ -3,6 +3,7 @@ package analyze
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -360,6 +361,13 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 				"with -entrypoint; if the answer is one of several values, name the ones that grant, as "+
 				"-entrypoint %s=allowed.", decision, shortValue(value), decision), "  ")
 		}
+	}
+
+	for _, request := range a.Granted {
+		// Which decisions grant it is what the request stands for in this run,
+		// and whoever gave it may have had another one in mind.
+		render.Print(out, fmt.Sprintf("The request in %s is granted by %s. A question that starts from a "+
+			"granted request starts there.", filepath.ToSlash(request.File), strings.Join(request.Decisions, " and ")), "  ")
 	}
 
 	if point := a.EnforcementPoint; point != nil {

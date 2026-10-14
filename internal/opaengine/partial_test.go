@@ -1372,3 +1372,45 @@ func TestDecidedConditions(t *testing.T) {
 		})
 	}
 }
+
+// A request is read from JSON or from YAML, as the data is, and it is an
+// object: what a policy reads as input, with nothing wrapped around it.
+func TestLoadRequest(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatalf("writing %s: %v", path, err)
+		}
+		return path
+	}
+
+	want := map[string]any{"method": "GET", "path": "/public/index"}
+	for name, path := range map[string]string{
+		"json": write("request.json", `{"method": "GET", "path": "/public/index"}`),
+		"yaml": write("request.yaml", "method: GET\npath: /public/index\n"),
+	} {
+		request, err := LoadRequest(path)
+		if err != nil {
+			t.Fatalf("%s: LoadRequest() error = %v", name, err)
+		}
+		if !reflect.DeepEqual(request, want) {
+			t.Errorf("%s: request = %v, want %v", name, request, want)
+		}
+	}
+
+	for name, tt := range map[string]struct {
+		path string
+		says string
+	}{
+		"a list":           {write("list.json", `["GET"]`), "a request has to be an object"},
+		"not a document":   {write("broken.json", `{"method": `), "parsing"},
+		"no file at all":   {filepath.Join(dir, "missing.json"), "reading"},
+		"a string, whole":  {write("string.json", `"GET"`), "a request has to be an object"},
+		"an empty request": {write("empty.json", ``), "a request has to be an object"},
+	} {
+		if _, err := LoadRequest(tt.path); err == nil || !strings.Contains(err.Error(), tt.says) {
+			t.Errorf("%s: LoadRequest() error = %v, want one that says %q", name, err, tt.says)
+		}
+	}
+}

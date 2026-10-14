@@ -126,6 +126,33 @@ func (o CheckOperator) MidString() bool {
 	return o == CheckSubstring || o == CheckRegex || o == CheckGlobEmbedded
 }
 
+// Strings returns the strings a check holds the request against: the value
+// itself where it is one, and the strings among its elements where it is a
+// collection written out, sorted. A check held against anything else has none.
+func (c Check) Strings() []string {
+	term, err := ast.ParseTerm(c.Value)
+	if err != nil {
+		return nil
+	}
+
+	var held []string
+	keep := func(element *ast.Term) {
+		if text, isString := element.Value.(ast.String); isString {
+			held = append(held, string(text))
+		}
+	}
+	switch value := term.Value.(type) {
+	case ast.String:
+		keep(term)
+	case *ast.Array:
+		value.Foreach(keep)
+	case ast.Set:
+		value.Foreach(keep)
+	}
+	slices.Sort(held)
+	return held
+}
+
 // Expression writes the check back as Rego, the way a report prints it.
 func (c Check) Expression() string {
 	switch c.Operator {

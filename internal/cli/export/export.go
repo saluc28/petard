@@ -86,6 +86,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	action := flags.String("action", "", "the part of the request that names what is done, as input.request.method; declared with -resource or alone, it replaces what is recognized for both")
 	resource := flags.String("resource", "", "the part of the request that names what is asked for, as input.request.path; declared with -action or alone, it replaces what is recognized for both")
 	enforcementPoint := flags.String("pep", "", "the product that asks for the decisions: an id from pep-registry, as spacelift-login, or a declaration of your own ending in .yaml")
+	var granted repeatedString
+	flags.Var(&granted, "granted", "a file holding a request the decisions grant, in JSON or YAML, as the policy reads input; repeat for more; a question that has to start from a granted request starts from these")
 	dataPath := flags.String("data", "", "path to the concrete data, in place of the data.json and data.yaml files of the bundle; without any there are no principals and no capabilities")
 	writeModelPath := flags.String("write-model", "", "path to the write model; without it a match that rests on who writes a path stays a candidate")
 	maxCallDepth := flags.Int("max-call-depth", 0, "how many calls deep to follow an argument (0 for the default)")
@@ -139,6 +141,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		Action:           *action,
 		Resource:         *resource,
 		EnforcementPoint: *enforcementPoint,
+		Granted:          granted,
 		DataPath:         *dataPath,
 		WriteModelPath:   *writeModelPath,
 		Limits: opaengine.Limits{

@@ -550,6 +550,28 @@ func TestRunRefusesASubjectNothingReads(t *testing.T) {
 	}
 }
 
+// A request given as granted reaches the analysis, and one no decision grants is
+// refused before anything is written.
+func TestRunRefusesARequestNoDecisionGrants(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "petard.json")
+	request := filepath.Join(dir, "request.json")
+	if err := os.WriteFile(request, []byte(`{"user": "nobody", "action": "nothing"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run(analysisArgs("-out", path, "-granted", request), &stdout, &stderr); code != exitFailure {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFailure, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "no decision grants the request in") {
+		t.Errorf("stderr does not say the request is granted by nothing: %s", stderr.String())
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("a payload was written for an analysis that was refused (stat: %v)", err)
+	}
+}
+
 // A decision declared to deny on the command line reaches the analysis, and one
 // that names no rule is refused like any other declaration.
 func TestRunRefusesADecisionToDenyThatNamesNothing(t *testing.T) {

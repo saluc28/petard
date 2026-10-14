@@ -79,7 +79,9 @@ judged a value that is not the one acted on, and `PTD-OPA-012` asks every decisi
 part whether it grants a path that resolves to one it refuses. It is declared on one part named
 whole, `input.request.path`. A value canonicalized before the policy is asked is not declared,
 and neither is one the product refuses unless it is already canonical: in both cases the decision
-sees what is served.
+sees what is served. The question starts from a request the decision grants. Where the policy
+leaves none to build, the result is a candidate that says so, and `-granted` on the command line
+gives one.
 
 The first entry that covers a part of the request is the one that answers for it, so the more
 specific entries come first: `input.user.note` ahead of `input.user`, when the note is the one

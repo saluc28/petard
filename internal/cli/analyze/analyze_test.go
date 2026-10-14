@@ -607,6 +607,86 @@ func TestRunTakesADeclaredResource(t *testing.T) {
 	}
 }
 
+// A request given as granted is where a question that needs one starts: the
+// report proves the traversal with it, and says which decision grants it. A
+// request no decision grants stops the run.
+func TestRunTakesARequestGivenAsGranted(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	policy := filepath.Dir(write("policy/app.rego", `package app
+
+# METADATA
+# entrypoint: true
+default allow := false
+
+allow if {
+	input.method == "GET"
+	split(input.path, "/")[1] == "public"
+}
+`))
+	gateway := write("gateway.yaml", `schema_version: 1
+id: test-gateway
+engine: opa
+source:
+  kind: documentation
+  note: a gateway for the test
+decisions:
+  - rule: allow
+    side: grants
+fields:
+  - path: input.path
+    set_by: caller
+    canonicalized_after_decision: [dot-segments]
+    evidence:
+      - the test
+`)
+	granted := write("granted.json", `{"method": "GET", "path": "/public/docs/intro"}`)
+	refused := write("refused.json", `{"method": "POST", "path": "/private"}`)
+
+	var stdout, stderr bytes.Buffer
+	if code := Run(detailed("-pep", gateway, policy), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	if out := stdout.String(); !strings.Contains(out, "no request it grants could be built to start from, and none was given") {
+		t.Errorf("without a request, the report does not say the decision could not be asked:\n%s", out)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(detailed("-pep", gateway, "-granted", granted, policy), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	// A line wraps where the path of the test directory makes it, so the report
+	// is compared with its line breaks taken out.
+	out := strings.Join(strings.Fields(stdout.String()), " ")
+	for _, expected := range []string{
+		`"/public/docs/intro/../../../petard-beyond" is granted, and "/petard-beyond" is refused`,
+		"granted.json is granted by data.app.allow.",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("with the request, the report does not hold %q:\n%s", expected, out)
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(detailed("-pep", gateway, "-granted", refused, policy), &stdout, &stderr); code != exitFailure {
+		t.Errorf("exit code = %d, want %d", code, exitFailure)
+	}
+	if !strings.Contains(stderr.String(), "no decision grants the request in") {
+		t.Errorf("stderr does not say the request is granted by nothing: %s", stderr.String())
+	}
+}
+
 // A decision declared to deny is listed with its direction, next to the ones
 // the policy annotates, since every side in the report is counted from it.
 func TestRunTakesADecisionDeclaredToDeny(t *testing.T) {

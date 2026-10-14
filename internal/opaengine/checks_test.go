@@ -589,3 +589,26 @@ needs_ticket if {
 		t.Errorf("checks on input.emergency = %+v, want one that lifts the refusal of data.checks.allow", emergency)
 	}
 }
+
+// The strings a check holds the request against are the value where it is one,
+// and the strings in it where it is a collection written out.
+func TestCheckStrings(t *testing.T) {
+	tests := []struct {
+		value string
+		want  []string
+	}{
+		{`"/public/index"`, []string{"/public/index"}},
+		{`{"/public/index", "/public/about"}`, []string{"/public/about", "/public/index"}},
+		{`["read", "list", 7]`, []string{"list", "read"}},
+		{`7`, nil},
+		{`{"role": "admin"}`, nil},
+		{``, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.value, func(t *testing.T) {
+			if got := (Check{Value: tt.value}).Strings(); !slices.Equal(got, tt.want) {
+				t.Errorf("Strings() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

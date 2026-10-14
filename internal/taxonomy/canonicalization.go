@@ -52,11 +52,15 @@ const maxCanonicalBaselines = 6
 // second is guarded, however the guard is written, and one that grants the
 // third grants the place anyway, so nothing was bypassed.
 //
-// It needs a request the decision grants, and builds one from the conditions
-// partial evaluation leaves. Where it cannot, it reports nothing, which is a
-// false negative rather than a guess. A decision that cannot be asked at all,
-// because it reads documents and none were given or because OPA panics on it,
-// is a candidate saying so.
+// It needs a request the decision grants to start from. The ones given from
+// outside come first (see GrantedRequest), then the ones it builds from the
+// conditions partial evaluation leaves: with the part set to a value the
+// decision may accept, and with the part left open, where the conditions say
+// what it has to be. A decision that cannot be asked is a candidate saying so:
+// it reads documents and none were given, OPA panics on it, or no request it
+// grants was built or given. That last one is a decision that holds the part
+// against something it computes, split(input.path, "/")[1] == "public", which
+// leaves no condition to build from.
 func GrantsBeforeCanonicalization(ctx context.Context, a Analysis) ([]Finding, error) {
 	if a.EnforcementPoint == nil {
 		return nil, nil
@@ -112,13 +116,15 @@ func canonicalizationFinding(ctx context.Context, a Analysis, decision string, f
 		a.Data = opaengine.NoData()
 	}
 
-	proof, err := traversalGranted(ctx, a, decision, field)
+	proof, asked, err := traversalGranted(ctx, a, decision, field)
 	var panicked *opaengine.EvaluatorPanicError
 	switch {
 	case errors.As(err, &panicked):
 		return unasked(fmt.Sprintf("OPA panicked evaluating it (%s)", panicked.Cause)), nil
 	case err != nil:
 		return nil, err
+	case !asked:
+		return unasked("no request it grants could be built to start from, and none was given"), nil
 	case proof == nil:
 		return nil, nil
 	}
@@ -139,20 +145,23 @@ type traversal struct {
 	resolved string
 }
 
-// traversalGranted looks for that proof: over every value the part can start
-// at, every request the decision grants with it, and every form the enforcement
-// point collapses. It returns nil when it finds none.
-func traversalGranted(ctx context.Context, a Analysis, decision string, field pep.Field) (*traversal, error) {
-	baselines, err := canonicalBaselines(ctx, a, decision, field.Path)
-	if err != nil {
-		return nil, err
-	}
-	for _, baseline := range baselines {
-		granted, err := requestsGranting(ctx, a, decision, field.Path, baseline)
-		if err != nil {
-			return nil, err
-		}
-		for _, request := range granted {
+// traversalGranted looks for that proof: over every request the decision
+// grants that was given or could be built, and every form the enforcement point
+// collapses. It returns nil when it finds none, and reports whether there was
+// any request to ask about.
+func traversalGranted(ctx context.Context, a Analysis, decision string, field pep.Field) (*traversal, bool, error) {
+	asked := false
+	// from asks about requests the decision grants, one at a time. The value a
+	// request carries in the part is the place the traversal leaves, and one
+	// that carries no string there has none.
+	from := func(requests []map[string]any) (*traversal, error) {
+		for _, request := range requests {
+			value, found := inputValue(request, field.Path)
+			baseline, isString := value.(string)
+			if !found || !isString {
+				continue
+			}
+			asked = true
 			for _, form := range field.CanonicalizedAfterDecision {
 				written, resolved := leaving(baseline, form)
 				bypassed, err := grantsAndRefuses(ctx, a, decision, request, field.Path, written, resolved)
@@ -166,8 +175,39 @@ func traversalGranted(ctx context.Context, a Analysis, decision string, field pe
 				}
 			}
 		}
+		return nil, nil
 	}
-	return nil, nil
+
+	if proof, err := from(a.grantedBy(decision)); err != nil || proof != nil {
+		return proof, asked, err
+	}
+
+	baselines, err := canonicalBaselines(ctx, a, decision, field.Path)
+	if err != nil {
+		return nil, asked, err
+	}
+	for _, baseline := range baselines {
+		granted, err := requestsGranting(ctx, a, decision, field.Path, baseline)
+		if err != nil {
+			return nil, asked, err
+		}
+		if proof, err := from(granted); err != nil || proof != nil {
+			return proof, asked, err
+		}
+	}
+	if asked {
+		return nil, true, nil
+	}
+
+	// No value the part was set to is one the decision grants. Left open with
+	// the rest of the request, the part is whatever the conditions hold it to:
+	// the path a rule compares it with, or the ones a document lists.
+	granted, err := requestsGrantingAnyValue(ctx, a, decision)
+	if err != nil {
+		return nil, asked, err
+	}
+	proof, err := from(granted)
+	return proof, asked, err
 }
 
 // withCanonicalized joins what the two ways of finding PTD-OPA-012 made of one
@@ -204,18 +244,26 @@ func decisionReadsData(reads *opaengine.ReadSet, decision string) bool {
 
 // canonicalBaselines returns values to set a part of the request to, among
 // which one the decision grants may be found: a path of two segments of its
-// own, and one under each value the decision matches the part against loosely,
-// written in the policy or held in the data.
+// own, one under each value the decision matches the part against loosely,
+// written in the policy or held in the data, and each value the policy writes
+// and holds the part against whole.
 //
 // The first is for a decision that takes what it matches against from the
 // request too, as a gateway that sends the paths an agent accepts next to the
-// path asked for: any value is then one some request grants. The others are for
-// a decision that grants under /public/ and nowhere else.
+// path asked for: any value is then one some request grants. The second are for
+// a decision that grants under /public/ and nowhere else. The last are for one
+// that grants a list of paths and no other, which lets no traversal through and
+// has to be asked to say so.
 func canonicalBaselines(ctx context.Context, a Analysis, decision, part string) ([]string, error) {
 	baselines := []string{"/" + canonicalRoot + "/" + canonicalLeaf}
-	under := func(operator opaengine.CheckOperator, value string) {
-		if written, found := valueUnder(operator, value); found && !slices.Contains(baselines, written) {
+	keep := func(written string) {
+		if !slices.Contains(baselines, written) {
 			baselines = append(baselines, written)
+		}
+	}
+	under := func(operator opaengine.CheckOperator, value string) {
+		if written, found := valueUnder(operator, value); found {
+			keep(written)
 		}
 	}
 
@@ -234,6 +282,16 @@ func canonicalBaselines(ctx context.Context, a Analysis, decision, part string) 
 			if text, isString := value.(string); isString {
 				under(match.Operator, text)
 			}
+		}
+	}
+
+	for _, check := range a.Reads.Checks {
+		whole := check.Operator == opaengine.CheckEqual || check.Operator == opaengine.CheckIn
+		if !whole || !partUnder(check.Request, part) || !grantsIn(check, decision) {
+			continue
+		}
+		for _, value := range check.Strings() {
+			keep(value)
 		}
 	}
 
@@ -313,6 +371,30 @@ func requestsGranting(ctx context.Context, a Analysis, decision, part, value str
 
 	var granted []map[string]any
 	for _, candidate := range candidates {
+		holds, err := opaengine.Holds(ctx, a.Bundle, a.Data, decision, candidate)
+		if err != nil {
+			return nil, err
+		}
+		if holds {
+			granted = append(granted, candidate)
+		}
+	}
+	return granted, nil
+}
+
+// requestsGrantingAnyValue returns requests the decision grants, built from the
+// conditions partial evaluation leaves with the whole request open.
+func requestsGrantingAnyValue(ctx context.Context, a Analysis, decision string) ([]map[string]any, error) {
+	residuals, err := opaengine.Residuals(ctx, a.Bundle, a.Data, opaengine.Request{
+		Decision: decision,
+		Unknowns: unknownsExcept(a.Reads.InputPaths),
+	}, a.Limits)
+	if err != nil {
+		return nil, err
+	}
+
+	var granted []map[string]any
+	for _, candidate := range opaengine.GrantContentOf(residuals).Examples(map[string]any{}) {
 		holds, err := opaengine.Holds(ctx, a.Bundle, a.Data, decision, candidate)
 		if err != nil {
 			return nil, err

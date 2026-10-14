@@ -159,6 +159,29 @@ func NoData() *Data {
 	return &Data{store: inmem.New()}
 }
 
+// LoadRequest reads one request from a JSON or YAML file: the document a
+// decision is asked about, the one a policy reads as input and opa eval takes
+// with --input.
+//
+// It is read the way the data is, so a number in it compares against a literal
+// of the policy as the evaluator compares it. A request is an object here, as
+// it is everywhere a pattern builds one.
+func LoadRequest(path string) (map[string]any, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("opaengine: reading %s: %w", path, err)
+	}
+	var document any
+	if err := util.Unmarshal(content, &document); err != nil {
+		return nil, fmt.Errorf("opaengine: parsing %s: %w", path, err)
+	}
+	request, isObject := document.(map[string]any)
+	if !isObject {
+		return nil, fmt.Errorf("opaengine: %s holds a %T, and a request has to be an object", path, document)
+	}
+	return request, nil
+}
+
 // bundleDataNames are the files a bundle keeps its data in (dataFile,
 // yamlDataFile and ymlDataFile, v1/bundle/bundle.go:50 to :52 at v1.21.1).
 var bundleDataNames = []string{"data.json", "data.yaml", "data.yml"}

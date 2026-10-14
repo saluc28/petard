@@ -79,7 +79,8 @@ detection:
     enforcement point does.
     The fourth signal is the exception. It rests on a declaration of the enforcement point, that a
     part of the request is canonicalized after the decision, and it evaluates the decision, so it
-    needs the data when the decision reads any.
+    needs the data when the decision reads any. It starts from a request the decision grants,
+    built from the policy or given with `-granted`.
   signals:
     - order: 1
       check: >
@@ -125,7 +126,8 @@ detection:
         their encoded form, for a place outside it, and the same one with the part set to that
         place. Granting the second and refusing the third is a finding, and the second request is
         reported with it. A candidate the third signal left on the same decision and the same part
-        is dropped.
+        is dropped. The request it grants is one given with `-granted`, or one built from the
+        policy, and a decision with neither is a candidate saying it could not be asked.
       rationale: >
         The decision judged the value as it was written and the enforcement point acts on what it
         resolves to. Asking the decision makes the verdict independent of how the match and the
@@ -289,13 +291,18 @@ notes:
     part of the request, whose form the engine does not read. Where that part is declared
     canonicalized after the decision the fourth signal asks the decision instead.
   - >
-    The fourth signal needs a request the decision grants, and builds one from the conditions
-    partial evaluation leaves once the part is set: to a path of its own, and to one under each
-    value the decision matches the part against. Known false negatives: a decision no such request
-    can be built for, one that holds the path against a component at a fixed place among them,
-    `split(input.path, "/")[1] == "public"`, which a path climbing out of `/public/` satisfies
-    too; and a canonicalization other than dot segments and percent-encoding, a second decoding
-    or a case fold.
+    The fourth signal needs a request the decision grants. The ones given with `-granted` come
+    first. It then builds one from the conditions partial evaluation leaves once the part is set:
+    to a path of its own, to one under each value the decision matches the part against, and to
+    each value the policy holds it against whole. Where none of those is granted it leaves the
+    part open with the rest of the request, and takes the values the conditions hold it to, the
+    paths a document lists among them. A decision that holds the path against a component at a
+    fixed place, `split(input.path, "/")[1] == "public"`, leaves no condition to build from, though
+    a path climbing out of `/public/` satisfies it too: it is a candidate saying it could not be
+    asked, and given a request it grants it is asked like any other. Known false negatives: a
+    way of granting that none of the requests asked about takes, in a decision another way of
+    which gave one; and a canonicalization other than dot segments and percent-encoding, a second
+    decoding or a case fold.
   - >
     A regex is read with the syntax OPA compiles it with. `^/public|/health$` pins one end in each
     branch and both in neither, so it is a candidate; `^.*admin.*$` pins both ends and opens them
