@@ -89,7 +89,7 @@ var patternNotes = []patternNote{
 	{
 		id: "PTD-OPA-012", name: "grant-on-loose-match",
 		title:  "A decision grants on a value matched more loosely than it is enforced",
-		closes: "Matching the value whole, by equality or by its components, so a crafted value cannot slip through, closes it.",
+		closes: "Matching the value whole, by equality or by its components, so a crafted value cannot slip through, closes it. Where the value is canonicalized after the decision, refusing one that is not already canonical does.",
 	},
 	{
 		id: "PTD-OPA-013", name: "grant-beyond-delegated-scope",

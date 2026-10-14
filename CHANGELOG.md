@@ -95,6 +95,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   answers alone, by the patterns that evaluate it and in the tests `-tests` writes, a rule that
   writes out another answer is on the side that refuses, and `-v` lists the decision with its
   answers. `-deny-entrypoint` takes an answer the same way, for the values a decision refuses on.
+- `PTD-OPA-012` finds a decision that grants a path before it is canonicalized. An enforcement
+  point declaration marks a part of the request the caller sets with
+  `canonicalized_after_decision`, listing `dot-segments`, `percent-encoding` or both, when the
+  value is acted on after they are collapsed. Every granting decision that reads the part is
+  asked three requests: one it grants, the same with the path leaving the granted value through
+  dot segments for a place outside it, and the same with the path set to that place. Granting
+  the second and refusing the third is a finding at level `A`, with the request that proves it,
+  whatever form the match and the guard take: a prefix the policy writes, one from the data, one
+  taken from another part of the request. A candidate the form of the match left on the same
+  decision and the same part is dropped. A decision that reads documents when none were given,
+  or that OPA panics on, is a candidate saying so.
 - `-action` and `-resource`, on `petard analyze` and `petard export`, declare the parts of the
   request that name what is asked for, as `-subject` declares who is asking, and an enforcement
   point declaration takes them as `action` and `resource`. A gateway that hands the policy the

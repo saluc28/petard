@@ -50,6 +50,40 @@ func (g GrantContent) Witnesses(other GrantContent, fixed map[string]any) []map[
 	return requests
 }
 
+// Examples returns requests that may be ones this grant holds for, one or more
+// for each condition, written over a copy of the part of the request the
+// question fixed. It is for a caller that needs any request the decision
+// grants, to ask the decision what happens when one part of it changes.
+//
+// Witnesses leaves out a field a condition reads without saying what satisfies
+// it, since a witness is compared with another grant on the fields both read.
+// Here such a field gets a value all the same, the filler, or a list holding it
+// where the condition ranges over the field or searches it. One filler
+// everywhere is what makes two fields held against each other agree:
+// input.groups[_] in input.allowed_groups holds when both are lists of it. A
+// request built this way is a guess, and the caller asks the decision.
+func (g GrantContent) Examples(fixed map[string]any) []map[string]any {
+	var requests []map[string]any
+	for _, condition := range g.conditions {
+		for _, request := range condition.requests(fixed) {
+			for field := range condition.opaque {
+				var filler any = witnessFiller
+				if condition.collections[field] {
+					filler = []any{witnessFiller}
+				}
+				// A field the fixed part or a constraint already wrote keeps
+				// its value, and one that cannot be written is left out.
+				writeField(request, field, filler)
+			}
+			requests = append(requests, request)
+			if len(requests) == maxWitnesses {
+				return requests
+			}
+		}
+	}
+	return requests
+}
+
 // escapesAll reports whether a condition escapes every one of the others on the
 // fields they read.
 func escapesAll(condition grantCondition, others []grantCondition) bool {

@@ -83,3 +83,57 @@ func TestWitnessesWriteTheRequestsAGainNeeds(t *testing.T) {
 		t.Errorf("the fixed part of the request was written into: %v", fixed)
 	}
 }
+
+// An example is a request a caller asks the decision about, so every field a
+// condition reads gets a value, the ones it reads without saying what satisfies
+// them too: one filler, as a value or as a list where the condition ranges over
+// the field or searches it. Two fields held against each other then agree.
+func TestExamplesGiveEveryFieldAConditionReadsAValue(t *testing.T) {
+	fixed := map[string]any{"request": map[string]any{"path": "/reports"}}
+	tests := []struct {
+		name  string
+		grant []string
+		want  []map[string]any
+	}{
+		{
+			name: "a field compared with nothing, and two lists searched in each other",
+			grant: []string{
+				`input.principal.type = "agent"; neq(input.principal.id, ""); ` +
+					`internal.member_2(input.principal.groups[_], input.target.allowed_groups); "**" = input.target.allowed_paths[_]`,
+			},
+			want: []map[string]any{{
+				"request":   map[string]any{"path": "/reports"},
+				"principal": map[string]any{"type": "agent", "id": "petard", "groups": []any{"petard"}},
+				"target":    map[string]any{"allowed_groups": []any{"petard"}, "allowed_paths": []any{"**"}},
+			}},
+		},
+		{
+			name:  "a truth test",
+			grant: []string{`"write" = input.action; input.mfa`},
+			want: []map[string]any{{
+				"request": map[string]any{"path": "/reports"},
+				"action":  "write",
+				"mfa":     "petard",
+			}},
+		},
+		{
+			name:  "the fixed part of the request is kept",
+			grant: []string{`startswith(input.request.path, concat("", [input.target.allowed_paths[_], "/"]))`},
+			want: []map[string]any{{
+				"request": map[string]any{"path": "/reports"},
+				"target":  map[string]any{"allowed_paths": []any{"petard"}},
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := GrantContentOf(residual(tt.grant...)).Examples(fixed)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Examples() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+	if !reflect.DeepEqual(fixed, map[string]any{"request": map[string]any{"path": "/reports"}}) {
+		t.Errorf("the fixed part of the request was written into: %v", fixed)
+	}
+}

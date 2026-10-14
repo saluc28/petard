@@ -41,6 +41,12 @@ type grantCondition struct {
 	// unreadable another field of the same condition is.
 	opaque map[string]bool
 
+	// collections are the fields among the opaque ones that the condition reads
+	// as a collection, ranging over it or searching it. It is what an example
+	// request needs to know to give such a field a value at all: a list where
+	// the condition looks for elements, and a value where it does not.
+	collections map[string]bool
+
 	// opaqueOther is true when the condition constrains the request somewhere
 	// this could not attribute to a field, so no coverage through it is certain.
 	opaqueOther bool
@@ -87,7 +93,11 @@ func GrantContentOf(rs *ResidualSet) GrantContent {
 // on each field of the request. What it cannot read, it records as opaque, so a
 // later comparison knows which fields it may not reason about.
 func readGrantCondition(query string) grantCondition {
-	condition := grantCondition{fields: map[string]fieldConstraint{}, opaque: map[string]bool{}}
+	condition := grantCondition{
+		fields:      map[string]fieldConstraint{},
+		opaque:      map[string]bool{},
+		collections: map[string]bool{},
+	}
 	body, err := ast.ParseBody(query)
 	if err != nil {
 		condition.opaqueOther = true
@@ -144,12 +154,11 @@ func (c *grantCondition) apply(expr *ast.Expr) {
 	// values. A negated equality refuses a value rather than allowing one. Mark
 	// the fields it touches opaque; a constraint this cannot attribute to a
 	// field leaves the whole condition unreadable.
-	touched := inputFieldsOf(expr)
-	if len(touched) == 0 {
-		return
-	}
-	for _, field := range touched {
-		c.opaque[field] = true
+	for _, read := range inputReadsOf(expr) {
+		c.opaque[read.field] = true
+		if read.collection {
+			c.collections[read.field] = true
+		}
 	}
 }
 
@@ -192,6 +201,9 @@ func (c *grantCondition) bind(field string, member bool, other *ast.Term) {
 		return
 	}
 	c.opaque[field] = true
+	if member {
+		c.collections[field] = true
+	}
 }
 
 // bindValue records that a field equals one exact value.
@@ -272,21 +284,31 @@ func inputField(term *ast.Term) (string, bool, bool) {
 	return normalize(ref), false, true
 }
 
-// inputFieldsOf returns the fields of the request an expression reads, so that
+// inputRead is one field of the request an expression reads, and whether it
+// reads it as a collection.
+type inputRead struct {
+	field      string
+	collection bool
+}
+
+// inputReadsOf returns the fields of the request an expression reads, so that
 // a constraint this cannot read is charged to the fields it is about and no
-// others.
-func inputFieldsOf(expr *ast.Expr) []string {
-	var fields []string
-	seen := map[string]bool{}
-	add := func(field string) {
-		if !seen[field] {
-			seen[field] = true
-			fields = append(fields, field)
+// others. A field is read as a collection when the expression ranges over it,
+// input.groups[_], or searches it, x in input.groups.
+func inputReadsOf(expr *ast.Expr) []inputRead {
+	var reads []inputRead
+	at := map[string]int{}
+	add := func(field string, collection bool) {
+		if i, seen := at[field]; seen {
+			reads[i].collection = reads[i].collection || collection
+			return
 		}
+		at[field] = len(reads)
+		reads = append(reads, inputRead{field: field, collection: collection})
 	}
 	if term, ok := expr.Terms.(*ast.Term); ok {
-		if field, _, isInput := inputField(term); isInput {
-			add(field)
+		if field, member, isInput := inputField(term); isInput {
+			add(field, member)
 		}
 	}
 	ast.WalkRefs(expr, func(ref ast.Ref) bool {
@@ -294,13 +316,20 @@ func inputFieldsOf(expr *ast.Expr) []string {
 			return false
 		}
 		if last := ref[len(ref)-1]; isVar(last) {
-			add(normalize(ref[:len(ref)-1]))
+			add(normalize(ref[:len(ref)-1]), true)
 		} else {
-			add(normalize(ref))
+			add(normalize(ref), false)
 		}
 		return false
 	})
-	return fields
+	if expr.IsCall() && isMembership(expr.Operator()) {
+		operands := expr.Operands()
+		if field, _, isInput := inputField(operands[len(operands)-1]); isInput {
+			// The last operand of a search is what is searched.
+			add(field, true)
+		}
+	}
+	return reads
 }
 
 // generatedRoot is where partial evaluation writes the rules it generates.

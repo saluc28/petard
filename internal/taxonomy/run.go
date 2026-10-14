@@ -67,8 +67,11 @@ type Findings struct {
 	AssumableIdentity []Finding
 
 	// LooseMatch holds the grants on a resource or an action matched more loosely
-	// than it is enforced. It reads the policy alone, needing no data, no write
-	// model and no enforcement point: the looseness is in the match itself.
+	// than it is enforced. The form of the match is read off the policy alone,
+	// needing no data, no write model and no enforcement point. A part of the
+	// request the enforcement point declares canonicalized after the decision
+	// is asked about as well, of the decision itself: see
+	// GrantsBeforeCanonicalization.
 	LooseMatch []Finding
 
 	// Delegation holds the grants of a requested authority not bounded by the
@@ -178,6 +181,11 @@ func Run(ctx context.Context, a Analysis) (Findings, error) {
 	if found.UncontrolledName, err = GrantsOnUncontrolledNames(a); err != nil {
 		return Findings{}, err
 	}
+	canonicalized, err := GrantsBeforeCanonicalization(ctx, a)
+	if err != nil {
+		return Findings{}, err
+	}
+	found.LooseMatch = withCanonicalized(found.LooseMatch, canonicalized)
 	found.AssumableIdentity = GrantsOnAssumableIdentities(a)
 	// The requested authority is in the declaration, so only with one can the
 	// pattern say whether the decisions it asks read any data to load.

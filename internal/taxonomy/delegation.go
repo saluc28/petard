@@ -105,13 +105,8 @@ func DelegationNeedsData(a Analysis) bool {
 	}
 	for _, field := range requestedAuthorities(a.EnforcementPoint) {
 		for _, decision := range grantingDecisions(a.Reads) {
-			if len(delegationSites(a.Reads, decision, field.Path)) == 0 {
-				continue
-			}
-			for _, read := range a.Reads.Reads {
-				if reachesDecision(read.Decisions, decision) {
-					return true
-				}
+			if len(delegationSites(a.Reads, decision, field.Path)) > 0 && decisionReadsData(a.Reads, decision) {
+				return true
 			}
 		}
 	}

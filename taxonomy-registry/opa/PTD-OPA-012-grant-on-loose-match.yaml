@@ -5,6 +5,7 @@ name: grant-on-loose-match
 title: A decision grants on a value matched more loosely than it is enforced
 closes: >
   Matching the value whole, by equality or by its components, so a crafted value cannot slip through, closes it.
+  Where the value is canonicalized after the decision, refusing one that is not already canonical does.
 engine: opa
 status: implemented
 
@@ -32,6 +33,8 @@ summary: >
   enforcement point serves the path it resolves to, and the two are not the same.
   In the fixture, a document is served when its id contains the marker `public`, so a private
   document whose id embeds it is served all the same.
+  The same gap opens on a prefix when the enforcement point canonicalizes the value after the
+  decision: `/do/../admin` starts with `/do/`, and `/admin` is what is served.
 
 preconditions:
   - capability: The principal can send a request whose value embeds the one the policy matches
@@ -74,6 +77,9 @@ detection:
     that grants on `input.method` and `input.path` reads no subject. Where the request carries them
     under names that say nothing, `-resource` and `-action` declare them, or the declaration of the
     enforcement point does.
+    The fourth signal is the exception. It rests on a declaration of the enforcement point, that a
+    part of the request is canonicalized after the decision, and it evaluates the decision, so it
+    needs the data when the decision reads any.
   signals:
     - order: 1
       check: >
@@ -110,11 +116,29 @@ detection:
         A mid-string match lets a crafted value through whatever the deployment does with it. A
         prefix route can be exactly what was meant, so it is reported as a candidate to check rather
         than a finding.
+    - order: 4
+      check: >
+        The enforcement point declares a part of the request the caller sets as canonicalized after
+        the decision, with `canonicalized_after_decision`: dot segments collapsed, percent-encoding
+        decoded, or both. Every granting decision that reads that part is asked three requests: one
+        it grants, the same one with the part leaving the granted value through dot segments, or
+        their encoded form, for a place outside it, and the same one with the part set to that
+        place. Granting the second and refusing the third is a finding, and the second request is
+        reported with it. A candidate the third signal left on the same decision and the same part
+        is dropped.
+      rationale: >
+        The decision judged the value as it was written and the enforcement point acts on what it
+        resolves to. Asking the decision makes the verdict independent of how the match and the
+        guard are written: a prefix the policy writes, one it reads from the data or takes from
+        another part of the request, a guard in a function or none at all. A decision that refuses
+        the second request is guarded, and one that grants the third grants the place anyway, so
+        nothing was bypassed.
   confidence: C
   confidence_note: >
     The claim rests on the shape recognizer naming the resource or the action, so a finding carries
     the level that recognition reached, from a declaration down to a guess about field names. The
-    looseness of the match itself is read off the policy and is not a guess.
+    looseness of the match itself is read off the policy and is not a guess. A result of the fourth
+    signal rests on the declaration of the enforcement point and carries level A.
   requires_write_model: false
   requires_write_model_note: >
     Nobody writes a document here: the defect is the match, in the policy. It emits no
@@ -143,8 +167,18 @@ false_positives:
       The enforcement point canonicalizes the value the same way the policy matches it, lower-casing
       before a case-insensitive compare the policy also folds, so the two agree.
     discriminator: >
-      How the enforcement point canonicalizes the value is not in the policy. The pattern reads the
-      match form and leaves the canonicalization to whoever declares the enforcement point.
+      How the enforcement point canonicalizes the value is not in the policy. Dot segments and
+      percent-encoding collapsed after the decision are declared on the part of the request, and
+      the decision is then asked. A case fold, or any other canonicalization, has no declaration
+      yet and is left to whoever reads the result.
+  - condition: >
+      The enforcement point refuses a value that is not canonical before it asks the policy, so the
+      request that proves a finding of the fourth signal never reaches the decision. The agent
+      router of yashigani does since its fix (`_is_path_traversal`, called at
+      `src/yashigani/gateway/agent_router.py:204`, at commit f24fa84a).
+    discriminator: >
+      That check is in the enforcement point and not in the policy. A part guarded this way is not
+      declared canonicalized after the decision: what the policy sees is then what is served.
   - condition: >
       The value matched loosely cannot be crafted: a closed set of resources where no name embeds
       another, enforced somewhere the policy cannot see.
@@ -198,11 +232,14 @@ references:
       matches a `/do/**` pattern with `startswith(path, concat("", [prefix, "/"]))` (line 113). The
       close-out added `_agent_path_safe` (line 95), which rejects `../`, `..\`, a trailing `/..`, and
       the URL-encoded forms, before the match. Without it `/do/../admin` prefix-matches `/do/` but
-      the downstream collapses it to `/admin`. The pre-canonicalization shape needs the enforcement
-      point's canonicalization declared and the guard read; see the notes. Consulted 2026-10-05.
+      the downstream collapses it to `/admin`: the router sends the path to the policy as
+      `remainder_path` (`src/yashigani/gateway/agent_router.py:378`) and appends it to the upstream
+      URL it hands to httpx (line 486), which its own comment says collapses dot segments (line
+      73). The fourth signal reads this shape with the path declared canonicalized after the
+      decision; see `verified`. Consulted 2026-10-12.
 
 verified:
-  date: 2026-10-10
+  date: 2026-10-12
   tool_version: opa 1.21.1
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture. The checks on
@@ -217,6 +254,13 @@ verified:
     `regal` v0.42.0 reports no violations on `policy-v1`.
     On generated worlds the verdict rests on the policy and not on the data: the same substring is a
     finding and the same prefix a candidate, whatever the dataset.
+    The fourth signal was measured on yashigani at f24fa84a, on the seven Rego files at the top of
+    `helm/yashigani/files/policy`, with a declaration that asks for `agent_call_allowed` and marks
+    `input.request.remainder_path` canonicalized after the decision, for dot segments and for
+    percent-encoding. On the policy as it stands it reports nothing. With the call to
+    `_agent_path_safe` taken out of `_path_allowed` (`agents.rego:88`) it reports a finding, proven
+    by a request for `/petard-root/petard-leaf/../../petard-beyond` to an agent that accepts
+    `/petard-root/petard-leaf`: granted, and refused once the path is `/petard-beyond`.
 
 related:
   - id: PTD-OPA-010
@@ -242,12 +286,16 @@ notes:
     marker can be read where it is matched or out of a record a function is handed. The real
     defenseclaw instance reads its markers this way, from the entries of an allow list. Known
     false negative: a match against a value the policy computes from the data, or against another
-    part of the request.
+    part of the request, whose form the engine does not read. Where that part is declared
+    canonicalized after the decision the fourth signal asks the decision instead.
   - >
-    Known false negative: the pre-canonicalization shape, a prefix or glob match on a path the
-    enforcement point canonicalizes, collapsing `..` or decoding `%2e`, as yashigani's. Telling the
-    sound form from the vulnerable one needs the enforcement point's canonicalization declared and
-    the traversal guard read, which this instance does not do yet.
+    The fourth signal needs a request the decision grants, and builds one from the conditions
+    partial evaluation leaves once the part is set: to a path of its own, and to one under each
+    value the decision matches the part against. Known false negatives: a decision no such request
+    can be built for, one that holds the path against a component at a fixed place among them,
+    `split(input.path, "/")[1] == "public"`, which a path climbing out of `/public/` satisfies
+    too; and a canonicalization other than dot segments and percent-encoding, a second decoding
+    or a case fold.
   - >
     A regex is read with the syntax OPA compiles it with. `^/public|/health$` pins one end in each
     branch and both in neither, so it is a candidate; `^.*admin.*$` pins both ends and opens them

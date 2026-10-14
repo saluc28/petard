@@ -210,6 +210,28 @@ func TestEntrypointsSpellTheFieldAndTheAnswers(t *testing.T) {
 	}
 }
 
+// What is done to a value between the decision and the action is declared on
+// the part of the request it is done to, and comes back with the field.
+func TestLoadTakesWhatIsCanonicalizedAfterTheDecision(t *testing.T) {
+	const content = "schema_version: 1\nid: x\ndecisions:\n  - rule: allow\n    side: grants\n" +
+		"fields:\n  - path: input.request.path\n    set_by: caller\n" +
+		"    canonicalized_after_decision: [dot-segments, percent-encoding]\n    evidence: [x]\n"
+	path := filepath.Join(t.TempDir(), "x.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing the file: %v", err)
+	}
+	point, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	field, found := point.FieldFor("input.request.path")
+	expected := []Canonicalization{CanonicalDotSegments, CanonicalPercentEncoding}
+	if !found || !slices.Equal(field.CanonicalizedAfterDecision, expected) {
+		t.Errorf("canonicalized after the decision = %v, found %t, want %v", field.CanonicalizedAfterDecision, found, expected)
+	}
+}
+
 // A key the format does not have is refused with its name. Read as nothing,
 // bounded-by would leave the requested authority with no ceiling, and
 // PTD-OPA-013 would report a candidate where the declaration meant a finding.
@@ -259,6 +281,9 @@ func TestLoadRejects(t *testing.T) {
 		{"an identity that is also an authority", header + "fields:\n  - path: input.id\n    set_by: issuer\n    issuer: idp\n    identity: true\n    authority: requested\n    evidence: [x]\n"},
 		{"bounded_by on a part that is not requested", header + "fields:\n  - path: input.ceiling\n    set_by: issuer\n    issuer: idp\n    authority: ceiling\n    bounded_by: [input.other]\n    evidence: [x]\n"},
 		{"a ceiling that is neither request nor data", header + "fields:\n  - path: input.scope\n    set_by: caller\n    authority: requested\n    bounded_by: [scope.other]\n    evidence: [x]\n"},
+		{"a canonicalization this does not read", header + "fields:\n  - path: input.path\n    set_by: caller\n    canonicalized_after_decision: [case]\n    evidence: [x]\n"},
+		{"a canonicalization of a part the caller does not set", header + "fields:\n  - path: input.path\n    set_by: enforcement-point\n    canonicalized_after_decision: [dot-segments]\n    evidence: [x]\n"},
+		{"a canonicalization of more than one part", header + "fields:\n  - path: input.paths[_]\n    set_by: caller\n    canonicalized_after_decision: [dot-segments]\n    evidence: [x]\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -72,6 +72,15 @@ ceilings it must sit under, each a part of the request or a document in the data
 `PTD-OPA-013` asks the decision about, and with none named the grant is a candidate. A part is an
 identity or an authority, not both.
 
+A part the caller sets can say what is done to its value between the decision and the action, in
+`canonicalized_after_decision`: `dot-segments` when `.` and `..` are collapsed, as RFC 3986
+removes them from a URL, and `percent-encoding` when `%2e` is decoded first. The policy then
+judged a value that is not the one acted on, and `PTD-OPA-012` asks every decision that reads the
+part whether it grants a path that resolves to one it refuses. It is declared on one part named
+whole, `input.request.path`. A value canonicalized before the policy is asked is not declared,
+and neither is one the product refuses unless it is already canonical: in both cases the decision
+sees what is served.
+
 The first entry that covers a part of the request is the one that answers for it, so the more
 specific entries come first: `input.user.note` ahead of `input.user`, when the note is the one
 field of the user the caller writes. A part no entry covers is one the declaration does not speak

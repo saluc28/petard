@@ -95,6 +95,21 @@ const (
 	AuthorityCeiling Authority = "ceiling"
 )
 
+// Canonicalization is one thing done to a part of the request between the
+// decision and the action taken on it, which turns two different values into
+// the same one.
+type Canonicalization string
+
+const (
+	// CanonicalDotSegments collapses the "." and ".." segments of a path, as
+	// RFC 3986 removes them from a URL (5.2.4): /do/../admin becomes /admin.
+	CanonicalDotSegments Canonicalization = "dot-segments"
+
+	// CanonicalPercentEncoding decodes percent-encoded characters before the
+	// value is used, so %2e%2e is read as two dots.
+	CanonicalPercentEncoding Canonicalization = "percent-encoding"
+)
+
 // EnforcementPoint is one product that asks a policy engine for decisions.
 type EnforcementPoint struct {
 	// File is where the declaration was read from, which is how a report
@@ -280,6 +295,16 @@ type Field struct {
 	// data; with none named the grant is a candidate asking what bounds it.
 	BoundedBy []string `yaml:"bounded_by"`
 
+	// CanonicalizedAfterDecision lists what is done to the value after the
+	// policy has decided on it and before it is acted on. The decision saw the
+	// value as the caller wrote it, and what is served is the value it resolves
+	// to: a path handed on to an HTTP client that collapses its dot segments is
+	// one. It belongs on a part the caller sets, named whole, and it is what
+	// PTD-OPA-012 asks the decision about. A value canonicalized before the
+	// policy is asked is not declared here: the decision then sees what is
+	// served.
+	CanonicalizedAfterDecision []Canonicalization `yaml:"canonicalized_after_decision"`
+
 	Note string `yaml:"note"`
 
 	// Evidence is where each claim of the entry was read: a file and a line at
@@ -417,6 +442,9 @@ func (f *Field) validate() error {
 	if err := f.validateAuthority(); err != nil {
 		return err
 	}
+	if err := f.validateCanonicalization(); err != nil {
+		return err
+	}
 	if len(f.Evidence) == 0 {
 		return fmt.Errorf("field %s: no evidence, and every field says where it was read", f.Path)
 	}
@@ -444,6 +472,33 @@ func (f *Field) validateAuthority() error {
 		if !strings.HasPrefix(ceiling, "input.") && !strings.HasPrefix(ceiling, "data.") {
 			return fmt.Errorf("field %s: bounded_by %q is neither a part of the request nor a document", f.Path, ceiling)
 		}
+	}
+	return nil
+}
+
+// validateCanonicalization checks what a field says happens to its value after
+// the decision: each entry is one this reads, the caller sets the part, since a
+// value somebody else sets is not one the caller can craft, and the path names
+// one part whole, since a request is built with a value written there.
+func (f *Field) validateCanonicalization() error {
+	if len(f.CanonicalizedAfterDecision) == 0 {
+		return nil
+	}
+	for _, canonicalization := range f.CanonicalizedAfterDecision {
+		switch canonicalization {
+		case CanonicalDotSegments, CanonicalPercentEncoding:
+		default:
+			return fmt.Errorf("field %s: canonicalized_after_decision %q is neither %s nor %s",
+				f.Path, canonicalization, CanonicalDotSegments, CanonicalPercentEncoding)
+		}
+	}
+	if f.SetBy != SetByCaller {
+		return fmt.Errorf("field %s: canonicalized_after_decision is about a value the caller writes, "+
+			"and this part is set by %s", f.Path, f.SetBy)
+	}
+	if !fieldPath.MatchString(strings.TrimPrefix(f.Path, "input.")) {
+		return fmt.Errorf("field %s: canonicalized_after_decision is declared on one part of the request "+
+			"named whole, as input.request.path", f.Path)
 	}
 	return nil
 }
