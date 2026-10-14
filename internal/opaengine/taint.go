@@ -227,7 +227,8 @@ func reachedDecisions(reached decisionPaths) []ReachedDecision {
 // takes the first one back: an exemption a violation asks not to hold, in a
 // decision that asks for no violation, grants when it holds. A decision
 // declared to deny starts on the side that denies, as if the enforcement point
-// asked for it not to hold, which is what it does.
+// asked for it not to hold, which is what it does. A rule of a decision
+// declared with answers starts on the side its own answer puts it: see wayIn.
 //
 // The state is the pair of a rule and the side the path so far lands on, so a
 // rule reached both ways is recorded both ways and the side that grants wins.
@@ -242,6 +243,10 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 	type state struct {
 		rule *ast.Rule
 		way  reachWay
+
+		// root is true for a rule that builds the decision itself, the first
+		// leg or one of its else legs, whose own answer says which side it is on.
+		root bool
 	}
 
 	reached := make(map[*ast.Rule]decisionPaths)
@@ -250,7 +255,7 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 		name := decision.name
 
 		seen := make(map[state]bool)
-		queue := []state{{rule: decision.rule, way: reachWay{grants: !decision.denies, crossed: decision.denies}}}
+		queue := []state{{rule: decision.rule, way: r.wayIn(decision, decision.rule), root: true}}
 		for len(queue) > 0 {
 			at := queue[0]
 			queue = queue[1:]
@@ -275,9 +280,14 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 			r.ways[at.rule][name][at.way] = true
 
 			// The next leg of an else is the same rule answering when this leg
-			// does not, so it is reached the same way.
+			// does not, so it is reached the same way. A leg of the decision
+			// itself is on the side its own answer puts it.
 			if at.rule.Else != nil {
-				queue = append(queue, state{rule: at.rule.Else, way: at.way})
+				next := state{rule: at.rule.Else, way: at.way, root: at.root}
+				if at.root {
+					next.way = r.wayIn(decision, at.rule.Else)
+				}
+				queue = append(queue, next)
 			}
 
 			for _, edge := range r.edges[at.rule] {
@@ -302,6 +312,27 @@ func (r *refReader) decisionReach(decisions []decisionRoot) map[*ast.Rule]decisi
 type reachWay struct {
 	grants  bool
 	crossed bool
+}
+
+// wayIn is the way a decision reaches one of the rules that build it.
+//
+// A decision that grants starts on the side that grants, and one declared to
+// deny on the side that refuses, having crossed the refusal. A decision
+// declared with answers has rules on both sides: verdict := "allowed" grants
+// where verdict := "blocked" refuses, and a check that lets a request past the
+// second lifts a refusal exactly as one under a not does. So a rule whose
+// answer the policy writes, and which is not one of the declared ones, starts
+// on the other side. A rule whose answer the policy computes stays on the side
+// of the decision, as every rule does when no answer is declared.
+func (r *refReader) wayIn(decision decisionRoot, rule *ast.Rule) reachWay {
+	way := reachWay{grants: !decision.denies, crossed: decision.denies}
+	if len(decision.answers) == 0 {
+		return way
+	}
+	if onSide, written := onItsSide(r.compiler, decision, rule); written && !onSide {
+		return reachWay{grants: decision.denies, crossed: !decision.denies}
+	}
+	return way
 }
 
 // externalOrigin finds the builtin a value descends from, when that builtin is

@@ -284,6 +284,14 @@ carries them under names that do not give them away:
 petard analyze -resource input.request.remainder_path path/to/policy
 ```
 
+A rule that answers one of several values, `allowed`, `blocked` or `scan`, is defined whatever it
+says, and which of them lets the request through is not in the policy. Name the ones that do,
+one `-entrypoint` for each. The rules that give another answer are then read as refusals:
+
+```
+petard analyze -entrypoint gate/verdict=allowed -entrypoint gate/verdict=clean path/to/policy
+```
+
 A product that asks for decisions can be declared once instead: which rules it asks for, where it
 puts the requester, and who sets each part of the request. [`pep-registry/`](pep-registry) holds
 the declarations, each claim with the file and line or the page of documentation it was read from,

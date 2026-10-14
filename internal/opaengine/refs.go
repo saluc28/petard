@@ -314,6 +314,11 @@ type ReadSet struct {
 	// something, which is what a caller measuring access has to know.
 	Denying []string
 
+	// Answers are the answers a decision is on its side for, as Rego, for the
+	// decisions declared with any: data.app.verdict on "allowed" and "clean".
+	// A decision not listed is on its side whenever it holds.
+	Answers map[string][]string
+
 	// SkippedUnderWith lists rules that only expressions carrying a with
 	// modifier reach. They are left out of the decisions, and listed rather
 	// than dropped in silence: counting them would treat test scaffolding as
@@ -441,6 +446,12 @@ func Reads(bundle *Bundle, limits Limits) (*ReadSet, error) {
 		result.Decisions = append(result.Decisions, decision.name)
 		if decision.denies {
 			result.Denying = append(result.Denying, decision.name)
+		}
+		if len(decision.answers) > 0 {
+			if result.Answers == nil {
+				result.Answers = make(map[string][]string)
+			}
+			result.Answers[decision.name] = answerTexts(decision.answers)
 		}
 	}
 	result.Decisions = sortedUnique(result.Decisions)
@@ -577,6 +588,15 @@ type decisionRoot struct {
 	// denies is true for a decision declared to deny, whose rule holding is
 	// the side that refuses.
 	denies bool
+
+	// field is the path into what the rule returns, for a decision that is a
+	// field of it, and empty for one that is the whole of it.
+	field ast.Ref
+
+	// answers are the answers the decision is on its side for, when it was
+	// declared with any, and nil for one that is on its side whenever it holds.
+	// Every root of one decision carries the same ones.
+	answers []*ast.Term
 }
 
 // entrypointRules returns the decisions of a bundle: the rules the policy
@@ -603,6 +623,10 @@ type decisionRoot struct {
 //
 // The decisions declared to deny come last and go the same way, and a rule
 // already taken as a decision is marked as denying rather than taken twice.
+//
+// A declared entrypoint may end in an answer, data.app.verdict=allowed. The
+// decision is then on its side when it answers that, and on the other side when
+// it answers anything else: see answeredEntrypoint.
 func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 	compiler := bundle.Compiler
 
@@ -612,15 +636,26 @@ func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 	}
 	var roots []decisionRoot
 	at := make(map[key]int)
+	answers := make(map[string]*declaredAnswers)
 	// declared is the reference of a decision that reaches into the value its
 	// rules return, and nil for one that is the rules themselves.
-	keep := func(found []*ast.Rule, declared ast.Ref, denies bool) {
+	keep := func(found []*ast.Rule, declared ast.Ref, denies bool, side *sideDeclared) {
 		for _, rule := range found {
 			root := decisionRoot{name: rulePath(rule).String(), rule: rule, denies: denies}
 			if declared != nil {
 				root.name = declared.String()
-				root.within = fieldExprs(rule, declared[len(rulePath(rule)):])
+				root.field = declared[len(rulePath(rule)):]
+				root.within = fieldExprs(rule, root.field)
 			}
+			said := answers[root.name]
+			if said == nil {
+				said = &declaredAnswers{}
+				answers[root.name] = said
+			}
+			if side != nil {
+				said.declare(*side)
+			}
+
 			if i, taken := at[key{root.name, rule}]; taken {
 				roots[i].denies = roots[i].denies || denies
 				continue
@@ -634,11 +669,17 @@ func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 		if ref.Annotations == nil || !ref.Annotations.Entrypoint {
 			continue
 		}
-		keep(compiler.GetRulesExact(ref.Path), nil, false)
+		// An annotation marks a decision and carries no side, so it declares
+		// none.
+		keep(compiler.GetRulesExact(ref.Path), nil, false, nil)
 	}
 
 	declare := func(declared string, denies bool) error {
-		ref, err := entrypointRef(declared)
+		path, answer, err := answeredEntrypoint(declared)
+		if err != nil {
+			return err
+		}
+		ref, err := entrypointRef(path)
 		if err != nil {
 			return err
 		}
@@ -646,8 +687,9 @@ func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 		if len(found) == 0 {
 			found = documentRules(compiler, ref)
 		}
+		side := &sideDeclared{denies: denies, answer: answer}
 		if len(found) > 0 {
-			keep(found, nil, denies)
+			keep(found, nil, denies, side)
 			return nil
 		}
 
@@ -657,7 +699,7 @@ func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 		if len(found) == 0 {
 			return fmt.Errorf("%w: %s", ErrNoSuchEntrypoint, declared)
 		}
-		keep(found, ref, denies)
+		keep(found, ref, denies, side)
 		return nil
 	}
 	for _, declared := range bundle.Entrypoints {
@@ -669,6 +711,16 @@ func entrypointRules(bundle *Bundle) ([]decisionRoot, error) {
 		if err := declare(declared, true); err != nil {
 			return nil, err
 		}
+	}
+
+	for i := range roots {
+		said := answers[roots[i].name]
+		if said.bothSides() {
+			return nil, fmt.Errorf("%w: %s names an answer and is declared on both sides: the answers it "+
+				"is on one side for already say every other answer is the other side",
+				ErrBadEntrypoint, roots[i].name)
+		}
+		roots[i].answers = said.terms
 	}
 	return roots, nil
 }

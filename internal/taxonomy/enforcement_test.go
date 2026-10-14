@@ -2,6 +2,8 @@ package taxonomy
 
 import (
 	"errors"
+	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/saluc28/petard/internal/opaengine"
@@ -129,5 +131,65 @@ func TestLooseMatchOnADeclaredResource(t *testing.T) {
 	recognized.Shape = shape
 	if findings := GrantsOnLooseMatches(recognized); len(findings) != 0 {
 		t.Errorf("with nothing declared, findings = %v, want none: no name says the path is the resource", findings)
+	}
+}
+
+// A product that reads one field of what a rule returns, and lets the request
+// through on one value of it, says so in its declaration, and the bundle is
+// asked for that field on that answer: the refusal the rule also returns is not
+// a grant.
+func TestDeclareEnforcementPointTakesTheFieldAndTheAnswers(t *testing.T) {
+	const policy = `package sts
+
+default result := {"decision": "deny", "why": "no_rule_matched"}
+
+result := {"decision": "allow", "why": "owner"} if input.owner == "alice"
+
+result := {"decision": "deny", "why": "suspended"} if input.suspended
+`
+	const gateway = `schema_version: 1
+id: test-sts
+engine: opa
+source:
+  kind: documentation
+  note: a token service for the test
+decisions:
+  - rule: result
+    side: grants
+    field: decision
+    answers: [allow]
+`
+	dir := t.TempDir()
+	writeCaseFile(t, filepath.Join(dir, "policy", "p.rego"), policy)
+	writeCaseFile(t, filepath.Join(dir, "pep.yaml"), gateway)
+	bundle, err := opaengine.Load([]string{filepath.Join(dir, "policy")}, opaengine.ParseModeAuto)
+	if err != nil {
+		t.Fatalf("the policy does not compile: %v", err)
+	}
+
+	if _, err := DeclareEnforcementPoint(bundle, filepath.Join(dir, "pep.yaml")); err != nil {
+		t.Fatalf("DeclareEnforcementPoint() error = %v", err)
+	}
+	reads, err := opaengine.Reads(bundle, opaengine.Limits{})
+	if err != nil {
+		t.Fatalf("Reads() error = %v", err)
+	}
+	if !slices.Equal(reads.Decisions, []string{"data.sts.result.decision"}) ||
+		!slices.Equal(reads.Answers["data.sts.result.decision"], []string{`"allow"`}) {
+		t.Fatalf("decisions = %v with answers %v, want the field on the answer allow", reads.Decisions, reads.Answers)
+	}
+
+	for request, granted := range map[string]bool{"owner": true, "suspended": false} {
+		input := map[string]any{"owner": "alice"}
+		if request == "suspended" {
+			input = map[string]any{"suspended": true}
+		}
+		holds, err := opaengine.Holds(t.Context(), bundle, opaengine.NoData(), "data.sts.result.decision", input)
+		if err != nil {
+			t.Fatalf("Holds() error = %v", err)
+		}
+		if holds != granted {
+			t.Errorf("the request of the %s is granted %t, want %t", request, holds, granted)
+		}
 	}
 }

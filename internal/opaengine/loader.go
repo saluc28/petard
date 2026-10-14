@@ -95,7 +95,10 @@ type Bundle struct {
 	// way a report prints a decision, data.authz.allow, or the way opa build
 	// takes one, authz/allow. An entrypoint can also be a field of what a rule
 	// returns, authz/decision/allowed, for a PEP that reads one field of an
-	// object: the decision is then asked at that field.
+	// object: the decision is then asked at that field. And it can end in an
+	// answer, authz/verdict=allowed, for a PEP that lets the request through on
+	// one value of several: the decision then grants where it answers that, and
+	// naming it again with another answer adds one.
 	//
 	// It is a field of the bundle and not an argument of the analysis because
 	// which rules are decisions is a fact about the deployment rather than about
@@ -135,6 +138,12 @@ type Bundle struct {
 
 	partialOnce sync.Once
 	partialErr  error
+
+	// answers are the answers each decision was declared with, read off the
+	// entrypoints answersKey was built from. See answersFor.
+	answersMu  sync.Mutex
+	answersKey string
+	answers    map[string][]*ast.Term
 }
 
 // forPartial returns the compiler partial evaluation runs against, and builds

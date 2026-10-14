@@ -177,6 +177,39 @@ func TestEntrypointsSplitsTheDecisionsBySide(t *testing.T) {
 	}
 }
 
+// A product that reads one field of what a rule returns, and acts on some of the
+// values it finds there, declares both, and the decision comes out spelled the
+// way the engine takes one: once for each answer.
+func TestEntrypointsSpellTheFieldAndTheAnswers(t *testing.T) {
+	const content = "schema_version: 1\nid: x\ndecisions:\n" +
+		"  - rule: result\n    side: grants\n    field: decision\n    answers: [allow]\n" +
+		"  - rule: verdict\n    side: grants\n    answers: [allowed, clean]\n" +
+		"  - rule: level\n    side: denies\n    answers: [3, true]\n" +
+		"  - rule: allow\n    side: grants\n    field: status.allowed\n"
+	path := filepath.Join(t.TempDir(), "x.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing the file: %v", err)
+	}
+	point, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	grants, denies := point.Entrypoints(func(name string) []string { return []string{"data.app." + name} })
+	expected := []string{
+		`data.app.result.decision="allow"`,
+		`data.app.verdict="allowed"`,
+		`data.app.verdict="clean"`,
+		"data.app.allow.status.allowed",
+	}
+	if !slices.Equal(grants, expected) {
+		t.Errorf("grants = %v, want %v", grants, expected)
+	}
+	if expected := []string{"data.app.level=3", "data.app.level=true"}; !slices.Equal(denies, expected) {
+		t.Errorf("denies = %v, want %v", denies, expected)
+	}
+}
+
 // A key the format does not have is refused with its name. Read as nothing,
 // bounded-by would leave the requested authority with no ceiling, and
 // PTD-OPA-013 would report a candidate where the declaration meant a finding.
@@ -210,6 +243,8 @@ func TestLoadRejects(t *testing.T) {
 		{"no decision", "schema_version: 1\nid: x\n"},
 		{"a decision that is a path", "schema_version: 1\nid: x\ndecisions:\n  - rule: authz/allow\n    side: grants\n"},
 		{"a side that is neither", "schema_version: 1\nid: x\ndecisions:\n  - rule: allow\n    side: maybe\n"},
+		{"a field that is not names joined by dots", "schema_version: 1\nid: x\ndecisions:\n  - rule: result\n    side: grants\n    field: decision/allowed\n"},
+		{"an answer that is not one value", "schema_version: 1\nid: x\ndecisions:\n  - rule: verdict\n    side: grants\n    answers: [[allowed, clean]]\n"},
 		{"a subject outside the request", header + "subject: data.user\n"},
 		{"an action outside the request", header + "action: method\n"},
 		{"a resource outside the request", header + "resource: data.documents\n"},

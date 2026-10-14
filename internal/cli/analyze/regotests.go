@@ -211,20 +211,52 @@ func comment(b *strings.Builder, text string) {
 }
 
 // grants writes the expression that holds when a decision grants the request it
-// is asked about, and refuses the one that holds when it does not. A decision
-// that collects grants when what it collected is not empty.
+// is asked about, and refuses the one that holds when it does not, the way the
+// analysis asked it (opaengine.Holds). A decision that collects grants when
+// what it collected is not empty. One declared with answers grants where it
+// gives one of them, and one that answers every request with a value, with no
+// answer declared, where it answers something else than its default.
 func grants(bundle *opaengine.Bundle, decision string) string {
-	if bundle.Collects(decision) {
+	answers := bundle.Answers(decision)
+	switch {
+	case len(answers) > 0 && bundle.Collects(decision):
+		return "count(" + collectedAmong(decision, answers) + ") > 0"
+	case len(answers) > 0:
+		return decision + " in " + setOf(answers)
+	case bundle.Collects(decision):
 		return "count(" + decision + ") > 0"
+	}
+	if fallback, valued := bundle.NonBooleanDefault(decision); valued {
+		return decision + " != " + fallback
 	}
 	return decision
 }
 
 func refuses(bundle *opaengine.Bundle, decision string) string {
-	if bundle.Collects(decision) {
+	answers := bundle.Answers(decision)
+	switch {
+	case len(answers) > 0 && bundle.Collects(decision):
+		return "count(" + collectedAmong(decision, answers) + ") == 0"
+	case len(answers) > 0:
+		return "not " + decision + " in " + setOf(answers)
+	case bundle.Collects(decision):
 		return "count(" + decision + ") == 0"
 	}
+	if fallback, valued := bundle.NonBooleanDefault(decision); valued {
+		return decision + " == " + fallback
+	}
 	return "not " + decision
+}
+
+// setOf writes answers as a Rego set.
+func setOf(answers []string) string {
+	return "{" + strings.Join(answers, ", ") + "}"
+}
+
+// collectedAmong writes what a decision that collects holds of the answers it
+// was declared with.
+func collectedAmong(decision string, answers []string) string {
+	return "[answer | some answer in " + decision + "; answer in " + setOf(answers) + "]"
 }
 
 // regoValue writes a value of a request or of the data as a Rego term.

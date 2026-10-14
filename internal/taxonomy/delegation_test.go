@@ -342,6 +342,69 @@ allow := {"decision": "allow", "allowed": true} if {
 	}
 }
 
+// A decision contract answers a refusal of its own, with the reason, next to
+// the default it falls back to. Taken to grant wherever it answers something
+// other than that default, it grants the request it refuses with a reason, and
+// a decision that bounds the authority by every ceiling is reported. Declared
+// with the answer that grants, it is asked whether it answers allow, and there
+// is nothing to report. The same declaration reports the contract that does not
+// bound by the edge.
+func TestDelegationAsksForTheAnswerThatGrants(t *testing.T) {
+	policy := `package p
+
+default result := {"decision": "deny", "why": "no_rule_matched"}
+
+result := {"decision": "allow", "why": "narrowed"} if {
+	count(input.requested_scopes) > 0
+	every scope in input.requested_scopes {
+		scope in input.delegation_edge.scopes
+	}
+	every scope in input.requested_scopes {
+		scope in input.role_scopes
+	}
+}
+
+result := {"decision": "deny", "why": "scope_exceeded"} if {
+	some scope in input.requested_scopes
+	not scope in input.delegation_edge.scopes
+}
+`
+	reported := func(policy string, entrypoints ...string) []string {
+		t.Helper()
+		a := delegationAnalysis(t, policy, delegationGateway, `{"unused": true}`, entrypoints...)
+		findings, err := GrantsBeyondDelegatedScope(t.Context(), a)
+		if err != nil {
+			t.Fatalf("GrantsBeyondDelegatedScope() error = %v", err)
+		}
+		var decisions []string
+		for _, finding := range findings {
+			decisions = append(decisions, finding.Decision)
+		}
+		return decisions
+	}
+
+	if got := reported(policy, "data.p.result"); !slices.Equal(got, []string{"data.p.result"}) {
+		t.Errorf("asked whole, findings on %v, want one on data.p.result: a refusal with a reason is not the default", got)
+	}
+	if got := reported(policy, "data.p.result.decision=allow"); len(got) != 0 {
+		t.Errorf("asked for allow, findings on %v, want none: the request past the edge is answered deny", got)
+	}
+
+	unbounded := strings.Replace(policy, `	every scope in input.requested_scopes {
+		scope in input.delegation_edge.scopes
+	}
+`, "", 1)
+	unbounded = strings.Replace(unbounded, `
+result := {"decision": "deny", "why": "scope_exceeded"} if {
+	some scope in input.requested_scopes
+	not scope in input.delegation_edge.scopes
+}
+`, "", 1)
+	if got := reported(unbounded, "data.p.result.decision=allow"); !slices.Equal(got, []string{"data.p.result.decision"}) {
+		t.Errorf("with no bound by the edge, findings on %v, want one on data.p.result.decision", got)
+	}
+}
+
 // A token service that decides on the request alone has no document to load, and
 // is asked with no data given. One whose decision reads the data is not, and
 // the run says the data is what is missing.

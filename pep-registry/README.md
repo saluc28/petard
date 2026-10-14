@@ -31,7 +31,7 @@ names them, and the patterns that ask who sets a part of the request get an answ
 | `title` | one readable line |
 | `engine` | `opa` |
 | `source` | `kind`, `source` or `documentation`, and a `note` saying at which version |
-| `decisions` | the rules the product asks for, by `rule` name in whichever package the policy declares, each with the `side` its answering yes lands on, `grants` or `denies` |
+| `decisions` | the rules the product asks for, by `rule` name in whichever package the policy declares, each with the `side` its answering yes lands on, `grants` or `denies`; `field` when the product reads one field of the object a rule returns, and `answers` when it acts on some of the values it finds there, as `answers: [allowed, clean]` |
 | `subject` | the part of the request that names who is asking |
 | `action`, `resource` | the parts of the request that name what is asked for; either can be left out, and with both left out they are recognized |
 | `fields` | who puts each part of the request there, see below |

@@ -349,11 +349,16 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 	}
 
 	for _, decision := range a.Reads.Decisions {
+		if len(a.Reads.Answers[decision]) > 0 {
+			// Which answers count was declared, so nothing is read into them.
+			continue
+		}
 		if value, valued := a.Bundle.NonBooleanDefault(decision); valued {
 			render.Print(out, fmt.Sprintf("%s answers every request with a value, %s by default, and the "+
 				"policy does not say which of its answers is a grant: every answer other than that default is "+
 				"read as one. If a field of the answer is true or false, declare that field as the decision "+
-				"with -entrypoint.", decision, shortValue(value)), "  ")
+				"with -entrypoint; if the answer is one of several values, name the ones that grant, as "+
+				"-entrypoint %s=allowed.", decision, shortValue(value), decision), "  ")
 		}
 	}
 

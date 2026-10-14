@@ -276,6 +276,21 @@ that measure access with it, `PTD-OPA-003` and `PTD-OPA-006`, leave such a decis
 do the capability edges of the graph: an edge somebody walks is a way in, and the complement of a
 residual condition is a negation no edge can carry.
 
+A decision can also answer with one value of several, and then the side is in the value. The
+admission policy of defenseclaw answers `scan` by default and `blocked`, `allowed`, `clean`,
+`rejected` or `warning` as its rules decide (`policies/rego/admission.rego:39`, `45`, `53`, `97`,
+`113` and `131` at `9bc62550`). The decision contract of caracal answers an object whose
+`decision` is `deny` by default, `allow` from two functions and `deny` again from a third, with
+the reason (`services/sts/internal/decision_contract.rego:11`, `18`, `30` and `331` at
+`c6a0689`). Such a rule is defined for every request, so asked whether it holds it holds on its
+refusals too. Which answers let a request through is declared with the decision,
+`-entrypoint gate/verdict=allowed`, once for each, or as `answers` in the declaration of the
+enforcement point. The decision is then asked for those answers alone, and a rule that writes
+out another one is on the side that refuses: a check that keeps a request out of
+`verdict := "blocked"` lifts a refusal, as one under a `not` does. With no answer declared the
+decision is taken to grant wherever it answers anything other than its default, and the report
+says so.
+
 ### An escalation edge goes towards a gain, read by content
 
 A principal who can add themselves to a policy, or write a value a decision grants on, reaches

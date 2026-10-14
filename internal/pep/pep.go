@@ -12,11 +12,13 @@
 package pep
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/saluc28/petard/internal/writemodel"
@@ -142,7 +144,68 @@ type Decision struct {
 	// the product asks for it by that name.
 	Rule string `yaml:"rule"`
 	Side Side   `yaml:"side"`
+
+	// Field is the part of what the rule returns that the product reads, for a
+	// rule that answers with an object: decision, in {"decision": "allow"}, or
+	// status.allowed for one inside another. It is empty when the product reads
+	// the whole answer.
+	Field string `yaml:"field"`
+
+	// Answers are the values the decision is on its side for, when the product
+	// acts on some of the values the rule gives and not on others: allowed and
+	// clean, of a verdict that also says blocked and scan. Each is a string, a
+	// number or a boolean. Empty for a decision that is on its side whenever it
+	// holds.
+	Answers []any `yaml:"answers"`
+
 	Note string `yaml:"note"`
+}
+
+// fieldPath is a field of an answer the way a declaration writes it: names
+// joined by dots.
+var fieldPath = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
+
+// validate checks one decision: a rule by its name, a side, a field written as
+// names, and answers that are values a request could be decided on.
+func (d Decision) validate() error {
+	if d.Rule == "" || strings.ContainsAny(d.Rule, "./") {
+		return fmt.Errorf("decision %q is not the name of a rule", d.Rule)
+	}
+	if d.Side != SideGrants && d.Side != SideDenies {
+		return fmt.Errorf("decision %s: side %q is neither %s nor %s", d.Rule, d.Side, SideGrants, SideDenies)
+	}
+	if d.Field != "" && !fieldPath.MatchString(d.Field) {
+		return fmt.Errorf("decision %s: field %q is not a field of what the rule returns, written as names joined by dots", d.Rule, d.Field)
+	}
+	for _, answer := range d.Answers {
+		switch answer.(type) {
+		case string, bool, int, int64, uint64, float64:
+		default:
+			return fmt.Errorf("decision %s: the answer %v is not a string, a number or a boolean", d.Rule, answer)
+		}
+	}
+	return nil
+}
+
+// entrypoints spells the decision the way the engine takes one, for a rule of a
+// bundle that carries its name: the path of the rule, the field the product
+// reads when it reads one, and once for each answer when it acts on some of
+// them, as data.app.result.decision="allow".
+func (d Decision) entrypoints(rule string) []string {
+	path := rule
+	if d.Field != "" {
+		path += "." + d.Field
+	}
+	if len(d.Answers) == 0 {
+		return []string{path}
+	}
+	spelled := make([]string, 0, len(d.Answers))
+	for _, answer := range d.Answers {
+		// The answers were checked to be scalars, which always encode.
+		written, _ := json.Marshal(answer)
+		spelled = append(spelled, path+"="+string(written))
+	}
+	return spelled
 }
 
 // Assumption is one principal that can assume or mint an identity, and how.
@@ -299,11 +362,8 @@ func (p *EnforcementPoint) validate() error {
 		return errors.New("no decision: an enforcement point that asks for nothing declares nothing")
 	}
 	for _, decision := range p.Decisions {
-		if decision.Rule == "" || strings.ContainsAny(decision.Rule, "./") {
-			return fmt.Errorf("decision %q is not the name of a rule", decision.Rule)
-		}
-		if decision.Side != SideGrants && decision.Side != SideDenies {
-			return fmt.Errorf("decision %s: side %q is neither %s nor %s", decision.Rule, decision.Side, SideGrants, SideDenies)
+		if err := decision.validate(); err != nil {
+			return err
 		}
 	}
 	for _, part := range []struct{ role, path string }{
@@ -477,15 +537,17 @@ func (p *EnforcementPoint) FieldsFor(path string) ([]Field, bool) {
 }
 
 // Entrypoints turns the decisions into the ones a bundle holds, given how the
-// bundle answers which of its rules have a name, and splits them by side.
+// bundle answers which of its rules have a name, and splits them by side. Each
+// comes back spelled the way the engine takes an entrypoint, with the field the
+// product reads and the answers it acts on when the declaration names them.
 func (p *EnforcementPoint) Entrypoints(rulesNamed func(string) []string) (grants, denies []string) {
 	for _, decision := range p.Decisions {
 		for _, rule := range rulesNamed(decision.Rule) {
 			if decision.Side == SideDenies {
-				denies = append(denies, rule)
+				denies = append(denies, decision.entrypoints(rule)...)
 				continue
 			}
-			grants = append(grants, rule)
+			grants = append(grants, decision.entrypoints(rule)...)
 		}
 	}
 	return grants, denies

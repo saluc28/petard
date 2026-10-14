@@ -960,7 +960,7 @@ func (rs *ResidualSet) Never() bool {
 // which is also where they belong: a decision that still depends on a call is a
 // decision nobody can settle from the data alone.
 func Residuals(ctx context.Context, bundle *Bundle, data *Data, ask Request, limits Limits) (*ResidualSet, error) {
-	queries, err := partial(ctx, bundle, data, ask)
+	left, err := partial(ctx, bundle, data, ask)
 	if err != nil {
 		return nil, err
 	}
@@ -970,7 +970,31 @@ func Residuals(ctx context.Context, bundle *Bundle, data *Data, ask Request, lim
 		unknowns = []string{ast.InputRootDocument.String()}
 	}
 	result := &ResidualSet{Decision: ask.Decision, Unknowns: slices.Clone(unknowns)}
-	result.Conditions, result.Default, result.Always = conditionsOf(ctx, queries)
+	answers := bundle.answersFor(ask.Decision)
+	for i, queries := range left {
+		conditions, fallback, always := conditionsOf(ctx, queries)
+		if i < len(answers) {
+			// The decision was asked for this answer, so a condition that holds
+			// is one under which it gives it.
+			for at := range conditions {
+				if conditions[at].Value == "true" {
+					conditions[at].Value = answers[i].String()
+				}
+			}
+		}
+		result.Conditions = append(result.Conditions, conditions...)
+		result.Always = result.Always || always
+		if fallback != "" {
+			result.Default = fallback
+		}
+	}
+	if len(answers) > 0 {
+		// Asked for an answer, the decision comes back without its default,
+		// which is still what it says when none of the conditions holds.
+		if fallback, declared := bundle.defaultOf(ask.Decision); declared {
+			result.Default = fallback.String()
+		}
+	}
 	result.bound(limits.maxResiduals())
 	return result, nil
 }
@@ -984,8 +1008,9 @@ func Residuals(ctx context.Context, bundle *Bundle, data *Data, ask Request, lim
 // would trip its convenience that an empty set of unknowns means the whole
 // request is unknown, and answer about anybody rather than about this request.
 //
-// A decision whose default is a value other than true or false holds where it
-// answers something else: see NonBooleanDefault.
+// A decision declared with answers holds where it gives one of them. One with
+// none declared, whose default is a value other than true or false, holds where
+// it answers something else than that default: see NonBooleanDefault.
 func Holds(ctx context.Context, bundle *Bundle, data *Data, decision string, input map[string]any) (bool, error) {
 	if data == nil {
 		return false, ErrNoData
@@ -994,30 +1019,34 @@ func Holds(ctx context.Context, bundle *Bundle, data *Data, decision string, inp
 	if err != nil {
 		return false, err
 	}
-	query := bundle.query(decision)
-	if fallback, valued := bundle.NonBooleanDefault(decision); valued {
-		query += " != " + fallback
+	queries := bundle.queriesFor(decision)
+	if len(bundle.answersFor(decision)) == 0 {
+		if fallback, valued := bundle.NonBooleanDefault(decision); valued {
+			queries[0] += " != " + fallback
+		}
 	}
 
-	results, err := evaluated(ctx, data, decision, func(txn storage.Transaction) (rego.ResultSet, error) {
-		return rego.New(
-			rego.Query(query),
-			rego.Compiler(compiler),
-			rego.Store(data.store),
-			rego.Transaction(txn),
-			rego.Input(input),
-		).Eval(ctx)
-	})
-	if err != nil {
-		return false, fmt.Errorf("%w: %s: %w", ErrPartial, decision, err)
-	}
+	for _, query := range queries {
+		results, err := evaluated(ctx, data, decision, func(txn storage.Transaction) (rego.ResultSet, error) {
+			return rego.New(
+				rego.Query(query),
+				rego.Compiler(compiler),
+				rego.Store(data.store),
+				rego.Transaction(txn),
+				rego.Input(input),
+			).Eval(ctx)
+		})
+		if err != nil {
+			return false, fmt.Errorf("%w: %s: %w", ErrPartial, decision, err)
+		}
 
-	// A collected decision answers with one result per element and none when it
-	// grants nothing; a boolean one always answers, with true or false. Both hold
-	// only on a result whose expressions are not false.
-	for _, result := range results {
-		if !slices.ContainsFunc(result.Expressions, func(expr *rego.ExpressionValue) bool { return expr.Value == false }) {
-			return true, nil
+		// A collected decision answers with one result per element and none when
+		// it grants nothing; a boolean one always answers, with true or false.
+		// Both hold only on a result whose expressions are not false.
+		for _, result := range results {
+			if !slices.ContainsFunc(result.Expressions, func(expr *rego.ExpressionValue) bool { return expr.Value == false }) {
+				return true, nil
+			}
 		}
 	}
 	return false, nil
@@ -1040,9 +1069,24 @@ func Holds(ctx context.Context, bundle *Bundle, data *Data, decision string, inp
 // of that field: data.app.result.allowed over default result := {"allowed":
 // false} answers true or false, and has no such default.
 func (b *Bundle) NonBooleanDefault(decision string) (string, bool) {
+	value, found := b.defaultOf(decision)
+	if !found {
+		return "", false
+	}
+	if _, isBoolean := value.Value.(ast.Boolean); isBoolean {
+		return "", false
+	}
+	return value.String(), true
+}
+
+// defaultOf returns the default of a decision, the value it takes when no rule
+// speaks for a request, and reports whether the policy declares one. For a
+// decision that is a field of what a rule answers it is that field of the
+// default.
+func (b *Bundle) defaultOf(decision string) (*ast.Term, bool) {
 	compiler, err := b.forPartial()
 	if err != nil {
-		return "", false
+		return nil, false
 	}
 	query := decision
 	if field, found := b.fieldQueries[decision]; found {
@@ -1050,7 +1094,7 @@ func (b *Bundle) NonBooleanDefault(decision string) (string, bool) {
 	}
 	ref, err := ast.ParseRef(query)
 	if err != nil {
-		return "", false
+		return nil, false
 	}
 
 	for _, rule := range compiler.GetRulesForVirtualDocument(ref) {
@@ -1062,25 +1106,27 @@ func (b *Bundle) NonBooleanDefault(decision string) (string, bool) {
 		for _, key := range ref[len(path):] {
 			object, isObject := value.Value.(ast.Object)
 			if !isObject {
-				return "", false
+				return nil, false
 			}
 			if value = object.Get(key); value == nil {
-				return "", false
+				return nil, false
 			}
 		}
-		if _, isBoolean := value.Value.(ast.Boolean); isBoolean {
-			return "", false
-		}
-		return value.String(), true
+		return value, true
 	}
-	return "", false
+	return nil, false
 }
 
 // partial runs partial evaluation and returns what OPA left of the decision.
 // It is the one place the rego options are built, so that a second question
 // asked of the same decision cannot phrase the evaluation differently from
 // Residuals and get an answer that does not line up with it.
-func partial(ctx context.Context, bundle *Bundle, data *Data, ask Request) (*rego.PartialQueries, error) {
+//
+// What comes back is one answer of OPA for a decision that is on its side
+// whenever it holds, and one for each answer of a decision declared with them
+// (see queriesFor). They are kept apart: each carries rules OPA generated under
+// names of its own choosing, and two evaluations choose the same names.
+func partial(ctx context.Context, bundle *Bundle, data *Data, ask Request) ([]*rego.PartialQueries, error) {
 	if data == nil {
 		return nil, ErrNoData
 	}
@@ -1094,23 +1140,28 @@ func partial(ctx context.Context, bundle *Bundle, data *Data, ask Request) (*reg
 	if err != nil {
 		return nil, err
 	}
-	options := []func(*rego.Rego){
-		rego.Query(bundle.query(ask.Decision)),
-		rego.Compiler(compiler),
-		rego.Store(data.store),
-		rego.Unknowns(unknowns),
-	}
-	if ask.Input != nil {
-		options = append(options, rego.Input(ask.Input))
-	}
 
-	queries, err := evaluated(ctx, data, ask.Decision, func(txn storage.Transaction) (*rego.PartialQueries, error) {
-		return rego.New(append(options, rego.Transaction(txn))...).Partial(ctx)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("%w: %s: %w", ErrPartial, ask.Decision, err)
+	var left []*rego.PartialQueries
+	for _, query := range bundle.queriesFor(ask.Decision) {
+		options := []func(*rego.Rego){
+			rego.Query(query),
+			rego.Compiler(compiler),
+			rego.Store(data.store),
+			rego.Unknowns(unknowns),
+		}
+		if ask.Input != nil {
+			options = append(options, rego.Input(ask.Input))
+		}
+
+		queries, err := evaluated(ctx, data, ask.Decision, func(txn storage.Transaction) (*rego.PartialQueries, error) {
+			return rego.New(append(options, rego.Transaction(txn))...).Partial(ctx)
+		})
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s: %w", ErrPartial, ask.Decision, err)
+		}
+		left = append(left, queries)
 	}
-	return queries, nil
+	return left, nil
 }
 
 // query writes the query partial evaluation asks a decision: the rule that
@@ -1239,16 +1290,18 @@ func valuesComparedWith(ctx context.Context, bundle *Bundle, data *Data, ask Req
 		ask.Unknowns = append(slices.Clone(ask.Unknowns), document)
 	}
 
-	queries, err := partial(ctx, bundle, data, ask)
+	left, err := partial(ctx, bundle, data, ask)
 	if err != nil {
 		return nil, err
 	}
 
 	var values []GrantingValue
 	seen := map[string]bool{}
-	for _, body := range residualBodies(queries) {
-		if err := collectConstants(body, docRef, resolve, &values, seen); err != nil {
-			return nil, err
+	for _, queries := range left {
+		for _, body := range residualBodies(queries) {
+			if err := collectConstants(body, docRef, resolve, &values, seen); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return values, nil
@@ -1277,7 +1330,7 @@ func DependsOn(ctx context.Context, bundle *Bundle, data *Data, ask Request, doc
 		ask.Unknowns = append(slices.Clone(ask.Unknowns), document)
 	}
 
-	queries, err := partial(ctx, bundle, data, ask)
+	left, err := partial(ctx, bundle, data, ask)
 	if err != nil {
 		return false, err
 	}
@@ -1299,11 +1352,13 @@ func DependsOn(ctx context.Context, bundle *Bundle, data *Data, ask Request, doc
 		}
 		return mentioned
 	}
-	for _, query := range queries.Queries {
-		ast.WalkRefs(query, visit)
-	}
-	for _, module := range queries.Support {
-		ast.WalkRefs(module, visit)
+	for _, queries := range left {
+		for _, query := range queries.Queries {
+			ast.WalkRefs(query, visit)
+		}
+		for _, module := range queries.Support {
+			ast.WalkRefs(module, visit)
+		}
 	}
 	return mentioned, nil
 }

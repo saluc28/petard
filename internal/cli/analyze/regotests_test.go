@@ -170,6 +170,108 @@ grants contains "remove" if {
 	}
 }
 
+// A decision that answers with a value is asked in a test the way the analysis
+// asked it: for one of the answers it was declared with, and, with none
+// declared, for anything other than its default. Asked as a bare reference it
+// would hold on the refusal too, and the test of an open escalation would pass.
+func TestRegoTestsAskADecisionForItsAnswer(t *testing.T) {
+	dir := t.TempDir()
+	policy := `package gate
+
+default verdict := "scan"
+
+verdict := "allowed" if data.users[input.user].role == "admin"
+
+verdict := "blocked" if {
+	data.users[input.user].banned
+	data.users[input.user].role != "admin"
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "gate.rego"), []byte(policy), 0o600); err != nil {
+		t.Fatalf("writing the policy: %v", err)
+	}
+	dataDir := t.TempDir()
+	document := `{"users": {"alice": {"role": "viewer", "banned": true}, "bob": {"role": "admin"}}}`
+	if err := os.WriteFile(filepath.Join(dataDir, "data.json"), []byte(document), 0o600); err != nil {
+		t.Fatalf("writing the data: %v", err)
+	}
+	data, err := opaengine.LoadData([]string{dataDir})
+	if err != nil {
+		t.Fatalf("LoadData() error = %v", err)
+	}
+	escalation := taxonomy.Finding{
+		PatternID: taxonomy.AttrSelfWrite,
+		Summary:   "alice can set their role to admin",
+		Principal: "alice",
+		Target:    "bob",
+		Witness: &taxonomy.Witness{
+			Decision: "data.gate.verdict",
+			Request:  map[string]any{"user": "alice"},
+			Document: "data.users.alice.role",
+			Value:    "admin",
+		},
+	}
+
+	tests := []struct {
+		name        string
+		entrypoints []string
+		refused     string
+		granted     string
+	}{
+		{
+			name:        "declared with the answers that grant",
+			entrypoints: []string{"data.gate.verdict=allowed", "data.gate.verdict=clean"},
+			refused:     `not data.gate.verdict in {"allowed", "clean"} with input as request`,
+			granted:     `data.gate.verdict in {"allowed", "clean"} with input as request`,
+		},
+		{
+			name:        "with no answer declared",
+			entrypoints: []string{"data.gate.verdict"},
+			refused:     `data.gate.verdict == "scan" with input as request`,
+			granted:     `data.gate.verdict != "scan" with input as request`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bundle, err := opaengine.Load([]string{dir}, opaengine.ParseModeAuto)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			bundle.Entrypoints = tt.entrypoints
+
+			module, _, err := regoTests(taxonomy.Analysis{Bundle: bundle, Data: data}, []taxonomy.Finding{escalation})
+			if err != nil {
+				t.Fatalf("regoTests() error = %v", err)
+			}
+			for _, want := range []string{tt.refused, tt.granted, `with data.users.alice.role as "admin"`} {
+				if !strings.Contains(module, want) {
+					t.Errorf("the module does not say %q:\n%s", want, module)
+				}
+			}
+		})
+	}
+
+	// alice is banned, so today the verdict is blocked: a refusal, which a test
+	// written for the answers that grant sees as one, and it fails while the
+	// write would turn the verdict into allowed.
+	bundle, err := opaengine.Load([]string{dir}, opaengine.ParseModeAuto)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	bundle.Entrypoints = []string{"data.gate.verdict=allowed"}
+	module, _, err := regoTests(taxonomy.Analysis{Bundle: bundle, Data: data}, []taxonomy.Finding{escalation})
+	if err != nil {
+		t.Fatalf("regoTests() error = %v", err)
+	}
+	withTests := copyPolicy(t, dir)
+	if err := os.WriteFile(filepath.Join(withTests, "escalations_test.rego"), []byte(module), 0o600); err != nil {
+		t.Fatalf("writing the tests: %v", err)
+	}
+	if passes(t, withTests, dataDir, "test_alice_cannot_reach_bob") {
+		t.Errorf("the test passes, and alice reaches bob:\n%s", module)
+	}
+}
+
 // A request that would run past regal's line length is written one key to a
 // line, the form opa fmt keeps, and a short one stays on its line.
 func TestBindBreaksALongObject(t *testing.T) {

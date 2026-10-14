@@ -314,10 +314,46 @@ result := {"decision": "allow"} if input.user == "root"
 		`data.sts.result answers every request with a value, {"decision": "deny"} by default`,
 		"every answer other than that default is read as one",
 		"declare that field as the decision with -entrypoint",
+		"name the ones that grant, as -entrypoint data.sts.result=allowed",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the report does not say %q:\n%s", want, stdout.String())
 		}
+	}
+}
+
+// A decision declared with the answer that grants is listed with it, and
+// nothing is read into its other answers, so the summary has no reading to
+// own up to.
+func TestTheSummaryTakesADeclaredAnswer(t *testing.T) {
+	dir := t.TempDir()
+	policy := `package sts
+
+default result := {"decision": "deny"}
+
+result := {"decision": "allow"} if input.user == "root"
+`
+	if err := os.WriteFile(filepath.Join(dir, "sts.rego"), []byte(policy), 0o600); err != nil {
+		t.Fatalf("writing the policy: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{"users": {}}`), 0o600); err != nil {
+		t.Fatalf("writing the data: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	args := []string{"-v", "-fail-on", failOnNone, "-entrypoint", "sts/result/decision=allow", dir}
+	if code := Run(args, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "  data.sts.result.decision, when it answers \"allow\"\n") {
+		t.Errorf("the decision is not listed with the answer it grants on:\n%s", out)
+	}
+	if strings.Contains(out, "answers every request with a value") {
+		t.Errorf("the summary reads the answers of a decision whose granting answer was declared:\n%s", out)
+	}
+	if !strings.Contains(out, "data.sts.result.decision  1 ") {
+		t.Errorf("the decision is not left with the one condition under which it answers allow:\n%s", out)
 	}
 }
 

@@ -86,6 +86,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   role and not by the edge.
 - `petard explain` says what a pattern needs to run, the enforcement point declared with `-pep`,
   concrete data, or both, and what closes it, the `closes` line of its file.
+- A decision that answers with one value of several, `default verdict := "scan"` next to
+  `"allowed"`, `"blocked"` and `"clean"`, is declared with the answers it grants on, one
+  `-entrypoint gate/verdict=allowed` for each, or with `answers` on the decision in an enforcement
+  point declaration, which also takes `field` for a product that reads one field of the object a
+  rule returns. Such a rule is defined for every request, its refusals included, and nothing in
+  the policy says which answer is a grant. Declared this way the decision is asked for those
+  answers alone, by the patterns that evaluate it and in the tests `-tests` writes, a rule that
+  writes out another answer is on the side that refuses, and `-v` lists the decision with its
+  answers. `-deny-entrypoint` takes an answer the same way, for the values a decision refuses on.
 - `-action` and `-resource`, on `petard analyze` and `petard export`, declare the parts of the
   request that name what is asked for, as `-subject` declares who is asking, and an enforcement
   point declaration takes them as `action` and `resource`. A gateway that hands the policy the

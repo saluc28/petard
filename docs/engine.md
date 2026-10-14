@@ -60,7 +60,11 @@ A decision whose default is a value other than `true` or `false`, `default resul
 included. Which of its answers is a grant is in what the enforcement point reads out of the value,
 and the policy does not say. Such a decision is taken to grant where it answers anything other
 than its default, and the report names it and that reading under `How much to trust this`. Where
-a field of the answer is `true` or `false`, that field is the decision to declare.
+a field of the answer is `true` or `false`, that field is the decision to declare. Where the
+answer is one value of several, the ones that grant are declared with the decision,
+`-entrypoint gate/verdict=allowed`, and it is then asked for each of them: OPA is given the
+decision unified with the answer, which drops the default and the rules that give another
+answer, and those rules are read on the side that refuses.
 
 A product that asks for decisions can be declared once instead, in the format of `pep-registry/`:
 the rules it asks for by name and the side each lands on, where it puts the requester, and who

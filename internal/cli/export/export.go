@@ -79,9 +79,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	regoV0 := flags.Bool("rego-v0", false, "parse as Rego v0, like opa --v0-compatible")
 	regoV1 := flags.Bool("rego-v1", false, "parse as Rego v1 and do not fall back to v0")
 	var entrypoints repeatedString
-	flags.Var(&entrypoints, "entrypoint", "a rule the PEP queries, or a field of what it returns, as data.authz.allow or authz/allow; repeat for more; without one, the rules no other rule uses")
+	flags.Var(&entrypoints, "entrypoint", "a rule the PEP queries, or a field of what it returns, as data.authz.allow or authz/allow; with =answer when it grants on one value of several, as authz/verdict=allowed; repeat for more; without one, the rules no other rule uses")
 	var denyEntrypoints repeatedString
-	flags.Var(&denyEntrypoints, "deny-entrypoint", "a rule the PEP queries to refuse the request when it holds or collects anything, as k8sallowedrepos/violation; repeat for more")
+	flags.Var(&denyEntrypoints, "deny-entrypoint", "a rule the PEP queries to refuse the request when it holds or collects anything, as k8sallowedrepos/violation; with =answer when it refuses on one value of several; repeat for more")
 	subject := flags.String("subject", "", "the part of the request that names who is asking, as input.user; without it, it is recognized")
 	action := flags.String("action", "", "the part of the request that names what is done, as input.request.method; declared with -resource or alone, it replaces what is recognized for both")
 	resource := flags.String("resource", "", "the part of the request that names what is asked for, as input.request.path; declared with -action or alone, it replaces what is recognized for both")
