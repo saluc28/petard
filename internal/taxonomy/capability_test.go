@@ -132,6 +132,36 @@ func TestAddCapabilitiesPointsAtTheResource(t *testing.T) {
 	}
 }
 
+// Declaring the subject says who is asking and leaves what is asked for to be
+// recognized, so the graph keeps every capability it had with the subject
+// guessed. Each edge is worth the weaker of the two levels: the subject is
+// declared, and the document is still found by its field name.
+func TestAddCapabilitiesWithADeclaredSubject(t *testing.T) {
+	a := fixtureAnalysis(t)
+	recognized := len(edgesOfKind(graphOn(t, a), graph.EdgeKindCanPerform))
+
+	declared, err := opaengine.ShapeOf(a.Reads, a.Shape.Subject)
+	if err != nil {
+		t.Fatalf("ShapeOf() error = %v", err)
+	}
+	if declared.Confidence != opaengine.ConfidenceDeclared {
+		t.Fatalf("the subject is at level %s, want it declared", declared.Confidence)
+	}
+	a.Shape = declared
+
+	capabilities := edgesOfKind(graphOn(t, a), graph.EdgeKindCanPerform)
+	if len(capabilities) != recognized || recognized == 0 {
+		t.Fatalf("capabilities with the subject declared = %d, want the %d there are with it recognized",
+			len(capabilities), recognized)
+	}
+	for _, edge := range capabilities {
+		if edge.Properties[graph.PropConfidence] != "D" {
+			t.Errorf("the capability %s -> %s is at level %v, want D: the resource is named by a field name",
+				edge.From, edge.To, edge.Properties[graph.PropConfidence])
+		}
+	}
+}
+
 // A capability measured against no documents is not a capability of zero, it is
 // a question that was not asked.
 func TestAddCapabilitiesNeedsData(t *testing.T) {

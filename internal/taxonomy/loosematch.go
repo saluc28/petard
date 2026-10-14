@@ -45,7 +45,7 @@ const GrantOnLooseMatch = "PTD-OPA-012"
 // subject declared from outside says nothing about the rest of the request. A
 // finding carries the level they were recognized at.
 func GrantsOnLooseMatches(a Analysis) []Finding {
-	target := opaengine.RecognizeTarget(a.Reads)
+	target := a.Shape.Target()
 	resource, action := target.Resource, target.Action
 	if resource == "" && action == "" {
 		return nil

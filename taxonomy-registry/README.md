@@ -245,6 +245,10 @@ checks the input against a schema given in an annotation or on the command line
 (`opa eval --schema`, `cmd/eval.go:289` at `v1.21.1`). A declared subject that no decision reads
 is refused, the way an entrypoint that names no rule is.
 
+A declared subject says who is asking and nothing of what is asked for. The action and the
+resource are still recognized, at the level they are worth, and a `PTD_CanPerform` edge, which
+names a principal and what they reach, carries the weaker of the two levels.
+
 ### Which way a decision answers is declared too
 
 Whether a decision grants or refuses is up to the point that enforces it, and a policy has no way

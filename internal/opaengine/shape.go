@@ -95,6 +95,58 @@ type Shape struct {
 	// Recognizer names what produced the shape, so that a reader can judge it
 	// without reading this code.
 	Recognizer string
+
+	// TargetConfidence and TargetRecognizer are the level and the recognizer of
+	// the action and the resource where they are not the ones of the subject. A
+	// subject declared from outside leaves the rest of the request to be
+	// recognized, and a request that names nobody still asks for something. An
+	// empty TargetRecognizer says the two were named along with the subject. See
+	// Target.
+	TargetConfidence Confidence
+	TargetRecognizer string
+}
+
+// Target returns what the request asks for, the action and the resource, as a
+// shape of its own with no subject, at the level those two were named at.
+//
+// The level of a shape is the level of its subject, which is what a claim about
+// a principal rests on. A claim about what is asked for rests on this one: a
+// subject somebody declared says nothing of how the resource was found.
+func (s Shape) Target() Shape {
+	target := Shape{Action: s.Action, Resource: s.Resource, Confidence: s.Confidence, Recognizer: s.Recognizer}
+	if s.TargetRecognizer != "" {
+		target.Confidence, target.Recognizer = s.TargetConfidence, s.TargetRecognizer
+	}
+	if target.Action == "" && target.Resource == "" {
+		return Shape{Confidence: ConfidenceNone, Recognizer: "none"}
+	}
+	return target
+}
+
+// asking returns the shape with what the request asks for taken from a target
+// recognized apart from the subject, when that target names anything.
+//
+// A part of the request that is the subject, holds it or sits inside it is left
+// out: with input.target declared as who is asking, the name target no longer
+// says what is asked for.
+func (s Shape) asking(target Shape) Shape {
+	subject, _ := s.SubjectList()
+	apart := func(path string) string {
+		if path == "" || subject == "" {
+			return path
+		}
+		if touched([]string{subject}, path) {
+			return ""
+		}
+		return path
+	}
+	action, resource := apart(target.Action), apart(target.Resource)
+	if action == "" && resource == "" {
+		return s
+	}
+	s.Action, s.Resource = action, resource
+	s.TargetConfidence, s.TargetRecognizer = target.Confidence, target.Recognizer
+	return s
 }
 
 // listSuffix is how a subject that holds several principals is written: the
@@ -164,6 +216,10 @@ func (s Shape) MatchedBySubject(read Read) (Match, bool) {
 // Order is the whole design: a declaration beats a standard, a standard beats
 // a domain convention, and a domain convention beats a guess about names. What
 // none of them beats is honesty about which one answered.
+//
+// A request in which nothing names who is asking still comes back with what it
+// asks for, when the field names say that much: see RecognizeTarget. The shape
+// then has no subject and a level of its own for the rest.
 func RecognizeShape(reads *ReadSet) Shape {
 	for _, recognize := range []func([]string) (Shape, bool){
 		recognizeAuthZEN,
@@ -175,18 +231,18 @@ func RecognizeShape(reads *ReadSet) Shape {
 			return shape
 		}
 	}
-	return Shape{Confidence: ConfidenceNone, Recognizer: "none"}
+	return Shape{Confidence: ConfidenceNone, Recognizer: "none"}.asking(RecognizeTarget(reads))
 }
 
 // RecognizeTarget recognizes what a request asks for, its action and its
 // resource, whether or not anything in it names who is asking.
 //
-// RecognizeShape is about the subject first: reading field names it answers
+// The recognizers are about the subject first: reading field names they answer
 // only when one looks like a subject, and a subject declared from outside
-// replaces what it recognized altogether. A decision that grants on input.path
-// and input.method reads no subject, and what it grants on is the resource and
-// the action all the same. The recognizers are the ones RecognizeShape asks, in
-// the same order, and the level is the one the action and the resource were
+// replaces the one they recognized. A decision that grants on input.path and
+// input.method reads no subject, and what it grants on is the resource and the
+// action all the same. The recognizers are the ones RecognizeShape asks, in the
+// same order, and the level is the one the action and the resource were
 // recognized at. The subject is left out of what comes back.
 func RecognizeTarget(reads *ReadSet) Shape {
 	for _, recognize := range []func([]string) (Shape, bool){
@@ -207,12 +263,18 @@ func RecognizeTarget(reads *ReadSet) Shape {
 // ShapeOf returns the shape of the request: the subject declared from outside
 // when there is one, and what the recognizers make of the request otherwise.
 //
-// A declaration replaces recognition rather than joining it, since it is the
-// better evidence of the two: which part of the request names who is asking is
-// decided where the request is built, and the policy only reads it. AWX builds
-// the request of a job with the launching user under created_by, next to the
-// teams and the superuser flag (awx/main/tasks/policy.py:49 and :194 at
-// bbda905), a place none of the recognizers here looks.
+// A declaration replaces the subject the recognizers found rather than joining
+// it, since it is the better evidence of the two: which part of the request
+// names who is asking is decided where the request is built, and the policy
+// only reads it. AWX builds the request of a job with the launching user under
+// created_by, next to the teams and the superuser flag
+// (awx/main/tasks/policy.py:49 and :194 at bbda905), a place none of the
+// recognizers here looks.
+//
+// It says who is asking and nothing of what is asked for, so the action and the
+// resource are still recognized, at their own level: see Shape.Target. Without
+// them a principal named by a declaration would have no capability to draw, and
+// declaring the subject would cost the graph every edge the guess had given it.
 //
 // The subject is written the way a report prints one, input.created_by.username,
 // and a list of principals the decisions range over comes back as one, the way
@@ -230,11 +292,12 @@ func ShapeOf(reads *ReadSet, subject string) (Shape, error) {
 	if !touched(reads.InputPaths, path) {
 		return Shape{}, fmt.Errorf("%w: %s", ErrSubjectNotRead, subject)
 	}
-	return Shape{
+	declared := Shape{
 		Subject:    asList(path, reads.InputPaths),
 		Confidence: ConfidenceDeclared,
 		Recognizer: "declared",
-	}, nil
+	}
+	return declared.asking(RecognizeTarget(reads)), nil
 }
 
 // touched reports whether the decisions read a path, a part of it, or

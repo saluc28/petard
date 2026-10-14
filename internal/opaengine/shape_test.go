@@ -130,6 +130,21 @@ func TestRecognizeShape(t *testing.T) {
 				Recognizer: "field names",
 			},
 		},
+		{
+			// A router names nobody, and what it is asked for is in the request
+			// all the same: the shape has no subject and a level of its own for
+			// the rest.
+			name:       "nobody is named and something is asked for",
+			inputPaths: []string{"input.method", "input.path"},
+			expected: Shape{
+				Action:           "input.method",
+				Resource:         "input.path",
+				Confidence:       ConfidenceNone,
+				Recognizer:       "none",
+				TargetConfidence: ConfidenceNames,
+				TargetRecognizer: "field names",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -421,6 +436,37 @@ func TestShapeOf(t *testing.T) {
 			},
 		},
 		{
+			// The declaration says who is asking. What is asked for is still
+			// read off the request, at the level the names are worth.
+			name:       "declared, with the rest of the request recognized",
+			inputPaths: []string{"input.action", "input.created_by.username", "input.doc"},
+			subject:    "input.created_by.username",
+			expected: Shape{
+				Subject:          "input.created_by.username",
+				Action:           "input.action",
+				Resource:         "input.doc",
+				Confidence:       ConfidenceDeclared,
+				Recognizer:       "declared",
+				TargetConfidence: ConfidenceNames,
+				TargetRecognizer: "field names",
+			},
+		},
+		{
+			// A field declared as who is asking is not also what is asked for,
+			// whatever its name says.
+			name:       "declared at a field named like a resource",
+			inputPaths: []string{"input.action", "input.target.id"},
+			subject:    "input.target.id",
+			expected: Shape{
+				Subject:          "input.target.id",
+				Action:           "input.action",
+				Confidence:       ConfidenceDeclared,
+				Recognizer:       "declared",
+				TargetConfidence: ConfidenceNames,
+				TargetRecognizer: "field names",
+			},
+		},
+		{
 			name:       "not declared",
 			inputPaths: aap,
 			expected: Shape{
@@ -441,6 +487,43 @@ func TestShapeOf(t *testing.T) {
 			}
 			if got != tt.expected {
 				t.Errorf("shape = %+v, want %+v", got, tt.expected)
+			}
+		})
+	}
+}
+
+// What a shape asks for is a shape of its own, at the level the action and the
+// resource were named at: the level of the subject when one recognizer named
+// all three, and their own when the subject was declared or is missing.
+func TestShapeTarget(t *testing.T) {
+	tests := []struct {
+		name     string
+		shape    Shape
+		expected Shape
+	}{
+		{
+			name:     "named along with the subject",
+			shape:    Shape{Subject: "input.user", Action: "input.action", Resource: "input.doc", Confidence: ConfidenceNames, Recognizer: "field names"},
+			expected: Shape{Action: "input.action", Resource: "input.doc", Confidence: ConfidenceNames, Recognizer: "field names"},
+		},
+		{
+			name: "recognized under a declared subject",
+			shape: Shape{
+				Subject: "input.user", Resource: "input.doc", Confidence: ConfidenceDeclared, Recognizer: "declared",
+				TargetConfidence: ConfidenceNames, TargetRecognizer: "field names",
+			},
+			expected: Shape{Resource: "input.doc", Confidence: ConfidenceNames, Recognizer: "field names"},
+		},
+		{
+			name:     "a subject and nothing asked for",
+			shape:    Shape{Subject: "input.user", Confidence: ConfidenceDeclared, Recognizer: "declared"},
+			expected: Shape{Confidence: ConfidenceNone, Recognizer: "none"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.shape.Target(); got != tt.expected {
+				t.Errorf("Target() = %+v, want %+v", got, tt.expected)
 			}
 		})
 	}

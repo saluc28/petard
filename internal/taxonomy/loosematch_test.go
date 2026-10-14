@@ -48,19 +48,17 @@ func TestLooseMatchVerdictFollowsTheForm(t *testing.T) {
 		{opaengine.CheckRegexAnchored, VerdictCandidate},
 	}
 	for _, tc := range cases {
-		a := Analysis{
-			Reads: &opaengine.ReadSet{
-				InputPaths: []string{"input.doc"},
-				Checks: []opaengine.Check{{
-					Request:   "input.doc",
-					Value:     `"public"`,
-					Operator:  tc.operator,
-					Rule:      "data.t.allow",
-					Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
-				}},
-			},
+		reads := &opaengine.ReadSet{
+			InputPaths: []string{"input.doc"},
+			Checks: []opaengine.Check{{
+				Request:   "input.doc",
+				Value:     `"public"`,
+				Operator:  tc.operator,
+				Rule:      "data.t.allow",
+				Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
+			}},
 		}
-		findings := GrantsOnLooseMatches(a)
+		findings := GrantsOnLooseMatches(Analysis{Reads: reads, Shape: opaengine.RecognizeShape(reads)})
 		if len(findings) != 1 || findings[0].Verdict != tc.verdict {
 			t.Errorf("%s: findings = %v, want one %s", tc.operator, findings, tc.verdict)
 		}
@@ -70,18 +68,17 @@ func TestLooseMatchVerdictFollowsTheForm(t *testing.T) {
 // A loose match on a part of the request that is neither the resource nor the
 // action is not this pattern's concern: a name matched loosely is PTD-OPA-010.
 func TestLooseMatchLeavesNonResourceFieldsAlone(t *testing.T) {
-	a := Analysis{
-		Reads: &opaengine.ReadSet{
-			InputPaths: []string{"input.action", "input.doc", "input.group"},
-			Checks: []opaengine.Check{{
-				Request:   "input.group",
-				Value:     `"admin-"`,
-				Operator:  opaengine.CheckPrefix,
-				Rule:      "data.t.allow",
-				Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
-			}},
-		},
+	reads := &opaengine.ReadSet{
+		InputPaths: []string{"input.action", "input.doc", "input.group"},
+		Checks: []opaengine.Check{{
+			Request:   "input.group",
+			Value:     `"admin-"`,
+			Operator:  opaengine.CheckPrefix,
+			Rule:      "data.t.allow",
+			Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
+		}},
 	}
+	a := Analysis{Reads: reads, Shape: opaengine.RecognizeShape(reads)}
 	if findings := GrantsOnLooseMatches(a); len(findings) != 0 {
 		t.Errorf("findings = %v, want none: the match is on neither the resource nor the action", findings)
 	}
@@ -90,18 +87,17 @@ func TestLooseMatchLeavesNonResourceFieldsAlone(t *testing.T) {
 // With no resource and no action recognized there is nothing to call the
 // enforced value, so the pattern stays quiet rather than guess.
 func TestLooseMatchNeedsAResourceOrAction(t *testing.T) {
-	a := Analysis{
-		Reads: &opaengine.ReadSet{
-			InputPaths: []string{"input.ref"},
-			Checks: []opaengine.Check{{
-				Request:   "input.ref",
-				Value:     `"public"`,
-				Operator:  opaengine.CheckSubstring,
-				Rule:      "data.t.allow",
-				Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
-			}},
-		},
+	reads := &opaengine.ReadSet{
+		InputPaths: []string{"input.ref"},
+		Checks: []opaengine.Check{{
+			Request:   "input.ref",
+			Value:     `"public"`,
+			Operator:  opaengine.CheckSubstring,
+			Rule:      "data.t.allow",
+			Decisions: []opaengine.CheckedDecision{{Name: "data.t.allow", Grants: true}},
+		}},
 	}
+	a := Analysis{Reads: reads, Shape: opaengine.RecognizeShape(reads)}
 	if findings := GrantsOnLooseMatches(a); len(findings) != 0 {
 		t.Errorf("findings = %v, want none with no resource or action recognized", findings)
 	}
@@ -174,9 +170,9 @@ path_matches(entry) if {
 
 // The resource and the action are recognized whoever is asking. A router that
 // grants on the method and the path reads no subject, and a subject declared
-// from outside replaces the recognized shape and says nothing about the rest of
-// the request: either way the path matched as a substring is reported, at the
-// level its name was recognized at.
+// from outside says who is asking and nothing about the rest of the request:
+// either way the path matched as a substring is reported, at the level its name
+// was recognized at and not at the level of the subject.
 func TestLooseMatchNeedsNoSubject(t *testing.T) {
 	const policy = `package example
 
@@ -211,8 +207,10 @@ allow_admin if input.operator == "root"
 		if err != nil {
 			t.Fatalf("ShapeOf() error = %v", err)
 		}
-		if shape.Resource != "" || shape.Action != "" {
-			t.Fatalf("the shape names %q and %q, and the test is about one that names neither", shape.Resource, shape.Action)
+		if target := shape.Target(); target.Resource != "input.path" || target.Action != "input.method" || target.Confidence == shape.Confidence {
+			t.Fatalf("with the subject %q, the shape asks for %q and %q at level %s, the level of the subject: "+
+				"the test is about a path and a method recognized apart from it",
+				subject, target.Resource, target.Action, target.Confidence)
 		}
 
 		findings := GrantsOnLooseMatches(Analysis{Bundle: bundle, Reads: reads, Shape: shape})

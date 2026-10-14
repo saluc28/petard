@@ -244,9 +244,12 @@ func addCapabilities(g *graph.Graph, shape opaengine.Shape, principal, decision 
 
 		for _, target := range targets {
 			properties := map[string]any{
-				graph.PropDecision:   decision,
-				graph.PropCondition:  condition.Query,
-				graph.PropConfidence: shape.Confidence.String(),
+				graph.PropDecision:  decision,
+				graph.PropCondition: condition.Query,
+				// The edge names a principal and what they reach, so it is worth
+				// the weaker of the two levels: a subject somebody declared does
+				// not make a resource found by its name any surer.
+				graph.PropConfidence: min(shape.Confidence, shape.Target().Confidence).String(),
 			}
 			// The action rides on the edge when the edge already points at the
 			// resource, since an edge has one far end and the resource is the

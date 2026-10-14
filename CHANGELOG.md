@@ -229,6 +229,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   value left unknown. The pattern that asked is now reported as not applied, with the decision
   and the panic, `-v` says the same on the decision's row of residual conditions, and the graph
   counts the questions it could not ask.
+- Declaring the subject, with `-subject` or in the declaration of an enforcement point, left the
+  request with no action and no resource, so the graph drew no `PTD_CanPerform` edge: on the
+  fixture 46 capabilities became none, and every way of granting was counted as left out. The
+  action and the resource are now recognized under a declared subject as they are without one,
+  and each capability edge carries the weaker of the two levels.
 - An entry of an enforcement point declaration answered for the part of the request it names and
   for nothing inside it, so a field of that part fell to a later entry. With `input.user` set by
   an issuer and `input.*` by the caller, `not input.user.vip` was a `PTD-OPA-009` finding at

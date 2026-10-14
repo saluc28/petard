@@ -572,13 +572,15 @@ func report(out io.Writer, a taxonomy.Analysis) {
 		fmt.Fprintf(out, "  %s\n", decision)
 	}
 
-	fmt.Fprintf(out, "\nrequest shape:  %s (level %s, %s)\n", describeShape(shape), shape.Confidence, shape.Recognizer)
-	if shape.Action == "" && shape.Resource == "" {
-		// A shape that stops at the subject, or found none, says nothing of what
-		// is asked for, and PTD-OPA-012 reads that on its own.
-		if target := opaengine.RecognizeTarget(reads); target.Action != "" || target.Resource != "" {
-			fmt.Fprintf(out, "asked for:      %s (level %s, %s)\n", describeShape(target), target.Confidence, target.Recognizer)
-		}
+	if shape.TargetRecognizer == "" {
+		fmt.Fprintf(out, "\nrequest shape:  %s (level %s, %s)\n", describeShape(shape), shape.Confidence, shape.Recognizer)
+	} else {
+		// The subject was declared, or nothing names one, and what is asked for
+		// was recognized apart from it: two levels, so two lines.
+		target := shape.Target()
+		fmt.Fprintf(out, "\nrequest shape:  %s (level %s, %s)\n",
+			describeShape(opaengine.Shape{Subject: shape.Subject}), shape.Confidence, shape.Recognizer)
+		fmt.Fprintf(out, "asked for:      %s (level %s, %s)\n", describeShape(target), target.Confidence, target.Recognizer)
 	}
 
 	// The two measures stay apart, because one says what the engine can find
