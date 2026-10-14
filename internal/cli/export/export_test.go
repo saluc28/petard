@@ -90,6 +90,33 @@ func TestRunWritesAPayloadBloodHoundWouldAccept(t *testing.T) {
 	}
 }
 
+// The payload holds the grants an edge can say, and the run says how many it
+// left out: the fixture grants in ways that depend on a second factor or on
+// another part of the request, and a graph that kept quiet about them would
+// read as all the policy grants.
+func TestRunSaysWhatTheGraphLeavesOut(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "petard.json")
+
+	var stdout, stderr bytes.Buffer
+	if code := Run(analysisArgs("-out", path), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+
+	counted, rest, _ := strings.Cut(stdout.String(), "\n")
+	if !strings.HasPrefix(counted, "graph: ") {
+		t.Fatalf("first line = %q, want the graph counted", counted)
+	}
+	said, _, _ := strings.Cut(rest, "written to ")
+	for _, expected := range []string{
+		"declared writers name a rule for finding somebody, not somebody, and have no edge\n",
+		"ways of granting depend on something an edge cannot say, and are left out\n",
+	} {
+		if !strings.Contains(said, expected) {
+			t.Errorf("under the count = %q, want it to say %q", said, expected)
+		}
+	}
+}
+
 // instance is a stand in for BloodHound, answering the endpoints this command
 // uses the way the real one does.
 //

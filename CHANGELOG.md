@@ -117,6 +117,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the enforcement point, or for a judgment.
 - `petard` and `petard help` say what the tool is for and where to start, before the list of
   commands.
+- `petard export` says, under the count of nodes and edges, what the analysis knows and the graph
+  could not hold, in the lines `petard analyze -graph` prints: the declared writers that name a
+  rule for finding somebody, the ways of granting that depend on something an edge cannot say,
+  the findings about something the graph does not hold, and the questions OPA panicked on. A
+  payload was written without them, and read as all the policy grants. Both commands write a
+  count of one in the singular.
 - `PTD-OPA-012` reports a loose match against a value the decision reads from the data,
   `contains(input.path, data.markers[_])`, where it reported only one against a value the policy
   writes: a substring as a finding, and a prefix, a suffix, a glob or a regex as a candidate. The

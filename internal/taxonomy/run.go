@@ -260,6 +260,47 @@ type Gaps struct {
 	UnaskedCapabilities int
 }
 
+// Lines says each gap there is, one line each, the way every command that
+// builds the graph prints it. A graph handed to BloodHound without them reads
+// as the whole of what the policy grants, and the count of the ways left out is
+// what says it is not.
+func (g Gaps) Lines() []string {
+	var lines []string
+	for _, said := range []struct {
+		count     int
+		one, many string
+	}{
+		{
+			g.DerivedWriters,
+			"declared writer names a rule for finding somebody, not somebody, and has no edge",
+			"declared writers name a rule for finding somebody, not somebody, and have no edge",
+		},
+		{
+			g.ConditionalWays,
+			"way of granting depends on something an edge cannot say, and is left out",
+			"ways of granting depend on something an edge cannot say, and are left out",
+		},
+		{
+			g.UnmatchedFindings,
+			"finding speaks about something the graph does not hold",
+			"findings speak about something the graph does not hold",
+		},
+		{
+			g.UnaskedCapabilities,
+			"question of what a principal can do went unasked, because OPA panicked evaluating the decision",
+			"questions of what a principal can do went unasked, because OPA panicked evaluating the decision",
+		},
+	} {
+		switch {
+		case said.count == 1:
+			lines = append(lines, "1 "+said.one)
+		case said.count > 1:
+			lines = append(lines, fmt.Sprintf("%d %s", said.count, said.many))
+		}
+	}
+	return lines
+}
+
 // Assemble builds the internal graph from an analysis and what the patterns
 // made of it.
 //

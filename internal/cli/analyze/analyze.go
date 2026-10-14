@@ -293,18 +293,8 @@ func printGraph(out io.Writer, g *graph.Graph, gaps taxonomy.Gaps) {
 	table.Flush()
 	fmt.Fprintf(out, "  %d of %d edges are traversable\n", traversable, len(g.Edges()))
 
-	for _, said := range []struct {
-		count int
-		text  string
-	}{
-		{gaps.DerivedWriters, "declared writers name a rule for finding somebody, not somebody, and have no edge"},
-		{gaps.ConditionalWays, "ways of granting depend on something an edge cannot say, and are left out"},
-		{gaps.UnmatchedFindings, "findings speak about something the graph does not hold"},
-		{gaps.UnaskedCapabilities, "questions of what a principal can do went unasked, because OPA panicked evaluating the decision"},
-	} {
-		if said.count > 0 {
-			fmt.Fprintf(out, "  %d %s\n", said.count, said.text)
-		}
+	for _, line := range gaps.Lines() {
+		fmt.Fprintf(out, "  %s\n", line)
 	}
 }
 

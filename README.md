@@ -155,6 +155,8 @@ petard export -url https://bloodhound.example -install -upload -verify \
 
 ```
 graph: 67 nodes, 84 edges
+  3 declared writers name a rule for finding somebody, not somebody, and have no edge
+  96 ways of granting depend on something an edge cannot say, and are left out
 schema installed, 3 of 5 relationship kinds are traversable
 saved queries: 39 added, 0 already there
 ingest job 1 started
@@ -163,6 +165,10 @@ job 1 processed 1 file(s) with no errors
   CAROL -> ALICE: pathfinding walks it
 2 of 2 escalations are walkable in BloodHound
 ```
+
+The lines under the count are what the analysis knows and the graph could not hold. A way of
+granting that also depends on a second factor, or on another part of the request, is not a
+capability somebody simply has, so it gets no edge and is counted.
 
 `-verify` asks the server for a path between the two principals of every escalation in the
 payload, with `only_traversable`, and fails if it will not walk one. A graph that claims a path

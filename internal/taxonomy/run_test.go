@@ -234,3 +234,22 @@ func TestLoadRefusesAURLWithFiles(t *testing.T) {
 		t.Errorf("Load() error = %v, want a refusal to mix a URL with files", err)
 	}
 }
+
+// A gap is said only when there is one, in a fixed order and in the singular
+// when it is one, so that the two commands that build the graph print the same
+// lines about the same analysis.
+func TestGapsLines(t *testing.T) {
+	if lines := (Gaps{}).Lines(); len(lines) != 0 {
+		t.Errorf("Lines() of no gap = %q, want nothing", lines)
+	}
+
+	lines := Gaps{DerivedWriters: 3, ConditionalWays: 96, UnaskedCapabilities: 1}.Lines()
+	expected := []string{
+		"3 declared writers name a rule for finding somebody, not somebody, and have no edge",
+		"96 ways of granting depend on something an edge cannot say, and are left out",
+		"1 question of what a principal can do went unasked, because OPA panicked evaluating the decision",
+	}
+	if !slices.Equal(lines, expected) {
+		t.Errorf("Lines() = %q, want %q", lines, expected)
+	}
+}

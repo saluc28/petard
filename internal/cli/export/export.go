@@ -128,7 +128,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	ctx := context.Background()
-	payload, analysis, err := build(ctx, taxonomy.Inputs{
+	payload, analysis, gaps, err := build(ctx, taxonomy.Inputs{
 		Paths:            paths,
 		Mode:             mode,
 		Entrypoints:      entrypoints,
@@ -149,6 +149,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "graph: %s, %s\n",
 		render.Count(len(payload.Nodes), "node"), render.Count(len(payload.Edges), "edge"))
+	// What the analysis knows and the graph could not hold is said where the
+	// payload is counted: it is the one place a reader of the graph learns that
+	// some of what the policy grants is not in it.
+	for _, line := range gaps.Lines() {
+		fmt.Fprintf(stdout, "  %s\n", line)
+	}
 	if analysis.DecisionsInferred {
 		fmt.Fprintf(stdout, "decisions: %d, inferred as the rules no other rule uses (-entrypoint names them)\n",
 			len(analysis.Reads.Decisions))
@@ -193,28 +199,29 @@ type remote struct {
 // the name property, which is what the UI shows.
 //
 // The analysis comes back with the payload, so that the run can say what the
-// graph rests on, the decisions above all.
-func build(ctx context.Context, inputs taxonomy.Inputs) (bhgraph.Graph, taxonomy.Analysis, error) {
+// graph rests on, the decisions above all, and so do the gaps, which are what
+// the analysis knows and the graph could not hold.
+func build(ctx context.Context, inputs taxonomy.Inputs) (bhgraph.Graph, taxonomy.Analysis, taxonomy.Gaps, error) {
 	analysis, err := taxonomy.Load(ctx, inputs)
 	if err != nil {
-		return bhgraph.Graph{}, taxonomy.Analysis{}, err
+		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
 	}
 
 	findings, err := taxonomy.Run(ctx, analysis)
 	if err != nil {
-		return bhgraph.Graph{}, taxonomy.Analysis{}, err
+		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
 	}
-	g, _, err := taxonomy.Assemble(ctx, analysis, findings)
+	g, gaps, err := taxonomy.Assemble(ctx, analysis, findings)
 	if err != nil {
-		return bhgraph.Graph{}, taxonomy.Analysis{}, err
+		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
 	}
 
 	payload := opengraph.Payload(g)
 	payload.UppercaseIDs()
 	if err := opengraph.Validate(payload); err != nil {
-		return bhgraph.Graph{}, taxonomy.Analysis{}, err
+		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
 	}
-	return payload, analysis, nil
+	return payload, analysis, gaps, nil
 }
 
 // write puts the payload where it was asked for, indented, because a payload
