@@ -431,10 +431,11 @@ both, precision is a small case per condition rather than a corpus.
 
 The table above says which patterns are there. In `PTD-OPA-007`, two of the five conditions are
 intent and are declared as such. The other three are policies in the file that the engine runs on
-every build. An `every` guarded by iterating its domain instead of counting it comes out quiet:
-the decision is asked with the domain empty, and refuses. The same guard beside a rule that
-grants whatever the domain holds, and the same guard over a domain kept in the data, report: those
-false positives are measured rather than only admitted. A quiet case is a condition the engine
+every build. An `every` guarded by iterating its domain instead of counting it comes out quiet,
+alone and beside a rule that grants whatever the domain holds: the decision is asked with the
+domain empty, of the policy and of a copy where that `every` cannot be vacuous, and says the
+same. The same guard over a domain kept in the data, in a case that gives none, reports: that
+false positive is measured rather than only admitted. A quiet case is a condition the engine
 tells apart, like the fail-open in 005 that the rule writes down by reading `error`, and running
 it keeps that true.
 

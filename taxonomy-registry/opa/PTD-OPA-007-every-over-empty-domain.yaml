@@ -112,17 +112,27 @@ detection:
         reading the body. A guard written another way is left to signal 5.
     - order: 5
       check: >
-        The decision still holds for some request that carries the domain empty: with the domain an
-        empty list, and then an empty object, and every other part of the request left open,
-        partial evaluation leaves at least one way for it to hold. When it leaves none the match is
-        dropped.
+        The decision says something different, for some request, because the `every` holds over an
+        empty domain. It is asked twice with the domain empty, of the policy as it is and of a copy
+        where the `every` has an iteration of its domain written before it, and what is left of
+        the decision is compared, the value it answers with included. Where the two are the same
+        the match is dropped. A decision that holds more than one `every` over the same domain is
+        one match, compared with a copy for each way of choosing among them, and dropped when
+        none differs. The domain is emptied in the request when it is a part of it named
+        whole, and in the data when it is a document, one document at a time. A domain the policy
+        computes is emptied by neither, and is asked with the whole request left open.
       rationale: >
         A guard is as often an iteration of the domain, a `some` that binds one of its elements or
         a count in another rule the decision also asks for, and a longer list of shapes to match
-        stays fragile, because the `every` itself iterates the domain. Asking the decision does not
-        depend on how the guard is written. It is asked where the request can carry the domain
-        empty: a domain in the data, or under an element of a list, and a decision declared to deny
-        are not asked, and stay as the body reads them.
+        stays fragile, because the `every` itself iterates the domain. Next to a guarded `every`
+        another rule of the decision may grant anyway, and a decision may answer with a score or a
+        report, defined either way. Comparing the decision with and without the vacuous truth
+        depends on none of that. Two rules that each grant on it are told from the policy only by
+        the copy that guards both, and an `every` whose guard would leave another rule to grant
+        only by the copy that guards it alone, so every choice is compared. It is asked where the
+        domain can be emptied: a domain under an element of a list of the request, a decision that
+        reads documents when none were given, and more than four `every` over one domain in one
+        decision are not asked, and stay as the body reads them.
   confidence: B
   confidence_note: >
     The construct and its domain are structural and would be worth more, but signal 2 rests on
@@ -171,9 +181,9 @@ false_positives:
       next to it: an iteration of the domain, a `some` that binds an element, or a count in
       another rule the decision also asks for.
     discriminator: >
-      Signal 5. The body does not show such a guard where the every is, so the decision is asked:
-      with the domain empty and the rest of the request left open, nothing can make it hold, and
-      the match is dropped.
+      Signal 5. The body does not show such a guard where the every is, so the decision is asked
+      with the domain empty, of the policy and of the copy where the every cannot be vacuous. It
+      refuses in both, and the match is dropped.
     measurement: case
     case:
       policy: |
@@ -197,14 +207,15 @@ false_positives:
         exactly as the counter case in the fixture does, and the every behind it can never be
         vacuous. Run with opa 1.21.1: empty list `false`, one approved review `true`, one rejected
         `false`, no `reviews` key at all `false`. Signal 4 matches a `count` of the domain and
-        nothing else, and signal 5 finds that the decision refuses the empty list.
+        nothing else, and signal 5 finds the decision the same with and without the vacuous truth:
+        it refuses the empty list.
   - condition: >
       The `every` is guarded by something other than a count next to it, and another rule of the
       same decision grants whatever the domain holds.
     discriminator: >
-      Not told apart. The decision is asked as a whole, and it holds with the domain empty through
-      the other rule, so the guard on the way through the every goes unseen and the match stays.
-      Telling it apart means asking about one way to the decision rather than about the decision.
+      Signal 5. The decision holds with the domain empty through the other rule, in the policy and
+      in the copy where the every cannot be vacuous alike. The vacuous truth changes nothing, and
+      the match is dropped.
     measurement: case
     case:
       policy: |
@@ -224,19 +235,20 @@ false_positives:
                 review.approved
             }
         }
-      reports: true
+      reports: false
       note: >
         The second rule denies the empty list as the case above does, and the first grants the
         release manager whatever the reviews are. Run with opa 1.21.1: a developer with an empty
         list `false`, the release manager with an empty list `true`, by the first rule alone.
   - condition: >
       The `every` is guarded by something other than a count next to it, and the decision cannot
-      be asked with the domain empty: the domain is a document or sits under an element of a
-      list, the decision is declared to deny, or it reads documents and none were given.
+      be asked with the domain empty: the domain sits under an element of a list of the request,
+      the decision reads documents and none were given, or it holds more than four `every` over
+      that domain.
     discriminator: >
-      Not told apart. The request the question is asked with can carry an empty list at a path of
-      its own, and not inside the data or inside every element of another list, so the match stays
-      as the body reads.
+      Not told apart. An element of a list cannot be given an empty domain without saying what the
+      rest of it holds, a document that was not given cannot be emptied, and past four `every` the
+      copies to compare are more than are made, so the match stays as the body reads.
     measurement: case
     case:
       policy: |
@@ -256,8 +268,9 @@ false_positives:
         }
       reports: true
       note: >
-        The iteration guards the every as in the first of these cases, and the domain is the reviews
-        of a change in the data, which the request cannot carry empty.
+        The iteration guards the every as in the first of these cases. The domain is the reviews of
+        a change in the data, and the case gives no data, so there is no document to empty. With
+        the documents given the question is asked, and the match is dropped.
 
 not_a_lint_rule: >
   A linter sees the `every` in one file, but not whether it applies a check. Whether the rule
@@ -302,10 +315,11 @@ verified:
     The five declared false positives are settled as the status requires. Two are `out-of-band`:
     a domain something upstream always fills, and an empty case that is meant to pass, both of
     them intent rather than policy. The other three carry a case that runs on every build. An
-    every guarded by iterating its domain is told apart: the decision is asked with the domain
-    empty, refuses, and nothing is reported. The same guard next to a rule that grants whatever
-    the domain holds, and the same guard over a domain in the data, are reported: those two false
-    positives are measured and not only declared.
+    every guarded by iterating its domain is told apart, alone and next to a rule that grants
+    whatever the domain holds: with the domain empty the decision says the same whether or not
+    the every can be vacuous, and nothing is reported. The same guard over a domain in the data,
+    in a case that gives no data, is reported: that false positive is measured and not only
+    declared.
 
 related:
   - id: PTD-OPA-002

@@ -126,8 +126,8 @@ approved if {
 `,
 		},
 		{
-			// Another way to the same decision holds with the domain empty, so
-			// the decision does not refuse it.
+			// Another way to the same decision holds on the vacuous truth, with
+			// no guard of its own.
 			name: "a guard on one way and none on another",
 			body: `allow if {
 	count(input.reviews) > 0
@@ -224,5 +224,412 @@ reviewed if count(input.reviews) > 0
 	}
 	if len(findings) != 0 {
 		t.Errorf("with the data, findings = %v, want none: the decision refuses an empty list of reviews", findings)
+	}
+}
+
+// What an every being vacuously true is worth is asked of the policy, so the
+// answer does not turn on how a guard is written, on what the body of the every
+// tests, on the other rules of the decision, or on where the domain is kept.
+// The same decision is asked of the policy and of a copy where that every
+// cannot hold over an empty domain, and only a difference is reported.
+func TestGrantsOnEmptyEveryAsksWhatTheVacuousTruthIsWorth(t *testing.T) {
+	const reviewed = `{"reviews": {"c1": [{"approved": true}], "c2": []}, "required": ["lint"], "open": true}`
+
+	tests := []struct {
+		name     string
+		body     string
+		data     string
+		deny     bool
+		valued   bool
+		reported bool
+	}{
+		{
+			// The registry declared this one a false positive it could not tell
+			// apart: the release manager is granted whatever the reviews are, so
+			// the decision holds with none, and not through the every.
+			name: "a guarded every, next to a rule that grants anyway",
+			body: `allow if input.role == "release-manager"
+
+allow if {
+	input.reviews[_]
+	every review in input.reviews {
+		review.approved
+	}
+}
+`,
+		},
+		{
+			name: "an every nothing guards, next to a rule that grants anyway",
+			body: `allow if input.role == "release-manager"
+
+allow if {
+	input.author != ""
+	every review in input.reviews {
+		review.approved
+	}
+}
+`,
+			reported: true,
+		},
+		{
+			// A body any element satisfies, a wrong one included: nothing about
+			// the elements tells this every from a guarded one.
+			name: "a body that holds for whatever the domain holds",
+			body: `allow if {
+	input.author != ""
+	every review in input.reviews {
+		not review.rejected
+	}
+}
+`,
+			reported: true,
+		},
+		{
+			name: "a guard three rules away",
+			body: `allow if {
+	ready
+	approved
+}
+
+ready if staffed
+
+staffed if some_reviewer
+
+some_reviewer if input.reviews[_].id
+
+approved if {
+	every review in input.reviews {
+		review.approved
+	}
+}
+`,
+		},
+		{
+			name: "a document that is the domain, guarded",
+			body: `allow if {
+	data.open
+	data.required[_]
+	every check in data.required {
+		check in input.passed
+	}
+}
+`,
+			data: reviewed,
+		},
+		{
+			name: "a document that is the domain, not guarded",
+			body: `allow if {
+	data.open
+	every check in data.required {
+		check in input.passed
+	}
+}
+`,
+			data:     reviewed,
+			reported: true,
+		},
+		{
+			name: "a document the request picks, guarded",
+			body: `allow if {
+	data.reviews[input.change][_]
+	every review in data.reviews[input.change] {
+		review.approved
+	}
+}
+`,
+			data: reviewed,
+		},
+		{
+			name: "a document the request picks, not guarded",
+			body: `allow if {
+	data.open
+	every review in data.reviews[input.change] {
+		review.approved
+	}
+}
+`,
+			data:     reviewed,
+			reported: true,
+		},
+		{
+			// The rule is defined either way, and what differs is what it says:
+			// compliant with no review to look at.
+			name: "a report whose verdict the every decides",
+			body: `allow := {"compliant": approved, "reviews": count(input.reviews)}
+
+default approved := false
+
+approved if {
+	input.author != ""
+	every review in input.reviews {
+		review.approved
+	}
+}
+`,
+			valued:   true,
+			reported: true,
+		},
+		{
+			// Partial evaluation hands a comprehension back as it is written,
+			// naming the rule that holds the every. What it leaves reads the same
+			// with and without the guard, and is not the same.
+			name: "a score counted in a comprehension",
+			body: `allow := count([check |
+	checks := [staffed, approved]
+	check := checks[_]
+	check == true
+])
+
+staffed if input.author != ""
+
+approved if {
+	every review in input.reviews {
+		review.approved
+	}
+}
+`,
+			valued:   true,
+			reported: true,
+		},
+		{
+			// A collection written out in the policy is never empty, whatever the
+			// request and the data hold.
+			name: "a domain the policy writes out in a rule of its own",
+			body: `required := {"lint", "test"}
+
+allow if {
+	input.author != ""
+	every check in required {
+		check in input.passed
+	}
+}
+`,
+		},
+		{
+			name: "a domain the policy builds from the request",
+			body: `required := {check | some check in input.required}
+
+allow if {
+	input.author != ""
+	every check in required {
+		check in input.passed
+	}
+}
+`,
+			reported: true,
+		},
+		{
+			// Declared to deny: the vacuous truth keeps the violation from being
+			// raised, which is the request let through.
+			name: "a decision that refuses, not guarded",
+			body: `allow contains "unapproved" if not approved
+
+approved if {
+	every review in input.reviews {
+		review.approved
+	}
+}
+`,
+			deny:     true,
+			reported: true,
+		},
+		{
+			name: "a decision that refuses, guarded",
+			body: `allow contains "unapproved" if not approved
+
+approved if {
+	input.reviews[_]
+	every review in input.reviews {
+		review.approved
+	}
+}
+`,
+			deny: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := "package p\n\n" + tt.body
+			switch {
+			case tt.valued:
+				// The decision answers with a value of its own, and has no
+				// default to fall back to.
+				policy = "package p\n\n# METADATA\n# entrypoint: true\n" + tt.body
+			case !tt.deny:
+				policy = "package p\n\n# METADATA\n# entrypoint: true\ndefault allow := false\n\n" + tt.body
+			}
+			dir := t.TempDir()
+			writeCaseFile(t, filepath.Join(dir, "policy", "p.rego"), policy)
+			bundle, err := opaengine.Load([]string{filepath.Join(dir, "policy")}, opaengine.ParseModeV1)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if tt.deny {
+				bundle.DenyEntrypoints = []string{"data.p.allow"}
+			}
+			reads, err := opaengine.Reads(bundle, opaengine.Limits{})
+			if err != nil {
+				t.Fatalf("Reads() error = %v", err)
+			}
+			if len(FailOpenOnEmptyEvery(reads)) == 0 {
+				t.Fatal("the body shows a guard, or no every on the side that grants, and the test is about a match")
+			}
+			a := Analysis{Bundle: bundle, Reads: reads}
+			if tt.data != "" {
+				writeCaseFile(t, filepath.Join(dir, "data", "data.json"), tt.data)
+				if a.Data, err = opaengine.LoadData([]string{filepath.Join(dir, "data")}); err != nil {
+					t.Fatalf("LoadData() error = %v", err)
+				}
+			}
+
+			findings, err := GrantsOnEmptyEvery(t.Context(), a)
+			if err != nil {
+				t.Fatalf("GrantsOnEmptyEvery() error = %v", err)
+			}
+			if reported := len(findings) > 0; reported != tt.reported {
+				t.Errorf("findings = %v, want reported = %t", findings, tt.reported)
+			}
+		})
+	}
+}
+
+// A decision may hold more than one every over the same domain, and they are
+// one match: the question is asked of every way of choosing among them. Asking
+// it of the first alone would drop a match whose first every is guarded and
+// whose second is not.
+func TestGrantsOnEmptyEveryAsksEveryPlaceOfAMatch(t *testing.T) {
+	guardedFive := ""
+	for _, field := range []string{"approved", "signed", "listed", "dated", "named"} {
+		guardedFive += "allow if {\n\tinput.reviews[_]\n\tevery review in input.reviews {\n\t\treview." + field + "\n\t}\n}\n\n"
+	}
+
+	tests := []struct {
+		name     string
+		body     string
+		places   int
+		reported bool
+	}{
+		{
+			name: "a guard the body does not show on the first, and none on the second",
+			body: `allow if {
+	some first in input.reviews
+	first.id
+	every review in input.reviews {
+		review.approved
+	}
+}
+
+allow if {
+	input.label == "trivial"
+	every review in input.reviews {
+		review.approved
+	}
+}
+`,
+			places:   2,
+			reported: true,
+		},
+		{
+			// Either rule alone leaves the other to grant, so only the copy that
+			// takes the vacuous truth from both says anything else.
+			name: "two rules that each grant on the vacuous truth",
+			body: `allow if {
+	every review in input.reviews {
+		review.approved
+	}
+}
+
+allow if {
+	every review in input.reviews {
+		not review.rejected
+	}
+}
+`,
+			places:   2,
+			reported: true,
+		},
+		{
+			name: "two rules, each with a guard the body does not show",
+			body: `allow if {
+	input.reviews[_]
+	every review in input.reviews {
+		review.approved
+	}
+}
+
+allow if {
+	some first in input.reviews
+	first.id
+	every review in input.reviews {
+		not review.rejected
+	}
+}
+`,
+			places: 2,
+		},
+		{
+			// With no review the request is granted through approved alone. The
+			// copy that guards both grants it too, through the rule that asks for
+			// no sign-off, so only the copy that guards the one says anything else.
+			name: "an every whose guard would hand the grant to another rule",
+			body: `allow if approved
+
+allow if not signed_off
+
+allow if {
+	signed_off
+	count(input.reviews) > 5
+}
+
+approved if {
+	every review in input.reviews {
+		review.approved
+	}
+}
+
+signed_off if {
+	every review in input.reviews {
+		review.signed
+	}
+}
+`,
+			places:   2,
+			reported: true,
+		},
+		{
+			// Each of the five is guarded, and thirty-one copies would say so. Past
+			// the bound the question is not asked, and the match stays.
+			name:     "more every expressions than are asked about",
+			body:     guardedFive,
+			places:   5,
+			reported: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := "package p\n\n# METADATA\n# entrypoint: true\ndefault allow := false\n\n" + tt.body
+			dir := t.TempDir()
+			writeCaseFile(t, filepath.Join(dir, "p.rego"), policy)
+			bundle, err := opaengine.Load([]string{dir}, opaengine.ParseModeV1)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			reads, err := opaengine.Reads(bundle, opaengine.Limits{})
+			if err != nil {
+				t.Fatalf("Reads() error = %v", err)
+			}
+			matches := FailOpenOnEmptyEvery(reads)
+			if len(matches) != 1 || len(matches[0].Reads) != tt.places {
+				t.Fatalf("matches = %v, want one with %d places", matches, tt.places)
+			}
+
+			findings, err := GrantsOnEmptyEvery(t.Context(), Analysis{Bundle: bundle, Reads: reads})
+			if err != nil {
+				t.Fatalf("GrantsOnEmptyEvery() error = %v", err)
+			}
+			if reported := len(findings) > 0; reported != tt.reported {
+				t.Errorf("findings = %v, want reported = %t", findings, tt.reported)
+			}
+		})
 	}
 }

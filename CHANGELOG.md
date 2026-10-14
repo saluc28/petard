@@ -206,12 +206,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   glob with no wildcard is read as the equality it is, and is no longer reported.
 - `PTD-OPA-007` reported an `every` guarded against the empty case by anything but a count of
   the domain next to it: an iteration of the domain, a `some` that binds an element, a count in
-  another rule the decision also asks for. Each match is now put to the decision, with the domain
-  empty and the rest of the request left open, and dropped when nothing can make the decision
-  hold. A match that cannot be asked about stays as before: a domain in the data or under an
-  element of a list, a decision declared to deny, a decision that reads documents when none were
-  given. `petard analyze -v` names the domain on the line of each place to look, where it left
-  a blank.
+  another rule the decision also asks for. It also reported one whose vacuous truth changes
+  nothing: next to a rule that grants whatever the domain holds, or over a set the policy writes
+  out in a rule. Each match is now put to the policy. The decision is asked with the domain
+  empty, of the policy as it is and of a copy where that `every` cannot hold over an empty
+  domain, and the match is dropped when the two say the same, the value of the answer included.
+  A decision with more than one `every` over the same domain is one match, listed with each
+  place, and is compared with a copy for each way of choosing among them. The domain is emptied
+  in the request, or in the data when it is a document. A match that cannot be asked about
+  stays as before: a domain under an element of a list of the request, a decision that reads
+  documents when none were given, and more than four `every` over one domain. `petard analyze
+  -v` names the domain on the line of each place to look, where it left a blank.
 - `PTD-OPA-009` reported a finding at level `A` on a part of the request read under a key the
   policy computes, `not input[data.settings.flag]`, whenever a catch-all entry of the declaration
   gives the request to the caller, though an entry before it gives one field, the second factor

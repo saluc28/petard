@@ -139,6 +139,11 @@ type Bundle struct {
 	partialOnce sync.Once
 	partialErr  error
 
+	// changed are the rules of partialCompiler that differ from the ones of the
+	// bundle this one was copied from, by their path. It is empty for a bundle
+	// that was loaded. See WithGuardedEvery.
+	changed map[string]bool
+
 	// answers are the answers each decision was declared with, read off the
 	// entrypoints answersKey was built from. See answersFor.
 	answersMu  sync.Mutex
