@@ -117,7 +117,8 @@ type EnforcementPoint struct {
 
 	// Fields are the parts of the request and who puts each there. The first
 	// entry that covers a part is the one that answers for it, so the more
-	// specific entries come first.
+	// specific entries come first: input.user.note ahead of input.user, when
+	// the note is the one field of the user the caller writes.
 	Fields []Field `yaml:"fields"`
 }
 
@@ -160,8 +161,10 @@ type Assumption struct {
 // Field is one part of the request.
 type Field struct {
 	// Path is the part, in the notation of the write model:
-	// input.session.teams[_], input.request.headers["x-mcp-toolname"],
-	// input.auth.identity.* for everything below.
+	// input.session.teams[_], input.request.headers["x-mcp-toolname"]. The
+	// entry speaks for the part and for whatever is inside it, so input.user
+	// and input.user.* say the same thing, and input.* is everything an earlier
+	// entry did not name.
 	Path string `yaml:"path"`
 
 	SetBy SetBy `yaml:"set_by"`
@@ -396,6 +399,11 @@ func (f *Field) validateIdentity() error {
 
 // FieldFor returns the declaration that answers for a part of the request, the
 // first one that covers it.
+//
+// A declaration covers the part it names and whatever is inside it. Whoever
+// puts input.user in the request puts input.user.role there with it, so an
+// entry for the first answers for the second, unless an earlier entry names the
+// second on its own.
 func (p *EnforcementPoint) FieldFor(path string) (Field, bool) {
 	if p == nil {
 		return Field{}, false
@@ -405,11 +413,21 @@ func (p *EnforcementPoint) FieldFor(path string) (Field, bool) {
 		return Field{}, false
 	}
 	for _, field := range p.Fields {
-		if field.path.Matches(parsed) {
+		if field.path.Matches(cutTo(parsed, field.path)) {
 			return field, true
 		}
 	}
 	return Field{}, false
+}
+
+// cutTo returns a part of the request cut to the depth a declared path names:
+// input.user.role against input.user is input.user, the part an entry has to
+// match to answer for what is inside it.
+func cutTo(part, declared writemodel.Path) writemodel.Path {
+	if len(part.Segments) <= len(declared.Segments) {
+		return part
+	}
+	return writemodel.Path{Segments: part.Segments[:len(declared.Segments)]}
 }
 
 // FieldsFor returns the declarations that answer for a part of the request
@@ -434,10 +452,11 @@ func (p *EnforcementPoint) FieldsFor(path string) ([]Field, bool) {
 	}
 	var fields []Field
 	for _, field := range p.Fields {
-		if field.path.Matches(parsed) {
+		part := cutTo(parsed, field.path)
+		if field.path.Matches(part) {
 			return append(fields, field), true
 		}
-		if field.path.Overlaps(parsed) {
+		if field.path.Overlaps(part) {
 			fields = append(fields, field)
 		}
 	}

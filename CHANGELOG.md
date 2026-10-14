@@ -223,6 +223,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   value left unknown. The pattern that asked is now reported as not applied, with the decision
   and the panic, `-v` says the same on the decision's row of residual conditions, and the graph
   counts the questions it could not ask.
+- An entry of an enforcement point declaration answered for the part of the request it names and
+  for nothing inside it, so a field of that part fell to a later entry. With `input.user` set by
+  an issuer and `input.*` by the caller, `not input.user.vip` was a `PTD-OPA-009` finding at
+  level `A`, on a field said to be the caller's. An entry now answers for the part it names and
+  for whatever is inside it, and an entry ahead of it that names one field still answers for that
+  field.
 
 ## [0.4.0] - 2026-09-30
 

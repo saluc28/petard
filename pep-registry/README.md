@@ -35,9 +35,11 @@ request get an answer.
 | `subject` | the part of the request that names who is asking |
 | `fields` | who puts each part of the request there, see below |
 
-Each entry of `fields` has a `path` in the notation of the write model, `input.session.teams[_]`,
-`input.request.headers["x-mcp-toolname"]`, or `input.auth.identity.*` for everything below, and
-`set_by`:
+Each entry of `fields` has a `path` in the notation of the write model, `input.session.teams[_]`
+or `input.request.headers["x-mcp-toolname"]`, and speaks for that part of the request and for
+whatever is inside it: whoever sets `input.user` sets `input.user.role` with it, and
+`input.user.*` says the same. `input.*` is everything no earlier entry named. Each entry also
+has `set_by`:
 
 | `set_by` | Means |
 |---|---|
@@ -70,10 +72,12 @@ ceilings it must sit under, each a part of the request or a document in the data
 identity or an authority, not both.
 
 The first entry that covers a part of the request is the one that answers for it, so the more
-specific entries come first. A part no entry covers is one the declaration does not speak about,
-and the patterns treat it as unknown rather than as safe. A part a policy reads under a key it
-computes, `input.request.headers[name]`, stands for every key there, and `PTD-OPA-009` asks each
-entry that covers one of them: it claims the caller sets the part only where they all say so.
+specific entries come first: `input.user.note` ahead of `input.user`, when the note is the one
+field of the user the caller writes. A part no entry covers is one the declaration does not speak
+about, and the patterns treat it as unknown rather than as safe. A part a policy reads under a
+key it computes, `input.request.headers[name]`, stands for every key there, and `PTD-OPA-009`
+asks each entry that covers one of them: it claims the caller sets the part only where they all
+say so.
 
 `evidence` is mandatory on every field, and a declaration without it does not load.
 

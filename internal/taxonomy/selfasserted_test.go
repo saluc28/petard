@@ -124,6 +124,69 @@ needs_second_factor if not ` + tt.part + `
 	}
 }
 
+// A declaration that gives a part of the request to an issuer gives it the
+// fields of that part too: a flag of the user the single sign-on hands over is
+// not the caller's to assert, whatever a later entry says about the rest of the
+// request. A field of the user an earlier entry gives to the caller is.
+func TestSelfAssertedExemptionOnAFieldOfADeclaredPart(t *testing.T) {
+	gateway := `schema_version: 1
+id: test-gateway
+engine: opa
+source:
+  kind: documentation
+  note: a gateway for the test
+decisions:
+  - rule: allow
+    side: grants
+fields:
+  - path: input.user.note
+    set_by: caller
+    evidence:
+      - the test
+  - path: input.user
+    set_by: issuer
+    issuer: the single sign-on
+    evidence:
+      - the test
+  - path: input.*
+    set_by: caller
+    evidence:
+      - the test
+`
+	tests := []struct {
+		name     string
+		part     string
+		expected []string
+	}{
+		{name: "a field of what the issuer sets", part: "input.user.vip", expected: nil},
+		{name: "a field declared ahead of it", part: `input.user.note == "urgent"`, expected: []string{"finding input.user.note"}},
+		{name: "a field beside it", part: "input.vip", expected: []string{"finding input.vip"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := `package p
+
+# METADATA
+# entrypoint: true
+default allow := false
+
+allow if not needs_review
+
+needs_review if not ` + tt.part + `
+`
+			a := analysisWithGateway(t, policy, gateway)
+
+			var got []string
+			for _, finding := range SelfAssertedExemptions(a) {
+				got = append(got, string(finding.Verdict)+" "+finding.Path)
+			}
+			if !slices.Equal(got, tt.expected) {
+				t.Errorf("findings = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 // A declaration that does not cover a part leaves it a candidate, since whoever
 // sets it may be the caller. Here it speaks about the second factor alone.
 func TestSelfAssertedExemptionOnAPartNobodyDeclared(t *testing.T) {

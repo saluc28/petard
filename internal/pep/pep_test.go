@@ -76,6 +76,55 @@ func TestFieldForTakesTheFirstEntryThatCovers(t *testing.T) {
 	}
 }
 
+// An entry answers for the part it names and for whatever is inside it: the
+// issuer that hands over the user hands over the role of the user. An earlier
+// entry that names one field of it answers for that field alone.
+func TestFieldForCoversWhatIsInsideAPart(t *testing.T) {
+	const content = "schema_version: 1\nid: x\ndecisions:\n  - rule: allow\n    side: grants\n" +
+		"fields:\n" +
+		"  - path: input.user.note\n    set_by: caller\n    evidence: [x]\n" +
+		"  - path: input.user\n    set_by: issuer\n    issuer: idp\n    evidence: [x]\n" +
+		"  - path: input.flags.mfa\n    set_by: enforcement-point\n    evidence: [x]\n" +
+		"  - path: input.*\n    set_by: caller\n    evidence: [x]\n"
+	path := filepath.Join(t.TempDir(), "x.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing the file: %v", err)
+	}
+	point, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	tests := []struct {
+		path  string
+		setBy SetBy
+	}{
+		{"input.user", SetByIssuer},
+		{"input.user.role", SetByIssuer},
+		{"input.user.groups[_].name", SetByIssuer},
+		{"input.user.note", SetByCaller},
+		{"input.user.note.text", SetByCaller},
+		{"input.flags.mfa.at", SetByEnforcementPoint},
+		{"input.flags.debug", SetByCaller},
+		{"input.username", SetByCaller},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			field, found := point.FieldFor(tt.path)
+			if !found || field.SetBy != tt.setBy {
+				t.Errorf("FieldFor(%s) = %s, found %t, want %s", tt.path, field.SetBy, found, tt.setBy)
+			}
+		})
+	}
+
+	// Any flag, read for one of its fields, is the one the enforcement point
+	// sets and the rest, which are the caller's.
+	fields, whole := point.FieldsFor("input.flags[_].at")
+	if !whole || len(fields) != 2 || fields[0].SetBy != SetByEnforcementPoint || fields[1].SetBy != SetByCaller {
+		t.Errorf("FieldsFor(a field of any flag) = %+v, whole %t, want the enforcement point and then the caller", fields, whole)
+	}
+}
+
 // A part of the request under a dynamic segment stands for every key there, and
 // the declarations that speak for some of them all answer: any header of a
 // request through the MCP Gateway is the tool name the caller sends, the server
