@@ -324,6 +324,100 @@ negated if {
 	}
 }
 
+// An every inside a function iterates what a call hands the function, and the
+// body does not say what that is. The domain is the collection each call
+// passes, for the decisions that reach the function through that call: the
+// parameter itself, a field of it, another name for it, and a field passed on
+// by a function in between.
+func TestQuantifiersNameTheDomainACallHandsOver(t *testing.T) {
+	reads := readsOf(t, `package t
+
+# METADATA
+# entrypoint: true
+whole if all_approved(input.reviews)
+
+# METADATA
+# entrypoint: true
+field if reviewed(input.change)
+
+# METADATA
+# entrypoint: true
+document if all_approved(data.reviews[input.change])
+
+# METADATA
+# entrypoint: true
+renamed if aliased(input.checks)
+
+# METADATA
+# entrypoint: true
+passed_on if outer(input.release)
+
+# METADATA
+# entrypoint: true
+computed if all_approved([review | some review in input.reviews; review.kind == "code"])
+
+# METADATA
+# entrypoint: true
+counted if guarded(input.votes)
+
+all_approved(reviews) if {
+	every review in reviews { review.approved }
+}
+
+reviewed(change) if {
+	every review in change.reviews { review.approved }
+}
+
+aliased(checks) if {
+	listed := checks
+	every check in listed { check.passed }
+}
+
+outer(release) if inner(release.signatures)
+
+inner(signatures) if {
+	every signature in signatures { signature.valid }
+}
+
+guarded(votes) if {
+	count(votes) > 0
+	every vote in votes { vote.yes }
+}
+`, Limits{})
+
+	type over struct {
+		domain     string
+		provenance Provenance
+		guarded    bool
+	}
+	expected := map[string]over{
+		"data.t.whole":     {"input.reviews", ProvenanceInput, false},
+		"data.t.field":     {"input.change.reviews", ProvenanceInput, false},
+		"data.t.document":  {"data.reviews[_]", ProvenanceData, false},
+		"data.t.renamed":   {"input.checks", ProvenanceInput, false},
+		"data.t.passed_on": {"input.release.signatures", ProvenanceInput, false},
+		"data.t.counted":   {"input.votes", ProvenanceInput, true},
+	}
+	got := map[string][]over{}
+	for _, quantifier := range reads.Quantifiers {
+		for _, decision := range quantifier.Decisions {
+			got[decision.Name] = append(got[decision.Name], over{quantifier.Domain, quantifier.Provenance, quantifier.Guarded})
+		}
+	}
+	for name, want := range expected {
+		if !slices.Equal(got[name], []over{want}) {
+			t.Errorf("%s: every over %+v, want %+v", name, got[name], want)
+		}
+	}
+	// A collection the caller computes is no part of the request or the data to
+	// name, and the every is listed with no domain, as one written in the
+	// decision would be. The function is shared, and each decision is listed
+	// with the collection it hands over and no other.
+	if !slices.Equal(got["data.t.computed"], []over{{}}) {
+		t.Errorf("data.t.computed: every over %+v, want one with no domain", got["data.t.computed"])
+	}
+}
+
 // __local6__ is the truth and it is unreadable. The compiler keeps the names
 // the author wrote for exactly this, and a report nobody can read is a report
 // nobody checks.

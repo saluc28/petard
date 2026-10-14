@@ -423,16 +423,43 @@ func countsDomain(body ast.Body, target ast.Ref, bindings map[ast.Var]binding) b
 // for. The compiler lifts the domain of an `every` and the argument of a
 // builtin into local variables, so what looks like a plain reference in the
 // source arrives here as a variable that a binding ties to the reference.
+//
+// A variable nothing in the body binds comes back as a reference of its own,
+// one segment long. A formal parameter is one, and what it stands for is in
+// the calls: see domainsOf.
 func resolveDomain(term *ast.Term, bindings map[ast.Var]binding) (ast.Ref, bool) {
 	switch value := term.Value.(type) {
 	case ast.Ref:
 		return substituteRef(value, bindings).ref, true
 	case ast.Var:
-		if resolved := resolveVar(value, bindings); resolved.status == resolvedTerm {
+		switch resolved := resolveVar(value, bindings); resolved.status {
+		case resolvedTerm:
 			return resolveDomain(resolved.term, bindings)
+		case unresolvedUnbound:
+			return ast.Ref{ast.NewTerm(lastAlias(value, bindings))}, true
 		}
 	}
 	return nil, false
+}
+
+// lastAlias follows a variable through the variables it is another name for,
+// to the one no binding of the body says more about: reviews for listed in
+// listed := reviews, where reviews is a parameter.
+func lastAlias(v ast.Var, bindings map[ast.Var]binding) ast.Var {
+	seen := map[ast.Var]bool{}
+	for !seen[v] {
+		seen[v] = true
+		b, bound := bindings[v]
+		if !bound || b.term == nil {
+			return v
+		}
+		next, isVar := varOf(b.term)
+		if !isVar {
+			return v
+		}
+		v = next
+	}
+	return v
 }
 
 // bindingsOf reads what a body says about its variables, and adds the two

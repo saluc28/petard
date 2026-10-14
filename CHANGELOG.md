@@ -217,6 +217,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stays as before: a domain under an element of a list of the request, a decision that reads
   documents when none were given, and more than four `every` over one domain. `petard analyze
   -v` names the domain on the line of each place to look, where it left a blank.
+- `PTD-OPA-007` did not read an `every` written inside a function, over a parameter or a field
+  of one: `all_approved(input.reviews)`, with `every review in reviews` in the body of the
+  function. The domain is now read at the calls. Each collection a call hands over is a match
+  of its own, for the decisions that reach the function through that call, and is put to the
+  policy like any other.
 - `PTD-OPA-009` reported a finding at level `A` on a part of the request read under a key the
   policy computes, `not input[data.settings.flag]`, whenever a catch-all entry of the declaration
   gives the request to the caller, though an entry before it gives one field, the second factor

@@ -97,11 +97,16 @@ detection:
     - order: 3
       check: >
         The domain of the `every`, the collection it iterates, derives from `input` or `data`
-        through the local bindings, rather than being a literal that is never empty.
+        through the local bindings, rather than being a literal that is never empty. Inside a
+        function the domain is a parameter, or a field of one, and is read at the calls:
+        `all_approved(input.reviews)` makes `every review in reviews` an `every` over
+        `input.reviews`. Each collection a call hands over is a match of its own, for the
+        decisions that reach the function through that call.
       rationale: >
         A quantifier over a literal non-empty collection cannot go vacuous, so it is not a defect.
         The domain has to be something the request or the data can make empty, which is what makes
-        the emptiness reachable rather than hypothetical.
+        the emptiness reachable rather than hypothetical. A function is where a policy puts a check
+        it makes of more than one collection, and its body does not say which.
     - order: 4
       check: >
         No `count` of the domain in the same body forces it non-empty first, as in
@@ -304,9 +309,10 @@ verified:
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture. The walk
     collects every `every` the decisions reach, resolving the domain through the locals the
-    compiler lifts it into; on `allow_unguarded` the domain is `input.reviews`, unguarded and on
-    the granting side, so the finding comes out, and on `allow_guarded` the same every is marked
-    guarded by `count(input.reviews) > 0`, so nothing does.
+    compiler lifts it into, and through the calls where it is a parameter; on `allow_unguarded`
+    the domain is `input.reviews`, unguarded and on the granting side, so the finding comes out,
+    and on `allow_guarded` the same every is marked guarded by `count(input.reviews) > 0`, so
+    nothing does.
     The numbers behind it, `data.quill.verify.empty_every`: `allow_unguarded` is true for the empty
     list and false once a reviewer rejects, while `allow_guarded` is false for the empty list. The
     quantifier itself was run with opa 1.21.1: `every` over an empty list is true.

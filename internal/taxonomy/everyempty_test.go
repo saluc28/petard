@@ -2,6 +2,7 @@ package taxonomy
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/saluc28/petard/internal/opaengine"
@@ -629,6 +630,111 @@ signed_off if {
 			}
 			if reported := len(findings) > 0; reported != tt.reported {
 				t.Errorf("findings = %v, want reported = %t", findings, tt.reported)
+			}
+		})
+	}
+}
+
+// An every inside a function is over what a call hands the function, and each
+// collection handed over is a match of its own, asked with that collection
+// empty. A guard next to the call is one the body of the function does not
+// show, and the question put to the decision is what finds it.
+func TestGrantsOnEmptyEveryThroughAFunction(t *testing.T) {
+	const allApproved = `
+all_approved(reviews) if {
+	every review in reviews {
+		review.approved
+	}
+}
+`
+	tests := []struct {
+		name     string
+		body     string
+		data     string
+		expected []string
+	}{
+		{
+			name:     "a function handed the reviews",
+			body:     "allow if {\n\tinput.author != \"\"\n\tall_approved(input.reviews)\n}\n" + allApproved,
+			expected: []string{"input.reviews"},
+		},
+		{
+			name: "a guard next to the call",
+			body: "allow if {\n\tcount(input.reviews) > 0\n\tall_approved(input.reviews)\n}\n" + allApproved,
+		},
+		{
+			name:     "two collections handed to one function",
+			body:     "allow if {\n\tall_approved(input.reviews)\n\tall_approved(input.signoffs)\n}\n" + allApproved,
+			expected: []string{"input.reviews", "input.signoffs"},
+		},
+		{
+			name: "two collections, one of them guarded next to its call",
+			body: "allow if {\n\tcount(input.reviews) > 0\n\tall_approved(input.reviews)\n\tall_approved(input.signoffs)\n}\n" +
+				allApproved,
+			expected: []string{"input.signoffs"},
+		},
+		{
+			name: "a field of what the function is handed",
+			body: `allow if {
+	input.author != ""
+	reviewed(input.change)
+}
+
+reviewed(change) if {
+	every review in change.reviews {
+		review.approved
+	}
+}
+`,
+			expected: []string{"input.change.reviews"},
+		},
+		{
+			name:     "the reviews of a change, kept in the data",
+			body:     "allow if {\n\tdata.open\n\tall_approved(data.reviews[input.change])\n}\n" + allApproved,
+			data:     `{"reviews": {"c1": [{"approved": true}], "c2": []}, "open": true}`,
+			expected: []string{"data.reviews[_]"},
+		},
+		{
+			name: "the same, with a guard next to the call",
+			body: "allow if {\n\tdata.reviews[input.change][_]\n\tall_approved(data.reviews[input.change])\n}\n" + allApproved,
+			data: `{"reviews": {"c1": [{"approved": true}], "c2": []}, "open": true}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := "package p\n\n# METADATA\n# entrypoint: true\ndefault allow := false\n\n" + tt.body
+			dir := t.TempDir()
+			writeCaseFile(t, filepath.Join(dir, "policy", "p.rego"), policy)
+			bundle, err := opaengine.Load([]string{filepath.Join(dir, "policy")}, opaengine.ParseModeV1)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			reads, err := opaengine.Reads(bundle, opaengine.Limits{})
+			if err != nil {
+				t.Fatalf("Reads() error = %v", err)
+			}
+			if len(FailOpenOnEmptyEvery(reads)) == 0 {
+				t.Fatal("no every is matched, and the test is about one inside a function")
+			}
+			a := Analysis{Bundle: bundle, Reads: reads}
+			if tt.data != "" {
+				writeCaseFile(t, filepath.Join(dir, "data", "data.json"), tt.data)
+				if a.Data, err = opaengine.LoadData([]string{filepath.Join(dir, "data")}); err != nil {
+					t.Fatalf("LoadData() error = %v", err)
+				}
+			}
+
+			findings, err := GrantsOnEmptyEvery(t.Context(), a)
+			if err != nil {
+				t.Fatalf("GrantsOnEmptyEvery() error = %v", err)
+			}
+			var domains []string
+			for _, finding := range findings {
+				domains = append(domains, finding.Path)
+			}
+			slices.Sort(domains)
+			if !slices.Equal(domains, tt.expected) {
+				t.Errorf("reported over %v, want %v", domains, tt.expected)
 			}
 		})
 	}

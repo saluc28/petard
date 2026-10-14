@@ -247,6 +247,11 @@ type Quantifier struct {
 	// it is a reference into input or data. It is empty when the domain is a
 	// literal or a computed value, which cannot be emptied by the request and so
 	// is not the pattern's concern.
+	//
+	// An every over a parameter of the function it sits in, or over a field of
+	// one, iterates whatever a call hands the function. It is listed once for
+	// each collection handed over, with that collection as the domain and the
+	// decisions that reach the function through that call.
 	Domain string
 
 	// Provenance says whether the domain is chosen by the request or by the
@@ -514,14 +519,6 @@ func (r *refReader) quantifiers(reach map[*ast.Rule]decisionPaths) []Quantifier 
 		if len(quantifier.Decisions) == 0 {
 			continue
 		}
-
-		if resolved, ok := resolveDomain(found.domain, found.bindings); ok {
-			if isInputRooted(resolved) || isDataRooted(resolved) {
-				quantifier.Domain = normalize(resolved)
-				quantifier.Provenance = rootOfRef(resolved)
-			}
-		}
-
 		loc := found.location
 		if loc == nil {
 			loc = found.rule.Loc()
@@ -529,9 +526,88 @@ func (r *refReader) quantifiers(reach map[*ast.Rule]decisionPaths) []Quantifier 
 		if loc != nil {
 			quantifier.File, quantifier.Line = loc.File, loc.Row
 		}
-		quantifiers = append(quantifiers, quantifier)
+
+		unnamed := quantifier.Decisions
+		for _, domain := range r.domainsOf(found, quantifier.Decisions, reach) {
+			over := quantifier
+			over.Domain = normalize(domain.ref)
+			over.Provenance = rootOfRef(domain.ref)
+			over.Decisions = domain.decisions
+			quantifiers = append(quantifiers, over)
+			unnamed = slices.DeleteFunc(slices.Clone(unnamed), func(decision ReachedDecision) bool {
+				return slices.Contains(domain.decisions, decision)
+			})
+		}
+		if len(unnamed) > 0 {
+			// A literal or a computed value: listed, with no domain to name, for
+			// the decisions that reach the every over nothing else.
+			quantifier.Decisions = unnamed
+			quantifiers = append(quantifiers, quantifier)
+		}
 	}
 	return quantifiers
+}
+
+// everyDomain is one collection an every iterates, with the decisions that
+// reach the every over that collection.
+type everyDomain struct {
+	ref       ast.Ref
+	decisions []ReachedDecision
+}
+
+// domainsOf names the collections an every iterates, where they are references
+// into input or data.
+//
+// Written out in the body that holds the every, the domain is one, for the
+// decisions that reach that body. A function is handed its collection: in
+// all_approved(reviews), every review in reviews iterates what each call
+// passes, input.reviews from one and data.changes[input.change].reviews from
+// another. The domain is then asked of the calls, as the document a parameter
+// names is (see paramReads), and each collection belongs to the decisions that
+// reach the function through the call that hands it over.
+func (r *refReader) domainsOf(found foundEvery, decisions []ReachedDecision, reach map[*ast.Rule]decisionPaths) []everyDomain {
+	resolved, ok := resolveDomain(found.domain, found.bindings)
+	if !ok || len(resolved) == 0 {
+		return nil
+	}
+	if isInputRooted(resolved) || isDataRooted(resolved) {
+		return []everyDomain{{ref: resolved, decisions: decisions}}
+	}
+
+	head, isVar := varOf(resolved[0])
+	if !isVar {
+		return nil
+	}
+	param := lastAlias(head, found.bindings)
+	var domains []everyDomain
+	for _, passed := range r.arguments(found.rule, param) {
+		base, isRef := passed.term.Value.(ast.Ref)
+		if !isRef {
+			continue
+		}
+		ref := base.Concat(resolved[1:])
+		if !isInputRooted(ref) && !isDataRooted(ref) {
+			continue
+		}
+		through := reachedBy(decisions, r.decisionsAt(passed.site.caller, passed.site.top, reach))
+		if len(through) == 0 {
+			continue
+		}
+		at := slices.IndexFunc(domains, func(other everyDomain) bool { return normalize(other.ref) == normalize(ref) })
+		if at < 0 {
+			domains = append(domains, everyDomain{ref: ref, decisions: through})
+			continue
+		}
+		// The same collection from two calls is one domain, for the decisions
+		// of both.
+		for _, decision := range through {
+			if !slices.Contains(domains[at].decisions, decision) {
+				domains[at].decisions = append(domains[at].decisions, decision)
+			}
+		}
+		slices.SortFunc(domains[at].decisions, func(a, b ReachedDecision) int { return strings.Compare(a.Name, b.Name) })
+	}
+	return domains
 }
 
 // relationOf names the data a relation is built from.
