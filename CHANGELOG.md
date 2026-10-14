@@ -86,6 +86,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   role and not by the edge.
 - `petard explain` says what a pattern needs to run, the enforcement point declared with `-pep`,
   concrete data, or both, and what closes it, the `closes` line of its file.
+- `-action` and `-resource`, on `petard analyze` and `petard export`, declare the parts of the
+  request that name what is asked for, as `-subject` declares who is asking, and an enforcement
+  point declaration takes them as `action` and `resource`. A gateway that hands the policy the
+  path of a call under `input.request.remainder_path` asks about a resource no field name gives
+  away, and nothing read it: `PTD-OPA-012` stayed quiet and the graph had no resource to point
+  at. A declared part is level `A`, declaring one of the two replaces what was recognized for
+  both, and one no decision reads is refused on the command line.
 
 ### Changed
 

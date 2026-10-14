@@ -19,8 +19,8 @@ petard analyze -pep path/to/your-gateway.yaml path/to/policy
 
 `-pep` takes the id of a file in this directory, which the binary carries, or the path to a file
 of your own in the same format. With it the decisions do not have to be declared one by one, the
-subject is declared rather than recognized, and the patterns that ask who sets a part of the
-request get an answer.
+subject is declared rather than recognized, so are the action and the resource when the file
+names them, and the patterns that ask who sets a part of the request get an answer.
 
 ## The format
 
@@ -33,6 +33,7 @@ request get an answer.
 | `source` | `kind`, `source` or `documentation`, and a `note` saying at which version |
 | `decisions` | the rules the product asks for, by `rule` name in whichever package the policy declares, each with the `side` its answering yes lands on, `grants` or `denies` |
 | `subject` | the part of the request that names who is asking |
+| `action`, `resource` | the parts of the request that name what is asked for; either can be left out, and with both left out they are recognized |
 | `fields` | who puts each part of the request there, see below |
 
 Each entry of `fields` has a `path` in the notation of the write model, `input.session.teams[_]`

@@ -71,7 +71,9 @@ detection:
     No enforcement point and no data: the looseness is in the match, which the engine reads off the
     policy, and the shape recognizer says which part of the request is the resource or the action.
     The two are recognized on their own, whether or not the request names who is asking: a router
-    that grants on `input.method` and `input.path` reads no subject.
+    that grants on `input.method` and `input.path` reads no subject. Where the request carries them
+    under names that say nothing, `-resource` and `-action` declare them, or the declaration of the
+    enforcement point does.
   signals:
     - order: 1
       check: >

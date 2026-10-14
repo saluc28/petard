@@ -566,8 +566,11 @@ func TestRunTakesADeclaredSubject(t *testing.T) {
 	if code := Run(detailed("-subject", "input.user", fixture("policy-v1")), &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
-	if out := stdout.String(); !strings.Contains(out, "request shape:  subject=input.user (level A, declared)") {
-		t.Errorf("the report does not say the subject was declared:\n%s", out)
+	// The declaration says who is asking. What is asked for is still read off
+	// the field names, and printed at its own level.
+	if out := stdout.String(); !strings.Contains(out, "request shape:  subject=input.user (level A, declared)\n"+
+		"asked for:      action=input.action resource=input.doc (level D, field names)\n") {
+		t.Errorf("the report does not say the subject was declared and the rest recognized:\n%s", out)
 	}
 
 	stdout.Reset()
@@ -577,6 +580,30 @@ func TestRunTakesADeclaredSubject(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "no decision reads the declared subject: input.requester") {
 		t.Errorf("stderr does not say the subject is read by nothing: %s", stderr.String())
+	}
+}
+
+// What is asked for can be declared too, and the declaration replaces what the
+// field names say for both the action and the resource. One nothing reads is
+// refused, like a subject nothing reads.
+func TestRunTakesADeclaredResource(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	if code := Run(detailed("-resource", "input.doc", fixture("policy-v1")), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	if out := stdout.String(); !strings.Contains(out, "request shape:  subject=input.user (level D, field names)\n"+
+		"asked for:      resource=input.doc (level A, declared)\n") {
+		t.Errorf("the report does not say the resource was declared, and the action with it:\n%s", out)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(detailed("-resource", "input.document", fixture("policy-v1")), &stdout, &stderr); code != exitFailure {
+		t.Errorf("exit code = %d, want %d", code, exitFailure)
+	}
+	if !strings.Contains(stderr.String(), "no decision reads the declared part: input.document") {
+		t.Errorf("stderr does not say the resource is read by nothing: %s", stderr.String())
 	}
 }
 

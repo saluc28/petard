@@ -32,7 +32,7 @@ func analysisWithGateway(t *testing.T, policy, gateway string) Analysis {
 	if err != nil {
 		t.Fatalf("the gateway does not load: %v", err)
 	}
-	shape, err := ShapeOf(reads, "", point)
+	shape, err := ShapeOf(reads, Inputs{}, point)
 	if err != nil {
 		t.Fatalf("ShapeOf() error = %v", err)
 	}

@@ -83,6 +83,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	var denyEntrypoints repeatedString
 	flags.Var(&denyEntrypoints, "deny-entrypoint", "a rule the PEP queries to refuse the request when it holds or collects anything, as k8sallowedrepos/violation; repeat for more")
 	subject := flags.String("subject", "", "the part of the request that names who is asking, as input.user; without it, it is recognized")
+	action := flags.String("action", "", "the part of the request that names what is done, as input.request.method; declared with -resource or alone, it replaces what is recognized for both")
+	resource := flags.String("resource", "", "the part of the request that names what is asked for, as input.request.path; declared with -action or alone, it replaces what is recognized for both")
 	enforcementPoint := flags.String("pep", "", "the product that asks for the decisions: an id from pep-registry, as spacelift-login, or a declaration of your own ending in .yaml")
 	dataPath := flags.String("data", "", "path to the concrete data, in place of the data.json and data.yaml files of the bundle; without any there are no principals and no capabilities")
 	writeModelPath := flags.String("write-model", "", "path to the write model; without it a match that rests on who writes a path stays a candidate")
@@ -134,6 +136,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		Entrypoints:      entrypoints,
 		DenyEntrypoints:  denyEntrypoints,
 		Subject:          *subject,
+		Action:           *action,
+		Resource:         *resource,
 		EnforcementPoint: *enforcementPoint,
 		DataPath:         *dataPath,
 		WriteModelPath:   *writeModelPath,

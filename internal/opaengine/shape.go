@@ -63,6 +63,15 @@ var ErrBadSubject = errors.New("opaengine: the subject is not a path into input"
 // as one about a principal.
 var ErrSubjectNotRead = errors.New("opaengine: no decision reads the declared subject")
 
+// ErrBadTarget is returned when a declared action or resource is not a path
+// into the request.
+var ErrBadTarget = errors.New("opaengine: the declared part is not a path into input")
+
+// ErrTargetNotRead is returned when no decision reads a declared action or
+// resource, for the reason ErrSubjectNotRead is: a declaration that matches
+// nothing is a typo, and the run ends on it.
+var ErrTargetNotRead = errors.New("opaengine: no decision reads the declared part")
+
 // String returns the level as A to E, because that is what ends up in a report
 // and in the graph.
 func (c Confidence) String() string {
@@ -298,6 +307,48 @@ func ShapeOf(reads *ReadSet, subject string) (Shape, error) {
 		Recognizer: "declared",
 	}
 	return declared.asking(RecognizeTarget(reads)), nil
+}
+
+// Asking returns the shape with the action and the resource declared from
+// outside, in place of the ones the recognizers found.
+//
+// It is the declaration of the subject made for the rest of the request, and
+// for the same reason: which part names what is asked for is decided where the
+// request is built. A gateway that hands the policy the path under
+// input.request.remainder_path asks about a resource no field name gives away.
+// Either of the two may be left empty. The declaration still replaces what was
+// recognized for both, since a resource somebody declared next to an action
+// somebody guessed would be one claim at two levels.
+//
+// With neither declared the shape comes back as it is.
+func (s Shape) Asking(reads *ReadSet, action, resource string) (Shape, error) {
+	if action == "" && resource == "" {
+		return s, nil
+	}
+	parts := []*string{&action, &resource}
+	for _, part := range parts {
+		if *part == "" {
+			continue
+		}
+		ref, err := ast.ParseRef(*part)
+		if err != nil || !isInputRooted(ref) {
+			return Shape{}, fmt.Errorf("%w: %s", ErrBadTarget, *part)
+		}
+		path := normalize(ref)
+		if !touched(reads.InputPaths, path) {
+			return Shape{}, fmt.Errorf("%w: %s", ErrTargetNotRead, *part)
+		}
+		*part = path
+	}
+	s.Action, s.Resource = action, resource
+	s.TargetConfidence, s.TargetRecognizer = ConfidenceDeclared, "declared"
+	return s, nil
+}
+
+// Touches reports whether the decisions read a part of the request, a field of
+// it, or something that holds it.
+func (rs *ReadSet) Touches(part string) bool {
+	return touched(rs.InputPaths, part)
 }
 
 // touched reports whether the decisions read a path, a part of it, or

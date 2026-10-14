@@ -492,6 +492,61 @@ func TestShapeOf(t *testing.T) {
 	}
 }
 
+// The action and the resource declared from outside replace the ones the
+// recognizers found, both of them, and a declaration nothing reads is refused
+// the way a declared subject is.
+func TestShapeAsking(t *testing.T) {
+	reads := &ReadSet{InputPaths: []string{"input.method", "input.request.remainder_path", "input.user"}}
+	recognized := RecognizeShape(reads)
+	if recognized.Subject != "input.user" || recognized.Action != "input.method" || recognized.Resource != "" {
+		t.Fatalf("recognized = %+v, want the user and the method by their names and no resource", recognized)
+	}
+
+	tests := []struct {
+		name             string
+		action, resource string
+		expected         Shape
+		err              error
+	}{
+		{
+			name:     "nothing declared",
+			expected: recognized,
+		},
+		{
+			name:     "the resource alone",
+			resource: "input.request.remainder_path",
+			expected: Shape{
+				Subject: "input.user", Resource: "input.request.remainder_path",
+				Confidence: ConfidenceNames, Recognizer: "field names",
+				TargetConfidence: ConfidenceDeclared, TargetRecognizer: "declared",
+			},
+		},
+		{
+			name:   "both, the resource inside a part the decisions read deeper",
+			action: "input.method", resource: "input.request",
+			expected: Shape{
+				Subject: "input.user", Action: "input.method", Resource: "input.request",
+				Confidence: ConfidenceNames, Recognizer: "field names",
+				TargetConfidence: ConfidenceDeclared, TargetRecognizer: "declared",
+			},
+		},
+		{name: "read by no decision", resource: "input.url", err: ErrTargetNotRead},
+		{name: "not in the request", action: "data.verbs", err: ErrBadTarget},
+		{name: "not a path at all", resource: "input.", err: ErrBadTarget},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := recognized.Asking(reads, tt.action, tt.resource)
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("Asking() error = %v, want %v", err, tt.err)
+			}
+			if got != tt.expected {
+				t.Errorf("Asking() = %+v, want %+v", got, tt.expected)
+			}
+		})
+	}
+}
+
 // What a shape asks for is a shape of its own, at the level the action and the
 // resource were named at: the level of the subject when one recognizer named
 // all three, and their own when the subject was declared or is missing.

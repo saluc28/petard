@@ -247,7 +247,9 @@ is refused, the way an entrypoint that names no rule is.
 
 A declared subject says who is asking and nothing of what is asked for. The action and the
 resource are still recognized, at the level they are worth, and a `PTD_CanPerform` edge, which
-names a principal and what they reach, carries the weaker of the two levels.
+names a principal and what they reach, carries the weaker of the two levels. They can be declared
+as well, with `-action` and `-resource` or in the declaration of the enforcement point, and are
+then level A. Declaring one of the two replaces what was recognized for both.
 
 ### Which way a decision answers is declared too
 

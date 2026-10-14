@@ -361,6 +361,12 @@ type Inputs struct {
 	// from outside, and empty to have it recognized. See opaengine.ShapeOf.
 	Subject string
 
+	// Action and Resource are the parts of the request that name what is asked
+	// for, declared from outside, and both empty to have them recognized. See
+	// opaengine.Shape.Asking.
+	Action   string
+	Resource string
+
 	// DataPath is the concrete data, and empty when there is none. Without it
 	// the patterns that measure against documents cannot run, and say so.
 	DataPath string
@@ -427,7 +433,7 @@ func Load(ctx context.Context, inputs Inputs) (Analysis, error) {
 	if err != nil {
 		return Analysis{}, err
 	}
-	shape, err := ShapeOf(reads, inputs.Subject, point)
+	shape, err := ShapeOf(reads, inputs, point)
 	if err != nil {
 		return Analysis{}, err
 	}

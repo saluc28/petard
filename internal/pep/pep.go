@@ -115,6 +115,13 @@ type EnforcementPoint struct {
 	// Subject is the part of the request that names who is asking.
 	Subject string `yaml:"subject"`
 
+	// Action and Resource are the parts of the request that name what is asked
+	// for, where the product puts them somewhere no field name gives away: the
+	// path of a call under input.request.remainder_path. Either may be left
+	// out, and with both left out they are recognized.
+	Action   string `yaml:"action"`
+	Resource string `yaml:"resource"`
+
 	// Fields are the parts of the request and who puts each there. The first
 	// entry that covers a part is the one that answers for it, so the more
 	// specific entries come first: input.user.note ahead of input.user, when
@@ -299,8 +306,14 @@ func (p *EnforcementPoint) validate() error {
 			return fmt.Errorf("decision %s: side %q is neither %s nor %s", decision.Rule, decision.Side, SideGrants, SideDenies)
 		}
 	}
-	if p.Subject != "" && !strings.HasPrefix(p.Subject, "input.") {
-		return fmt.Errorf("subject %q is not a part of the request", p.Subject)
+	for _, part := range []struct{ role, path string }{
+		{"subject", p.Subject},
+		{"action", p.Action},
+		{"resource", p.Resource},
+	} {
+		if part.path != "" && !strings.HasPrefix(part.path, "input.") {
+			return fmt.Errorf("%s %q is not a part of the request", part.role, part.path)
+		}
 	}
 
 	for i := range p.Fields {

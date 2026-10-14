@@ -44,16 +44,38 @@ func DeclareEnforcementPoint(bundle *opaengine.Bundle, named string) (*pep.Enfor
 	return point, nil
 }
 
-// ShapeOf recognizes the shape of the request, taking the subject from where it
+// ShapeOf recognizes the shape of the request, taking each part from where it
 // is declared: the command line first, then the enforcement point, and when
-// neither says, from what the decisions read.
+// neither says, from what the decisions read. The subject is one declaration,
+// and the action and the resource together are another.
 //
-// The subject an enforcement point declares is where the product puts the
-// requester, and a policy may never look at it: the login policy of the
-// Spacelift starter repository reads the teams and nothing else. That is not an
-// error in the declaration, so the shape is then recognized as if nothing had
-// been declared.
-func ShapeOf(reads *opaengine.ReadSet, subject string, point *pep.EnforcementPoint) (opaengine.Shape, error) {
+// What an enforcement point declares is where the product puts the requester
+// and what is asked for, and a policy may never look at one of them: the login
+// policy of the Spacelift starter repository reads the teams and nothing else.
+// That is not an error in the declaration, so a part the decisions do not read
+// is recognized as if nothing had been declared about it.
+func ShapeOf(reads *opaengine.ReadSet, inputs Inputs, point *pep.EnforcementPoint) (opaengine.Shape, error) {
+	shape, err := subjectOf(reads, inputs.Subject, point)
+	if err != nil {
+		return opaengine.Shape{}, err
+	}
+	if inputs.Action != "" || inputs.Resource != "" || point == nil {
+		return shape.Asking(reads, inputs.Action, inputs.Resource)
+	}
+
+	action, resource := point.Action, point.Resource
+	if action != "" && !reads.Touches(action) {
+		action = ""
+	}
+	if resource != "" && !reads.Touches(resource) {
+		resource = ""
+	}
+	return shape.Asking(reads, action, resource)
+}
+
+// subjectOf is ShapeOf for the subject alone, with what is asked for as the
+// recognizers found it.
+func subjectOf(reads *opaengine.ReadSet, subject string, point *pep.EnforcementPoint) (opaengine.Shape, error) {
 	if subject != "" || point == nil || point.Subject == "" {
 		return opaengine.ShapeOf(reads, subject)
 	}

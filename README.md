@@ -277,6 +277,13 @@ petard analyze -entrypoint aac/aap/policy/owner_scope/allowed \
   -subject input.created_by.username -data path/to/config path/to/policy
 ```
 
+So can the parts that name what is asked for, with `-action` and `-resource`, when the request
+carries them under names that do not give them away:
+
+```
+petard analyze -resource input.request.remainder_path path/to/policy
+```
+
 A product that asks for decisions can be declared once instead: which rules it asks for, where it
 puts the requester, and who sets each part of the request. [`pep-registry/`](pep-registry) holds
 the declarations, each claim with the file and line or the page of documentation it was read from,
