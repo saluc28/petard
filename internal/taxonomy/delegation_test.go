@@ -2,6 +2,7 @@ package taxonomy
 
 import (
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -557,3 +558,282 @@ fields:
     evidence:
       - the test
 `
+
+// A decision that grants named scopes alone refuses the synthetic element the
+// pattern builds a request with, so without a request of its own it cannot be
+// asked, and says so. Given one it grants, it is asked like any other: the
+// request is asked again with the edge holding none of the scopes it asks for.
+func TestDelegationStartsFromARequestGivenAsGranted(t *testing.T) {
+	const roleOnly = `allow if {
+	every scope in input.requested_scopes {
+		scope in {"docs:read", "docs:write"}
+	}
+	every scope in input.requested_scopes {
+		scope in input.role_scopes
+	}
+}
+`
+	const narrowed = roleOnly + `
+allow_narrowed if {
+	every scope in input.requested_scopes {
+		scope in {"docs:read", "docs:write"}
+	}
+	every scope in input.requested_scopes {
+		scope in input.delegation_edge.scopes
+	}
+	every scope in input.requested_scopes {
+		scope in input.role_scopes
+	}
+}
+`
+	read := map[string]any{
+		"requested_scopes": []any{"docs:read"},
+		"role_scopes":      []any{"docs:read", "docs:write"},
+		"delegation_edge":  map[string]any{"scopes": []any{"docs:read"}},
+	}
+
+	tests := []struct {
+		name     string
+		body     string
+		granted  []GrantedRequest
+		expected []string
+	}{
+		{
+			name:     "no request given",
+			body:     roleOnly,
+			expected: []string{"candidate data.p.allow"},
+		},
+		{
+			name:     "a request the decision grants",
+			body:     roleOnly,
+			granted:  []GrantedRequest{{File: "granted.json", Input: read, Decisions: []string{"data.p.allow"}}},
+			expected: []string{"finding data.p.allow input.delegation_edge.scopes"},
+		},
+		{
+			name: "the same request, and a decision narrowed by the edge as well",
+			body: narrowed,
+			granted: []GrantedRequest{{File: "granted.json", Input: read,
+				Decisions: []string{"data.p.allow", "data.p.allow_narrowed"}}},
+			expected: []string{"finding data.p.allow input.delegation_edge.scopes"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := "package p\n\n# METADATA\n# entrypoint: true\ndefault allow := false\n\n" +
+				"# METADATA\n# entrypoint: true\ndefault allow_narrowed := false\n\n" + tt.body
+			gateway := strings.Replace(delegationGateway, "  - rule: allow\n", "  - rule: allow\n    side: grants\n  - rule: allow_narrowed\n", 1)
+			a := delegationAnalysis(t, policy, gateway, `{"unused": true}`)
+			a.Granted = tt.granted
+
+			findings, err := GrantsBeyondDelegatedScope(t.Context(), a)
+			if err != nil {
+				t.Fatalf("GrantsBeyondDelegatedScope() error = %v", err)
+			}
+			if got := delegationResults(findings); !slices.Equal(got, tt.expected) {
+				t.Errorf("results = %v, want %v", got, tt.expected)
+			}
+			for _, finding := range findings {
+				if finding.Verdict == VerdictFinding && !strings.Contains(finding.Note, `"docs:read"`) {
+					t.Errorf("note = %q, want the request given, with the scope it asks for", finding.Note)
+				}
+				if finding.Verdict == VerdictCandidate && !strings.Contains(finding.Summary, "none was given") {
+					t.Errorf("summary = %q, want it to say no request was there to ask about", finding.Summary)
+				}
+			}
+		})
+	}
+}
+
+// A ceiling can be a document in the data, the scopes of the role the request
+// names. It is asked about with every document its path names holding none of
+// what is asked for, since the request picks one of them. Where the request
+// picks the role inside the every, partial evaluation keeps the every whole and
+// leaves no condition to build a request from: the decision is a candidate that
+// says it could not be asked, and a request given as granted asks it.
+func TestDelegationAsksACeilingInTheData(t *testing.T) {
+	const gateway = `schema_version: 1
+id: test-gateway
+engine: opa
+source:
+  kind: documentation
+  note: a gateway for the test
+decisions:
+  - rule: allow
+    side: grants
+fields:
+  - path: input.requested_scopes
+    set_by: caller
+    authority: requested
+    bounded_by:
+      - input.delegation_edge.scopes
+      - data.roles[_].scopes
+    evidence:
+      - the test
+`
+	const data = `{"roles": {"agent": {"scopes": ["docs:read"]}, "auditor": {"scopes": ["logs:read"]}}}`
+	const roleInside = `allow if {
+	every scope in input.requested_scopes {
+		scope in data.roles[input.role].scopes
+	}
+}
+`
+	const bothInside = `allow if {
+	every scope in input.requested_scopes {
+		scope in data.roles[input.role].scopes
+	}
+	every scope in input.requested_scopes {
+		scope in input.delegation_edge.scopes
+	}
+}
+`
+	agent := []GrantedRequest{{
+		File: "granted.json",
+		Input: map[string]any{
+			"requested_scopes": []any{"docs:read"},
+			"role":             "agent",
+			"delegation_edge":  map[string]any{"scopes": []any{"docs:read"}},
+		},
+		Decisions: []string{"data.p.allow"},
+	}}
+
+	tests := []struct {
+		name     string
+		body     string
+		granted  []GrantedRequest
+		expected []string
+	}{
+		{
+			name: "bounded by the edge, not by the role in the data",
+			body: `allow if {
+	data.roles[input.role]
+	every scope in input.requested_scopes {
+		scope in input.delegation_edge.scopes
+	}
+}
+`,
+			expected: []string{"finding data.p.allow data.roles[_].scopes"},
+		},
+		{
+			name:     "bounded by the role, picked inside the every, and no request given",
+			body:     roleInside,
+			expected: []string{"candidate data.p.allow"},
+		},
+		{
+			name:     "the same, with a request given",
+			body:     roleInside,
+			granted:  agent,
+			expected: []string{"finding data.p.allow input.delegation_edge.scopes"},
+		},
+		{
+			name:    "bounded by both, with a request given",
+			body:    bothInside,
+			granted: agent,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := "package p\n\n# METADATA\n# entrypoint: true\ndefault allow := false\n\n" + tt.body
+			a := delegationAnalysis(t, policy, gateway, data)
+			a.Granted = tt.granted
+
+			findings, err := GrantsBeyondDelegatedScope(t.Context(), a)
+			if err != nil {
+				t.Fatalf("GrantsBeyondDelegatedScope() error = %v", err)
+			}
+			if got := delegationResults(findings); !slices.Equal(got, tt.expected) {
+				t.Errorf("results = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+// Scopes can come as one string, the way OAuth writes them. The synthetic
+// request asks for a list and builds nothing here, and a request given as
+// granted is what the question starts from: the edge is then a string holding
+// none of the scopes asked for.
+func TestDelegationAsksAScopeString(t *testing.T) {
+	const gateway = `schema_version: 1
+id: test-gateway
+engine: opa
+source:
+  kind: documentation
+  note: a gateway for the test
+decisions:
+  - rule: allow
+    side: grants
+fields:
+  - path: input.scope
+    set_by: caller
+    authority: requested
+    bounded_by:
+      - input.edge_scope
+      - input.role_scope
+    evidence:
+      - the test
+`
+	policy := `package p
+
+# METADATA
+# entrypoint: true
+default allow := false
+
+allow if {
+	every scope in split(input.scope, " ") {
+		scope in split(input.role_scope, " ")
+	}
+}
+`
+	a := delegationAnalysis(t, policy, gateway, `{"unused": true}`)
+	a.Granted = []GrantedRequest{{
+		File:      "granted.json",
+		Input:     map[string]any{"scope": "docs:read", "role_scope": "docs:read docs:write", "edge_scope": "docs:read"},
+		Decisions: []string{"data.p.allow"},
+	}}
+
+	findings, err := GrantsBeyondDelegatedScope(t.Context(), a)
+	if err != nil {
+		t.Fatalf("GrantsBeyondDelegatedScope() error = %v", err)
+	}
+	if got := delegationResults(findings); !slices.Equal(got, []string{"finding data.p.allow input.edge_scope"}) {
+		t.Errorf("results = %v, want a finding on the edge alone", got)
+	}
+}
+
+// What a ceiling becomes when it holds none of what is asked for keeps the
+// shape the decision reads it in.
+func TestHoldingNothingAsked(t *testing.T) {
+	tests := []struct {
+		name    string
+		ceiling any
+		want    any
+	}{
+		{"a list", []any{"docs:read"}, []any{delegationBeyond}},
+		{"nothing there", nil, []any{delegationBeyond}},
+		{"a string", "docs:read docs:write", delegationBeyond},
+		{"an object", map[string]any{"docs:read": map[string]any{"since": 2024}}, map[string]any{delegationBeyond: map[string]any{"since": 2024}}},
+		{"an empty object", map[string]any{}, map[string]any{delegationBeyond: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := holdingNothingAsked(tt.ceiling); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("holdingNothingAsked(%v) = %v, want %v", tt.ceiling, got, tt.want)
+			}
+		})
+	}
+}
+
+// delegationResults writes the results the way a test compares them: the
+// verdict, the decision, and the ceilings a finding names, in the order the
+// summary names them.
+func delegationResults(findings []Finding) []string {
+	var got []string
+	for _, finding := range findings {
+		line := string(finding.Verdict) + " " + finding.Decision
+		if finding.Verdict == VerdictFinding {
+			_, ceilings, _ := strings.Cut(finding.Summary, "without bounding it by ")
+			line += " " + strings.ReplaceAll(ceilings, " or by ", " ")
+		}
+		got = append(got, line)
+	}
+	return got
+}

@@ -69,8 +69,10 @@ delegated principal more or less of it. `requested` is the authority the princip
 scopes a delegated agent requests. `ceiling` is one that bounds it, the scopes the delegating edge
 carries or the role the agent already holds. `bounded_by`, on a requested authority, lists the
 ceilings it must sit under, each a part of the request or a document in the data. It is what
-`PTD-OPA-013` asks the decision about, and with none named the grant is a candidate. A part is an
-identity or an authority, not both.
+`PTD-OPA-013` asks the decision about, and with none named the grant is a candidate. A ceiling in
+the data is written as the path the decision reads it at, `data.roles[_].scopes`, and every
+document that path names is changed alike when the decision is asked. A part is an identity or an
+authority, not both.
 
 A part the caller sets can say what is done to its value between the decision and the action, in
 `canonicalized_after_decision`: `dot-segments` when `.` and `..` are collapsed, as RFC 3986

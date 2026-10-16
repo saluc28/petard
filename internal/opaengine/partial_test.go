@@ -1105,6 +1105,39 @@ func TestDataWithSetsADocumentAndLeavesTheOriginal(t *testing.T) {
 	}
 }
 
+// Replaced changes every document a collection path names, from what each held,
+// and adds none where the data holds none: a role without scopes stays without
+// them. The original is left as it was.
+func TestDataReplacedChangesEveryDocumentOfACollection(t *testing.T) {
+	data := writeData(t, `{"roles": {"agent": {"scopes": ["read"]}, "auditor": {"scopes": ["logs"]}, "guest": {}}}`)
+
+	replaced, count, err := data.Replaced(t.Context(), "data.roles[_].scopes", func(current any) any {
+		held, _ := current.([]any)
+		return append([]any{"none"}, held...)
+	})
+	if err != nil {
+		t.Fatalf("Replaced() error = %v", err)
+	}
+	if count != 2 {
+		t.Errorf("Replaced() changed %d documents, want the two that hold scopes", count)
+	}
+	for path, want := range map[string]any{
+		"data.roles.agent.scopes":   []any{"none", "read"},
+		"data.roles.auditor.scopes": []any{"none", "logs"},
+	} {
+		got, found, err := replaced.Value(t.Context(), path)
+		if err != nil || !found || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s = %v (found %t, err %v), want %v", path, got, found, err, want)
+		}
+	}
+	if _, found, err := replaced.Value(t.Context(), "data.roles.guest.scopes"); err != nil || found {
+		t.Errorf("a role without scopes was given some (found %t, err %v)", found, err)
+	}
+	if before, _, _ := data.Value(t.Context(), "data.roles.agent.scopes"); !reflect.DeepEqual(before, []any{"read"}) {
+		t.Errorf("the original changed under us: agent holds %v", before)
+	}
+}
+
 // A path that names a collection rather than one document is not somewhere a
 // write can land, and saying so beats writing to a place that is not a record.
 func TestDataWithRefusesACollection(t *testing.T) {

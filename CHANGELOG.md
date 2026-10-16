@@ -78,12 +78,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `PTD-OPA-013`, a decision grants a requested authority not bounded by the delegator's: a granting
   decision mints the scopes a delegated agent asks for, bounding them by the agent's own role but not
   by the authority the delegating edge carries, so the agent mints scopes the delegating user never
-  held. It asks the decision itself, pinning the requested authority within every declared ceiling
-  and reaching one element past one of them, so the verdict holds whatever form the bound takes. It
-  runs with `-pep` and the data, and the declaration takes two new keys on a field, `authority` and
-  `bounded_by`, naming the requested authority and the ceilings it must sit under. A requested
-  authority with no ceiling declared is a candidate. The fixture mints a credential bounded by the
-  role and not by the edge.
+  held. It asks the decision itself: a request it grants is asked again with one ceiling holding
+  none of what the request asks for, so the verdict holds whatever form the bound takes. It runs
+  with `-pep` and the data, and the declaration takes two new keys on a field, `authority` and
+  `bounded_by`, naming the requested authority and the ceilings it must sit under, each a part of
+  the request or a document in the data. A requested authority with no ceiling declared is a
+  candidate, and so is a decision no request it grants was built or given for, one that grants
+  named scopes alone among them. The fixture mints a credential bounded by the role and not by the
+  edge.
 - `petard explain` says what a pattern needs to run, the enforcement point declared with `-pep`,
   concrete data, or both, and what closes it, the `closes` line of its file.
 - A decision that answers with one value of several, `default verdict := "scan"` next to
@@ -109,11 +111,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   was built or given.
 - `-granted <file>`, on `petard analyze` and `petard export`, gives a request the decisions
   grant: a JSON or YAML file holding what the policy reads as `input`, repeated for more than
-  one. The fourth signal of `PTD-OPA-012` starts from a request the decision grants, and builds
-  none for a decision that holds the path against something it computes,
-  `split(input.path, "/")[1] == "public"`. It starts from the ones given first, and the report
-  names the decisions that grant each. A request no decision grants is refused on the command
-  line.
+  one. The fourth signal of `PTD-OPA-012` and `PTD-OPA-013` start from a request the decision
+  grants, and build none for a decision that holds the path against something it computes,
+  `split(input.path, "/")[1] == "public"`, or that grants named scopes alone. They start from the
+  ones given first, and the report names the decisions that grant each. A request no decision
+  grants is refused on the command line.
 - `-action` and `-resource`, on `petard analyze` and `petard export`, declare the parts of the
   request that name what is asked for, as `-subject` declares who is asking, and an enforcement
   point declaration takes them as `action` and `resource`. A gateway that hands the policy the

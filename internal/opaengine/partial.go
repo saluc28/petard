@@ -518,6 +518,38 @@ func (d *Data) With(ctx context.Context, path string, value any) (*Data, error) 
 	return &Data{store: inmem.NewFromObject(documents), Files: slices.Clone(d.Files)}, nil
 }
 
+// Replaced returns the data with every document a path names replaced by what
+// replace makes of it, and how many documents that was. A path with a dynamic
+// segment, data.roles[_].scopes, names one document for each key the data holds
+// there, and each of them is replaced; a key the data does not hold gets none.
+// The data it is called on is left as it was.
+//
+// It is how a question asks the decision about a document it cannot pick: the
+// request chooses which role is read, and every role is changed alike.
+func (d *Data) Replaced(ctx context.Context, path string, replace func(current any) any) (*Data, int, error) {
+	walk, err := d.walk(ctx, path)
+	if err != nil {
+		return nil, 0, err
+	}
+	root, err := storage.ReadOne(ctx, d.store, storage.Path{})
+	if err != nil {
+		return nil, 0, fmt.Errorf("opaengine: reading the data: %w", err)
+	}
+	documents, isObject := clone(root).(map[string]any)
+	if !isObject {
+		return nil, 0, fmt.Errorf("opaengine: the data holds a %T at its root", root)
+	}
+
+	for _, at := range walk.resolved {
+		var current any = documents
+		for _, segment := range at {
+			current = child(current, segment)
+		}
+		set(documents, at, replace(current))
+	}
+	return &Data{store: inmem.NewFromObject(documents), Files: slices.Clone(d.Files)}, len(walk.resolved), nil
+}
+
 // WithTarget splits a write into what a with modifier can replace and where the
 // write lands inside it: the path itself and no pointer when the path is made
 // of names, or else the nearest document above it that is, with the JSON

@@ -79,10 +79,11 @@ detection:
     reads: a decision that reads none, a token service deciding on the request alone, is asked
     with no data given. Without the declaration, or without the data of a decision that reads
     some, the pattern does not run, and the report says so.
-    No reading of the narrowing form: the pattern asks the decision itself. It pins the requested
-    authority to one synthetic element every declared ceiling holds, lets partial evaluation solve
-    the other conditions a grant needs, and then asks whether the decision still grants once the
-    authority reaches one element past a ceiling while staying within the others.
+    No reading of the narrowing form: the pattern asks the decision itself. It starts from a
+    request the decision grants, one given with `-granted` or one built with the requested
+    authority pinned to a synthetic element every declared ceiling holds, the other conditions a
+    grant needs solved by partial evaluation. It then asks whether the decision still grants once
+    one ceiling holds none of what the request asks for.
   signals:
     - order: 1
       check: >
@@ -95,15 +96,22 @@ detection:
         enforcement point says the delegator's edge is the ceiling that matters.
     - order: 2
       check: >
-        The decision grants a request whose requested authority sits inside every declared ceiling,
-        and grants it still once the authority reaches one element past one ceiling while staying
-        within the others. That ceiling makes no difference to the grant, so the authority reaches
-        past it.
+        The decision grants a request, and grants it still once one ceiling holds none of what the
+        request asks for: a list, an object or a string of the shape it had, holding one synthetic
+        element nothing asks for. That ceiling makes no difference to the grant, so the authority
+        reaches past it. A ceiling in the request is set in it, and one in the data in every
+        document its path names. The request is one given with `-granted`, or one built with the
+        requested authority pinned to a synthetic element every ceiling holds; a decision with
+        neither is a candidate saying it could not be asked.
       rationale: >
         Asking the decision rather than reading the narrowing form makes the verdict independent of
         how the bound is written: an every, an object.subset, a set difference or a comprehension all
-        refuse the request that reaches past, a bound a later branch leaves open grants it, and so
-        does a decision that reads the authority and bounds it by nothing.
+        refuse the request once the ceiling holds nothing it asks for, a bound a later branch leaves
+        open grants it, and so does a decision that reads the authority and bounds it by nothing. A
+        ceiling that holds nothing asked bounds nothing asked, whether it is matched by element, by
+        prefix or by wildcard, and it is not empty, which a decision may read as no ceiling. A
+        decision that grants named scopes alone refuses the synthetic element, so a request it
+        grants, given from outside, is what it takes to ask it.
     - order: 3
       check: >
         A ceiling the decision does not enforce is a finding, and the finding names every ceiling it
@@ -194,11 +202,11 @@ verified:
   how: >
     The engine finds the case and stays quiet about the counter case on the fixture. It pins
     `input.requested_scopes` to one synthetic element every ceiling holds, lets partial evaluation
-    solve `input.action == "mint"`, and asks the decision again with one element past a ceiling:
-    `data.quill.delegation.allow_mint` grants the request past `input.delegation_edge.scopes`, so the
-    edge is reported as the ceiling it does not enforce, while it refuses the request past
-    `input.role_scopes`, so the role is sound. `data.quill.delegation.allow_mint_narrowed` refuses
-    both, so it is left alone.
+    solve `input.action == "mint"`, and asks the decision again with one ceiling at a time holding
+    none of what is asked: `data.quill.delegation.allow_mint` grants the request with
+    `input.delegation_edge.scopes` emptied of it, so the edge is reported as the ceiling it does not
+    enforce, while it refuses the request with `input.role_scopes` emptied of it, so the role is
+    sound. `data.quill.delegation.allow_mint_narrowed` refuses both, so it is left alone.
     The anchor was read at the source: caracal at c6a0689 narrows the request by the edge three ways
     over and names the failure its absence would be.
     On generated worlds the verdict rests on the policy and the declaration, not on the data: the
@@ -219,14 +227,17 @@ related:
 
 notes:
   - >
-    Known false negative: a ceiling that lives in the data rather than in the request,
-    `every scope in input.requested_scopes { scope in data.roles[role].scopes }`. The witness sets a
-    part of the request, so it cannot vary a ceiling the data holds; the pattern tests only the
-    ceilings declared as parts of the request.
+    A ceiling in the data, `every scope in input.requested_scopes { scope in
+    data.roles[input.role].scopes }`, is declared as `data.roles[_].scopes` and asked about with
+    every document that path names holding none of what is asked for, since the request picks one
+    of them. Where the request picks the document inside the every, as here, partial evaluation
+    keeps the every whole and leaves no condition to build a request from, and a request given
+    with `-granted` is what asks the decision. A ceiling path the data holds no document for is
+    not asked about.
   - >
-    Known false negative: a decision that grants only specific named scopes, where a synthetic
-    element builds no request the decision grants, so the bound cannot be isolated. The pattern says
-    nothing rather than guess.
+    A decision that grants only specific named scopes refuses the synthetic element, so no request
+    is built for it. It is a candidate saying it could not be asked, and with a request it grants
+    given with `-granted` it is asked like any other.
   - >
     Known false negative: a delegation chain of more than one hop. One decision sees one hop, the
     edge it is handed; whether that edge was itself narrowed from the hop before is a fact about
