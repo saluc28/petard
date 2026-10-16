@@ -258,7 +258,7 @@ func TestGrantsBeforeCanonicalizationOnPathsADocumentLists(t *testing.T) {
 }
 
 // A decision OPA panics on cannot be asked either, and is a candidate that says
-// why. OPA v1.21.1 panics on the partial evaluation of a negated rule whose
+// why. OPA v1.21.2 panics on the partial evaluation of a negated rule whose
 // body holds an every over a part of the request left unknown.
 func TestGrantsBeforeCanonicalizationWhenOPAPanics(t *testing.T) {
 	policy := canonicalPolicy(`allow if {

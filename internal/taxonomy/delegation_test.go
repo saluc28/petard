@@ -460,7 +460,7 @@ allow if {
 }
 
 // A decision OPA panics on leaves the pattern that asks it skipped, with the
-// decision named, and the run goes on. OPA v1.21.1 panics on a negated rule
+// decision named, and the run goes on. OPA v1.21.2 panics on a negated rule
 // whose body holds an every over a value left unknown; an OPA that answers
 // instead lets the pattern report the edge the decision does not enforce.
 func TestRunSkipsAPatternWhenOPAPanics(t *testing.T) {

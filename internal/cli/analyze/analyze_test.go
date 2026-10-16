@@ -509,7 +509,7 @@ func TestRunSaysWhenTheResidualBoundCuts(t *testing.T) {
 	}
 }
 
-// A decision OPA panics on does not end the report. OPA v1.21.1 panics on a
+// A decision OPA panics on does not end the report. OPA v1.21.2 panics on a
 // negated rule whose body holds an every over a value left unknown; the row of
 // the decision says so, and an OPA that answers prints what is left instead.
 func TestRunSurvivesADecisionOPAPanicsOn(t *testing.T) {

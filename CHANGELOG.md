@@ -133,7 +133,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   report says they were inferred. A rule called `deny`, `violation` or `warn`, alone or with a
   suffix such as `deny_root`, is taken to deny, as conftest reads it. `-entrypoint` still names
   them.
-- OPA v1.21.1 is compiled in, up from v1.20.2. It reads YAML against the 1.2 core schema: in a
+- OPA v1.21.2 is compiled in, up from v1.20.2. It reads YAML against the 1.2 core schema: in a
   YAML document given with `-data`, and in the `data.yaml` or `data.yml` of a bundle, the bare
   words `y`, `n`, `yes`, `no`, `on` and `off` are strings, where they were booleans, so a decision
   on `data.settings.open == true` no longer holds over `open: yes`. It also types an empty object,
@@ -270,7 +270,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   were already read, and the report names the decision and that reading under `How much to trust
   this`.
 - `petard analyze` and `petard export` ended in a Go panic on a decision OPA panics on: OPA
-  v1.21.1 panics on the partial evaluation of a negated rule whose body holds an `every` over a
+  v1.21.2 panics on the partial evaluation of a negated rule whose body holds an `every` over a
   value left unknown. The pattern that asked is now reported as not applied, with the decision
   and the panic, `-v` says the same on the decision's row of residual conditions, and the graph
   counts the questions it could not ask.

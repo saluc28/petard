@@ -966,7 +966,7 @@ func TestEvaluatedTurnsAPanicIntoAnError(t *testing.T) {
 	}
 }
 
-// OPA v1.21.1 panics on the partial evaluation of a negated rule whose body
+// OPA v1.21.2 panics on the partial evaluation of a negated rule whose body
 // holds an every over a value left unknown. Whichever way the OPA in use
 // answers, the question returns: with what is left of the decision, or with the
 // panic as an error.
