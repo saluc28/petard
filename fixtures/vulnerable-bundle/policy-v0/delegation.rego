@@ -37,3 +37,21 @@ allow_mint_narrowed {
 		scope in input.role_scopes
 	}
 }
+
+# METADATA
+# scope: document
+# title: Mint a delegated credential from the scope catalog
+# entrypoint: true
+default allow_mint_catalog = false
+
+# PTD-OPA-013 CASE, asked from a request given as granted
+allow_mint_catalog {
+	input.action == "mint"
+	count(input.requested_scopes) > 0
+	every scope in input.requested_scopes {
+		scope in {"docs:read", "docs:write", "comments:write"}
+	}
+	every scope in input.requested_scopes {
+		scope in input.role_scopes
+	}
+}

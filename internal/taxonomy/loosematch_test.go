@@ -2,6 +2,7 @@ package taxonomy
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/saluc28/petard/internal/opaengine"
@@ -11,10 +12,29 @@ import (
 // is served when its id contains a marker (a substring), or when its id is the
 // exact one. Only the substring is matched more loosely than the id it names, so
 // only it is reported, and as a finding because a crafted id slips through.
+//
+// The moderation decision matches the document as a substring as well, in the
+// rule that quarantines a comment. The gateway declares "posted" the one answer
+// that grants, so that rule refuses and nothing is reported on it. Without the
+// declaration every answer other than the default reads as a grant, and it is.
 func TestLooseMatchOnFixture(t *testing.T) {
-	a := fixtureAnalysis(t)
+	declared, err := Load(t.Context(), Inputs{
+		Paths:            []string{fixturePath("policy-v1")},
+		EnforcementPoint: fixturePath("pep.yaml"),
+		DataPath:         fixturePath("data"),
+	})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	var undeclared []string
+	for _, finding := range GrantsOnLooseMatches(fixtureAnalysis(t)) {
+		undeclared = append(undeclared, finding.Decision)
+	}
+	if !slices.Equal(undeclared, []string{"data.quill.library.allow_doc", "data.quill.moderation.verdict"}) {
+		t.Errorf("without the answers declared, findings on %v, want the document and the moderation", undeclared)
+	}
 
-	findings := GrantsOnLooseMatches(a)
+	findings := GrantsOnLooseMatches(declared)
 	if len(findings) != 1 {
 		t.Fatalf("findings = %v, want one", findings)
 	}

@@ -1,0 +1,1 @@
+{"action": "mint", "requested_scopes": ["docs:read"], "role_scopes": ["docs:read", "docs:write"], "delegation_edge": {"scopes": ["docs:read"]}}

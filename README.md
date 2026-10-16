@@ -69,7 +69,7 @@ inside the binary, so there is something to look at before you point the tool at
 policies. It leads with who can take whose place:
 
 ```
-11 files, 19 decisions, parsed as rego v1
+12 files, 26 decisions, parsed as rego v1
 
 Escalations
   mallory -> dave  (PTD-OPA-003, confidence D)
@@ -92,21 +92,29 @@ Findings
     5  PTD-OPA-004  A decision depends on an external source, so whoever controls it decides
     2  PTD-OPA-005  A check that needs an external source stops applying when it does not answer
     1  PTD-OPA-006  One decision lets a principal write the data another decision grants on
-    1  PTD-OPA-007  A check written with every stops applying when its domain is empty
+    2  PTD-OPA-007  A check written with every stops applying when its domain is empty
     1  PTD-OPA-008  A document every request shares decides for anybody who asks
     1  PTD-OPA-009  A request lifts a check on itself by saying it is exempt
     1  PTD-OPA-010  A decision grants on a name somebody else picks
     1  PTD-OPA-011  A decision grants on an identity somebody can assume
-    1  PTD-OPA-012  A decision grants on a value matched more loosely than it is enforced
-    1  PTD-OPA-013  A decision grants a requested authority not bounded by the delegator's
+    3  PTD-OPA-012  A decision grants on a value matched more loosely than it is enforced
+    2  PTD-OPA-013  A decision grants a requested authority not bounded by the delegator's
 
 Candidates, which match a pattern and are not proven
     1  PTD-OPA-003  A position in a hierarchy grants everything below it, and nothing says so
 
 How much to trust this
   Level D (field names): the subject is input.user. 17 reads over 11 data paths.
-  The enforcement point is quill-gateway: it says who sets 15 of the 15 parts of the request the
-  decisions read, and the caller sets 5 of them.
+  The request in vulnerable-bundle/inputs/granted-download.json is granted by
+  data.quill.library.allow_attachment, data.quill.library.allow_attachment_by_folder and
+  data.quill.library.allow_attachment_guarded. A question that starts from a granted request starts
+  there.
+  The request in vulnerable-bundle/inputs/granted-mint.json is granted by
+  data.quill.delegation.allow_mint, data.quill.delegation.allow_mint_catalog and
+  data.quill.delegation.allow_mint_narrowed. A question that starts from a granted request starts
+  there.
+  The enforcement point is quill-gateway: it says who sets 18 of the 18 parts of the request the
+  decisions read, and the caller sets 8 of them.
   The write model covers 6 of 11 paths read (54%).
 ```
 
@@ -150,13 +158,14 @@ export BLOODHOUND_TOKEN_ID=...
 export BLOODHOUND_TOKEN_KEY=...
 petard export -url https://bloodhound.example -install -upload -verify \
   -pep vulnerable-bundle/pep.yaml -write-model vulnerable-bundle/write-model.yaml \
-  -data vulnerable-bundle/data vulnerable-bundle/policy-v1
+  -data vulnerable-bundle/data -granted vulnerable-bundle/inputs/granted-download.json \
+  -granted vulnerable-bundle/inputs/granted-mint.json vulnerable-bundle/policy-v1
 ```
 
 ```
-graph: 67 nodes, 84 edges
+graph: 71 nodes, 84 edges
   3 declared writers name a rule for finding somebody, not somebody, and have no edge
-  96 ways of granting depend on something an edge cannot say, and are left out
+  131 ways of granting depend on something an edge cannot say, and are left out
 schema installed, 3 of 5 relationship kinds are traversable
 saved queries: 39 added, 0 already there
 ingest job 1 started

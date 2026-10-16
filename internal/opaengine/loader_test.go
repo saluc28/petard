@@ -107,7 +107,7 @@ func TestLoadRecordsFiles(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	expected := []string{"admin.rego", "authz.rego", "delegation.rego", "enrichment.rego", "library.rego", "mesh.rego", "platform.rego", "publish.rego", "review.rego", "risk.rego", "tenant_policy.rego"}
+	expected := []string{"admin.rego", "authz.rego", "delegation.rego", "enrichment.rego", "library.rego", "mesh.rego", "moderation.rego", "platform.rego", "publish.rego", "review.rego", "risk.rego", "tenant_policy.rego"}
 	if len(bundle.Files) != len(expected) {
 		t.Fatalf("Files = %v, want %d files", bundle.Files, len(expected))
 	}
@@ -146,15 +146,22 @@ func TestLoadProcessesAnnotations(t *testing.T) {
 		"data.quill.admin.allow",
 		"data.quill.authz.allow",
 		"data.quill.delegation.allow_mint",
+		"data.quill.delegation.allow_mint_catalog",
 		"data.quill.delegation.allow_mint_narrowed",
 		"data.quill.enrichment.allow",
+		"data.quill.library.allow_attachment",
+		"data.quill.library.allow_attachment_by_folder",
+		"data.quill.library.allow_attachment_guarded",
 		"data.quill.library.allow_doc",
 		"data.quill.mesh.allow_sync",
+		"data.quill.moderation.verdict",
 		"data.quill.platform.allow_audit_log",
 		"data.quill.platform.allow_console",
 		"data.quill.platform.allow_reading_room",
 		"data.quill.publish.allow",
 		"data.quill.review.allow_guarded",
+		"data.quill.review.allow_release",
+		"data.quill.review.allow_release_guarded",
 		"data.quill.review.allow_unguarded",
 		"data.quill.risk.allow_default_option",
 		"data.quill.risk.allow_defensive",

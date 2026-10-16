@@ -1,5 +1,5 @@
 # Quill, the decision behind merging a change.
-# Holds: PTD-OPA-007 (case and counter case).
+# Holds: PTD-OPA-007 (case and counter case, written out and inside a function).
 package quill.review
 
 # METADATA
@@ -36,5 +36,41 @@ allow_guarded if {
 	count(input.reviews) > 0
 	every review in input.reviews {
 		review.approved
+	}
+}
+
+# METADATA
+# scope: document
+# title: Release approval decision
+# entrypoint: true
+default allow_release := false
+
+# PTD-OPA-007 CASE, the every inside a function. all_signed checks every
+# signature it is handed, and handed none it holds vacuously: the release goes
+# out signed by nobody. The domain is the collection the call hands over.
+allow_release if {
+	input.action == "release"
+	all_signed(input.signatures)
+}
+
+# METADATA
+# scope: document
+# title: Release approval decision, guarded at the call
+# entrypoint: true
+default allow_release_guarded := false
+
+# PTD-OPA-007 COUNTER CASE, a guard the function does not show. The count sits
+# next to the call, so the body of the function holds no guard, and the decision
+# asked with no signature refuses.
+allow_release_guarded if {
+	input.action == "release"
+	count(input.signatures) > 0
+	all_signed(input.signatures)
+}
+
+# Every signature the release carries is valid.
+all_signed(signatures) if {
+	every signature in signatures {
+		signature.valid
 	}
 }

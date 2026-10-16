@@ -4,7 +4,7 @@ A policy with escalation built into it on purpose, next to the statement, in wor
 analysis has to produce from it and what it has to stay quiet about. It is the criterion the
 patterns are measured against.
 
-Every number here was executed and not estimated, with `opa 1.21.1`. Section 7 has the commands
+Every number here was executed and not estimated, with `opa 1.21.2`. Section 7 has the commands
 to regenerate them.
 
 ---
@@ -16,7 +16,7 @@ fixtures/vulnerable-bundle/
 ├── data/                 tenants, users, projects, documents, settings: the concrete data
 ├── policy-v1/            the policy in Rego v1
 ├── policy-v0/            the same policy in Rego v0, identical semantics
-├── inputs/               sample inputs, kept OUT of the -d directories
+├── inputs/               sample inputs, kept OUT of the -d directories, two of them given as granted
 ├── verify/               the measuring instrument, not part of the bundle
 ├── write-model.yaml      who can write what, the one part not derivable from the policy
 ├── pep.yaml              who sets each part of the request, the gateway in front of Quill
@@ -30,14 +30,14 @@ fixtures/vulnerable-bundle/
 ### The two variants are the same policy
 
 Checked on the value of every rule the two variants produce under `data.quill`, against every one
-of the thirteen inputs under `inputs/`: no divergence between `policy-v1` and `policy-v0`, with the
-rego package of OPA v1.21.1.
+of the fifteen inputs under `inputs/`: no divergence between `policy-v1` and `policy-v0`, with
+`opa 1.21.2`.
 The same pair of trees is also the test of dual parsing:
 
 | | v1 parser | v0 parser (`--v0-compatible`) |
 |---|---|---|
 | `policy-v1/` | passes | 23 errors |
-| `policy-v0/` | 38 errors, 36 of them "`if` keyword is required before rule body" and 2 the same before a function body | passes |
+| `policy-v0/` | 47 errors, 44 of them "`if` keyword is required before rule body" and 3 the same before a function body | passes |
 
 ---
 
@@ -315,6 +315,8 @@ vacuously true and the merge goes through, reviewed by nobody. The engine report
 |---|---|---|
 | case | `review.rego`, `allow_unguarded` on `every review in input.reviews` | finding, the domain can be empty and nothing guards it |
 | counter case | `review.rego`, `allow_guarded`, the same every behind `count(input.reviews) > 0` | nothing, the guard denies the empty case |
+| case | `review.rego`, `allow_release`, the every in `all_signed` over the signatures the call hands it | finding, the domain is `input.signatures`, read at the call |
+| counter case | `review.rego`, `allow_release_guarded`, the same call behind `count(input.signatures) > 0` | nothing, the decision asked with no signature refuses |
 
 Measured with `data.quill.verify.empty_every`:
 
@@ -328,6 +330,22 @@ allow_guarded,   reviews [approved]    allow = true
 
 The counter case is what keeps the pattern from being a lint on the presence of an `every`: the
 same quantifier over the same domain, and only the guard tells the fail-open from the safe form.
+
+The release decision has the same defect one call away. `all_signed` checks every signature it is
+handed, and the domain of its `every` is whatever the call hands over, `input.signatures`. The
+guarded release counts the signatures next to the call, where the body of the function does not
+show it: read off the body it is a match, and asked with no signature, of the policy and of a copy
+where that `every` cannot be vacuous, it refuses in both, so the match is dropped.
+
+Measured with `data.quill.verify.empty_every_function`:
+
+```
+allow_release, signatures []              allow = TRUE    ← fail-open, signed by nobody
+allow_release, signatures [invalid]       allow = false
+allow_release, signatures [valid]         allow = true
+allow_release_guarded, signatures []      allow = false   ← the count at the call denies
+allow_release_guarded, signatures [valid] allow = true
+```
 
 ### PTD-OPA-008, a document every request shares decides for anybody
 
@@ -467,6 +485,33 @@ through. A prefix, a suffix or a glob is a candidate, because the looseness is o
 wildcard. The pattern reports only the grant side: a loose match in a `violation`, an admission
 policy validating the object it is handed, is a deny that under-blocks, a different concern.
 
+The fourth signal asks about a path canonicalized after the decision. `pep.yaml` declares that the
+gateway hands `input.file` to a file store that collapses its dot segments, so the decision judges
+the path as the caller wrote it and the store serves what it resolves to.
+
+| | where | expected |
+|---|---|---|
+| case | `library.rego`, `allow_attachment`, `startswith(input.file, "/files/public/")` | finding, a path that climbs out of the public folder is granted, and what it resolves to is refused |
+| counter case | `library.rego`, `allow_attachment_guarded`, the same prefix behind `not contains(input.file, "..")` | nothing, the climbing path is refused |
+| case | `library.rego`, `allow_attachment_by_folder`, `split(input.file, "/")[2] == "public"` | a candidate that says the decision could not be asked; a finding once `inputs/granted-download.json` is given with `-granted` |
+
+The folder decision holds the path against a component at a fixed place, which leaves partial
+evaluation no condition to build a granted request from. The request the demo gives it is where the
+question starts: the path that leaves `/files/public/handbook.pdf` through dot segments keeps
+`public` as its third component and is granted, and the place it resolves to is refused.
+
+Measured with `data.quill.verify.canonicalized`:
+
+```
+allow_attachment, /files/public/handbook.pdf                                 = true
+allow_attachment, /files/public/handbook.pdf/../../private/payroll.pdf       = TRUE   ← resolves to a private file
+allow_attachment, /files/private/payroll.pdf                                 = false  ← what it resolves to
+allow_attachment_guarded, the climbing path                                  = false  ← the guard refuses it
+allow_attachment_guarded, /files/public/handbook.pdf                         = true
+allow_attachment_by_folder, the climbing path                                = TRUE   ← "public" is still the third component
+allow_attachment_by_folder, /files/private/payroll.pdf                       = false
+```
+
 ### PTD-OPA-013, a requested authority not bounded by the delegator
 
 `delegation.rego` mints a credential for a delegated agent. The agent asks for scopes, and the mint
@@ -496,6 +541,24 @@ ceiling it does not enforce, while it refuses the request past the role, so the 
 Without `-pep` the pattern does not run, and a requested authority declared with no ceiling is a
 candidate, asking what bounds it.
 
+The catalog mint, `allow_mint_catalog`, grants only the scopes of its catalog, bounded by the role
+and not by the edge. The synthetic scope is not in the catalog, so it builds no request the decision
+grants, and without one given the decision is a candidate that says it could not be asked. The demo
+gives it `inputs/granted-mint.json`: asked again with the edge holding none of the scopes the
+request asks for, it grants all the same, so the edge is the ceiling it does not enforce.
+
+| | where | expected |
+|---|---|---|
+| case | `delegation.rego`, `allow_mint_catalog`, a catalog of named scopes, bounded by the role alone | a candidate that says the decision could not be asked; a finding on the edge once `inputs/granted-mint.json` is given with `-granted` |
+
+Measured with `data.quill.verify.delegation_catalog`:
+
+```
+the catalog mint, the request given as granted     allow_mint_catalog = TRUE
+the same, a scope within the role, past the edge   allow_mint_catalog = TRUE   ← the edge does not bound it
+a scope made up for the question                   allow_mint_catalog = false  ← not in the catalog
+```
+
 ---
 
 ## 4. What the engine must not report
@@ -524,18 +587,39 @@ legitimate finding for another.
 | 16 | `input.caller.attested` | 011 | an identity the mesh pins to a verified credential |
 | 17 | `"public" in split(input.doc, "/")` | 012 | a whole path component, not a loose match |
 | 18 | `allow_mint_narrowed` | 013 | the request is bounded by the delegating edge as well |
+| 19 | `allow_release_guarded` | 007 | the count at the call denies the empty case, which the decision asked with no signature shows |
+| 20 | `allow_attachment_guarded` | 012 | a path with a dot segment is refused, so none climbs out of the folder |
+| 21 | `contains(input.doc, "draft")` in `verdict` | 012 | the rule answers `quarantined`, which the gateway declares a refusal |
 
-Expected precision, with the gateway declared: two `PTD_CanEscalateTo` (mallory and carol),
-eighteen findings and one candidate, and none of the rows above under the pattern they belong
-to.
+Row 21 rests on a declaration. The moderation decision answers one value of three, `posted`,
+`quarantined` or `held` by default, and nothing in the policy says which of them lets the comment
+through. `pep.yaml` declares `answers: [posted]` on `verdict`, so the rule that answers
+`quarantined` is on the side that refuses, and its substring match is not a grant. Without the
+declaration every answer other than the default reads as a grant, the report says so under `How
+much to trust this`, and the same match is reported under 012.
 
-The eighteen: one from 001, one from 002, five from 004 (section 3), two from 005, one from 007 on
-`allow_unguarded`, mallory's escalation, which comes out under the id of 003 because that is where
-the registry says a candidate turns into a finding, carol's escalation under 006, the reading room
-under 008, the scheduled export under 009, the group called security under 010, the internal sync
-under 011, the document served by substring under 012, and the mint that does not bound the request
-to the delegating edge under 013. The two escalations are the two findings that are also
-`PTD_CanEscalateTo` edges.
+Measured with `data.quill.verify.moderation`:
+
+```
+a reviewed comment                       verdict = "posted"
+an unreviewed comment on a draft         verdict = "quarantined"   ← the substring match decides it
+an unreviewed comment                    verdict = "held"
+```
+
+Expected precision, with the gateway declared and the two requests of `inputs/` given as granted,
+as the demo runs: two `PTD_CanEscalateTo` (mallory and carol), twenty-two findings and one
+candidate, and none of the rows above under the pattern they belong to. Without the two requests,
+the attachment by folder and the catalog mint are candidates that say they could not be asked:
+twenty findings and three candidates.
+
+The twenty-two: one from 001, one from 002, five from 004 (section 3), two from 005, two from 007
+on `allow_unguarded` and `allow_release`, mallory's escalation, which comes out under the id of
+003 because that is where the registry says a candidate turns into a finding, carol's escalation
+under 006, the reading room under 008, the scheduled export under 009, the group called security
+under 010, the internal sync under 011, three under 012, the document served by substring and the
+two attachments whose path climbs out of the public folder, and two under 013, the mint and the
+catalog mint that do not bound the request to the delegating edge. The two escalations are the two
+findings that are also `PTD_CanEscalateTo` edges.
 
 ---
 
@@ -598,11 +682,11 @@ own would report in both cases.
 The registry rests on one claim: if `regal` can find it by reading a file, it is not a
 pattern.
 
-Run on 2026-09-25 with regal v0.42.0 (which embeds OPA 1.18.2, irrelevant here, but worth
+Run on 2026-10-16 with regal v0.42.0 (which embeds OPA 1.18.2, irrelevant here, but worth
 saying):
 
 ```
-regal lint fixtures/vulnerable-bundle/policy-v1   →  11 files linted. No violations found.
+regal lint fixtures/vulnerable-bundle/policy-v1   →  12 files linted. No violations found.
 ```
 
 The rule categories were confirmed at the source, by listing the directories in the pinned
@@ -781,6 +865,22 @@ opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy
 
 ```bash
 opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.delegation'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.empty_every_function'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.canonicalized'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.delegation_catalog'
+```
+
+```bash
+opa eval -d fixtures/vulnerable-bundle/data -d fixtures/vulnerable-bundle/policy-v1 -d fixtures/vulnerable-bundle/verify -f pretty 'data.quill.verify.moderation'
 ```
 
 Dual parsing, where the first has to pass and the second has to fail:

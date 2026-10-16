@@ -261,3 +261,98 @@ delegation := {
 	past := data.quill.delegation.allow_mint with input as mint_past_edge
 	narrowed := data.quill.delegation.allow_mint_narrowed with input as mint_past_edge
 }
+
+# --- PTD-OPA-007 through a function: the every the release decision calls -----
+# A function checks every signature the release carries. Handed none, its every
+# is vacuously true and the release goes out signed by nobody; the release
+# guarded by a count at the call refuses it.
+release_unsigned := {"action": "release", "signatures": []}
+
+release_forged := {"action": "release", "signatures": [{"valid": false}]}
+
+release_signed := {"action": "release", "signatures": [{"valid": true}]}
+
+empty_every_function := {
+	"release_unsigned": unsigned,
+	"release_forged": forged,
+	"release_signed": signed,
+	"guarded_unsigned": guarded_unsigned,
+	"guarded_signed": guarded_signed,
+} if {
+	unsigned := data.quill.review.allow_release with input as release_unsigned
+	forged := data.quill.review.allow_release with input as release_forged
+	signed := data.quill.review.allow_release with input as release_signed
+	guarded_unsigned := data.quill.review.allow_release_guarded with input as release_unsigned
+	guarded_signed := data.quill.review.allow_release_guarded with input as release_signed
+}
+
+# --- PTD-OPA-012, a path canonicalized after the decision ---------------------
+# The file store collapses the dot segments of the path after the decision. A
+# path that starts in the public folder and climbs out of it is served as it is
+# written, and what it resolves to, a private attachment, is refused when asked
+# for plainly. The guarded decision refuses the climbing path; the decision by
+# folder serves it, since its third component is still "public".
+download_public := {"action": "download", "file": "/files/public/handbook.pdf"}
+
+download_climbing := {"action": "download", "file": "/files/public/handbook.pdf/../../private/payroll.pdf"}
+
+download_private := {"action": "download", "file": "/files/private/payroll.pdf"}
+
+canonicalized := {
+	"public_served": public,
+	"climbing_served": climbing,
+	"private_refused": private,
+	"guarded_refuses_climbing": guarded_climbing,
+	"guarded_serves_public": guarded_public,
+	"by_folder_serves_climbing": folder_climbing,
+	"by_folder_refuses_private": folder_private,
+} if {
+	public := data.quill.library.allow_attachment with input as download_public
+	climbing := data.quill.library.allow_attachment with input as download_climbing
+	private := data.quill.library.allow_attachment with input as download_private
+	guarded_climbing := data.quill.library.allow_attachment_guarded with input as download_climbing
+	guarded_public := data.quill.library.allow_attachment_guarded with input as download_public
+	folder_climbing := data.quill.library.allow_attachment_by_folder with input as download_climbing
+	folder_private := data.quill.library.allow_attachment_by_folder with input as download_private
+}
+
+# --- PTD-OPA-013 from a request given as granted -------------------------------
+# The catalog mint grants only the scopes of its catalog, so the scope a pattern
+# makes up is refused whatever the ceilings hold. The request of
+# inputs/granted-mint.json is minted, and so is the same request asking for a
+# scope within the role and past the edge.
+mint_catalog_within := {"action": "mint", "requested_scopes": ["docs:read"], "role_scopes": ["docs:read", "docs:write"], "delegation_edge": {"scopes": ["docs:read"]}}
+
+mint_catalog_past_edge := {"action": "mint", "requested_scopes": ["docs:write"], "role_scopes": ["docs:read", "docs:write"], "delegation_edge": {"scopes": ["docs:read"]}}
+
+mint_made_up_scope := {"action": "mint", "requested_scopes": ["petard-scope"], "role_scopes": ["petard-scope"], "delegation_edge": {"scopes": ["petard-scope"]}}
+
+delegation_catalog := {
+	"minted_within_the_edge": within,
+	"minted_past_the_edge": past,
+	"made_up_scope_refused": made_up,
+} if {
+	within := data.quill.delegation.allow_mint_catalog with input as mint_catalog_within
+	past := data.quill.delegation.allow_mint_catalog with input as mint_catalog_past_edge
+	made_up := data.quill.delegation.allow_mint_catalog with input as mint_made_up_scope
+}
+
+# --- The declared answer -------------------------------------------------------
+# The moderation decision answers one value of three. "posted" is the one the
+# gateway acts on; "quarantined", which the substring match on the document
+# decides, keeps the comment back as "held" does.
+comment_reviewed := {"action": "comment", "reviewed": true, "doc": "d-t11-1"}
+
+comment_on_a_draft := {"action": "comment", "reviewed": false, "doc": "draft-roadmap"}
+
+comment_unreviewed := {"action": "comment", "reviewed": false, "doc": "d-t11-1"}
+
+moderation := {
+	"reviewed": reviewed,
+	"unreviewed_on_a_draft": on_a_draft,
+	"unreviewed": unreviewed,
+} if {
+	reviewed := data.quill.moderation.verdict with input as comment_reviewed
+	on_a_draft := data.quill.moderation.verdict with input as comment_on_a_draft
+	unreviewed := data.quill.moderation.verdict with input as comment_unreviewed
+}

@@ -1,5 +1,6 @@
 # Quill, the decision that mints a credential for a delegated agent.
-# Holds: PTD-OPA-013 (case and counter case).
+# Holds: PTD-OPA-013 (case and counter case, and a case asked from a request
+# given as granted).
 package quill.delegation
 
 # METADATA
@@ -34,6 +35,28 @@ allow_mint_narrowed if {
 	count(input.requested_scopes) > 0
 	every scope in input.requested_scopes {
 		scope in input.delegation_edge.scopes
+	}
+	every scope in input.requested_scopes {
+		scope in input.role_scopes
+	}
+}
+
+# METADATA
+# scope: document
+# title: Mint a delegated credential from the scope catalog
+# entrypoint: true
+default allow_mint_catalog := false
+
+# PTD-OPA-013 CASE, asked from a request given as granted. The mint grants only
+# the scopes of its catalog, bounded by the agent's own role and not by the
+# delegating edge. A scope the pattern makes up is not in the catalog, so it
+# builds no request this decision grants, and the decision is asked from
+# inputs/granted-mint.json.
+allow_mint_catalog if {
+	input.action == "mint"
+	count(input.requested_scopes) > 0
+	every scope in input.requested_scopes {
+		scope in {"docs:read", "docs:write", "comments:write"}
 	}
 	every scope in input.requested_scopes {
 		scope in input.role_scopes

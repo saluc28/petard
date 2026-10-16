@@ -32,3 +32,34 @@ allow_guarded {
 		review.approved
 	}
 }
+
+# METADATA
+# scope: document
+# title: Release approval decision
+# entrypoint: true
+default allow_release = false
+
+# PTD-OPA-007 CASE, the every inside a function
+allow_release {
+	input.action == "release"
+	all_signed(input.signatures)
+}
+
+# METADATA
+# scope: document
+# title: Release approval decision, guarded at the call
+# entrypoint: true
+default allow_release_guarded = false
+
+# PTD-OPA-007 COUNTER CASE, a guard next to the call
+allow_release_guarded {
+	input.action == "release"
+	count(input.signatures) > 0
+	all_signed(input.signatures)
+}
+
+all_signed(signatures) {
+	every signature in signatures {
+		signature.valid
+	}
+}

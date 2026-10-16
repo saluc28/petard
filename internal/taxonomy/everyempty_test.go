@@ -1,6 +1,7 @@
 package taxonomy
 
 import (
+	"maps"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -8,33 +9,45 @@ import (
 	"github.com/saluc28/petard/internal/opaengine"
 )
 
-// The case of PTD-OPA-007 on the real fixture: the merge decision approves when
+// The cases of PTD-OPA-007 on the real fixture. The merge decision approves when
 // every reviewer approves, and with no reviewers the every is vacuously true, so
-// the merge goes through unreviewed. The finding has to come out of the real
-// policy, not out of a ReadSet written to produce it.
+// the merge goes through unreviewed. The release decision does the same through
+// a function handed the signatures. Read off the body, the release guarded at
+// its call is a match too; asked with no signature, it refuses, and the match
+// is dropped. The findings have to come out of the real policy, not out of a
+// ReadSet written to produce them.
 func TestFailOpenOnEmptyEveryOnFixture(t *testing.T) {
 	reads, _, _ := analyzeFixture(t)
 
-	findings := FailOpenOnEmptyEvery(reads)
-	if len(findings) != 1 {
-		t.Fatalf("findings = %d, want the one unguarded every the fixture holds:\n%v", len(findings), findings)
+	matched := map[string]string{}
+	for _, f := range FailOpenOnEmptyEvery(reads) {
+		if f.PatternID != EveryOverEmptyDomain || f.Verdict != VerdictFinding {
+			t.Errorf("%s: pattern %s, verdict %s, want a finding of %s", f.Decision, f.PatternID, f.Verdict, EveryOverEmptyDomain)
+		}
+		if len(f.Reads) == 0 || f.Reads[0].Line == 0 {
+			t.Errorf("%s: the finding points at no line of policy: %+v", f.Decision, f.Reads)
+		}
+		matched[f.Decision] = f.Path
+	}
+	want := map[string]string{
+		"data.quill.review.allow_unguarded":       "input.reviews",
+		"data.quill.review.allow_release":         "input.signatures",
+		"data.quill.review.allow_release_guarded": "input.signatures",
+	}
+	if !maps.Equal(matched, want) {
+		t.Errorf("matched = %v, want %v", matched, want)
 	}
 
-	f := findings[0]
-	if f.PatternID != EveryOverEmptyDomain {
-		t.Errorf("pattern = %s, want %s", f.PatternID, EveryOverEmptyDomain)
+	findings, err := GrantsOnEmptyEvery(t.Context(), fixtureAnalysis(t))
+	if err != nil {
+		t.Fatalf("GrantsOnEmptyEvery() error = %v", err)
 	}
-	if f.Verdict != VerdictFinding {
-		t.Errorf("verdict = %s, want a finding", f.Verdict)
+	var reported []string
+	for _, f := range findings {
+		reported = append(reported, f.Decision)
 	}
-	if f.Decision != "data.quill.review.allow_unguarded" {
-		t.Errorf("decision = %q, want the unguarded merge decision", f.Decision)
-	}
-	if f.Path != "input.reviews" {
-		t.Errorf("domain = %q, want input.reviews", f.Path)
-	}
-	if len(f.Reads) == 0 || f.Reads[0].Line == 0 {
-		t.Errorf("the finding points at no line of policy: %+v", f.Reads)
+	if !slices.Equal(reported, []string{"data.quill.review.allow_release", "data.quill.review.allow_unguarded"}) {
+		t.Errorf("reported = %v, want the release through the function and the unguarded merge", reported)
 	}
 }
 

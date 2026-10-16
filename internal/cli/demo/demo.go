@@ -102,13 +102,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 // bundleArguments hand petard analyze the bundle unpacked at root: what the
-// bundle declares next to its policy, then the policy. The demo runs with them
-// and prints them for a run of one's own, so the two say the same thing.
+// bundle declares next to its policy, the requests it says its decisions grant,
+// then the policy. The demo runs with them and prints them for a run of one's
+// own, so the two say the same thing.
 func bundleArguments(root string) []string {
 	return []string{
 		"-pep", filepath.Join(root, "pep.yaml"),
 		"-write-model", filepath.Join(root, "write-model.yaml"),
 		"-data", filepath.Join(root, "data"),
+		"-granted", filepath.Join(root, "inputs", "granted-download.json"),
+		"-granted", filepath.Join(root, "inputs", "granted-mint.json"),
 		filepath.Join(root, "policy-v1"),
 	}
 }

@@ -207,18 +207,27 @@ func TestGlobalSwitchRestsOnThePolicyNotTheData(t *testing.T) {
 }
 
 // The every-over-empty pattern rests on the policy, not the data, so on every
-// generated world it reports the same one finding, the unguarded merge decision,
-// and never another. It is the same property `PTD-OPA-004` and `PTD-OPA-005`
-// have: a dataset does not move a defect that lives in the shape of the rule. A
-// second finding here would be the engine reading the data where it must not.
+// generated world it matches the same three decisions, the unguarded merge and
+// the two releases, and never another. It is the same property `PTD-OPA-004`
+// and `PTD-OPA-005` have: a dataset does not move a defect that lives in the
+// shape of the rule. Another match here would be the engine reading the data
+// where it must not.
 func TestEveryEmptyRestsOnThePolicyNotTheData(t *testing.T) {
+	want := []string{
+		"data.quill.review.allow_release",
+		"data.quill.review.allow_release_guarded",
+		"data.quill.review.allow_unguarded",
+	}
 	for _, seed := range []uint64{1, 7, 4242} {
 		t.Run(fmt.Sprintf("seed %d", seed), func(t *testing.T) {
 			_, a := analyzeGenerated(t, fixture.Small(seed))
 
-			findings := FailOpenOnEmptyEvery(a.Reads)
-			if len(findings) != 1 || findings[0].Decision != "data.quill.review.allow_unguarded" {
-				t.Errorf("every-empty on generated data = %v, want only the unguarded merge decision", findings)
+			var matched []string
+			for _, finding := range FailOpenOnEmptyEvery(a.Reads) {
+				matched = append(matched, finding.Decision)
+			}
+			if !slices.Equal(matched, want) {
+				t.Errorf("every-empty on generated data = %v, want %v", matched, want)
 			}
 		})
 	}

@@ -367,7 +367,7 @@ func printTrust(out io.Writer, a taxonomy.Analysis, coverage taxonomy.Coverage, 
 		// Which decisions grant it is what the request stands for in this run,
 		// and whoever gave it may have had another one in mind.
 		render.Print(out, fmt.Sprintf("The request in %s is granted by %s. A question that starts from a "+
-			"granted request starts there.", filepath.ToSlash(request.File), strings.Join(request.Decisions, " and ")), "  ")
+			"granted request starts there.", filepath.ToSlash(request.File), listed(request.Decisions, "and")), "  ")
 	}
 
 	if point := a.EnforcementPoint; point != nil {

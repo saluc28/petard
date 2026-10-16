@@ -44,6 +44,24 @@ decisions:
     side: grants
   - rule: allow_mint_narrowed
     side: grants
+  - rule: allow_mint_catalog
+    side: grants
+  - rule: allow_release
+    side: grants
+  - rule: allow_release_guarded
+    side: grants
+  - rule: allow_attachment
+    side: grants
+  - rule: allow_attachment_guarded
+    side: grants
+  - rule: allow_attachment_by_folder
+    side: grants
+  # THE DECLARED ANSWER. The moderation decision answers one value of several,
+  # and the gateway posts the comment on "posted" alone: "held" and
+  # "quarantined" both keep it back.
+  - rule: verdict
+    side: grants
+    answers: [posted]
 
 fields:
   - path: input.user
@@ -139,6 +157,15 @@ fields:
     note: The scopes the agent's own role grants.
     evidence:
       - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-013"
+  # THE PTD-OPA-012 CASE of the fourth signal. The gateway hands the path of an
+  # attachment to the file store, which collapses its dot segments after the
+  # decision has been made on the path as the caller wrote it.
+  - path: input.file
+    set_by: caller
+    canonicalized_after_decision: [dot-segments]
+    note: The path of the attachment asked for, as the caller wrote it.
+    evidence:
+      - "fixtures/vulnerable-bundle/EXPECTED.md, section 3, PTD-OPA-012"
   # THE PTD-OPA-009 CASE falls here: input.scheduled is in the body of the
   # request, with what the caller asks for.
   - path: input.*

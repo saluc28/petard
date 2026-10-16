@@ -126,6 +126,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `petard demo` and the bundle it carries hold a case and a counter case for the new signals: an
+  `every` inside a function, and the same call guarded by a count next to it, under `PTD-OPA-007`;
+  an attachment path the file store canonicalizes after the decision, the same prefix behind a
+  refusal of dot segments, and a folder held by component, under `PTD-OPA-012`; a mint that grants
+  the scopes of a catalog alone, under `PTD-OPA-013`; and a moderation decision whose answers the
+  gateway declares. The demo gives the two requests of `inputs/` as granted, which the folder and
+  the catalog mint are asked from, and reports twenty-two findings.
 - The extension schema, now `v0.2.4`, shows on a `PTD_CanEscalateTo` edge the request that proves
   it, which the payload carries as `witness_request`, `witness_document`, `witness_value` and
   `witness_write_request`, and describes `PTD-OPA-011`, `PTD-OPA-012` and `PTD-OPA-013` in the Entity

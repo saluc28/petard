@@ -546,11 +546,17 @@ func describeCheckSide(decision opaengine.CheckedDecision) string {
 
 // oneOf writes alternatives the way a sentence lists them: a, b or c.
 func oneOf(alternatives []string) string {
-	if len(alternatives) < 2 {
-		return strings.Join(alternatives, "")
+	return listed(alternatives, "or")
+}
+
+// listed writes items the way a sentence lists them, with the word that joins
+// the last one: a, b and c.
+func listed(items []string, word string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
 	}
-	last := len(alternatives) - 1
-	return strings.Join(alternatives[:last], ", ") + " or " + alternatives[last]
+	last := len(items) - 1
+	return strings.Join(items[:last], ", ") + " " + word + " " + items[last]
 }
 
 // describeShape prints only the parts that were recognized. A field left out
