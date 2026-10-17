@@ -74,6 +74,9 @@ func TestVersionSaysWhichBuild(t *testing.T) {
 		if !strings.Contains(out, "\nopa v") {
 			t.Errorf("%s does not say which OPA is compiled in:\n%s", name, out)
 		}
+		if !strings.Contains(out, "\nspicedb v") {
+			t.Errorf("%s does not say which SpiceDB is compiled in:\n%s", name, out)
+		}
 	}
 }
 

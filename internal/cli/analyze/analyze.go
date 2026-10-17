@@ -18,6 +18,7 @@ import (
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
+	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
@@ -50,7 +51,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stderr, "usage: petard analyze [flags] <path>...\n\n"+
 			"Paths are Rego files, directories holding them, bundle archives such as bundle.tar.gz,\n"+
 			"or the URL of a running OPA, whose policies are read over its API; a bearer token for it\n"+
-			"is read from $"+taxonomy.TokenEnv+".\n\n")
+			"is read from $"+taxonomy.TokenEnv+". SpiceDB schema files (.zed) and validation files under\n"+
+			"the paths are read as well.\n\n")
 		flags.PrintDefaults()
 	}
 
@@ -119,6 +121,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
+	// Before the policies, so that a schema that does not compile stops the
+	// run the way a policy that does not parse does.
+	spiceFiles, err := spicedb.Find(paths)
+	if err != nil {
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+		return exitFailure
+	}
+	style := render.StyleFor(stdout, *noColor)
+
 	ctx := context.Background()
 	analyzed, err := taxonomy.Load(ctx, taxonomy.Inputs{
 		Paths:            paths,
@@ -138,6 +149,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			MaxResiduals: *maxResiduals,
 		},
 	})
+	if errors.Is(err, opaengine.ErrNoModules) && len(spiceFiles) > 0 {
+		if !*quiet {
+			printSpiceDB(stdout, spiceFiles, style)
+		}
+		return exitOK
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
@@ -156,7 +173,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	found := summarize(analyzed, findings, patterns)
 	printSummary(stdout, analyzed, found, coverage, printing{
-		style:   render.StyleFor(stdout, *noColor),
+		style:   style,
 		quiet:   *quiet,
 		verbose: *verbose,
 	})
@@ -208,6 +225,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			}
 			fmt.Fprintf(stdout, "\n%d %s written to %s\n", written, entries, *questionsPath)
 		}
+	}
+	if len(spiceFiles) > 0 && !*quiet {
+		fmt.Fprintln(stdout)
+		printSpiceDB(stdout, spiceFiles, style)
 	}
 	return exitCode(found, *failOn)
 }

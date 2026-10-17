@@ -125,10 +125,13 @@ func helpFor(name string, stdout, stderr io.Writer) int {
 //
 // OPA is the parser and the evaluator, so the answer to "why does this bundle
 // report differently than it did last month" is usually which one is linked in.
-// bhgraph decides what BloodHound is asked to accept. They are compiled in, not
-// called, so nobody can swap them without a new binary, and a report is only
-// reproducible next to the versions that produced it.
+// SpiceDB plays the same part for a schema: its compiler reads it, and its CEL
+// environment is the one caveats are evaluated in. bhgraph decides what
+// BloodHound is asked to accept. They are compiled in, not called, so nobody can swap them without a
+// new binary, and a report is only reproducible next to the versions that
+// produced it.
 var reported = []string{
+	"github.com/authzed/spicedb",
 	"github.com/open-policy-agent/opa",
 	"github.com/saluc28/bhgraph",
 }

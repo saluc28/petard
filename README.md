@@ -208,8 +208,8 @@ Invoke-WebRequest -Uri "https://github.com/saluc28/petard/releases/latest/downlo
 
 In a pipeline, `ghcr.io/saluc28/petard:latest`, or pin the version.
 
-`petard version` says which build it is and which OPA is compiled into it, which is what an
-analysis depends on.
+`petard version` says which build it is and which OPA and SpiceDB are compiled into it, which is
+what an analysis depends on.
 
 ## Reading it in BloodHound
 

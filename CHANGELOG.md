@@ -7,6 +7,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `petard analyze` reads SpiceDB schema files (`.zed`) and validation files, the format
+  `zed validate` and the SpiceDB playground read, under the paths it is given. For each file it
+  counts what the schema declares (definitions, relations, permissions and caveats) and, for a
+  validation file, the relationships, assertions and expected relations it holds. No pattern runs on
+  them in this version, and the run says so. A path that holds SpiceDB files and no policy is read
+  instead of refused.
+- SpiceDB files are read only from under the paths given. A validation file whose `schemaFile` is
+  absolute or leads out of them is refused, and so is one that holds a schema and names a
+  `schemaFile` as well, which SpiceDB refuses too.
+
+### Changed
+
+- SpiceDB v1.56.2 is compiled in, and schemas are read with its own compiler. `petard version` names
+  it beside OPA and bhgraph. Building from source needs Go 1.26.6 or later.
+
 ## [0.5.0] - 2026-10-16
 
 ### Added
