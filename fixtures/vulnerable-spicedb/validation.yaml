@@ -1,0 +1,24 @@
+schemaFile: schema.zed
+relationships: |-
+  // Olivia owns the roadmap. Erin edits it until the first of November, and
+  // Vic views it from the office network only.
+  document:roadmap#owner@user:olivia
+  document:roadmap#editor@user:erin[not_expired:{"until":"2026-11-01T00:00:00Z"}]
+  document:roadmap#viewer@user:vic[ip_allowlist:{"cidr":"10.0.0.0/8"}]
+
+  // The design team views it from anywhere.
+  document:roadmap#viewer@team:design#member
+  team:design#member@user:dana
+assertions:
+  assertTrue:
+    - 'document:roadmap#view@user:vic with {"user_ip": "10.1.2.3"}'
+    - 'document:roadmap#edit@user:erin with {"now": "2026-10-20T00:00:00Z"}'
+    - document:roadmap#view@user:dana
+    - document:roadmap#edit@user:olivia
+  assertFalse:
+    - 'document:roadmap#view@user:vic with {"user_ip": "192.168.0.1"}'
+    - 'document:roadmap#edit@user:erin with {"now": "2026-12-01T00:00:00Z"}'
+    - document:roadmap#edit@user:dana
+  assertCaveated:
+    - document:roadmap#view@user:vic
+    - document:roadmap#edit@user:erin

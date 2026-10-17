@@ -155,6 +155,7 @@ func find(all []taxonomy.Pattern, wanted string) (taxonomy.Pattern, bool) {
 }
 
 func printEntry(out io.Writer, e entry, file string) {
+	words := wordingFor(e.Engine)
 	fmt.Fprintf(out, "%s  %s\n", e.ID, e.Name)
 	render.Print(out, render.Plain(e.Title), "")
 
@@ -188,7 +189,7 @@ func printEntry(out io.Writer, e entry, file string) {
 		if e.Detection.RequiresWriteModel {
 			fmt.Fprintln(out)
 			render.Print(out, "It needs a write model. Without one it reports candidates at most, "+
-				"because the last signal is about who can write, and that is not in the policy.", "  ")
+				"because "+words.whoWrites+".", "  ")
 		}
 		if slices.Contains(e.Detection.Requires, requiresEnforcementPoint) {
 			fmt.Fprintln(out)
@@ -215,7 +216,7 @@ func printEntry(out io.Writer, e entry, file string) {
 			if fp.Discriminator != "" {
 				render.Print(out, "Told apart by: "+render.Plain(fp.Discriminator), "    ")
 			}
-			render.Print(out, settled(fp.Measurement, fp.Case != nil && fp.Case.Reports), "    ")
+			render.Print(out, settled(fp.Measurement, fp.Case != nil && fp.Case.Reports, words), "    ")
 		}
 	}
 
@@ -231,16 +232,39 @@ func printEntry(out io.Writer, e entry, file string) {
 
 // settled says how a declared false positive was settled, which is what
 // separates a pattern somebody verified from one somebody asserted.
-func settled(measurement string, reports bool) string {
+func settled(measurement string, reports bool, words wording) string {
 	switch {
 	case measurement == taxonomy.MeasurementCase && reports:
-		return "The registry carries a policy that realizes this, and the engine still reports it."
+		return "The registry carries " + words.aCase + " that realizes this, and the engine still reports it."
 	case measurement == taxonomy.MeasurementCase:
-		return "The registry carries a policy that realizes this, and the engine tells it apart."
+		return "The registry carries " + words.aCase + " that realizes this, and the engine tells it apart."
 	case measurement == taxonomy.MeasurementOutOfBand:
-		return "Neither the policy nor the data holds what would tell the two apart. A person has to."
+		return "Neither " + words.model + " nor " + words.sample + " holds what would tell the two apart. A person has to."
 	default:
 		return "How this one is settled is not written down yet."
+	}
+}
+
+// wording is how an explanation names what the engine of a pattern reads, so
+// that a Zanzibar pattern is not explained in terms of policies.
+type wording struct {
+	model, sample, aCase, whoWrites string
+}
+
+func wordingFor(engine string) wording {
+	if engine == "zanzibar" {
+		return wording{
+			model:     "the schema",
+			sample:    "the validation file",
+			aCase:     "a validation file",
+			whoWrites: "who writes the relation, and with what context, is not in the schema",
+		}
+	}
+	return wording{
+		model:     "the policy",
+		sample:    "the data",
+		aCase:     "a policy",
+		whoWrites: "the last signal is about who can write, and that is not in the policy",
 	}
 }
 

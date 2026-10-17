@@ -10,6 +10,31 @@ import (
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
+// A pattern of another engine is explained in the terms of that engine: a
+// Zanzibar pattern reads a schema and a validation file, not a policy.
+func TestExplainSpeaksTheEngineOfThePattern(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"PTD-ZAN-001"}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"PTD-ZAN-001  writer-set-check-parameter",
+		"Engine    zanzibar",
+		"is not in the schema",
+		"The registry carries a validation file that realizes this",
+		"Neither the schema nor the validation file holds",
+		"taxonomy-registry/zanzibar/PTD-ZAN-001-writer-set-check-parameter.yaml",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the explanation does not say %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "policy") {
+		t.Errorf("a Zanzibar pattern is explained in terms of a policy:\n%s", out)
+	}
+}
+
 // What a finding costs the reader is a trip to the repository, and this is the
 // command that saves it: the same file, in the terminal, out of the binary.
 func TestExplainPrintsThePatternBehindAFinding(t *testing.T) {

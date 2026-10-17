@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/saluc28/petard/internal/cli/render"
 	"github.com/saluc28/petard/internal/graph"
@@ -129,10 +130,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	style := render.StyleFor(stdout, *noColor)
+	spice := runSpiceDB(spiceFiles, time.Now())
+	pr := printing{style: style, quiet: *quiet, verbose: *verbose}
 
 	ctx := context.Background()
 	analyzed, err := taxonomy.Load(ctx, taxonomy.Inputs{
-		Paths:            paths,
+		Paths:            policyPaths(paths, spiceFiles),
 		Mode:             mode,
 		Entrypoints:      entrypoints,
 		DenyEntrypoints:  denyEntrypoints,
@@ -150,10 +153,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		},
 	})
 	if errors.Is(err, opaengine.ErrNoModules) && len(spiceFiles) > 0 {
-		if !*quiet {
-			printSpiceDB(stdout, spiceFiles, style)
-		}
-		return exitOK
+		printSpiceDB(stdout, spice, patterns, pr)
+		return spice.exitCode(*failOn)
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
@@ -226,11 +227,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "\n%d %s written to %s\n", written, entries, *questionsPath)
 		}
 	}
-	if len(spiceFiles) > 0 && !*quiet {
+	if len(spiceFiles) > 0 && (!*quiet || len(spice.matches) > 0) {
 		fmt.Fprintln(stdout)
-		printSpiceDB(stdout, spiceFiles, style)
+		printSpiceDB(stdout, spice, patterns, pr)
 	}
-	return exitCode(found, *failOn)
+	return max(exitCode(found, *failOn), spice.exitCode(*failOn))
 }
 
 // How -fail-on is spelled, and what each spelling counts.

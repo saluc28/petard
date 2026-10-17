@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/authzed/spicedb/pkg/tuple"
 	yaml "go.yaml.in/yaml/v3"
@@ -44,36 +45,21 @@ type File struct {
 
 	// Assertions are the checks the file asserts, and ExpectedRelations
 	// counts the relations whose subjects it lists.
-	Assertions        []Assertion
+	Assertions        []zanzibar.Assertion
 	ExpectedRelations int
 }
 
-// Assertion is one check a validation file asserts, with the answer it
-// asserts: assertTrue for Yes, assertFalse for No, assertCaveated for
-// Conditional.
-type Assertion struct {
-	Resource zanzibar.Object
-	Name     string
-	Subject  zanzibar.Subject
-
-	// Context is what the check supplies for caveats, written after "with",
-	// nil when it supplies nothing. It is what tells a parameter meant to come
-	// with the check from one meant to be written on a relationship.
-	Context map[string]any
-
-	Level zanzibar.Level
-	zanzibar.Position
-}
-
-// String writes the assertion as the file does.
-func (a Assertion) String() string {
-	s := a.Resource.String() + "#" + a.Name + "@" + a.Subject.String()
-	if a.Context == nil {
-		return s
+// Sample is what the file holds about its schema, for the patterns of the
+// engine to read: the relationships, the checks it asserts, and the caveats
+// evaluated the way SpiceDB evaluates them. now is when expirations are read.
+func (f *File) Sample(now time.Time) zanzibar.Sample {
+	return zanzibar.Sample{
+		Model:         f.Schema.Model,
+		Relationships: f.Relationships,
+		Assertions:    f.Assertions,
+		Caveats:       f.Schema,
+		Now:           now,
 	}
-	// A context read from JSON encodes back to JSON.
-	encoded, _ := json.Marshal(a.Context)
-	return s + " with " + string(encoded)
 }
 
 // validationKeys are the top level keys of a validation file
@@ -302,17 +288,17 @@ func (r reader) readValidation(rel string) (*File, error) {
 // (pkg/validationfile/blocks/assertions.go:82-128 at v1.56.2): a check in the
 // notation of a relationship, then, after " with ", the context it supplies as
 // a JSON object.
-func parseAssertion(file string, node yaml.Node, level zanzibar.Level) (Assertion, error) {
+func parseAssertion(file string, node yaml.Node, level zanzibar.Level) (zanzibar.Assertion, error) {
 	pos := zanzibar.Position{File: file, Line: node.Line, Column: node.Column}
 	if node.Kind != yaml.ScalarNode {
-		return Assertion{}, fmt.Errorf("%w: %s: an assertion is not a string", ErrValidationFile, pos)
+		return zanzibar.Assertion{}, fmt.Errorf("%w: %s: an assertion is not a string", ErrValidationFile, pos)
 	}
 	check, context, withContext := strings.Cut(strings.TrimSpace(node.Value), " with ")
 	rel, err := tuple.Parse(strings.TrimSpace(check))
 	if err != nil {
-		return Assertion{}, fmt.Errorf("%w: %s: assertion %q: %w", ErrValidationFile, pos, node.Value, err)
+		return zanzibar.Assertion{}, fmt.Errorf("%w: %s: assertion %q: %w", ErrValidationFile, pos, node.Value, err)
 	}
-	a := Assertion{
+	a := zanzibar.Assertion{
 		Resource: zanzibar.Object{Type: rel.Resource.ObjectType, ID: rel.Resource.ObjectID},
 		Name:     rel.Resource.Relation,
 		Subject:  lowerSubject(rel.Subject),
@@ -321,7 +307,7 @@ func parseAssertion(file string, node yaml.Node, level zanzibar.Level) (Assertio
 	}
 	if withContext {
 		if err := json.Unmarshal([]byte(context), &a.Context); err != nil {
-			return Assertion{}, fmt.Errorf("%w: %s: context of assertion %q: %w", ErrValidationFile, pos, node.Value, err)
+			return zanzibar.Assertion{}, fmt.Errorf("%w: %s: context of assertion %q: %w", ErrValidationFile, pos, node.Value, err)
 		}
 	}
 	return a, nil

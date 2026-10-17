@@ -1,0 +1,239 @@
+schema_version: 2
+
+id: PTD-ZAN-001
+name: writer-set-check-parameter
+title: A relationship fixes a caveat value the check was meant to supply
+closes: >
+  Refusing, on the path that writes the relationship, a context that sets a parameter the check
+  supplies closes it: SpiceDB itself accepts any parameter of the caveat.
+engine: zanzibar
+front_ends: [spicedb]
+status: implemented
+
+category:
+  id: SELF-ASSERTED-EXEMPTION
+  title: Self-asserted exemption
+  summary: >
+    A check refuses unless the request is exempt, and the request is where the exemption is
+    read. Whoever sends it says whether it applies to them.
+    Abstract category: it holds for any engine that decides on attributes of the request, where
+    the attribute that lifts a check is one the caller writes.
+  category_note: >
+    The first Zanzibar instance. The value that lifts the condition is written ahead of the check,
+    on the relationship the check goes through, and from then on the condition reads it whatever
+    the check brings. Whoever writes the relationship asserts it once for every check to come.
+
+summary: >
+  A caveat holds a relationship to a condition on values the check is meant to supply: the address
+  of the caller, the time of the request. A relationship carries the caveat with a context, the
+  context is written over the one the check supplies, and a write may set any parameter of the
+  caveat. So whoever writes the relationship can write the address or the time as well, and the
+  condition then reads their value instead of the check's, on every check that goes through it.
+  In the fixture, a viewer of the roadmap is held to the office network, and the caller's address
+  comes with the check; an editor is held to a date, and the time comes with the check. Written
+  with an address inside the network, the viewer is let in from anywhere. Written with a time
+  before the date, the editor never expires.
+
+preconditions:
+  - capability: The principal can write a relationship of the relation, with its caveat and a context of its choosing
+    note: >
+      Which context reaches SpiceDB is decided by the application that writes the relationship.
+      SpiceDB checks the keys against the parameters of the caveat and nothing else.
+
+mechanism:
+  description: >
+    `user_ip.in_cidr(cidr)` reads two parameters, and nothing in the schema says which of them the
+    relationship carries and which the check brings. The relationships of the file write `cidr`
+    and leave `user_ip` out, and the checks supply `user_ip`, which is the evidence the engine
+    reads. A relationship written with `user_ip` as well keeps that value: SpiceDB runs the caveat
+    on the context of the check with the context of the relationship copied over it, so the
+    address the check brings no longer counts.
+  example: |
+    schema: |-
+      caveat ip_allowlist(user_ip ipaddress, cidr string) {
+        user_ip.in_cidr(cidr)
+      }
+
+      definition user {}
+
+      definition document {
+        relation viewer: user with ip_allowlist
+        permission view = viewer
+      }
+    relationships: |-
+      document:roadmap#viewer@user:vic[ip_allowlist:{"cidr":"10.0.0.0/8"}]
+    assertions:
+      assertTrue:
+        - 'document:roadmap#view@user:vic with {"user_ip": "10.1.2.3"}'
+      assertFalse:
+        - 'document:roadmap#view@user:vic with {"user_ip": "192.168.0.1"}'
+  example_note: >
+    Measured with zed v1.2.1, whose validation is SpiceDB's own: the file is valid as written, and
+    with the relationship written as
+    `document:roadmap#viewer@user:vic[ip_allowlist:{"cidr":"10.0.0.0/8","user_ip":"10.1.2.3"}]`
+    the check from `192.168.0.1` is granted, and so is a check that supplies no address at all.
+
+detection:
+  requires:
+    - relationships
+    - assertions
+    - caveat-evaluation
+  requires_note: >
+    `relationships` and `assertions` for signal 2, the evidence of which parameters the check is
+    meant to supply, and `caveat-evaluation` for signal 3, which asks SpiceDB's own environment
+    whether a check changes its answer. A schema with no validation file holds no evidence, and
+    the pattern says nothing about it.
+  signals:
+    - order: 1
+      check: >
+        A relation lets its relationships carry a caveat, and the caveat declares a parameter.
+      rationale: >
+        A write may set any declared parameter of the caveat
+        (`internal/relationships/validation.go:248-262` at v1.56.2), and the context of the
+        relationship is copied over the one the check supplies
+        (`internal/caveats/run.go:222-230`). Every parameter of a caveat on a relation is
+        therefore one its writers can fix.
+    - order: 2
+      check: >
+        The sample says the parameter is meant for the check: an assertion supplies it after
+        `with`, or relationships of the relation that carry the caveat leave it out while none
+        writes it.
+      rationale: >
+        Which parameters are the check's is in no schema. The checks somebody wrote down, and the
+        relationships somebody wrote, are where it shows. A parameter every relationship writes and
+        no check supplies, the network or the date of the fixture, is the writer's by design and
+        is left alone.
+    - order: 3
+      check: >
+        Each value the checks supply for the parameter is written on each relationship that leaves
+        it out, and the checks of the file are asked again. A check whose answer rises is the
+        witness, before and after.
+      rationale: >
+        It shows what the write does to a check the file already asks, in SpiceDB's own CEL
+        environment. The match is reported with or without one: a file whose checks do not reach
+        the relationship shows nothing, and the parameter is still the writer's.
+  requires_write_model: true
+  requires_write_model_note: >
+    Whether the coalition writes the relation, and chooses the context it is written with, is not
+    in the schema. petard reads no write model for Zanzibar models, so every match is a candidate.
+
+graph:
+  emits: candidate
+  marks: []
+  marks_note: >
+    No mark: `petard export` reads no SpiceDB schema.
+
+false_positives:
+  - condition: >
+      The parameter is meant to be written as well as supplied: some relationships fix it on
+      purpose, a service that always calls from one address, and the checks supply it for
+      everybody else.
+    discriminator: >
+      Which relationships may carry the parameter is the intent of whoever designed the schema. The
+      match says how many relationships of the relation write it already, so the reader sees the
+      two uses side by side.
+    measurement: case
+    case:
+      validation: |
+        schema: |-
+          caveat ip_allowlist(user_ip ipaddress, cidr string) {
+            user_ip.in_cidr(cidr)
+          }
+
+          definition user {}
+
+          definition document {
+            relation viewer: user with ip_allowlist
+            permission view = viewer
+          }
+        relationships: |-
+          document:roadmap#viewer@user:vic[ip_allowlist:{"cidr":"10.0.0.0/8"}]
+          document:roadmap#viewer@user:backup[ip_allowlist:{"cidr":"10.0.0.0/8","user_ip":"10.9.9.9"}]
+        assertions:
+          assertFalse:
+            - 'document:roadmap#view@user:vic with {"user_ip": "192.168.0.1"}'
+      reports: true
+      note: >
+        The address is reported, with one relationship of the relation that writes it already and
+        the check from outside the network as the witness.
+  - condition: >
+      Only a service the coalition cannot drive writes the relation, and it never puts the
+      parameter in the context.
+    discriminator: >
+      Who writes the relationship, and with what context, is decided by the application. A write
+      model for Zanzibar models would answer it; petard reads none.
+    measurement: out-of-band
+  - condition: >
+      The checks of the file supply the parameter, and the application never does: the validation
+      file was written with a context the application does not send.
+    discriminator: >
+      What the application sends with a check is in the application.
+    measurement: out-of-band
+
+not_a_lint_rule: >
+  The warnings of SpiceDB read the schema alone (`pkg/development/warningdefs.go` at v1.56.2: names,
+  a permission that references itself, arrows), and `zed validate` checks the answers the file
+  asserts, which stay right: a check that supplies the address gets the answer it expects until
+  somebody writes the address on a relationship. Which parameters are meant for the check is in the
+  checks and the relationships, not in the schema.
+
+fixture:
+  validation: fixtures/vulnerable-spicedb/validation.yaml
+  case: >
+    `document#viewer` carries `ip_allowlist`, whose `user_ip` the checks supply, and
+    `document#editor` carries `not_expired`, whose `now` the checks supply.
+  counter_case: >
+    `cidr` and `until`, the other parameters of the same caveats: every relationship that carries
+    the caveat writes them, and no check supplies them.
+  expected: >
+    Two candidates, on `user_ip` of `document#viewer` and on `now` of `document#editor`, each
+    with a check of the file that goes from no to yes, and nothing on `cidr` or `until`.
+
+references:
+  - title: authzed/spicedb, the context a caveat is run on
+    note: >
+      At v1.56.2, `internal/caveats/run.go:222-230`: the context of the check is cloned and the
+      context written on the relationship is copied over it, with the comment that the written
+      context takes precedence.
+  - title: authzed/spicedb, the context a write may carry
+    note: >
+      At v1.56.2, `internal/relationships/validation.go:248-262`: a write with a context is checked
+      by converting the context to the parameters of the caveat, refusing a key that names no
+      parameter. Any declared parameter passes.
+  - title: openfga/openfga, the context a condition is run on
+    note: >
+      At fb8e7df8, `internal/condition/condition.go:197-222` and
+      `internal/condition/eval/eval.go:112-123`: the context of the request comes first and the
+      context of the tuple is merged after it, and the last one wins. What a write may carry was
+      not checked, which is why `front_ends` names SpiceDB alone.
+  - title: CWE-807, Reliance on Untrusted Inputs in a Security Decision
+    note: >
+      A protection an untrusted actor bypasses by changing an input. Here the input is written
+      ahead of the decision, on the relationship, rather than sent with it.
+
+verified:
+  date: 2026-10-18
+  tool_version: spicedb 1.56.2, zed 1.2.1
+  how: >
+    The engine finds the case and stays quiet about the counter case on the fixture: two
+    candidates, on `user_ip` and `now`, each with a check that goes from no to yes once the
+    parameter is written, and nothing on `cidr` or `until`. Both witnesses were held against
+    SpiceDB with zed v1.2.1: with the relationship written as the witness says, the check from
+    outside the network and the check after the date are granted. The case of the first declared
+    false positive runs as part of the test suite.
+
+related:
+  - id: PTD-OPA-009
+    note: >
+      The same category in Rego: there the caller writes the exemption into the request, here the
+      writer of a relationship writes the value the condition was meant to take from the check.
+
+notes:
+  - >
+    Known false negative: a parameter the file says nothing about, with no check that supplies it
+    and no relationship that leaves it out. Without a validation file the pattern does not read
+    the schema at all.
+  - >
+    Not reported, by design: a relation that allows a subject both with and without the caveat,
+    `user | user with ip_allowlist`. Whoever writes the relationship chooses whether the condition
+    applies, and that is the choice the schema offers them, not a value meant for the check.

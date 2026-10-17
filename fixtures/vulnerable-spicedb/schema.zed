@@ -1,0 +1,29 @@
+// The SpiceDB schema of Quill, the documents service of the OPA fixture,
+// with defects built into it on purpose. EXPECTED.md says what the analysis has
+// to find in it, and what it must not.
+
+// A viewer may be held to a network. The network is written when the document
+// is shared; the address is the caller's, and the check is meant to supply it.
+caveat ip_allowlist(user_ip ipaddress, cidr string) {
+  user_ip.in_cidr(cidr)
+}
+
+// An editor may be held to a date. The date is written when the editor is
+// added; the time is the request's, and the check is meant to supply it.
+caveat not_expired(now timestamp, until timestamp) {
+  now < until
+}
+
+definition user {}
+
+definition team {
+  relation member: user
+}
+
+definition document {
+  relation owner: user
+  relation editor: user | user with not_expired
+  relation viewer: user | team#member | user with ip_allowlist
+  permission edit = owner + editor
+  permission view = viewer + edit
+}

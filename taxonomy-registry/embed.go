@@ -17,9 +17,12 @@ import (
 	"os"
 )
 
-// OPADir is where the patterns of the OPA engine sit, in the repository and
-// inside the embedded filesystem alike.
-const OPADir = "opa"
+// OPADir and ZanzibarDir are where the patterns of each engine sit, in the
+// repository and inside the embedded filesystem alike.
+const (
+	OPADir      = "opa"
+	ZanzibarDir = "zanzibar"
+)
 
 // Dir is where the registry sits in the repository, which is what a reader
 // with a checkout needs and what URL is built from.
@@ -43,16 +46,19 @@ func Path(engine, file string) string {
 // that take it.
 const FlagUsage = "read the patterns from this registry directory, which holds one directory per engine, instead of the ones built into the binary"
 
-//go:embed opa/*.yaml
+//go:embed opa/*.yaml zanzibar/*.yaml
 var files embed.FS
 
 // FS is the whole registry built into the binary, one directory per engine.
 var FS fs.FS = files
 
-// OPA is every pattern of the OPA engine, one YAML file each, rooted at the
-// directory holding them so that a caller reading from disk and a caller
-// reading from here see the same names.
-var OPA = mustSub(OPADir)
+// OPA and Zanzibar are every pattern of each engine, one YAML file each,
+// rooted at the directory holding them so that a caller reading from disk and
+// a caller reading from here see the same names.
+var (
+	OPA      = mustSub(OPADir)
+	Zanzibar = mustSub(ZanzibarDir)
+)
 
 // mustSub panics on a directory that is not there. The tree is fixed at build
 // time, so the only way this fails is a build that embedded the wrong thing,

@@ -136,6 +136,10 @@ type FalsePositiveCase struct {
 	// and the two would spoil each other.
 	Policy string `yaml:"policy"`
 
+	// Validation is the case for a Zanzibar pattern, in place of Policy: a
+	// validation file holding the condition and nothing else.
+	Validation string `yaml:"validation"`
+
 	// Data is a JSON document mounted at the root of data, and WriteModel a
 	// write model in the format writemodel.Load reads. They are the rest of an
 	// analysis, for the patterns that read the documents or ask who writes
@@ -259,7 +263,7 @@ func checkFalsePositives(pattern Pattern) error {
 		condition := strings.TrimSpace(fp.Condition)
 		switch fp.Measurement {
 		case MeasurementCase:
-			if fp.Case == nil || fp.Case.Policy == "" {
+			if fp.Case == nil || caseInput(pattern.Engine, *fp.Case) == "" {
 				return fmt.Errorf("%q is measured by a case and carries none", condition)
 			}
 		case MeasurementOutOfBand:
@@ -278,6 +282,15 @@ func checkFalsePositives(pattern Pattern) error {
 		}
 	}
 	return nil
+}
+
+// caseInput is what a case runs on for the engine of its pattern: a policy for
+// OPA, a validation file for Zanzibar.
+func caseInput(engine string, c FalsePositiveCase) string {
+	if engine == "zanzibar" {
+		return c.Validation
+	}
+	return c.Policy
 }
 
 // Find returns the pattern with the given id.

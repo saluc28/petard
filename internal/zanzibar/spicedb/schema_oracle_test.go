@@ -105,7 +105,7 @@ func oracleFile(t *testing.T, path string) (string, int, int) {
 			typ := f.Schema.Model.Type(resource.Type)
 			for _, name := range namesOf(typ) {
 				for _, subject := range subjects {
-					check := Assertion{Resource: resource, Name: name, Subject: subject, Context: context}
+					check := zanzibar.Assertion{Resource: resource, Name: name, Subject: subject, Context: context}
 					got, err := checker.Check(resource, name, subject, context)
 					if err != nil {
 						t.Fatalf("Check(%s) error = %v", check, err)

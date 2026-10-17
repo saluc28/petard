@@ -56,16 +56,35 @@ go in.
 An abstract category, independent of the engine, and one or more concrete instances.
 
 ```
-Abstract category           ATTR-SELF-WRITE
-   "the subject writes data the policy reads to decide about them"
+Abstract category              SELF-ASSERTED-EXEMPTION
+   "whoever is checked supplies the value that lifts the check"
         │
-        ├── OPA instance    PTD-OPA-001   (how it shows up in Rego)
-        └── Cedar instance  PTD-CED-001   (same category, new column)
+        ├── OPA instance       PTD-OPA-009   (a request that says it is exempt)
+        └── Zanzibar instance  PTD-ZAN-001   (a relationship written with the value the check brings)
 ```
 
 A second engine is added as a new instance on the same category, not as a refactor. If a
 category does not exist in some engine, that gets declared and explained: it is information, not
 a hole.
+
+### The Zanzibar engine
+
+The schemas of SpiceDB, read by the engine in `internal/zanzibar`, have one instance so far:
+`PTD-ZAN-001`, in SELF-ASSERTED-EXEMPTION. The categories below have none, for a reason in how a
+Zanzibar model works:
+
+- EXTERNAL-SOURCE-TAINT: a schema reads no source outside the relationships and the context of
+  the check.
+- FAIL-OPEN-ON-ABSENCE, through something missing: a relationship that is not there grants
+  nothing, and an arrow with `all` over nothing gives nobody (`internal/graph/check.go:842-844` in
+  SpiceDB v1.56.2), where an `every` over an empty domain in Rego holds.
+- GLOBAL-SWITCH, through a document: there is no document every check shares.
+- UNCONTROLLED-IDENTIFIER and LOOSE-ENFORCEMENT-MATCH: they live in how the application turns a
+  user or a resource into an identifier, which no schema holds.
+
+The other categories, a relationship the subject writes for itself, a write a permission allows,
+a group somebody joins, a deny somebody deletes, rest on who writes which relation, and petard
+reads no write model for Zanzibar models.
 
 ### More than one instance per engine, when the causes are disjoint
 
@@ -328,7 +347,8 @@ taxonomy-registry/
 ├── SCHEMA.md          the fields, v2
 ├── opa/
 │   └── PTD-OPA-001-attribute-self-write.yaml
-└── cedar/             (not yet)
+└── zanzibar/
+    └── PTD-ZAN-001-writer-set-check-parameter.yaml
 ```
 
 Every file carries `schema_version`, now `2`. The schema is versioned because it changes: this
@@ -374,8 +394,9 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-011` | ASSUMABLE-IDENTITY | opa | finding | A | `implemented`, a grant on a runtime identity an enforcement point proves, where whoever can deploy the workload it names or hold its credential assumes it |
 | `PTD-OPA-012` | LOOSE-ENFORCEMENT-MATCH | opa | finding | C | `implemented`, a grant on a resource matched as a substring, a prefix, a glob or an unanchored regex, wider than the value the enforcement point serves |
 | `PTD-OPA-013` | DELEGATION-NOT-NARROWED | opa | finding | A | `implemented`, a grant of a requested authority not bounded by the delegator's, so a delegated agent mints scopes the delegating user never held |
+| `PTD-ZAN-001` | SELF-ASSERTED-EXEMPTION | zanzibar | candidate | | `implemented`, the first of the Zanzibar engine: a caveat parameter the check is meant to supply, which whoever writes the relationship can fix |
 
-Between them the thirteen exercise `binding-resolution`, `concrete-data`, `enforcement-point`,
+Between them the thirteen OPA patterns exercise `binding-resolution`, `concrete-data`, `enforcement-point`,
 `rule-graph` and `taint`. 007 adds no new capability, only a new construct within `rule-graph`,
 008 asks a new question of `concrete-data`, what a decision gives a principal the data knows
 nothing about, 009 needs the declaration of the enforcement point, which says who sets each part
@@ -384,6 +405,9 @@ asks it whether a part is a runtime identity and who can assume it in another la
 the loose-match builtins off the policy and needs no enforcement point at all, and 013 asks a
 granting decision whether it bounds a requested authority by the delegated one, needing the
 enforcement point and, where the decision reads any, the concrete data.
+
+`PTD-ZAN-001` reads the relationships and the assertions of a validation file, and evaluates
+caveats in SpiceDB's own environment.
 
 `partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
 the engine measures with, and in 002 it is how the fixture checks the consequence of a
