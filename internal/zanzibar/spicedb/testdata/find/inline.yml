@@ -1,0 +1,11 @@
+schema: |-
+  definition user {}
+
+  definition room {
+    relation guest: user
+  }
+relationships: |-
+  room:lobby#guest@user:carol
+validation:
+  room:lobby#guest:
+    - "[user:carol] is <room:lobby#guest>"

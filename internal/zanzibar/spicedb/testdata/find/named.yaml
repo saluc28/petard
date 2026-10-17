@@ -1,0 +1,9 @@
+schemaFile: schema.zed
+relationships: |-
+  team:core#member@user:carol
+  team:core#member@user:dave
+assertions:
+  assertTrue:
+    - team:core#view@user:carol
+  assertFalse:
+    - team:core#view@user:erin

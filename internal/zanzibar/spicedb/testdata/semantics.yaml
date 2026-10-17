@@ -1,0 +1,97 @@
+# Every construct of the schema language the engine lowers, with the answers
+# SpiceDB gives. The assertions are checked twice: by the engine in
+# TestAssertions, and by zed validate when the oracle runs.
+schema: |-
+  use expiration
+
+  caveat ip_allowlist(user_ip ipaddress, cidr string) {
+    user_ip.in_cidr(cidr)
+  }
+
+  caveat on_weekday(day int) {
+    day < 6
+  }
+
+  definition user {}
+
+  definition group {
+    relation member: user | group#member
+  }
+
+  definition folder {
+    relation parent: folder
+    relation viewer: user | group#member | user:*
+    permission view = viewer + parent->view
+  }
+
+  definition document {
+    relation folder: folder
+    relation owner: user
+    relation editor: user | user with ip_allowlist | user with expiration
+    relation viewer: user | user with on_weekday
+    relation banned: user
+    relation reviewer: folder
+    permission edit = owner + editor
+    permission view = (viewer + edit + folder->view) - banned
+    permission review = reviewer.all(view)
+    permission approve = edit & view
+    permission open = view - banned - owner
+    permission none = nil
+  }
+relationships: |-
+  // An owner, and the four ways an editor can be written.
+  document:readme#owner@user:olivia
+  document:readme#editor@user:eve[ip_allowlist:{"cidr":"10.0.0.0/8"}]
+  document:readme#editor@user:ed[ip_allowlist:{"cidr":"10.0.0.0/8","user_ip":"10.1.2.3"}]
+  document:readme#editor@user:edna[ip_allowlist:{"cidr":"10.0.0.0/8","user_ip":"192.168.1.1"}]
+  document:readme#editor@user:old[expiration:2023-12-01T00:00:00Z]
+  document:readme#editor@user:future[expiration:2323-12-01T00:00:00Z]
+
+  document:readme#viewer@user:wendy[on_weekday]
+  document:readme#viewer@user:mallory
+  document:readme#banned@user:mallory
+
+  // A folder shared with a group, through a nested group.
+  document:readme#folder@folder:shared
+  folder:shared#viewer@group:eng#member
+  group:eng#member@group:core#member
+  group:core#member@user:carol
+
+  // A public folder.
+  folder:public#viewer@user:*
+  document:open#folder@folder:public
+
+  // Two reviewers, both of which have to grant.
+  document:review#reviewer@folder:shared
+  document:review#reviewer@folder:public
+
+  // Two folders inside each other.
+  folder:loopa#parent@folder:loopb
+  folder:loopb#parent@folder:loopa
+  folder:loopb#viewer@user:lou
+assertions:
+  assertTrue:
+    - document:readme#edit@user:olivia
+    - document:readme#edit@user:ed
+    - document:readme#edit@user:future
+    - document:readme#view@user:olivia
+    - document:readme#view@user:carol
+    - document:readme#approve@user:olivia
+    - document:readme#open@user:carol
+    - document:open#view@user:anyone
+    - document:review#review@user:carol
+    - folder:loopa#view@user:lou
+    - group:eng#member@user:carol
+  assertFalse:
+    - document:readme#view@user:mallory
+    - document:readme#edit@user:edna
+    - document:readme#edit@user:old
+    - document:readme#open@user:olivia
+    - document:readme#review@user:carol
+    - document:review#review@user:anyone
+    - document:readme#none@user:olivia
+    - document:readme#approve@user:carol
+  assertCaveated:
+    - document:readme#edit@user:eve
+    - document:readme#view@user:wendy
+    - document:readme#approve@user:eve

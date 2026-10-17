@@ -17,8 +17,8 @@ jobs:
       matrix:
         # The minimum declared in go.mod has to be tested: it is the version
         # that decides whether the compatibility claim is true. It is not a
-        # choice, it is OPA's own floor, and it moves when OPA moves.
-        # stable is what most people will actually be on.
+        # choice, it is the higher of the floors of OPA and SpiceDB, and it
+        # moves when they move. stable is what most people will actually be on.
         go: ["1.26", "stable"]
 
     steps:

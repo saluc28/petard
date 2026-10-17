@@ -1,0 +1,4 @@
+# A YAML file that is not a validation file, as a policy bundle holds.
+users:
+  carol:
+    department: engineering
