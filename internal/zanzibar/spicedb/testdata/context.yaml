@@ -1,0 +1,76 @@
+# Self, expiration, usersets asked as subjects, a caveat under an exclusion,
+# and checks that supply context, with the answers SpiceDB gives. The
+# assertions are checked twice: by the engine in TestAssertions, and by zed
+# validate when the oracle runs.
+schema: |-
+  use expiration
+  use self
+
+  caveat on_weekday(day int) {
+    day < 6
+  }
+
+  caveat ip_allowlist(user_ip ipaddress, cidr string) {
+    user_ip.in_cidr(cidr)
+  }
+
+  definition user {
+    relation manager: user
+    permission itself = self
+    permission managed = manager + self
+  }
+
+  definition group {
+    relation member: user | group#member | user with expiration
+    permission view = member
+  }
+
+  definition document {
+    relation parent: document
+    relation viewer: user | group#member | user with on_weekday
+    relation banned: user | user with ip_allowlist
+    relation owner: user with expiration
+    permission view = (viewer + owner + parent.any(view)) - banned
+    permission edit = owner
+  }
+relationships: |-
+  // A viewer on weekdays only, and one banned from one network.
+  document:plan#viewer@user:wendy[on_weekday]
+  document:plan#viewer@user:vic
+  document:plan#banned@user:vic[ip_allowlist:{"cidr":"10.0.0.0/8"}]
+
+  // A group with a nested group and a member whose membership expired.
+  document:plan#viewer@group:eng#member
+  group:eng#member@user:carol
+  group:eng#member@user:gone[expiration:2023-12-01T00:00:00Z]
+  group:eng#member@group:core#member
+  group:core#member@user:dave
+
+  document:plan#owner@user:olga[expiration:2323-12-01T00:00:00Z]
+  document:child#parent@document:plan
+  user:mia#manager@user:max
+assertions:
+  assertTrue:
+    - user:alice#itself@user:alice
+    - user:mia#managed@user:max
+    - user:mia#managed@user:mia
+    - document:plan#view@user:carol
+    - document:plan#view@user:dave
+    - document:plan#view@group:eng#member
+    - document:plan#view@group:core#member
+    - group:eng#view@group:eng#member
+    - document:child#view@user:carol
+    - document:plan#edit@user:olga
+    - 'document:plan#view@user:wendy with {"day": 2}'
+    - 'document:plan#view@user:vic with {"user_ip": "192.168.0.1"}'
+  assertFalse:
+    - user:alice#itself@user:bob
+    - user:mia#managed@user:mallory
+    - document:plan#view@user:gone
+    - group:eng#member@group:ops#member
+    - 'document:plan#view@user:wendy with {"day": 7}'
+    - 'document:plan#view@user:vic with {"user_ip": "10.1.2.3"}'
+  assertCaveated:
+    - document:plan#view@user:wendy
+    - document:plan#view@user:vic
+    - document:child#view@user:vic

@@ -70,30 +70,78 @@ func TestNewCheckerDropsExpiredRelationships(t *testing.T) {
 	rels := []Relationship{{Resource: folder("a"), Relation: "viewer", Subject: user("tom"), Expires: &expires}}
 
 	before := NewChecker(folders(t), rels, nil, expires.Add(-time.Hour))
-	if got, err := before.Check(folder("a"), "view", user("tom")); err != nil || got.Level != Yes {
+	if got, err := before.Check(folder("a"), "view", user("tom"), nil); err != nil || got.Level != Yes {
 		t.Errorf("before expiring = %+v, %v, want yes", got, err)
 	}
 	at := NewChecker(folders(t), rels, nil, expires)
-	if got, err := at.Check(folder("a"), "view", user("tom")); err != nil || got.Level != No {
+	if got, err := at.Check(folder("a"), "view", user("tom"), nil); err != nil || got.Level != No {
 		t.Errorf("at expiry = %+v, %v, want no", got, err)
 	}
 }
 
-// A check naming something the model does not declare is an error, not a no.
-func TestCheckRefusesUndeclaredNames(t *testing.T) {
+// A check naming something the model does not declare is an error, not a no,
+// and so is a check asked for a wildcard, which SpiceDB refuses too.
+func TestCheckRefuses(t *testing.T) {
 	checker := NewChecker(folders(t), nil, nil, time.Now())
 	tests := []struct {
 		name     string
 		resource Object
 		asked    string
+		subject  Subject
+		want     error
 	}{
-		{name: "permission", resource: folder("a"), asked: "edit"},
-		{name: "type", resource: Object{Type: "drive", ID: "a"}, asked: "view"},
+		{name: "undeclared permission", resource: folder("a"), asked: "edit", subject: user("tom"), want: ErrUnknown},
+		{name: "undeclared type", resource: Object{Type: "drive", ID: "a"}, asked: "view", subject: user("tom"), want: ErrUnknown},
+		{name: "wildcard subject", resource: folder("a"), asked: "view", subject: user(WildcardID), want: ErrWildcardSubject},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := checker.Check(tt.resource, tt.asked, user("tom")); !errors.Is(err, ErrUnknown) {
-				t.Errorf("Check() error = %v, want ErrUnknown", err)
+			if _, err := checker.Check(tt.resource, tt.asked, tt.subject, nil); !errors.Is(err, tt.want) {
+				t.Errorf("Check() error = %v, want %v", err, tt.want)
+			}
+		})
+	}
+}
+
+// groups is a model of groups inside groups, with a permission that is
+// membership.
+func groups(t *testing.T) *Model {
+	t.Helper()
+
+	group := &Type{
+		Name:        "group",
+		Relations:   []*Relation{{Name: "member", Allowed: []Allowed{{Type: "user"}, {Type: "group", Relation: "member"}}}},
+		Permissions: []*Permission{{Name: "view", Expr: Computed{Name: "member"}}},
+	}
+	m, err := NewModel([]*Type{{Name: "user"}, group}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// The members of a group are members of it with nothing stored, and through a
+// permission that is membership; the members of another group are not.
+func TestCheckAUsersetHoldsItself(t *testing.T) {
+	eng := Object{Type: "group", ID: "eng"}
+	members := func(o Object) Subject { return Subject{Object: o, Relation: "member"} }
+	checker := NewChecker(groups(t), nil, nil, time.Now())
+
+	tests := []struct {
+		name    string
+		asked   string
+		subject Subject
+		want    Level
+	}{
+		{name: "its own relation", asked: "member", subject: members(eng), want: Yes},
+		{name: "a permission built on it", asked: "view", subject: members(eng), want: Yes},
+		{name: "another group", asked: "member", subject: members(Object{Type: "group", ID: "ops"}), want: No},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := checker.Check(eng, tt.asked, tt.subject, nil)
+			if err != nil || got.Level != tt.want {
+				t.Errorf("Check() = %+v, %v, want %s", got, err, tt.want)
 			}
 		})
 	}
@@ -109,11 +157,11 @@ func TestCheckCutsLoops(t *testing.T) {
 		{Resource: folder("b"), Relation: "viewer", Subject: user("lou")},
 	}, nil, time.Now())
 
-	granted, err := checker.Check(folder("a"), "view", user("lou"))
+	granted, err := checker.Check(folder("a"), "view", user("lou"), nil)
 	if err != nil || granted.Level != Yes {
 		t.Errorf("lou views a = %+v, %v, want yes", granted, err)
 	}
-	refused, err := checker.Check(folder("a"), "view", user("nobody"))
+	refused, err := checker.Check(folder("a"), "view", user("nobody"), nil)
 	if err != nil || refused.Level != No || !refused.Cycle {
 		t.Errorf("nobody views a = %+v, %v, want no and a cycle", refused, err)
 	}
@@ -138,9 +186,62 @@ func TestCheckStopsAtTheDepthLimit(t *testing.T) {
 	}
 	rels = append(rels, Relationship{Resource: link(maxDepth + 1), Relation: "member", Subject: user("deep")})
 
-	_, err = NewChecker(m, rels, nil, time.Now()).Check(link(0), "member", user("deep"))
+	_, err = NewChecker(m, rels, nil, time.Now()).Check(link(0), "member", user("deep"), nil)
 	if !errors.Is(err, ErrTooDeep) {
 		t.Errorf("Check() error = %v, want ErrTooDeep", err)
+	}
+}
+
+// insideOnly is a caveat evaluator for tests: the caveat holds when the
+// context says the address is inside, does not when it says outside, and is
+// conditional when it says nothing.
+type insideOnly struct{}
+
+func (insideOnly) Evaluate(_ string, context map[string]any) (Level, error) {
+	switch context["address"] {
+	case "inside":
+		return Yes, nil
+	case "outside":
+		return No, nil
+	}
+	return Conditional, nil
+}
+
+// A caveat sees the context of the check with the context the relationship
+// carries written over it, so a value written on the relationship cannot be
+// changed by the check.
+func TestCheckWritesTheRelationshipContextOverTheCheck(t *testing.T) {
+	doc := &Type{
+		Name:      "doc",
+		Relations: []*Relation{{Name: "viewer", Allowed: []Allowed{{Type: "user", Caveat: "network"}}}},
+	}
+	m, err := NewModel([]*Type{{Name: "user"}, doc}, []*Caveat{{Name: "network"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := Object{Type: "doc", ID: "a"}
+	checker := NewChecker(m, []Relationship{
+		{Resource: a, Relation: "viewer", Subject: user("fixed"), Caveat: &CaveatUse{Name: "network", Context: map[string]any{"address": "inside"}}},
+		{Resource: a, Relation: "viewer", Subject: user("open"), Caveat: &CaveatUse{Name: "network"}},
+	}, insideOnly{}, time.Now())
+
+	tests := []struct {
+		name    string
+		subject Subject
+		context map[string]any
+		want    Level
+	}{
+		{name: "written value wins over the check", subject: user("fixed"), context: map[string]any{"address": "outside"}, want: Yes},
+		{name: "check fills what nothing wrote", subject: user("open"), context: map[string]any{"address": "outside"}, want: No},
+		{name: "nobody says", subject: user("open"), context: nil, want: Conditional},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := checker.Check(a, "viewer", tt.subject, tt.context)
+			if err != nil || got.Level != tt.want {
+				t.Errorf("Check() = %+v, %v, want %s", got, err, tt.want)
+			}
+		})
 	}
 }
 
@@ -162,7 +263,7 @@ func TestCheckWithoutACaveatEvaluator(t *testing.T) {
 		Caveat:   &CaveatUse{Name: "weekday"},
 	}}, nil, time.Now())
 
-	_, err = checker.Check(Object{Type: "doc", ID: "a"}, "viewer", user("carol"))
+	_, err = checker.Check(Object{Type: "doc", ID: "a"}, "viewer", user("carol"), nil)
 	if err == nil || !strings.Contains(err.Error(), "nothing evaluates caveats") {
 		t.Errorf("Check() error = %v, want one saying nothing evaluates caveats", err)
 	}

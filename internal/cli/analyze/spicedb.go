@@ -40,7 +40,7 @@ func describeSpiceDB(f *spicedb.File) string {
 		return declares
 	}
 
-	holds := []string{render.Count(len(f.Relationships), "relationship"), render.Count(f.Assertions, "assertion")}
+	holds := []string{render.Count(len(f.Relationships), "relationship"), render.Count(len(f.Assertions), "assertion")}
 	if f.ExpectedRelations > 0 {
 		holds = append(holds, render.Count(f.ExpectedRelations, "expected relation"))
 	}

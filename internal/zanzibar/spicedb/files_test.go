@@ -37,8 +37,8 @@ func TestFind(t *testing.T) {
 	if named.SchemaPath != filepath.Join(root, "schema.zed") {
 		t.Errorf("named.yaml schema read from %s, want %s", named.SchemaPath, filepath.Join(root, "schema.zed"))
 	}
-	if len(named.Relationships) != 2 || named.Assertions != 2 {
-		t.Errorf("named.yaml = %d relationships and %d assertions, want 2 and 2", len(named.Relationships), named.Assertions)
+	if len(named.Relationships) != 2 || len(named.Assertions) != 2 {
+		t.Errorf("named.yaml = %d relationships and %d assertions, want 2 and 2", len(named.Relationships), len(named.Assertions))
 	}
 	if line := named.Relationships[0].Line; line != 3 {
 		t.Errorf("first relationship of named.yaml at line %d, want 3", line)

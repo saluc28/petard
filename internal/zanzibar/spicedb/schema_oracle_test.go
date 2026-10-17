@@ -1,7 +1,7 @@
 package spicedb
 
 import (
-	"fmt"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,9 +31,11 @@ const unlistedID = "petard-unlisted"
 
 // The engine against SpiceDB itself. For every validation file, every check
 // the file's objects allow is answered by the engine and written as an
-// assertion, and zed validate says whether SpiceDB gives the same answers.
-// A check that cut a loop without granting is left out: SpiceDB fails it at
-// its depth limit rather than answering.
+// assertion, and zed validate says whether SpiceDB gives the same answers. The
+// subjects are the objects and the usersets the schema allows, and each check
+// is asked with no context and with every context the file's own assertions
+// supply. A check that cut a loop without granting is left out: SpiceDB fails
+// it at its depth limit rather than answering.
 func TestOracle(t *testing.T) {
 	zed := os.Getenv(zedEnv)
 	if zed == "" {
@@ -98,20 +100,23 @@ func oracleFile(t *testing.T, path string) (string, int, int) {
 	asserted := map[zanzibar.Level][]string{}
 	count, skipped := 0, 0
 	subjects := subjectsOf(f)
-	for _, resource := range objectsOf(f) {
-		typ := f.Schema.Model.Type(resource.Type)
-		for _, name := range namesOf(typ) {
-			for _, subject := range subjects {
-				got, err := checker.Check(resource, name, subject)
-				if err != nil {
-					t.Fatalf("Check(%s#%s@%s) error = %v", resource, name, subject, err)
+	for _, context := range contextsOf(t, f) {
+		for _, resource := range objectsOf(f) {
+			typ := f.Schema.Model.Type(resource.Type)
+			for _, name := range namesOf(typ) {
+				for _, subject := range subjects {
+					check := Assertion{Resource: resource, Name: name, Subject: subject, Context: context}
+					got, err := checker.Check(resource, name, subject, context)
+					if err != nil {
+						t.Fatalf("Check(%s) error = %v", check, err)
+					}
+					if got.Cycle && got.Level != zanzibar.Yes {
+						skipped++
+						continue
+					}
+					asserted[got.Level] = append(asserted[got.Level], check.String())
+					count++
 				}
-				if got.Cycle && got.Level != zanzibar.Yes {
-					skipped++
-					continue
-				}
-				asserted[got.Level] = append(asserted[got.Level], fmt.Sprintf("%s#%s@%s", resource, name, subject))
-				count++
 			}
 		}
 	}
@@ -158,14 +163,44 @@ func objectsOf(f *File) []zanzibar.Object {
 	return out
 }
 
-// subjectsOf is every object that can be asked about as a subject: those of a
-// type some relation allows as a subject, and, when a permission uses self,
-// those of every type.
+// contextsOf is no context, then every distinct context the file's
+// assertions supply.
+func contextsOf(t *testing.T, f *File) []map[string]any {
+	t.Helper()
+
+	out := []map[string]any{nil}
+	seen := map[string]bool{}
+	for _, a := range f.Assertions {
+		if a.Context == nil {
+			continue
+		}
+		key, err := json.Marshal(a.Context)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !seen[string(key)] {
+			seen[string(key)] = true
+			out = append(out, a.Context)
+		}
+	}
+	return out
+}
+
+// subjectsOf is every subject that can be asked about: the objects of a type
+// some relation allows as a subject, and of every type when a permission uses
+// self, and the usersets a relation allows, on every object of their type.
 func subjectsOf(f *File) []zanzibar.Subject {
 	allowed := map[string]bool{}
+	usersets := map[string][]string{}
 	for _, typ := range f.Schema.Model.Types {
 		for _, r := range typ.Relations {
 			for _, a := range r.Allowed {
+				if a.Relation != "" {
+					if !slices.Contains(usersets[a.Type], a.Relation) {
+						usersets[a.Type] = append(usersets[a.Type], a.Relation)
+					}
+					continue
+				}
 				allowed[a.Type] = true
 			}
 		}
@@ -181,6 +216,9 @@ func subjectsOf(f *File) []zanzibar.Subject {
 	for _, o := range objectsOf(f) {
 		if allowed[o.Type] {
 			out = append(out, zanzibar.Subject{Object: o})
+		}
+		for _, relation := range usersets[o.Type] {
+			out = append(out, zanzibar.Subject{Object: o, Relation: relation})
 		}
 	}
 	return out

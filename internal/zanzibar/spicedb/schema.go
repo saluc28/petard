@@ -317,10 +317,9 @@ func validateAll(t *zanzibar.Type, p *zanzibar.Permission, exprs []zanzibar.Expr
 	return nil
 }
 
-// Evaluate evaluates a caveat of the schema with the context written on a
-// relationship, the way SpiceDB does when a check supplies no context of its
-// own: parameters the context does not fill stay unknown, and a result that
-// depends on them is Conditional.
+// Evaluate evaluates a caveat of the schema the way SpiceDB does: parameters
+// the context does not fill stay unknown, and a result that depends on them is
+// Conditional. Keys that name no parameter of the caveat are ignored.
 func (s *Schema) Evaluate(name string, context map[string]any) (zanzibar.Level, error) {
 	compiled, ok := s.compiled[name]
 	if !ok {

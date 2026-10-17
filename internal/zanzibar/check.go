@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 )
 
@@ -72,13 +73,19 @@ func not(a Level) Level {
 type CaveatEvaluator interface {
 	// Evaluate says whether the caveat of that name holds with context: Yes
 	// or No when context fills every parameter the expression needs to
-	// decide, Conditional when it does not.
+	// decide, Conditional when it does not. The context is the one the check
+	// supplied with the one the relationship carries written over it.
 	Evaluate(name string, context map[string]any) (Level, error)
 }
 
 // ErrUnknown is returned for a check that names a type, a relation or a
 // permission the model does not declare.
 var ErrUnknown = errors.New("zanzibar: not declared")
+
+// ErrWildcardSubject is returned for a check whose subject is a wildcard, which
+// SpiceDB refuses as well (internal/graph/check.go:179 at v1.56.2): a wildcard
+// is something a relationship grants to, not somebody who asks.
+var ErrWildcardSubject = errors.New("zanzibar: a wildcard cannot be checked as a subject")
 
 // ErrTooDeep is returned for a check that has to follow relationships more
 // than maxDepth levels deep. The relationships come from files the engine is
@@ -113,6 +120,12 @@ type Checker struct {
 	settled     map[checkKey]Level
 	inProgress  map[checkKey]bool
 	caveatCache map[string]Level
+
+	// request is the context the check being answered supplied, and
+	// requestKey its encoding, which keeps answers given with one context
+	// apart from answers given with another.
+	request    map[string]any
+	requestKey string
 }
 
 type storedKey struct {
@@ -124,6 +137,7 @@ type checkKey struct {
 	resource Object
 	name     string
 	subject  Subject
+	request  string
 }
 
 // NewChecker indexes relationships for checks against model. A relationship
@@ -149,11 +163,21 @@ func NewChecker(model *Model, relationships []Relationship, caveats CaveatEvalua
 }
 
 // Check says how far subject holds name, a relation or a permission, on
-// resource.
-func (c *Checker) Check(resource Object, name string, subject Subject) (Result, error) {
+// resource. context is what the check supplies for caveats, nil when it
+// supplies nothing; a relationship's own context is written over it, as SpiceDB
+// does (internal/caveats/run.go:222-230 at v1.56.2).
+func (c *Checker) Check(resource Object, name string, subject Subject, context map[string]any) (Result, error) {
 	if t := c.model.Type(resource.Type); t == nil || !t.Declares(name) {
 		return Result{}, fmt.Errorf("%w: %s#%s", ErrUnknown, resource.Type, name)
 	}
+	if subject.ID == WildcardID {
+		return Result{}, fmt.Errorf("%w: %s", ErrWildcardSubject, subject)
+	}
+	key, err := json.Marshal(context)
+	if err != nil {
+		return Result{}, fmt.Errorf("zanzibar: context of the check: %w", err)
+	}
+	c.request, c.requestKey = context, string(key)
 	level, cycle, err := c.check(resource, name, subject)
 	return Result{Level: level, Cycle: cycle}, err
 }
@@ -165,7 +189,7 @@ func (c *Checker) Check(resource Object, name string, subject Subject) (Result, 
 // loop, so the least level is still found. What was computed while a loop was
 // cut is not remembered, because it rests on that provisional No.
 func (c *Checker) check(resource Object, name string, subject Subject) (Level, bool, error) {
-	key := checkKey{resource: resource, name: name, subject: subject}
+	key := checkKey{resource: resource, name: name, subject: subject, request: c.requestKey}
 	if level, ok := c.settled[key]; ok {
 		return level, false, nil
 	}
@@ -178,6 +202,11 @@ func (c *Checker) check(resource Object, name string, subject Subject) (Level, b
 		// An arrow reaching an object of a type without its target: SpiceDB
 		// dispatches nothing to it, and it grants nothing.
 		return No, false, nil
+	}
+	if subject.Relation == name && subject.Object == resource {
+		// The members of a relation of an object are members of it, whatever
+		// is stored (internal/graph/check.go:765-779 at v1.56.2).
+		return Yes, false, nil
 	}
 	if len(c.inProgress) >= maxDepth {
 		return No, false, fmt.Errorf("%w: more than %d levels below %s#%s", ErrTooDeep, maxDepth, resource, name)
@@ -246,7 +275,8 @@ func (c *Checker) holds(stored, subject Subject) (Level, bool, error) {
 }
 
 // carried is the level the caveat of a relationship allows, Yes when it
-// carries none.
+// carries none. The caveat sees the context of the check with the context the
+// relationship carries written over it.
 func (c *Checker) carried(r Relationship) (Level, error) {
 	if r.Caveat == nil {
 		return Yes, nil
@@ -254,7 +284,12 @@ func (c *Checker) carried(r Relationship) (Level, error) {
 	if c.caveats == nil {
 		return No, fmt.Errorf("zanzibar: %s carries caveat %s and nothing evaluates caveats", r, r.Caveat.Name)
 	}
-	encoded, err := json.Marshal(r.Caveat.Context)
+	context := maps.Clone(c.request)
+	if context == nil {
+		context = make(map[string]any, len(r.Caveat.Context))
+	}
+	maps.Copy(context, r.Caveat.Context)
+	encoded, err := json.Marshal(context)
 	if err != nil {
 		return No, fmt.Errorf("zanzibar: context of %s: %w", r, err)
 	}
@@ -262,7 +297,7 @@ func (c *Checker) carried(r Relationship) (Level, error) {
 	if level, ok := c.caveatCache[cacheKey]; ok {
 		return level, nil
 	}
-	level, err := c.caveats.Evaluate(r.Caveat.Name, r.Caveat.Context)
+	level, err := c.caveats.Evaluate(r.Caveat.Name, context)
 	if err != nil {
 		return No, fmt.Errorf("zanzibar: caveat of %s: %w", r, err)
 	}
