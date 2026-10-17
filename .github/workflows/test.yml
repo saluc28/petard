@@ -53,3 +53,34 @@ jobs:
       - name: Coverage summary
         if: matrix.go == 'stable'
         run: go tool cover -func=coverage.out | tail -n 1
+
+  oracle:
+    name: Engine against SpiceDB
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      # zed validate is SpiceDB's own checker. The engine answers every check
+      # the objects of a validation file allow, the answers are written as
+      # assertions, and zed says whether SpiceDB gives the same ones. The
+      # version is pinned, and the archive is checked against the checksum the
+      # release publishes.
+      - name: Install zed
+        run: |
+          curl -sSfL -o zed.tar.gz https://github.com/authzed/zed/releases/download/v1.2.1/zed_1.2.1_linux_amd64_gnu.tar.gz
+          echo "600dbe497ddabb26372aeb69b7a15ff8624a41925f1e47146177132635f4b752  zed.tar.gz" | sha256sum --check
+          tar -xzf zed.tar.gz zed
+
+      # It runs over the validation files of testdata and over the integration
+      # test configs SpiceDB ships in the module petard already requires.
+      - name: Hold the engine against SpiceDB
+        run: |
+          go mod download github.com/authzed/spicedb
+          export PETARD_ZED="$PWD/zed"
+          export PETARD_ZANZIBAR_CORPUS="$(go list -m -f '{{.Dir}}' github.com/authzed/spicedb)/internal/services/integrationtesting/testconfigs"
+          go test -run TestOracle -v ./internal/zanzibar/spicedb
