@@ -30,7 +30,7 @@ func TestExplainPrintsThePatternBehindAFinding(t *testing.T) {
 		"Where it fires with nothing behind it",
 		"What closes it",
 		"taxonomy-registry/opa/PTD-OPA-001-attribute-self-write.yaml",
-		registry.URL,
+		registry.URL("opa", "PTD-OPA-001-attribute-self-write.yaml"),
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the explanation does not say %q:\n%s", want, out)

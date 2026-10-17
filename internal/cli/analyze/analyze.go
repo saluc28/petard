@@ -115,7 +115,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// Before the analysis rather than after it: a registry that cannot be read
 	// is the difference between a report and a list of codes, and finding that
 	// out at the end means having waited for it.
-	patterns, err := taxonomy.LoadRegistry(registry.Source(*registryPath))
+	patterns, err := taxonomy.LoadRegistries(registry.Source(*registryPath))
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure

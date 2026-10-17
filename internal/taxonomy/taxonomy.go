@@ -26,7 +26,7 @@ import (
 )
 
 // SchemaVersion is the registry format this package reads.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // StatusVerified is the status a pattern reaches when its declared false
 // positives have been settled as well as found, which is what MeasurementCase
@@ -185,7 +185,7 @@ func LoadRegistry(fsys fs.FS) ([]Pattern, error) {
 			return nil, fmt.Errorf("taxonomy: parsing %s: %w", file, err)
 		}
 		if pattern.SchemaVersion != SchemaVersion {
-			return nil, fmt.Errorf("taxonomy: %s is schema version %d, this reads %d", file, pattern.SchemaVersion, SchemaVersion)
+			return nil, fmt.Errorf("taxonomy: %s is schema version %d, this reads %d (an entry of version 1 is one of version 2 with its schema_version changed)", file, pattern.SchemaVersion, SchemaVersion)
 		}
 		if pattern.ID == "" {
 			return nil, fmt.Errorf("taxonomy: %s has no id, and the id is what the findings are filed under", file)
@@ -199,6 +199,52 @@ func LoadRegistry(fsys fs.FS) ([]Pattern, error) {
 		}
 		pattern.File = file
 		patterns = append(patterns, pattern)
+	}
+	return patterns, nil
+}
+
+// LoadRegistries reads the patterns of every engine from the root of a
+// registry, which holds one directory per engine, named after it.
+//
+// A pattern file names its engine as well, and the two have to agree: a file
+// filed under one engine and claiming another would have its findings reported
+// by the wrong one. A pattern file at the top of the root is refused rather
+// than skipped, because that is what pointing at the directory of one engine
+// looks like, and skipping it would be a registry with that engine missing.
+func LoadRegistries(root fs.FS) ([]Pattern, error) {
+	entries, err := fs.ReadDir(root, ".")
+	if err != nil {
+		return nil, fmt.Errorf("taxonomy: listing the registry: %w", err)
+	}
+	var patterns []Pattern
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() {
+			if strings.HasSuffix(name, ".yaml") {
+				return nil, fmt.Errorf("taxonomy: %s is a pattern file at the top of the registry, which holds one directory per engine", name)
+			}
+			continue
+		}
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		engine, err := fs.Sub(root, name)
+		if err != nil {
+			return nil, fmt.Errorf("taxonomy: %s: %w", name, err)
+		}
+		loaded, err := LoadRegistry(engine)
+		if err != nil {
+			return nil, fmt.Errorf("%w, under %s", err, name)
+		}
+		for _, pattern := range loaded {
+			if pattern.Engine != name {
+				return nil, fmt.Errorf("taxonomy: %s/%s says its engine is %q", name, pattern.File, pattern.Engine)
+			}
+		}
+		patterns = append(patterns, loaded...)
+	}
+	if len(patterns) == 0 {
+		return nil, errors.New("taxonomy: no engine directory in the registry")
 	}
 	return patterns, nil
 }

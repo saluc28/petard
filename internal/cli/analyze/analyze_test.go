@@ -86,7 +86,7 @@ func TestRunBuildsEveryKindOfTheModel(t *testing.T) {
 
 	args := []string{
 		"-graph",
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		"-write-model", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
 		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
@@ -137,7 +137,7 @@ func TestRunFallsBackToRegoV0(t *testing.T) {
 // once without it. What changes is not how much the engine found, it is what it
 // is willing to claim.
 func TestRunNeedsTheWriteModelToClaimAFinding(t *testing.T) {
-	registry := filepath.Join("..", "..", "..", "taxonomy-registry", "opa")
+	registry := filepath.Join("..", "..", "..", "taxonomy-registry")
 	model := filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml")
 
 	tests := []struct {
@@ -188,7 +188,7 @@ func TestRunNeedsTheWriteModelToClaimAFinding(t *testing.T) {
 func TestRunReportsTheExternalSources(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		fixture("policy-v1"),
 	}
 
@@ -218,7 +218,7 @@ func TestRunReportsTheExternalSources(t *testing.T) {
 func TestRunPartiallyEvaluatesAgainstTheData(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
@@ -243,7 +243,7 @@ func TestRunPartiallyEvaluatesAgainstTheData(t *testing.T) {
 // answers. With the data it names the tenant the check skips, and stays quiet
 // about the field that is there for every tenant.
 func TestRunSaysWhenAPatternCouldNotLook(t *testing.T) {
-	registry := filepath.Join("..", "..", "..", "taxonomy-registry", "opa")
+	registry := filepath.Join("..", "..", "..", "taxonomy-registry")
 	data := filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data")
 
 	tests := []struct {
@@ -296,7 +296,7 @@ func TestRunSaysWhenAPatternCouldNotLook(t *testing.T) {
 func TestRunReportsTheChecksThatGoQuiet(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		fixture("policy-v1"),
 	}
 
@@ -333,7 +333,7 @@ func TestRunReportsTheChecksThatGoQuiet(t *testing.T) {
 func TestRunReportsWhatAPositionIsWorth(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
@@ -365,7 +365,7 @@ func TestRunReportsWhatAPositionIsWorth(t *testing.T) {
 func TestRunReportsTheEscalation(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		"-write-model", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
 		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
@@ -398,7 +398,7 @@ func TestRunReportsTheEscalation(t *testing.T) {
 func TestRunReportsTheSplitGrant(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		"-write-model", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
 		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
@@ -436,7 +436,7 @@ func TestRunReportsTheSplitGrant(t *testing.T) {
 func TestRunReportsTheGlobalSwitch(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		"-write-model", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
 		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
@@ -467,7 +467,7 @@ func TestRunReportsTheGlobalSwitch(t *testing.T) {
 func TestRunClaimsNoEscalationWithoutTheWriteModel(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		fixture("policy-v1"),
 	}
@@ -490,7 +490,7 @@ func TestRunClaimsNoEscalationWithoutTheWriteModel(t *testing.T) {
 func TestRunSaysWhenTheResidualBoundCuts(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		"-data", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "data"),
 		"-max-residuals", "2",
 		fixture("policy-v1"),
@@ -545,7 +545,7 @@ blocked if {
 func TestRunReportsWriteModelCoverage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	args := []string{
-		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry", "opa"),
+		"-registry", filepath.Join("..", "..", "..", "taxonomy-registry"),
 		"-write-model", filepath.Join("..", "..", "..", "fixtures", "vulnerable-bundle", "write-model.yaml"),
 		fixture("policy-v1"),
 	}

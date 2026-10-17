@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 
 id: PTD-OPA-005
 name: fail-open-on-source-unavailable

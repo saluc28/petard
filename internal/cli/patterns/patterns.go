@@ -48,7 +48,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	all, err := taxonomy.LoadRegistry(registry.Source(*registryPath))
+	all, err := taxonomy.LoadRegistries(registry.Source(*registryPath))
 	if err != nil {
 		fmt.Fprintf(stderr, "petard patterns: %v\n", err)
 		return exitFailure
@@ -136,7 +136,7 @@ func printJSON(out io.Writer, all []taxonomy.Pattern) error {
 			Engine:             pattern.Engine,
 			Status:             pattern.Status,
 			RequiresWriteModel: pattern.Detection.RequiresWriteModel,
-			URL:                registry.URL + pattern.File,
+			URL:                registry.URL(pattern.Engine, pattern.File),
 		}
 		entry.Category.ID = pattern.Category.ID
 		entry.Category.Title = pattern.Category.Title

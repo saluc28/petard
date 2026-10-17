@@ -1,6 +1,6 @@
-# Registry schema, v1
+# Registry schema, v2
 
-> The fields of an instance file. `schema_version: 1` is mandatory in every one of them.
+> The fields of an instance file. `schema_version: 2` is mandatory in every one of them.
 >
 > Changing this schema means bumping `schema_version` and writing the migration. Do not do it
 > before there are at least three patterns: freezing a schema on a single example is the
@@ -12,22 +12,22 @@
 
 | Field | Type | What |
 |---|---|---|
-| `schema_version` | int | `1` |
+| `schema_version` | int | `2` |
 | `id` | string | `PTD-<ENGINE>-<NNN>`. Stable forever: it ends up in the properties of exported edges and in saved Cypher queries |
 | `name` | slug | kebab-case, used in logs and in test names |
 | `title` | string | one readable line |
 | `closes` | string | one line: what structurally makes the pattern not fire. See below |
-| `engine` | enum | `opa` \| `cedar` |
+| `engine` | enum | `opa` \| `cedar` \| `zanzibar`, the name of the directory the file sits in |
 | `status` | enum | `draft` → `implemented` → `verified`, see below |
 | `category` | object | the abstract level: `id`, `title`, `summary` |
 | `summary` | string | one paragraph: what it lets somebody do, not how it is implemented |
 | `preconditions` | list | what the attacker has to hold already. See below |
-| `mechanism` | object | `description` plus `example`, which is real Rego that compiles |
+| `mechanism` | object | `description` plus `example`, which is real input of the engine: see [Fields that depend on the engine](#fields-that-depend-on-the-engine) |
 | `detection` | object | the field that makes the pattern executable. See below |
 | `graph` | object | what it emits in the data model |
 | `false_positives` | list | conditions where the signal fires with no abuse behind it, and how each one is settled. See below |
-| `not_a_lint_rule` | string | why `regal` cannot find it. If you cannot write this line, the pattern does not go in |
-| `fixture` | object | the case in the vulnerable bundle |
+| `not_a_lint_rule` | string | why the checks that come with the engine cannot find it: `regal` for OPA, the warnings of SpiceDB and `zed validate` for Zanzibar. If you cannot write this line, the pattern does not go in |
+| `fixture` | object | the case in the vulnerable fixture of the engine |
 | `references` | list | sources, with the date each was consulted |
 | `verified` | object | `date` plus `tool_version` plus `how`. See below |
 
@@ -137,6 +137,28 @@ the measurement is a small case per condition, not a corpus.
 out of it, describing the pattern as it stands rather than the order in which it got there.
 Something measured but still open goes in `notes`; something not measured at all goes in
 `open_questions`.
+
+---
+
+## Fields that depend on the engine
+
+Most fields mean the same thing whatever the engine. These do not, and say so per engine.
+
+| Field | `opa` | `zanzibar` |
+|---|---|---|
+| `front_ends` | absent | the products the instance applies to, as `[spicedb]`; how they differ goes in `notes` |
+| `mechanism.example` | Rego that compiles | a validation file that `zed validate` accepts: `schema`, `relationships` and `assertions` |
+| `detection.ast_source`, `detection.confidence` | as above | absent: the schema declares its subjects, and there is no AST to choose between |
+| `detection.requires` | `binding-resolution`, `rule-graph`, `concrete-data`, `taint`, `enforcement-point` | `relationships`, the relationships of a validation file; `assertions`, the checks it asserts with the context they supply; `caveat-evaluation`, the caveats evaluated in the product's own environment; `write-model`, who writes which relation |
+| `fixture` | `bundle`, `scenario`, `pep`, `case`, `counter_case`, `expected` | `validation`, the validation file, then `case`, `counter_case`, `expected` |
+| `false_positives[].case` | `policy`, `data`, `write_model` | `validation`, a validation file written inline, holding the condition and nothing else |
+
+`reports` and `note` of a case mean the same for every engine.
+
+## Migration from v1
+
+An entry of version 1 is an entry of version 2 with its `schema_version` changed: version 2 adds
+the `zanzibar` engine and the fields above, and changes nothing for `opa`.
 
 ---
 

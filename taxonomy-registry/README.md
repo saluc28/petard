@@ -325,14 +325,14 @@ scalars, so there are never two documents about the same pattern drifting apart.
 ```
 taxonomy-registry/
 ├── README.md          this file
-├── SCHEMA.md          the fields, v1
+├── SCHEMA.md          the fields, v2
 ├── opa/
 │   └── PTD-OPA-001-attribute-self-write.yaml
 └── cedar/             (not yet)
 ```
 
-Every file carries `schema_version: 1` from the first day. The schema is versioned because it
-will change: this is data, and data outlives the code that reads it.
+Every file carries `schema_version`, now `2`. The schema is versioned because it changes: this
+is data, and data outlives the code that reads it.
 
 ---
 

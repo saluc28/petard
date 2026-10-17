@@ -18,8 +18,9 @@ import (
 // at v9.7.1). It uses the functions text/template has built in and nothing
 // else, so that a test can render it the way the server does.
 
-// registryURL is where the file of each pattern is read on GitHub.
-const registryURL = registry.URL
+// registryURL is where the file of each pattern of the OPA engine is read on
+// GitHub, the name of the file away.
+const registryURL = registry.BlobURL + registry.Dir + "/" + registry.OPADir + "/"
 
 // patternNote is what the panel says about one pattern: its title in the
 // registry, the name that makes its file, and what closes it, which is what the

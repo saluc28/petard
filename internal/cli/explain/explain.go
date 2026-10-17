@@ -114,7 +114,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	source := registry.Source(*registryPath)
-	all, err := taxonomy.LoadRegistry(source)
+	all, err := taxonomy.LoadRegistries(source)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard explain: %v\n", err)
 		return exitFailure
@@ -127,7 +127,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	content, err := fs.ReadFile(source, pattern.File)
+	content, err := fs.ReadFile(source, pattern.Engine+"/"+pattern.File)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard explain: %v\n", err)
 		return exitFailure
@@ -225,8 +225,8 @@ func printEntry(out io.Writer, e entry, file string) {
 	}
 
 	section(out, "Written down in")
-	fmt.Fprintf(out, "  %s\n", registry.Path(file))
-	fmt.Fprintf(out, "  %s%s\n", registry.URL, file)
+	fmt.Fprintf(out, "  %s\n", registry.Path(e.Engine, file))
+	fmt.Fprintf(out, "  %s\n", registry.URL(e.Engine, file))
 }
 
 // settled says how a declared false positive was settled, which is what
