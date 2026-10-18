@@ -77,6 +77,48 @@ func TestFixtureClosure(t *testing.T) {
 	}
 }
 
+// From every starting position the schema offers, the coalition must not reach
+// owner of the roadmap unless it started holding it: owner has no write rule in
+// the fixture, so no coalition can write its way to it. This runs the whole
+// pipeline, schema to starting positions to closure, on the real files.
+func TestFixtureStartingPositionsCannotReachOwner(t *testing.T) {
+	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
+	sample := findOne(t, fixtureValidation).Sample(now)
+	wm, err := zanzibar.LoadWriteModel(fixtureWrites)
+	if err != nil {
+		t.Fatalf("LoadWriteModel: %v", err)
+	}
+	attacker := zanzibar.Object{Type: "user", ID: "attacker"}
+
+	positions := zanzibar.StartingPositions(sample.Model, attacker, zanzibar.Options{})
+	documentPositions := 0
+	for _, p := range positions {
+		if p.Object.Type != "document" {
+			continue
+		}
+		documentPositions++
+
+		startOwner, err := zanzibar.NewChecker(sample.Model, p.Tuples, sample.Caveats, now).Check(p.Object, "owner", zanzibar.Subject{Object: attacker}, nil)
+		if err != nil {
+			t.Fatalf("start owner of %s: %v", p, err)
+		}
+		reach, err := zanzibar.Closure(sample.Model, wm, sample.Caveats, p.Tuples, []zanzibar.Object{attacker}, zanzibar.Options{Now: now})
+		if err != nil {
+			t.Fatalf("Closure from %s: %v", p, err)
+		}
+		endOwner, err := reach.Holds(p.Object, "owner")
+		if err != nil {
+			t.Fatalf("reached owner of %s: %v", p, err)
+		}
+		if startOwner.Level == zanzibar.No && endOwner != zanzibar.No {
+			t.Errorf("%s: coalition escalated to owner (owner has no write rule)", p)
+		}
+	}
+	if documentPositions == 0 {
+		t.Fatal("no document starting positions generated")
+	}
+}
+
 // addedKeys is the string form of the tuples the reachable state holds that the
 // start did not.
 func addedKeys(start, state []zanzibar.Relationship) []string {

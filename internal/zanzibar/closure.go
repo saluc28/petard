@@ -36,6 +36,11 @@ type Options struct {
 	// DefaultCreatedCopies.
 	CreatedCopies int
 
+	// StartingDepth is how deep a recursive permission is unfolded when a
+	// starting position is generated from the schema. Zero takes
+	// DefaultStartingDepth.
+	StartingDepth int
+
 	// Now is the time expirations are read at. The zero value takes the current
 	// time when the run starts.
 	Now time.Time
@@ -53,6 +58,13 @@ func (o Options) createdCopies() int {
 		return DefaultCreatedCopies
 	}
 	return o.CreatedCopies
+}
+
+func (o Options) startingDepth() int {
+	if o.StartingDepth <= 0 {
+		return DefaultStartingDepth
+	}
+	return o.StartingDepth
 }
 
 func (o Options) now() time.Time {
