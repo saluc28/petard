@@ -1,18 +1,20 @@
 # Taxonomy registry
 
-> The taxonomy of abuse patterns. This is the project. Reading Rego is largely solved by the
-> official libraries; the part that is not solved is which of those reads matter, and that is
-> what these files say.
+> The taxonomy of abuse patterns. This is the project. Reading a Rego policy or a SpiceDB schema
+> is largely solved by the products' own libraries, which Petard compiles in; the part that is not
+> solved is which of the things a decision depends on somebody else can change, and that is what
+> these files say.
 >
-> Versioned data, not code. The engine reads these files and holds no hardcoded pattern.
+> Versioned data, not code, with one directory per engine. The engines read these files and hold
+> no hardcoded pattern.
 
 ---
 
 ## 1. Why this registry exists
 
-Two checks say what is not covered elsewhere.
+For each engine, two checks say what is not covered elsewhere.
 
-`regal` has no `security` category. Its categories are `bugs`, `custom`, `idiomatic`,
+For Rego, `regal` has no `security` category. Its categories are `bugs`, `custom`, `idiomatic`,
 `imports`, `performance`, `style`, `testing`, confirmed at the source of v0.42.0 by listing the
 rule directories rather than reading them off a documentation page. The official linter of the
 OPA ecosystem, written by the maintainers, has no notion of "this Rego is dangerous". And
@@ -25,15 +27,25 @@ authorization policy of the API itself. It says how to secure the *engine*. It s
 about how to reason about the attack surface of policy plus data.
 
 So there is guidance on how to *write* clean Rego and on how to *expose* OPA safely, and none on
-who can make a policy say what they want by writing the data it reads. That is what this
-registry is for.
+who can make a policy say what they want by writing the data it reads.
+
+For a SpiceDB schema, SpiceDB's own warnings read the schema alone. At v1.56.2 there are five
+(`pkg/development/warnings.go:19-31`, defined in `pkg/development/warningdefs.go`): a relation or
+a permission whose name ends with the name of its type, a permission that references itself, and
+three about arrows. One names a target that none of the types it walks to declares, one walks a
+relation of usersets and so ignores their subject relation, and one points to a relation where a
+permission is recommended. `zed validate` checks that the answers a validation file asserts are
+the answers SpiceDB gives, and those stay right until somebody writes a relationship differently.
+Neither asks who can write a relationship, or with which context.
+
+That is what this registry is for, in both engines.
 
 ---
 
 ## 2. The rule that decides what goes in: the linter test
 
-> If `regal` can find it by reading a file, it is not a pattern of this registry. It is a lint
-> rule.
+> If the linter of its language can find it by reading a file, `regal` for Rego or SpiceDB's
+> warnings for a schema, it is not a pattern of this registry. It is a lint rule.
 
 This is not a rule of taste. It is what keeps the project from becoming a worse version of a
 linter that already exists. regal's `bugs` category holds, among others, `impossible-not`,
@@ -42,8 +54,8 @@ linter that already exists. regal's `bugs` category holds, among others, `imposs
 them visible in one file.
 
 What Petard adds is what needs the graph: crossing the line between whoever decides and
-whoever writes the data. A linter sees one file. Petard sees the policy, the data and who writes
-it, together.
+whoever writes what the decision reads. A linter sees one file. Petard sees the policy or the
+schema, what it decides on and who writes that, together.
 
 Every pattern carries a mandatory `not_a_lint_rule` field that has to explain, in one
 sentence, why a linter cannot find it. If you cannot write that sentence, the pattern does not
