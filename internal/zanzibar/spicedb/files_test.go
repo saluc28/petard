@@ -2,6 +2,7 @@ package spicedb
 
 import (
 	"errors"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,7 +20,10 @@ func TestFind(t *testing.T) {
 
 	got := make(map[string]*File, len(files))
 	for _, f := range files {
-		got[filepath.Base(f.Path)] = f
+		got[path.Base(f.Path)] = f
+		if strings.Contains(f.Path, `\`) {
+			t.Errorf("Path = %s, want forward slashes", f.Path)
+		}
 	}
 	if len(got) != 3 {
 		t.Fatalf("Find() found %v, want inline.yml, named.yaml and schema.zed", keys(got))
@@ -34,8 +38,8 @@ func TestFind(t *testing.T) {
 	if named == nil || !named.Validation {
 		t.Fatalf("named.yaml = %+v, want a validation file", named)
 	}
-	if named.SchemaPath != filepath.Join(root, "schema.zed") {
-		t.Errorf("named.yaml schema read from %s, want %s", named.SchemaPath, filepath.Join(root, "schema.zed"))
+	if want := "testdata/find/schema.zed"; named.SchemaPath != want {
+		t.Errorf("named.yaml schema read from %s, want %s", named.SchemaPath, want)
 	}
 	if len(named.Relationships) != 2 || len(named.Assertions) != 2 {
 		t.Errorf("named.yaml = %d relationships and %d assertions, want 2 and 2", len(named.Relationships), len(named.Assertions))
@@ -112,15 +116,15 @@ func TestFindStaysUnderTheDirectory(t *testing.T) {
 }
 
 // findOne reads the one input a file holds.
-func findOne(t *testing.T, path string) *File {
+func findOne(t *testing.T, name string) *File {
 	t.Helper()
 
-	files, err := Find([]string{path})
+	files, err := Find([]string{name})
 	if err != nil {
-		t.Fatalf("Find(%s) error = %v", path, err)
+		t.Fatalf("Find(%s) error = %v", name, err)
 	}
 	if len(files) != 1 {
-		t.Fatalf("Find(%s) found %d inputs, want 1", path, len(files))
+		t.Fatalf("Find(%s) found %d inputs, want 1", name, len(files))
 	}
 	return files[0]
 }

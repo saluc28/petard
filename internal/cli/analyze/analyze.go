@@ -154,6 +154,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	})
 	if errors.Is(err, opaengine.ErrNoModules) && len(spiceFiles) > 0 {
 		printSpiceDB(stdout, spice, patterns, pr)
+		printFooter(stdout, pr, false)
 		return spice.exitCode(*failOn)
 	}
 	if err != nil {
@@ -173,11 +174,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	found := summarize(analyzed, findings, patterns)
-	printSummary(stdout, analyzed, found, coverage, printing{
-		style:   style,
-		quiet:   *quiet,
-		verbose: *verbose,
-	})
+	printSummary(stdout, analyzed, found, coverage, pr)
+	// The SpiceDB files are summed up beside the policies, ahead of the
+	// evidence -v adds for the policies, so the first screen holds both.
+	if len(spiceFiles) > 0 && (!*quiet || len(spice.matches) > 0) {
+		fmt.Fprintln(stdout)
+		printSpiceDB(stdout, spice, patterns, pr)
+	}
+	printFooter(stdout, pr, true)
 
 	if *verbose {
 		fmt.Fprintln(stdout)
@@ -226,10 +230,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			}
 			fmt.Fprintf(stdout, "\n%d %s written to %s\n", written, entries, *questionsPath)
 		}
-	}
-	if len(spiceFiles) > 0 && (!*quiet || len(spice.matches) > 0) {
-		fmt.Fprintln(stdout)
-		printSpiceDB(stdout, spice, patterns, pr)
 	}
 	return max(exitCode(found, *failOn), spice.exitCode(*failOn))
 }

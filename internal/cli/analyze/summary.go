@@ -131,7 +131,7 @@ type printing struct {
 	verbose bool
 }
 
-// printSummary writes the first screen.
+// printSummary writes the first screen about the policies.
 func printSummary(out io.Writer, a taxonomy.Analysis, s summary, coverage taxonomy.Coverage, p printing) {
 	style, quiet := p.style, p.quiet
 	if quiet && s.empty() {
@@ -163,9 +163,17 @@ func printSummary(out io.Writer, a taxonomy.Analysis, s summary, coverage taxono
 	}
 
 	printTrust(out, a, coverage, style)
+}
 
+// printFooter says where the rest of the report is. It goes under everything
+// the run sums up, the policies and the SpiceDB files alike, and offers -v only
+// where -v adds something, which is the evidence behind the policies.
+func printFooter(out io.Writer, p printing, policies bool) {
+	if p.quiet {
+		return
+	}
 	fmt.Fprintln(out)
-	if !p.verbose {
+	if policies && !p.verbose {
 		fmt.Fprint(out, "Run with -v for the reads behind this, and every place to look.\n")
 	}
 	fmt.Fprint(out, "Run petard explain <id> for what a pattern looks for and what it will not report.\n")

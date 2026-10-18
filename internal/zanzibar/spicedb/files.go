@@ -28,7 +28,8 @@ var ErrValidationFile = errors.New("spicedb: invalid validation file")
 // File is one SpiceDB input found on disk: a schema file, or a validation file
 // that holds a schema or names one, with the relationships written against it.
 type File struct {
-	// Path is where the file was found.
+	// Path is where the file was found, written with forward slashes on every
+	// system, as the files of a policy are.
 	Path string
 
 	// SchemaPath is the file the schema was read from: Path itself, or the
@@ -157,9 +158,11 @@ type reader struct {
 	dir  string
 }
 
-// display is the path a report prints for a file of the directory.
+// display is the path a report prints for a file of the directory. It has
+// forward slashes on every system, so a report reads the same on Windows and
+// names a schema the way it names a policy beside it.
 func (r reader) display(rel string) string {
-	return filepath.Join(r.dir, filepath.FromSlash(rel))
+	return filepath.ToSlash(filepath.Join(r.dir, filepath.FromSlash(rel)))
 }
 
 func (r reader) readFile(rel string) ([]byte, error) {

@@ -111,6 +111,34 @@ func TestRunQuietPrintsSpiceDBMatches(t *testing.T) {
 	}
 }
 
+// A run over policies and SpiceDB files sums up both before it says where the
+// rest is, and a run over SpiceDB files alone does not offer the evidence -v
+// adds for policies.
+func TestTheFooterComesAfterEverySummary(t *testing.T) {
+	var mixed, alone, stderr bytes.Buffer
+	if code := Run([]string{"-fail-on", "none", fixture("policy-v1"), spicedbFixture}, &mixed, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	if code := Run([]string{spicedbFixture}, &alone, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+
+	out := mixed.String()
+	trust := strings.Index(out, "How much to trust this")
+	files := strings.Index(out, "2 SpiceDB files")
+	footer := strings.Index(out, "Run petard explain")
+	if trust < 0 || files < trust || footer < files {
+		t.Errorf("the policies, the SpiceDB files and the footer are not printed in that order:\n%s", out)
+	}
+	if !strings.HasSuffix(out, "what it will not report.\n") {
+		t.Errorf("the run does not end with the footer:\n%s", out)
+	}
+
+	if !strings.Contains(alone.String(), "Run petard explain") || strings.Contains(alone.String(), "Run with -v") {
+		t.Errorf("the footer of a run over SpiceDB files alone is wrong:\n%s", alone.String())
+	}
+}
+
 // A schema no validation file reads gives the patterns nothing to take
 // evidence from, and the run says so instead of reading as clean.
 func TestRunSaysWhichSchemasHaveNoEvidence(t *testing.T) {
