@@ -75,14 +75,18 @@ mechanism:
 
 detection:
   requires:
+    - write-model
     - relationships
     - assertions
     - caveat-evaluation
   requires_note: >
-    `relationships` and `assertions` for signal 2, the evidence of which parameters the check is
-    meant to supply, and `caveat-evaluation` for signal 3, which asks SpiceDB's own environment
-    whether a check changes its answer. A schema with no validation file holds no evidence, and
-    the pattern says nothing about it.
+    `write-model` for the finding: a write rule that attaches the caveat and marks the parameter
+    the application's, so who writes the relation and that the parameter is the check's are
+    declared rather than guessed. `relationships` and `assertions` for signal 2, the evidence of
+    which parameters the check is meant to supply, and `caveat-evaluation` for signal 3, which
+    asks SpiceDB's own environment whether a check changes its answer; both feed the candidate a
+    run without a write model falls back to. A schema with no write model and no validation file
+    holds neither, and the pattern says nothing about it.
   signals:
     - order: 1
       check: >
@@ -114,11 +118,19 @@ detection:
         the relationship shows nothing, and the parameter is still the writer's.
   requires_write_model: true
   requires_write_model_note: >
-    Whether the coalition writes the relation, and chooses the context it is written with, is not
-    in the schema. petard reads no write model for Zanzibar models, so every match is a candidate.
+    For the finding. The write model says who writes the relation and, per parameter, who fills
+    it: a parameter marked the application's is one the writer can set anyway, since SpiceDB
+    accepts any parameter of the caveat. petard confirms the writer can reach the write, through a
+    starting position that puts the coalition where the gate holds, and that the relation feeds a
+    permission. Without a write model the pattern reads the same shape off the relationships and
+    the assertions and emits a candidate.
 
 graph:
-  emits: candidate
+  emits: finding
+  emits_note: >
+    A finding when a write model attaches the caveat to a relation a coalition can write and marks
+    the parameter the application's. Without one, the pattern still reads the relationships and
+    the checks and emits a candidate.
   marks: []
   marks_note: >
     No mark: `petard export` reads no SpiceDB schema.
@@ -186,8 +198,9 @@ fixture:
     `cidr` and `until`, the other parameters of the same caveats: every relationship that carries
     the caveat writes them, and no check supplies them.
   expected: >
-    Two candidates, on `user_ip` of `document#viewer` and on `now` of `document#editor`, each
-    with a check of the file that goes from no to yes, and nothing on `cidr` or `until`.
+    Two findings, on `user_ip` of `document#viewer` and on `now` of `document#editor`, each naming
+    who writes the relation and the permission it raises, and nothing on `cidr` or `until`. Without
+    the write model they are the same two as candidates.
 
 references:
   - title: authzed/spicedb, the context a caveat is run on
@@ -212,15 +225,15 @@ references:
       ahead of the decision, on the relationship, rather than sent with it.
 
 verified:
-  date: 2026-10-18
+  date: 2026-10-19
   tool_version: spicedb 1.56.2, zed 1.2.1
   how: >
-    The engine finds the case and stays quiet about the counter case on the fixture: two
-    candidates, on `user_ip` and `now`, each with a check that goes from no to yes once the
-    parameter is written, and nothing on `cidr` or `until`. Both witnesses were held against
-    SpiceDB with zed v1.2.1: with the relationship written as the witness says, the check from
-    outside the network and the check after the date are granted. The case of the first declared
-    false positive runs as part of the test suite.
+    With the fixture's write model the engine reports two findings, on `user_ip` of
+    `document#viewer` and `now` of `document#editor`, each naming who writes the relation and the
+    permission it raises, and nothing on `cidr` or `until`. Without a write model it reports the
+    same two as candidates. Both were held against SpiceDB with zed v1.2.1: with the relationship
+    written as the finding says, the check from outside the network and the check after the date
+    are granted. The case of the first declared false positive runs as part of the test suite.
 
 related:
   - id: PTD-OPA-009

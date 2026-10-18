@@ -2,6 +2,7 @@ package zanzibar
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 )
 
@@ -20,10 +21,37 @@ type Sample struct {
 	Now     time.Time
 }
 
-// Run applies every pattern of the engine to a sample.
-func Run(s Sample) []Match {
-	return WriterSetParameters(s)
+// Run applies every pattern of the engine to a sample, under a write model when
+// one is given. With a write model, a pattern that rests on who writes a
+// relation is a finding; without one, it reads the same shape off the sample as
+// a candidate, so a match a write model would confirm is still surfaced.
+//
+// A finding and the candidate of the same relation and parameter are the same
+// fact, so the candidate is dropped once the write model has made it a finding.
+func Run(s Sample, wm *WriteModel) []Match {
+	candidates := WriterSetParameters(s)
+	if wm == nil {
+		return candidates
+	}
+	findings := SelfAssertedExemptions(s.Model, wm, defaultAttacker, Options{})
+	confirmed := make(map[string]bool, len(findings))
+	for _, f := range findings {
+		confirmed[f.Subject] = true
+	}
+	out := slices.Clone(findings)
+	for _, c := range candidates {
+		if !confirmed[c.Subject] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
+
+// defaultAttacker is the subject Run studies as the coalition: a user, the
+// identity an application turns an end user into. A schema with no user type
+// grants it nothing, and the run reports no finding that rests on reaching a
+// permission it would need.
+var defaultAttacker = Object{Type: "user", ID: "attacker"}
 
 // Assertion is a check somebody wrote down with the answer they expect, as a
 // validation file asserts it.

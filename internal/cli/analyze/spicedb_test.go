@@ -48,22 +48,23 @@ func TestRunQuietOnSpiceDBFiles(t *testing.T) {
 	}
 }
 
-// The fixture holds two parameters the checks supply and two the relationships
-// carry, and the run reports the first two as candidates with the check each
-// lets through, and nothing on the others.
-func TestRunReportsSpiceDBCandidates(t *testing.T) {
+// The fixture has a write model beside its schema, so the two check parameters
+// a writer can fix are findings: the write model says who writes the relation
+// and that the parameter is the check's. The run names each, the permission it
+// raises, and nothing on the parameters the relationships are meant to carry.
+func TestRunReportsSpiceDBFindings(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := Run([]string{spicedbFixture}, &stdout, &stderr); code != exitOK {
-		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	if code := Run([]string{spicedbFixture}, &stdout, &stderr); code != exitFound {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFound, stderr.String())
 	}
 	out := stdout.String()
 	for _, expected := range []string{
-		"Candidates, which match a pattern and are not proven",
+		"Findings",
 		"2  PTD-ZAN-001  A relationship fixes a caveat value the check was meant to supply",
 		"document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)",
 		"document#editor, now of caveat not_expired  (PTD-ZAN-001)",
-		"goes from no to yes",
+		"from conditional to unconditional",
 	} {
 		if !strings.Contains(out, expected) {
 			t.Errorf("the report does not say %q:\n%s", expected, out)
@@ -76,15 +77,15 @@ func TestRunReportsSpiceDBCandidates(t *testing.T) {
 	}
 }
 
-// Candidates fail the run when -fail-on asks for any match, and only then, the
-// same as the candidates of a policy.
-func TestRunFailsOnSpiceDBCandidatesWhenAsked(t *testing.T) {
+// Findings fail the run by default, and on -fail-on any, and never on none, the
+// same as the findings of a policy.
+func TestRunFailsOnSpiceDBFindings(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
 		want int
 	}{
-		{name: "by default", args: []string{spicedbFixture}, want: exitOK},
+		{name: "by default", args: []string{spicedbFixture}, want: exitFound},
 		{name: "on any match", args: []string{"-fail-on", "any", spicedbFixture}, want: exitFound},
 		{name: "on none", args: []string{"-fail-on", "none", spicedbFixture}, want: exitOK},
 	}
@@ -102,8 +103,8 @@ func TestRunFailsOnSpiceDBCandidatesWhenAsked(t *testing.T) {
 func TestRunQuietPrintsSpiceDBMatches(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
-	if code := Run([]string{"-quiet", spicedbFixture}, &stdout, &stderr); code != exitOK {
-		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	if code := Run([]string{"-quiet", spicedbFixture}, &stdout, &stderr); code != exitFound {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFound, stderr.String())
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "PTD-ZAN-001") || strings.Contains(out, "SpiceDB files") {
@@ -119,8 +120,8 @@ func TestTheFooterComesAfterEverySummary(t *testing.T) {
 	if code := Run([]string{"-fail-on", "none", fixture("policy-v1"), spicedbFixture}, &mixed, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
-	if code := Run([]string{spicedbFixture}, &alone, &stderr); code != exitOK {
-		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	if code := Run([]string{spicedbFixture}, &alone, &stderr); code != exitFound {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFound, stderr.String())
 	}
 
 	out := mixed.String()

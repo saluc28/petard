@@ -26,8 +26,10 @@ assertions:
     - 'document:roadmap#view@user:vic with {"user_ip": "192.168.0.1"}'
 ```
 
-Those contexts, and the contexts the relationships carry, are what `PTD-ZAN-001` takes its
-evidence from. Petard counts the expected relations of a file and does not read them.
+Those contexts, and the contexts the relationships carry, are the evidence `PTD-ZAN-001` reads
+for a candidate. A `writes.yaml` beside the schema, a `relationship-writes` write model, turns it
+into a finding: it says who writes a relation and, per caveat parameter, whether the writer or the
+application fills it. Petard counts the expected relations of a file and does not read them.
 
 Schemas are compiled with SpiceDB's own compiler, from SpiceDB v1.56.2, which `petard version`
 names. A schema that does not compile stops the run, as a policy that does not parse does, and so
@@ -62,48 +64,47 @@ written by hand with the case and the counter case of `PTD-ZAN-001` in them, and
   fixtures/vulnerable-spicedb/validation.yaml  validation file of fixtures/vulnerable-spicedb/schema.zed, 5 relationships, 9 assertions
 
 Findings
-  nothing
-
-Candidates, which match a pattern and are not proven
     2  PTD-ZAN-001  A relationship fixes a caveat value the check was meant to supply
 
-  document#editor, now of caveat not_expired  (PTD-ZAN-001)
-    written on   document#editor at fixtures/vulnerable-spicedb/schema.zed:25:3, and whoever writes
-                 it chooses the context of not_expired
-    supplied by  2 checks of the file, the first at fixtures/vulnerable-spicedb/validation.yaml:15:7
-    shown by     document:roadmap#edit@user:erin with {"now":"2026-12-01T00:00:00Z"}, at
-                 fixtures/vulnerable-spicedb/validation.yaml:20:7, goes from no to yes once
-                 document:roadmap#editor@user:erin carries
-                 {"now":"2026-10-20T00:00:00Z","until":"2026-11-01T00:00:00Z"}
-
   document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)
-    written on   document#viewer at fixtures/vulnerable-spicedb/schema.zed:26:3, and whoever writes
-                 it chooses the context of ip_allowlist
-    supplied by  2 checks of the file, the first at fixtures/vulnerable-spicedb/validation.yaml:14:7
-    shown by     document:roadmap#view@user:vic with {"user_ip":"192.168.0.1"}, at
-                 fixtures/vulnerable-spicedb/validation.yaml:19:7, goes from no to yes once
-                 document:roadmap#viewer@user:vic carries {"cidr":"10.0.0.0/8","user_ip":"10.1.2.3"}
+    written by   whoever holds edit may write document#viewer, at
+                 fixtures/vulnerable-spicedb/schema.zed:26:3, with ip_allowlist, through POST
+                 /api/v1/documents/{id}/viewers
+    the check brings user_ip, which the writer may set on the relationship instead, fixing it for every
+                 check that goes through
+    raises       view on document, from conditional to unconditional
+
+  document#editor, now of caveat not_expired  (PTD-ZAN-001)
+    written by   whoever holds owner may write document#editor, at
+                 fixtures/vulnerable-spicedb/schema.zed:25:3, with not_expired, through POST
+                 /api/v1/documents/{id}/editors
+    the check brings now, which the writer may set on the relationship instead, fixing it for every
+                 check that goes through
+    raises       edit and view on document, from conditional to unconditional
 
 Run petard explain <id> for what a pattern looks for and what it will not report.
 ```
 
-The run lists what each file declares, then the matches. Each match names a relation, a
+They are findings because `fixtures/vulnerable-spicedb/writes.yaml` is a write model beside the
+schema. The run lists what each file declares, then the matches. Each match names a relation, a
 parameter and the caveat it belongs to, and under it:
 
-- `written on` is where the schema lets the relation carry the caveat. Whoever writes a
-  relationship of it writes the context too.
-- `supplied by` counts the checks of the file that supply the parameter, which is the evidence it
-  is meant for the check. Where no check supplies it, `left by` counts the relationships of the
-  relation that leave it out instead.
-- `written by`, when it is there, counts the relationships of the relation that write the
-  parameter already, so a parameter meant to be written by some writers reads as that.
-- `shown by` is the witness: a check of the file, the answer it has now, and the answer it has
-  once the relationship carries the context given.
+- `written by` is who the write model lets write the relation, and where the schema declares it.
+  SpiceDB lets a write carry any parameter of the caveat and the written value wins over the
+  check's, so that writer can fix the parameter.
+- `the check brings` is the parameter the write model marks the application's, the one the writer
+  sets instead.
+- `raises` is the permissions the relation feeds, which go from conditional to unconditional once
+  the parameter is fixed.
+
+Without a write model the two are candidates instead, read off the relationships and the checks:
+a parameter a check of the file supplies and the relationships leave out is one meant for the
+check, and the candidate carries the check whose answer rises once a relationship fixes it.
 
 ## Repeating a witness with zed
 
-A witness is a change to the validation file, and `zed validate` checks it. Write Vic's
-relationship the way `shown by` says:
+The finding says the writer can fix `user_ip`, and `zed validate` shows what that does. Write
+Vic's relationship with the address set, which is the write the finding describes:
 
 ```
 document:roadmap#viewer@user:vic[ip_allowlist:{"cidr":"10.0.0.0/8","user_ip":"10.1.2.3"}]
@@ -115,13 +116,13 @@ and run zed v1.2.1 on the file:
 zed validate validation.yaml
 ```
 
-zed now fails on two assertions: Vic is no longer refused from `192.168.0.1`, the check `shown by`
-names, and the view is no longer caveated, since the relationship settles the caveat whatever the
-check brings.
+zed now fails on two assertions: Vic is no longer refused from `192.168.0.1`, and the view is no
+longer caveated, since the relationship settles the caveat whatever the check brings.
 
 ## In a pipeline
 
-Every match on a SpiceDB schema is a candidate, so `-fail-on any` is what fails a run on one:
+A match on a schema with a write model beside it is a finding, which fails a run by default. A
+match with no write model is a candidate, which `-fail-on any` fails on:
 
 ```
 petard analyze -quiet -fail-on any path/to/schemas

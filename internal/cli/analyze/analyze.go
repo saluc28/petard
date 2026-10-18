@@ -19,6 +19,8 @@ import (
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
+	"github.com/saluc28/petard/internal/writemodel"
+	"github.com/saluc28/petard/internal/zanzibar"
 	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
@@ -129,8 +131,33 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
+	writeModels, err := discoverWriteModels(spiceFiles)
+	if err != nil {
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+		return exitFailure
+	}
+	// The write-model flag feeds both engines, told apart by the kind the file
+	// declares. A relationship-writes model named there overrides what was
+	// found beside the schemas, and is kept from the policy loader, which reads
+	// the write-paths kind.
+	opaWriteModelPath := *writeModelPath
+	if *writeModelPath != "" {
+		wm, err := zanzibar.LoadWriteModel(*writeModelPath)
+		switch {
+		case err == nil:
+			opaWriteModelPath = ""
+			for _, dir := range spiceDirs(spiceFiles) {
+				writeModels[dir] = wm
+			}
+		case errors.Is(err, writemodel.ErrNotAWriteModel):
+			// A write-paths model for the policy engine; left for it to load.
+		default:
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+			return exitFailure
+		}
+	}
 	style := render.StyleFor(stdout, *noColor)
-	spice := runSpiceDB(spiceFiles, time.Now())
+	spice := runSpiceDB(spiceFiles, time.Now(), writeModels)
 	pr := printing{style: style, quiet: *quiet, verbose: *verbose}
 
 	ctx := context.Background()
@@ -145,7 +172,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		EnforcementPoint: *enforcementPoint,
 		Granted:          granted,
 		DataPath:         *dataPath,
-		WriteModelPath:   *writeModelPath,
+		WriteModelPath:   opaWriteModelPath,
 		Limits: opaengine.Limits{
 			MaxCallDepth: *maxCallDepth,
 			MaxCallPaths: *maxCallPaths,

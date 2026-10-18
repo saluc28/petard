@@ -1,8 +1,11 @@
 package analyze
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/saluc28/petard/internal/cli/render"
 	"github.com/saluc28/petard/internal/taxonomy"
+	"github.com/saluc28/petard/internal/writemodel"
 	"github.com/saluc28/petard/internal/zanzibar"
 	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 )
@@ -32,7 +36,7 @@ type spiceDBRun struct {
 // A schema read by two validation files is one schema, and a fact about it is
 // reported once: the first file that shows it, in the order the files sort,
 // is the one the report cites.
-func runSpiceDB(files []*spicedb.File, now time.Time) spiceDBRun {
+func runSpiceDB(files []*spicedb.File, now time.Time, writeModels map[string]*zanzibar.WriteModel) spiceDBRun {
 	run := spiceDBRun{files: files}
 	read := map[string]bool{}
 	seen := map[string]bool{}
@@ -41,7 +45,8 @@ func runSpiceDB(files []*spicedb.File, now time.Time) spiceDBRun {
 			continue
 		}
 		read[f.SchemaPath] = true
-		for _, m := range zanzibar.Run(f.Sample(now)) {
+		wm := writeModels[path.Dir(f.SchemaPath)]
+		for _, m := range zanzibar.Run(f.Sample(now), wm) {
 			key := m.PatternID + "\x00" + f.SchemaPath + "\x00" + m.Subject
 			if seen[key] {
 				continue
@@ -56,6 +61,53 @@ func runSpiceDB(files []*spicedb.File, now time.Time) spiceDBRun {
 		}
 	}
 	return run
+}
+
+// discoverWriteModels reads a relationship-writes write model from the
+// directory of each schema the SpiceDB files name, so that a schema with a
+// write model beside it is analyzed with one and its matches become findings.
+// A YAML that is not a write model, a validation file among them, is left
+// alone; a write model that does not hold together is an error named to the
+// user.
+func discoverWriteModels(files []*spicedb.File) (map[string]*zanzibar.WriteModel, error) {
+	models := map[string]*zanzibar.WriteModel{}
+	for _, dir := range spiceDirs(files) {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			// A schema held inline in a validation file has no directory of its
+			// own to read, and a directory already walked for the schema is read
+			// for what it holds either way.
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() || (!strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml")) {
+				continue
+			}
+			wm, err := zanzibar.LoadWriteModel(path.Join(dir, name))
+			switch {
+			case err == nil:
+				models[dir] = wm
+			case errors.Is(err, writemodel.ErrNotAWriteModel):
+				// A validation file or some other YAML; not a write model.
+			default:
+				return nil, err
+			}
+		}
+	}
+	return models, nil
+}
+
+// spiceDirs is the distinct directories the schemas live in, in a stable order.
+func spiceDirs(files []*spicedb.File) []string {
+	var dirs []string
+	for _, f := range files {
+		dir := path.Dir(f.SchemaPath)
+		if !slices.Contains(dirs, dir) {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
 }
 
 // policyPaths are the paths left for the policy loader once the SpiceDB files

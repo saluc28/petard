@@ -70,24 +70,25 @@ Escalations
 ```
 
 The `proven by` line is a request the decision refuses as the data stands and grants once the
-write is made. For the schema it names each caveat parameter that is meant to come with the check
-and that whoever writes the relationship can set instead:
+write is made. For the schema it names each finding: a caveat parameter the check was meant to
+bring, which whoever writes the relationship can set instead.
 
 <!-- output of: petard demo spicedb -->
 ```
   document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)
-    written on   document#viewer at vulnerable-spicedb/schema.zed:26:3, and whoever writes it
-                 chooses the context of ip_allowlist
-    supplied by  2 checks of the file, the first at vulnerable-spicedb/validation.yaml:14:7
-    shown by     document:roadmap#view@user:vic with {"user_ip":"192.168.0.1"}, at
-                 vulnerable-spicedb/validation.yaml:19:7, goes from no to yes once
-                 document:roadmap#viewer@user:vic carries {"cidr":"10.0.0.0/8","user_ip":"10.1.2.3"}
+    written by   whoever holds edit may write document#viewer, at
+                 vulnerable-spicedb/schema.zed:26:3, with ip_allowlist, through POST
+                 /api/v1/documents/{id}/viewers
+    the check brings user_ip, which the writer may set on the relationship instead, fixing it for every
+                 check that goes through
+    raises       view on document, from conditional to unconditional
 ```
 
-`shown by` is a check of the validation file whose answer rises once the relationship carries the
-value, and `zed validate` fails on its assertion once the relationship is written that way. Around
-these the demo counts the matches by pattern, and for the policy says how much to trust them. `-v`
-adds the evidence behind the policy: every read with its file and line, and every place to look.
+`written by` is who the write model lets write the relation, `the check brings` the parameter the
+application was meant to supply, and `raises` the permissions the exemption lifts from conditional
+to unconditional. Without a write model the same shape is a candidate. Around these the demo counts
+the matches by pattern, and for the policy says how much to trust them. `-v` adds the evidence
+behind the policy: every read with its file and line, and every place to look.
 
 `analyze` needs no flags to start. Where a policy annotates no entrypoint it takes the rules no
 other rule uses as the decisions, it reads the data the bundle carries and the SpiceDB files under

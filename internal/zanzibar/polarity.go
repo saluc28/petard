@@ -234,6 +234,26 @@ func (o occurrence) reason() string {
 	return "occurs in both polarities"
 }
 
+// positivePermissions is every permission of a type whose expansion reads a
+// relation positively, so that adding to the relation, or lifting a caveat on
+// it, raises the permission. It is how a write on a relation is tied to the
+// access it opens.
+func positivePermissions(model *Model, typ, relation string) []string {
+	t := model.Type(typ)
+	if t == nil {
+		return nil
+	}
+	var out []string
+	for _, p := range t.Permissions {
+		pol := &polarities{model: model, rel: map[relKey]*occurrence{}, visited: map[visitKey]bool{}}
+		pol.walk(typ, p.Expr, positive)
+		if pol.at(relKey{Type: typ, Relation: relation}).pos {
+			out = append(out, p.Name)
+		}
+	}
+	return out
+}
+
 // deletes reports whether a set of operations removes a tuple.
 func deletes(ops []Operation) bool {
 	for _, op := range ops {

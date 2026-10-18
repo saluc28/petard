@@ -55,8 +55,9 @@ Petard reads no declaration of it.
 A match is a finding when everything it rests on is known: the policy itself, or a declaration
 that names who writes or who sets. Otherwise it is a candidate. A candidate that rests on who
 writes a path of a policy names the path, the report lists it as a question, and `-questions`
-writes those questions as a write model to fill in. Every match on a SpiceDB schema is a
-candidate, for the reason above.
+writes those questions as a write model to fill in. A match on a SpiceDB schema is a finding when
+a `relationship-writes` write model beside it names who writes the relation, and a candidate
+otherwise, for the reason above.
 
 `-fail-on` decides which of them fail a run: findings by default, candidates as well with `any`.
 

@@ -19,28 +19,39 @@ var fixtureValidation = filepath.Join("..", "..", "..", "fixtures", "vulnerable-
 
 // The fixture holds two parameters the checks supply, the address of the
 // caller and the time of the request, and two the relationships are meant to
-// carry, the network and the date. EXPECTED.md says the same.
+// carry, the network and the date. With the write model they are findings,
+// since who writes the relation and that the parameter is the check's are
+// declared; without it they are the same two matches as candidates. EXPECTED.md
+// says the same.
 func TestFixture(t *testing.T) {
-	f := findOne(t, fixtureValidation)
-	matches := zanzibar.Run(f.Sample(time.Now()))
-
-	var subjects []string
-	for _, m := range matches {
-		subjects = append(subjects, m.Subject)
-		if m.PatternID != zanzibar.WriterSetParameterID || m.Verdict != zanzibar.Candidate {
-			t.Errorf("%s: %s %s, want a candidate of %s", m.Subject, m.PatternID, m.Verdict, zanzibar.WriterSetParameterID)
-		}
-		for _, d := range m.Details {
-			t.Logf("%s | %-12s %s (%s)", m.Subject, d.Label, d.Text, d.Position)
-		}
-	}
+	sample := findOne(t, fixtureValidation).Sample(time.Now())
 	want := []string{
 		"document#editor, now of caveat not_expired",
 		"document#viewer, user_ip of caveat ip_allowlist",
 	}
+
+	wm, err := zanzibar.LoadWriteModel(fixtureWrites)
+	if err != nil {
+		t.Fatalf("LoadWriteModel: %v", err)
+	}
+	assertMatches(t, zanzibar.Run(sample, wm), zanzibar.Finding, want)
+	assertMatches(t, zanzibar.Run(sample, nil), zanzibar.Candidate, want)
+}
+
+// assertMatches checks that the matches are the PTD-ZAN-001 ones expected, each
+// with the given verdict.
+func assertMatches(t *testing.T, matches []zanzibar.Match, verdict zanzibar.Verdict, want []string) {
+	t.Helper()
+	var subjects []string
+	for _, m := range matches {
+		subjects = append(subjects, m.Subject)
+		if m.PatternID != zanzibar.SelfAssertedExemptionID || m.Verdict != verdict {
+			t.Errorf("%s: %s %s, want a %s of %s", m.Subject, m.PatternID, m.Verdict, verdict, zanzibar.SelfAssertedExemptionID)
+		}
+	}
 	slices.Sort(subjects)
 	if !slices.Equal(subjects, want) {
-		t.Errorf("matches on %v, want %v", subjects, want)
+		t.Errorf("%s matches on %v, want %v", verdict, subjects, want)
 	}
 }
 
@@ -64,7 +75,7 @@ type zanzibarEntry struct {
 func reports(t *testing.T, path, id string) bool {
 	t.Helper()
 
-	for _, m := range zanzibar.Run(findOne(t, path).Sample(time.Now())) {
+	for _, m := range zanzibar.Run(findOne(t, path).Sample(time.Now()), nil) {
 		if m.PatternID == id {
 			return true
 		}

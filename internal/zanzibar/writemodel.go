@@ -308,13 +308,26 @@ func LoadWriteModel(path string) (*WriteModel, error) {
 // ParseWriteModel reads a relationship-writes write model from its bytes. It is
 // the part of LoadWriteModel that does not touch the disk, so a test can hold
 // the model inline.
+//
+// The kind is read first, without the strict decoding the rest of the file
+// gets, so that a YAML of another shape, a validation file sitting beside a
+// schema among them, is turned away with ErrNotAWriteModel rather than failing
+// on a field this format does not have. A file that does declare the kind is
+// then held to every field.
 func ParseWriteModel(content []byte) (*WriteModel, error) {
+	var head struct {
+		Kind string `yaml:"model"`
+	}
+	if err := yaml.Unmarshal(content, &head); err != nil {
+		return nil, err
+	}
+	if head.Kind != writeModelKind {
+		return nil, fmt.Errorf("%w: declares model %q, want %q", writemodel.ErrNotAWriteModel, head.Kind, writeModelKind)
+	}
+
 	var m WriteModel
 	if err := writemodel.DecodeStrict(content, &m); err != nil {
 		return nil, err
-	}
-	if m.Kind != writeModelKind {
-		return nil, fmt.Errorf("%w: declares model %q, want %q", writemodel.ErrNotAWriteModel, m.Kind, writeModelKind)
 	}
 	if m.SchemaVersion != WriteModelSchemaVersion {
 		return nil, fmt.Errorf("%w: version %d, this reads %d", writemodel.ErrSchemaVersion, m.SchemaVersion, WriteModelSchemaVersion)

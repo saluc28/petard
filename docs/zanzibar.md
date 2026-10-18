@@ -113,7 +113,8 @@ The categories of the registry with no Zanzibar instance, and why, are in sectio
 ## What a match rests on
 
 Who writes a relation, and with which context, is decided by the application that writes to
-SpiceDB, and no schema says it. Petard reads no declaration of it for a Zanzibar model, so every
-match is a candidate: `-fail-on any` is what fails a run on one. The schema alone gives the
-pattern nothing to read, and a schema no validation file reads is named in the report as one
-with no evidence. `petard export` does not read schemas.
+SpiceDB, and no schema says it. A `relationship-writes` write model beside the schema does: it
+names who writes each relation and, per caveat parameter, whether the writer or the application
+fills it. With one, a match is a finding; without one, a candidate, and `-fail-on any` is what
+fails a run on a candidate. A schema no validation file reads is named in the report as one with
+no evidence. `petard export` does not read schemas.

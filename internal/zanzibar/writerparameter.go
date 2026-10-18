@@ -7,10 +7,6 @@ import (
 	"slices"
 )
 
-// WriterSetParameterID is the pattern of a caveat parameter meant to come with
-// the check, which whoever writes the relationship can set instead.
-const WriterSetParameterID = "PTD-ZAN-001"
-
 // maxWitnessRewrites bounds how many rewritten relationships are tried while
 // looking for a check that shows a parameter's effect. A match is reported
 // either way; the bound only decides how hard it looks for the proof.
@@ -92,7 +88,7 @@ func writerSetParameter(s Sample, t *Type, r *Relation, c *Caveat, p string) (Ma
 	}
 
 	m := Match{
-		PatternID: WriterSetParameterID,
+		PatternID: SelfAssertedExemptionID,
 		Verdict:   Candidate,
 		Subject:   fmt.Sprintf("%s#%s, %s of caveat %s", t.Name, r.Name, p, c.Name),
 	}

@@ -70,7 +70,7 @@ func TestWriterSetParametersFindsWhatTheCheckSupplies(t *testing.T) {
 		t.Fatalf("matches = %+v, want one, on the address", matches)
 	}
 	m := matches[0]
-	if m.PatternID != WriterSetParameterID || m.Verdict != Candidate || m.Subject != "doc#viewer, address of caveat network" {
+	if m.PatternID != SelfAssertedExemptionID || m.Verdict != Candidate || m.Subject != "doc#viewer, address of caveat network" {
 		t.Errorf("match = %+v", m)
 	}
 	if got := detail(m, "supplied by"); !strings.HasPrefix(got, "2 checks of the file, the first at") {
