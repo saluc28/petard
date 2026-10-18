@@ -68,6 +68,7 @@ Analyzing a policy never calls the endpoints written in it.
 inside the binary, so there is something to look at before you point the tool at your own
 policies. It leads with who can take whose place:
 
+<!-- output of: petard demo -->
 ```
 12 files, 26 decisions, parsed as rego v1
 

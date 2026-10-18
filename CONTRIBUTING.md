@@ -61,6 +61,11 @@ to find and what it must not, and it was written before the engine: changing it
 to match a new result turns the criterion into a description of whatever the
 code happens to do.
 
+A block of output in a Markdown file, marked with `<!-- output of: petard ... -->`
+on the line before its fence, is checked against what the command prints by
+`TestTheDocsShowWhatTheCommandsPrint`. A change to the output fails it until the
+block is rerun.
+
 The end-to-end run against a live BloodHound is manual and not in CI. It is
 `petard export -url ... -install -upload -verify`, it needs the
 `opengraph_extension_management` feature flag on, and if you run it, say in the
