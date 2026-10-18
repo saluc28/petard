@@ -71,13 +71,14 @@ of relationships long enough to exhaust the stack ends in an error rather than a
 
 ## Held to SpiceDB
 
-The engine's answers are held to SpiceDB's own in CI. For every validation file of Petard's tests
-and every integration test configuration SpiceDB v1.56.2 ships, the engine answers every check
-the objects of the file allow, with objects and usersets as subjects, with no context and with
-each context the assertions of the file supply. It writes the answers into the file as
-assertions, and `zed validate`, from zed v1.2.1, says whether SpiceDB gives the same ones.
+The engine's answers are held to SpiceDB's own in CI. For every validation file of Petard's tests,
+the SpiceDB fixture `petard demo` carries, and every integration test configuration SpiceDB
+v1.56.2 ships, the engine answers every check the objects of the file allow, with objects and
+usersets as subjects, with no context and with each context the assertions of the file supply. It
+writes the answers into the file as assertions, and `zed validate`, from zed v1.2.1, says whether
+SpiceDB gives the same ones.
 
-On 75 files that is 25,703 checks, and SpiceDB agrees on all of them. Another 36 are left out:
+On 76 files that is 26,123 checks, and SpiceDB agrees on all of them. Another 36 are left out:
 they go round a loop and grant nothing, and SpiceDB fails them at its depth limit rather than
 answering. To run it with a zed binary of your own:
 

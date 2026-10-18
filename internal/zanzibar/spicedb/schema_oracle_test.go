@@ -29,7 +29,8 @@ const (
 // one object only a wildcard or nothing at all can grant to.
 const unlistedID = "petard-unlisted"
 
-// The engine against SpiceDB itself. For every validation file, every check
+// The engine against SpiceDB itself. For every validation file, those of
+// testdata, the SpiceDB fixture the demo carries and the corpus, every check
 // the file's objects allow is answered by the engine and written as an
 // assertion, and zed validate says whether SpiceDB gives the same answers. The
 // subjects are the objects and the usersets the schema allows, and each check
@@ -46,6 +47,7 @@ func TestOracle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	paths = append(paths, fixtureValidation)
 	if corpus := os.Getenv(corpusEnv); corpus != "" {
 		more, err := filepath.Glob(filepath.Join(corpus, "*.yaml"))
 		if err != nil {

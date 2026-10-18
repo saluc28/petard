@@ -74,9 +74,9 @@ SpiceDB schema.
 The Zanzibar engine is held to SpiceDB by `TestOracle` in
 `internal/zanzibar/spicedb`. It answers every check the objects of each
 validation file allow, writes the answers into the file as assertions, and runs
-`zed validate` on it. CI runs it with zed v1.2.1 over `testdata` and the
-integration test configurations SpiceDB ships, and a change to the engine has to
-keep SpiceDB agreeing:
+`zed validate` on it. CI runs it with zed v1.2.1 over `testdata`, the SpiceDB
+fixture and the integration test configurations SpiceDB ships, and a change to
+the engine has to keep SpiceDB agreeing:
 
 ```
 PETARD_ZED=zed PETARD_ZANZIBAR_CORPUS="$(go list -m -f '{{.Dir}}' github.com/authzed/spicedb)/internal/services/integrationtesting/testconfigs" go test ./internal/zanzibar/spicedb -run TestOracle

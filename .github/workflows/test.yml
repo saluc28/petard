@@ -76,8 +76,9 @@ jobs:
           echo "600dbe497ddabb26372aeb69b7a15ff8624a41925f1e47146177132635f4b752  zed.tar.gz" | sha256sum --check
           tar -xzf zed.tar.gz zed
 
-      # It runs over the validation files of testdata and over the integration
-      # test configs SpiceDB ships in the module petard already requires.
+      # It runs over the validation files of testdata, the SpiceDB fixture, and
+      # the integration test configs SpiceDB ships in the module petard already
+      # requires.
       - name: Hold the engine against SpiceDB
         run: |
           go mod download github.com/authzed/spicedb
