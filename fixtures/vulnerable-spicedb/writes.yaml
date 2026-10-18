@@ -1,0 +1,69 @@
+# Who can write each relationship of Quill's documents schema, and who can make
+# a new account.
+#
+# It is the one part of the fixture that is NOT in the schema: SpiceDB says
+# which tuples are well formed, this says which of them the application lets an
+# end user bring about. Here it is declared by hand, the way it will have to be
+# in the general case.
+schema_version: 1
+model: relationship-writes
+
+writes:
+  # ---------------------------------------------------------------------
+  # Whoever can edit a document may share it: add a viewer, a person or the
+  # members of a team. The network a viewer is held to is chosen when the share
+  # is made; the caller's address comes with the check.
+  - resource: document
+    relation: viewer
+    operations: [create, touch]
+    gate: { holds: edit }
+    subject: [user, "team#member"]
+    caveat:
+      - name: ip_allowlist
+        parameters:
+          cidr: writer
+          user_ip: application
+    via: "POST /api/v1/documents/{id}/viewers"
+
+  # ---------------------------------------------------------------------
+  # The owner adds editors, each held to a date. The date is chosen when the
+  # editor is added; the time of the request comes with the check.
+  - resource: document
+    relation: editor
+    operations: [create, touch]
+    gate: { holds: owner }
+    subject: [user]
+    caveat:
+      - name: not_expired
+        parameters:
+          until: writer
+          now: application
+    via: "POST /api/v1/documents/{id}/editors"
+
+  # ---------------------------------------------------------------------
+  # A team's members are managed by the team, a capability no document write
+  # reaches. It is a service write, so the closure does not take it as something
+  # an end user can drive.
+  - resource: team
+    relation: member
+    operations: [create, touch, delete]
+    gate: { service: teams }
+    subject: [user]
+    via: "team administration"
+
+creates:
+  # ---------------------------------------------------------------------
+  # Sign-up. Anybody can make an account, which is what puts sybil subjects in
+  # a coalition.
+  - creates: user
+    gate: anyone
+    via: "POST /api/v1/users"
+
+# ---------------------------------------------------------------------------
+# Not declared, and so not writable by a coalition (section 4.3 of the
+# definitions): what is left out is a missed write, never an invented one.
+#
+#   document#owner  <- set when a document is created, by a service. Whoever
+#                      could write it would own any document, so it has no rule
+#                      here and the run reports it as a relation to find a safe
+#                      gate for.
