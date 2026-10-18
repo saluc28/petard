@@ -14,9 +14,8 @@ on and, where it finds one, a request or a check that shows it.
 
 A linter sees one file. Petard is built to see the policy, what it decides on and who can write
 that, together, because that is where the interesting failures live: the ones that cross the line
-between whoever takes a decision and whoever writes what the decision is taken on. The
-escalations it finds in a policy leave it as a BloodHound OpenGraph, as edges the interface can
-walk.
+between whoever takes a decision and whoever writes what the decision is taken on. It runs
+locally or [in a pipeline](#in-a-pipeline), where `-fail-on` decides which matches fail the run.
 
 It has little to say about a policy that judges the object it is handed and reads nothing stored,
 an admission controller or a configuration check, and the report says so when that is the case.
