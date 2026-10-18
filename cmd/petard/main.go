@@ -87,7 +87,7 @@ var commands = []command{
 	{"patterns", "list the patterns this binary carries", patterns.Run},
 	{"export", "send the analysis of a policy to BloodHound as an OpenGraph payload", export.Run},
 	{"measure", "run the analysis over a body of Rego written by somebody else", measure.Run},
-	{"demo", "analyze the policy and the SpiceDB schema built into this binary", demo.Run},
+	{"demo", "analyze the fixtures built into this binary, all of them or one by name", demo.Run},
 }
 
 // about is what the program is for, in the lines somebody reads before they

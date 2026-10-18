@@ -49,10 +49,11 @@ Analyzing a policy never calls the endpoints written in it, and analyzing a sche
 to SpiceDB.
 
 `demo` analyzes a policy and a SpiceDB schema carried inside the binary, written by hand with
-defects in them, so there is something to look at before you point the tool at your own. For the
-policy it leads with who can take whose place:
+defects in them, so there is something to look at before you point the tool at your own.
+`petard demo opa` and `petard demo spicedb` take one of them alone. For the policy it leads with
+who can take whose place:
 
-<!-- output of: petard demo -->
+<!-- output of: petard demo opa -->
 ```
 Escalations
   mallory -> dave  (PTD-OPA-003, confidence D)
@@ -73,7 +74,7 @@ The `proven by` line is a request the decision refuses as the data stands and gr
 write is made. For the schema it names each caveat parameter that is meant to come with the check
 and that whoever writes the relationship can set instead:
 
-<!-- output of: petard demo -->
+<!-- output of: petard demo spicedb -->
 ```
   document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)
     written on   document#viewer at vulnerable-spicedb/schema.zed:26:3, and whoever writes it

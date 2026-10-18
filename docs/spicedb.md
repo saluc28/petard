@@ -52,8 +52,8 @@ unknown, and a caveat that depends on it is conditional.
 
 `fixtures/vulnerable-spicedb` holds a schema of a documents service and a validation file for it,
 written by hand with the case and the counter case of `PTD-ZAN-001` in them, and
-`fixtures/vulnerable-spicedb/EXPECTED.md` says what an analysis has to find there. `petard demo`
-analyzes it beside the policy fixture.
+`fixtures/vulnerable-spicedb/EXPECTED.md` says what an analysis has to find there.
+`petard demo spicedb` analyzes it on its own, and `petard demo` beside the policy fixture.
 
 <!-- output of: petard analyze fixtures/vulnerable-spicedb -->
 ```

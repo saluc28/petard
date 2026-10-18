@@ -282,12 +282,12 @@ differently from one measured against a declaration.
 
 ## BloodHound
 
-To send an analysis to BloodHound CE, write the fixtures to disk and export the bundle. The
+To send an analysis to BloodHound CE, write the policy fixture to disk and export it. The
 credentials come from two environment variables, because a token on a command line ends up in the
 shell history:
 
 ```
-petard demo -extract .
+petard demo -extract . opa
 export BLOODHOUND_TOKEN_ID=...
 export BLOODHOUND_TOKEN_KEY=...
 petard export -url https://bloodhound.example -install -upload -verify \

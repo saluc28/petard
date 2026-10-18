@@ -36,8 +36,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   of version 2 with its `schema_version` changed.
 - `petard demo` analyzes a SpiceDB schema beside the bundle, in the same run: the schema of the
   same documents service, with a validation file that holds the case and the counter case of
-  `PTD-ZAN-001`. `-extract` writes it next to the bundle and prints the command that repeats the
-  run.
+  `PTD-ZAN-001`. `petard demo opa` and `petard demo spicedb` take one of the two alone. `-extract`
+  writes the fixtures it is given and prints the command that repeats the run.
 
 ### Fixed
 
