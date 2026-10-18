@@ -5,73 +5,55 @@
 [![Security](https://github.com/saluc28/petard/actions/workflows/security.yml/badge.svg)](https://github.com/saluc28/petard/actions/workflows/security.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/saluc28/petard.svg)](https://pkg.go.dev/github.com/saluc28/petard)
 
-Attack-path analysis for policy-as-code. Petard reads Rego (OPA) policies, works out what their
-decisions depend on, and applies a curated taxonomy of privilege-escalation patterns to what it
-finds. The result leaves the tool as a structured BloodHound OpenGraph, where the escalations it
-found are edges the interface can walk.
+An authorization system answers who has access now: OPA evaluates a decision, SpiceDB answers a
+check. Petard asks who can change that answer without changing the policy: by writing the data a
+decision reads, by setting a part of the request it trusts, or by writing a relationship with the
+context its caveat reads already filled in. It reads Rego (OPA) policies and SpiceDB schemas,
+applies a registry of escalation patterns kept as data, and reports each match with what it rests
+on and, where it finds one, a request or a check that shows it.
 
-A linter sees one file. Petard is built to see the policy, the data it reads and who can write
-that data, together, because that is where the interesting failures live: the ones that cross
-the line between whoever takes a decision and whoever writes what the decision is taken on.
+A linter sees one file. Petard is built to see the policy, what it decides on and who can write
+that, together, because that is where the interesting failures live: the ones that cross the line
+between whoever takes a decision and whoever writes what the decision is taken on. The
+escalations it finds in a policy leave it as a BloodHound OpenGraph, as edges the interface can
+walk.
 
-It has the most to say about a policy that decides on data somebody writes: roles, memberships,
-ownership, a setting every request shares. It also reads what a decision takes from an external
-source, and from the request an enforcement point builds. It has little to say about a policy
-that judges the object it is handed and reads nothing stored, an admission controller or a
-configuration check, and the report says so when that is the case.
+It has little to say about a policy that judges the object it is handed and reads nothing stored,
+an admission controller or a configuration check, and the report says so when that is the case.
 
-![The graph Petard exports, in BloodHound](docs/assets/map.png)
+## What it reads
 
-## What it finds
+| Engine | Reads | Patterns | Answers held to |
+|---|---|---|---|
+| [OPA](docs/opa.md) | Rego policies in either syntax, directories and bundle archives, a running OPA over its API, and the data beside them | 13, `PTD-OPA-001` to `PTD-OPA-013` | OPA v1.21.2, compiled in, which Petard asks by partial evaluation what is left of each decision |
+| [Zanzibar](docs/zanzibar.md) | [SpiceDB](docs/spicedb.md) schemas (`.zed`) and the validation files `zed validate` reads | 1, `PTD-ZAN-001` | SpiceDB v1.56.2, whose compiler and caveats are compiled in, and `zed validate`, which agrees with the engine on 25,703 checks in CI |
 
-Thirteen patterns live in [`taxonomy-registry/`](taxonomy-registry), which is versioned data rather
-than code. Every one of them runs against the fixture in this repository, and the registry is the
-source of truth down to what each has been held to. These are one-line glosses; `petard patterns`
-lists them from the binary and `petard explain <id>` prints one in full.
-
-| ID | What it looks for |
-|---|---|
-| `PTD-OPA-001` | the subject writes an attribute the policy reads to decide about them |
-| `PTD-OPA-002` | a deny rule is silent for part of the data, so the check does not apply there |
-| `PTD-OPA-003` | a position in a hierarchy grants everything below it, and nothing says so |
-| `PTD-OPA-004` | a decision depends on an external source, so whoever controls it decides |
-| `PTD-OPA-005` | a check that needs an external source stops applying when it does not answer |
-| `PTD-OPA-006` | one decision lets a principal write the data another decision grants on |
-| `PTD-OPA-007` | a check written with `every` stops applying when its collection is empty |
-| `PTD-OPA-008` | a document every request shares decides for anybody who asks |
-| `PTD-OPA-009` | a request lifts a check on itself by saying it is exempt |
-| `PTD-OPA-010` | a decision grants on a name that anybody able to create a group can pick |
-| `PTD-OPA-011` | a decision grants on a runtime identity that anybody able to deploy a workload can assume |
-| `PTD-OPA-012` | a decision grants on a resource matched so loosely a crafted value reaches a different one |
-| `PTD-OPA-013` | a decision grants a delegated agent an authority wider than the one delegated to it |
-
-Two of them end in the words privilege escalation, and each draws a `PTD_CanEscalateTo` edge
-between two principals: `PTD-OPA-001` and `PTD-OPA-003` chain into one, `PTD-OPA-006` draws the
-other. Neither names a value it made up. The engine leaves the document unknown and asks OPA
-what is left of the decision, so "some value here works" is an answer from the policy rather
-than a guess about it. [docs/taxonomy.md](docs/taxonomy.md) walks both chains.
+On a policy, a match becomes a finding once what it rests on is known: the policy alone, or a
+write model and an enforcement point you declare. On a SpiceDB schema every match is a candidate,
+because who writes a relationship, and with which context, is decided by the application that
+writes to SpiceDB, and Petard reads no declaration of it. [docs/concepts.md](docs/concepts.md) is
+what the two engines share.
 
 ## Quickstart
 
-With Go 1.26 or newer:
+With Go 1.26.6 or newer:
 
 ```
 go install github.com/saluc28/petard/cmd/petard@latest
 petard demo
-petard analyze path/to/policy
+petard analyze path/to/policy-or-schema
 ```
 
 Without Go, [Install](#install) has a binary for Linux, macOS and Windows, and a container image.
-Analyzing a policy never calls the endpoints written in it.
+Analyzing a policy never calls the endpoints written in it, and analyzing a schema never connects
+to SpiceDB.
 
-`demo` analyzes a policy with escalation built into it on purpose, written by hand and carried
-inside the binary, so there is something to look at before you point the tool at your own
-policies. It leads with who can take whose place:
+`demo` analyzes a policy and a SpiceDB schema carried inside the binary, written by hand with
+defects in them, so there is something to look at before you point the tool at your own. For the
+policy it leads with who can take whose place:
 
 <!-- output of: petard demo -->
 ```
-12 files, 26 decisions, parsed as rego v1
-
 Escalations
   mallory -> dave  (PTD-OPA-003, confidence D)
     writes     data.users.{owner}.profile.department
@@ -85,107 +67,44 @@ Escalations
     allowed by data.quill.admin.allow
     in         data.quill.publish.allow
     proven by  {"action":"publish","user":"carol"}
-
-Findings
-    1  PTD-OPA-001  The subject writes an attribute the policy reads to decide about them
-    1  PTD-OPA-002  A deny rule is silent for part of the data, so the check does not apply there
-    1  PTD-OPA-003  A position in a hierarchy grants everything below it, and nothing says so
-    5  PTD-OPA-004  A decision depends on an external source, so whoever controls it decides
-    2  PTD-OPA-005  A check that needs an external source stops applying when it does not answer
-    1  PTD-OPA-006  One decision lets a principal write the data another decision grants on
-    2  PTD-OPA-007  A check written with every stops applying when its domain is empty
-    1  PTD-OPA-008  A document every request shares decides for anybody who asks
-    1  PTD-OPA-009  A request lifts a check on itself by saying it is exempt
-    1  PTD-OPA-010  A decision grants on a name somebody else picks
-    1  PTD-OPA-011  A decision grants on an identity somebody can assume
-    3  PTD-OPA-012  A decision grants on a value matched more loosely than it is enforced
-    2  PTD-OPA-013  A decision grants a requested authority not bounded by the delegator's
-
-Candidates, which match a pattern and are not proven
-    1  PTD-OPA-003  A position in a hierarchy grants everything below it, and nothing says so
-
-How much to trust this
-  Level D (field names): the subject is input.user. 17 reads over 11 data paths.
-  The request in vulnerable-bundle/inputs/granted-download.json is granted by
-  data.quill.library.allow_attachment, data.quill.library.allow_attachment_by_folder and
-  data.quill.library.allow_attachment_guarded. A question that starts from a granted request starts
-  there.
-  The request in vulnerable-bundle/inputs/granted-mint.json is granted by
-  data.quill.delegation.allow_mint, data.quill.delegation.allow_mint_catalog and
-  data.quill.delegation.allow_mint_narrowed. A question that starts from a granted request starts
-  there.
-  The enforcement point is quill-gateway: it says who sets 18 of the 18 parts of the request the
-  decisions read, and the caller sets 8 of them.
-  The write model covers 6 of 11 paths read (54%).
 ```
 
 The `proven by` line is a request the decision refuses as the data stands and grants once the
-write is made. `-v` adds the evidence under it: every read with its file and line, the document
-each write changes and the value it puts there, what each decision is left to check once the data
-is concrete, and every place to go and look.
+write is made. For the schema it names each caveat parameter that is meant to come with the check
+and that whoever writes the relationship can set instead:
+
+<!-- output of: petard demo -->
+```
+  document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)
+    written on   document#viewer at vulnerable-spicedb/schema.zed:26:3, and whoever writes it
+                 chooses the context of ip_allowlist
+    supplied by  2 checks of the file, the first at vulnerable-spicedb/validation.yaml:14:7
+    shown by     document:roadmap#view@user:vic with {"user_ip":"192.168.0.1"}, at
+                 vulnerable-spicedb/validation.yaml:19:7, goes from no to yes once
+                 document:roadmap#viewer@user:vic carries {"cidr":"10.0.0.0/8","user_ip":"10.1.2.3"}
+```
+
+`shown by` is a check of the validation file whose answer rises once the relationship carries the
+value, and `zed validate` fails on its assertion once the relationship is written that way. Around
+these the demo counts the matches by pattern, and for the policy says how much to trust them. `-v`
+adds the evidence behind the policy: every read with its file and line, and every place to look.
 
 `analyze` needs no flags to start. Where a policy annotates no entrypoint it takes the rules no
-other rule uses as the decisions, it reads the data the bundle carries, and it lists what only
-you can answer as questions. [docs/ten-minutes.md](docs/ten-minutes.md) takes a public policy
-from that first run to a finding, and
-[Running it on your own policy](#running-it-on-your-own-policy) has the flags.
-
-`-tests` writes each of those proofs as an opa test, which fails while its escalation is open and
-passes once it is closed:
-
-```
-petard analyze -write-model model.yaml -data data -tests escalations_test.rego policy
-opa test policy data escalations_test.rego
-```
+other rule uses as the decisions, it reads the data the bundle carries and the SpiceDB files under
+the paths, and it lists what only you can answer as questions.
+[docs/ten-minutes.md](docs/ten-minutes.md) takes a public policy and a public schema from that
+first run to an answer.
 
 The patterns travel in the binary, so the two commands that read them work without a checkout:
 
 ```
 petard patterns
-petard explain PTD-OPA-006
+petard explain PTD-ZAN-001
 ```
 
 `explain` prints what the pattern looks for signal by signal, what it needs to run, what has to be
 true for a match to be a defect, the conditions it fires on with nothing behind them, what closes
 it, and where the file is.
-
-To send an analysis to BloodHound CE, write the bundle to disk and export it. The credentials
-come from two environment variables, because a token on a command line ends up in the shell
-history:
-
-```
-petard demo -extract .
-export BLOODHOUND_TOKEN_ID=...
-export BLOODHOUND_TOKEN_KEY=...
-petard export -url https://bloodhound.example -install -upload -verify \
-  -pep vulnerable-bundle/pep.yaml -write-model vulnerable-bundle/write-model.yaml \
-  -data vulnerable-bundle/data -granted vulnerable-bundle/inputs/granted-download.json \
-  -granted vulnerable-bundle/inputs/granted-mint.json vulnerable-bundle/policy-v1
-```
-
-```
-graph: 71 nodes, 84 edges
-  3 declared writers name a rule for finding somebody, not somebody, and have no edge
-  131 ways of granting depend on something an edge cannot say, and are left out
-schema installed, 3 of 5 relationship kinds are traversable
-saved queries: 39 added, 0 already there
-ingest job 1 started
-job 1 processed 1 file(s) with no errors
-  MALLORY -> DAVE: pathfinding walks it
-  CAROL -> ALICE: pathfinding walks it
-2 of 2 escalations are walkable in BloodHound
-```
-
-The lines under the count are what the analysis knows and the graph could not hold. A way of
-granting that also depends on a second factor, or on another part of the request, is not a
-capability somebody simply has, so it gets no edge and is counted.
-
-`-verify` asks the server for a path between the two principals of every escalation in the
-payload, with `only_traversable`, and fails if it will not walk one. A graph that claims a path
-nobody can take is the single thing this tool must not produce.
-
-Without an instance, `-out graph.json` writes the payload, and BloodHound takes a JSON upload
-from the interface.
 
 ## Install
 
@@ -212,159 +131,17 @@ In a pipeline, `ghcr.io/saluc28/petard:latest`, or pin the version.
 `petard version` says which build it is and which OPA and SpiceDB are compiled into it, which is
 what an analysis depends on.
 
-## Reading it in BloodHound
+## BloodHound
 
-The escalations are edges, so they show up the way any other attack path does.
+The escalations Petard finds in a policy go to BloodHound CE as an OpenGraph, where they are
+edges pathfinding walks. `petard export` writes the payload or uploads it, installs the extension
+schema and 39 saved queries, and with `-verify` asks the server for a path between the two
+principals of every escalation, and fails if it will not walk one.
 
 ![Two escalations in the graph](docs/assets/escalations.png)
 
-Select one and the Entity Panel says what was found on that edge: who takes whose position, in
-which decision, by writing what and through which endpoint, how many ways in the relation adds,
-the request that proves it, at which level the request was recognized, and a link to the file of
-the pattern that reported it.
-
-![The Entity Panel of an escalation](docs/assets/escalation-panel.png)
-
-Pathfinding walks them too, which is what `-verify` checks over the API.
-
-![Pathfinding between the two principals](docs/assets/pathfinding.png)
-
-Installing also saves 39 Cypher queries, two to four per pattern, named after the question they
-ask. They return nodes and paths, so the answer opens in the graph and in the table view next to
-it.
-
-![The saved queries, filtered](docs/assets/saved-queries.png)
-
-## The model
-
-Five node kinds and five relationship kinds, declared in `internal/graph` and exported through
-[bhgraph](https://github.com/saluc28/bhgraph).
-
-```mermaid
-graph LR
-  Rule[PTD_Rule] -->|PTD_Reads| Attribute[PTD_Attribute]
-  Attribute -->|PTD_WrittenBy| Principal[PTD_Principal]
-  Principal -->|PTD_CanEscalateTo| Other[PTD_Principal]
-  Principal -->|PTD_CanPerform| Resource[PTD_Resource]
-  Principal -->|PTD_CanPerform| Action[PTD_Action]
-  Attribute -->|PTD_TaintedBy| Source["PTD_Principal, an external source"]
-```
-
-`PTD_CanPerform`, `PTD_WrittenBy` and `PTD_CanEscalateTo` are the three BloodHound may walk.
-`PTD_Reads` and `PTD_TaintedBy` are dependencies rather than capabilities, and marking them
-traversable would invent paths in the interface that nobody can take. The decision is made in
-the model and the schema is generated from it, so the two cannot drift apart.
-
-The kind names and the property keys are a contract before they are code. They end up in
-ingested data and in saved queries, so renaming one means re-ingesting every graph and
-rewriting every query that mentions it.
-
-## Running it on your own policy
-
-The decisions are the starting points. A policy that annotates its entrypoints needs nothing. One
-that does not is analyzed from the rules no other rule uses, since only something outside the
-policy can be asking for those, and the report says the decisions were inferred. A rule called
-`deny`, `violation` or `warn`, alone or with a suffix such as `deny_root`, is taken to refuse the
-request, the way conftest reads it. When the enforcement point queries other rules, name them:
-
-```
-petard analyze -entrypoint authz/allow path/to/policy
-```
-
-An enforcement point that refuses the request as soon as a rule returns anything, the way
-Gatekeeper reads `violation`, declares that side instead. Which side a read is on is then
-counted from the refusal:
-
-```
-petard analyze -deny-entrypoint k8sallowedrepos/violation path/to/policy
-```
-
-A decision can also be one field of what a rule returns, and the part of the request that names
-the requester can be declared rather than recognized:
-
-```
-petard analyze -entrypoint aac/aap/policy/owner_scope/allowed \
-  -subject input.created_by.username -data path/to/config path/to/policy
-```
-
-So can the parts that name what is asked for, with `-action` and `-resource`, when the request
-carries them under names that do not give them away:
-
-```
-petard analyze -resource input.request.remainder_path path/to/policy
-```
-
-A rule that answers one of several values, `allowed`, `blocked` or `scan`, is defined whatever it
-says, and which of them lets the request through is not in the policy. Name the ones that do,
-one `-entrypoint` for each. The rules that give another answer are then read as refusals:
-
-```
-petard analyze -entrypoint gate/verdict=allowed -entrypoint gate/verdict=clean path/to/policy
-```
-
-A product that asks for decisions can be declared once instead: which rules it asks for, where it
-puts the requester, and who sets each part of the request. [`pep-registry/`](pep-registry) holds
-the declarations, each claim with the file and line or the page of documentation it was read from,
-and `-pep` names one:
-
-```
-petard analyze -pep spacelift-login path/to/login.rego
-```
-
-Concrete data is what turns a pattern into a finding about named principals, since the engine
-evaluates each decision partially against it. A bundle that keeps its data in `data.json`,
-`data.yaml` or `data.yml` files next to the policies needs nothing more, since those are read the
-way OPA reads them; `-data` names other documents in their place.
-
-Three declarations supply what no policy says. The write model, under `-write-model`, says who
-can write which path. Without it a match that rests on who writes a path stays a candidate, and
-the run reports how many of the paths the decisions read the model covers, so an empty model is
-distinguishable from a clean result. The enforcement point, under `-pep`, says which rules a
-product asks for and who sets each part of the request. The identity model sits in the same
-file, on the parts of the request: who can assume an identity a decision grants on, and which
-authority bounds one a delegated agent asks for. `petard explain <id>` says which of them a
-pattern needs.
-
-A candidate that rests on who writes a path names it. The report lists those paths as questions,
-and `-questions <file>` writes them as a write model to fill in, one entry per open path. Answer
-each `via`, confirm the principal, and rerun with `-write-model`:
-
-```
-petard analyze -data data -questions write-model.yaml path/to/policy
-```
-
-When a bundle authorizes its own writes, `-v` lists the branches of a decision that grant on a write
-method, and the skeleton appends each as a commented `authorized_by` block. Attaching one to a writer
-is how a write allowed by another decision gets declared without writing the block by hand.
-
-Some questions are put to a decision starting from a request it grants, and the engine builds
-that request from the policy. A decision that holds a part of the request against something it
-computes leaves nothing to build one from, and the report says it could not be asked. `-granted`
-gives it a request to start from: a JSON or YAML file holding what the policy reads as `input`,
-the one a test of the policy sends or one out of an access log.
-
-```
-petard analyze -pep gateway.yaml -granted request.json path/to/policy
-```
-
-A request no decision grants is refused, and the report names the decisions that grant each one
-given.
-
-A bundle archive, such as the `bundle.tar.gz` that `opa build` writes, can be given in place of
-the directory. The policies and the data inside it are read the same way:
-
-```
-petard analyze bundle.tar.gz
-```
-
-A running OPA can be given in place of a path. Petard reads it over the API, read only, and
-analyzes what the server runs rather than a checkout that may have moved on: the policies, and the
-data under each document the decisions read. It never asks the server to decide anything. A bearer
-token, if the server needs one, is read from `$PETARD_OPA_TOKEN`:
-
-```
-petard analyze http://localhost:8181
-```
+[docs/opa.md](docs/opa.md#bloodhound) has the command, what it prints, and what the Entity Panel
+of an escalation says.
 
 ## In a pipeline
 
@@ -379,63 +156,47 @@ petard analyze -quiet -fail-on findings -write-model write-model.yaml -data data
 | 2 | the command line was wrong |
 | 3 | matches above the threshold |
 
-`-fail-on findings` is the default and counts findings; `any` counts candidates as well, and
-`none` reports and exits 0 whatever it finds. Exit 3 means the analysis ran and found something,
-exit 1 means it could not run, and a pipeline needs to tell those apart.
+`-fail-on findings` is the default and counts findings; `any` counts candidates as well, which is
+what fails a run on a SpiceDB schema, and `none` reports and exits 0 whatever it finds. Exit 3
+means the analysis ran and found something, exit 1 means it could not run, and a pipeline needs
+to tell those apart.
 
-`-quiet` prints the escalations and the findings and nothing around them, and prints nothing at
+`-quiet` prints the escalations and the matches and nothing around them, and prints nothing at
 all when there are none. The report goes to stdout and everything else to stderr, and two runs
-of the same bundle print the same bytes. Escape sequences are used only when the output is a
-terminal that takes them; `NO_COLOR` and `-no-color` turn them off.
+over the same files print the same bytes, unless a relationship expires in between. Escape
+sequences are used only when the output is a terminal that takes them; `NO_COLOR` and
+`-no-color` turn them off.
 
 ## What it does not do
 
 It does not decide whether a finding is a problem in your system. A position in a hierarchy is a
 target rather than a defect, and the report says who can take it and leaves the judgment to you.
 
-It reports at the level the request was recognized at, from a declaration down to a guess about
-field names, and the level travels with every claim that rests on it. An edge measured at level
-D is a hypothesis about which field names the requester, and reads differently from one measured
-against a declaration.
+It does not know who writes what in your deployment unless you say so. A match on a policy that
+rests on who writes a path stays a candidate until a write model names the writer, and a match on
+a SpiceDB schema stays one in any case.
 
-Some shapes of negation are still invisible to the walk. `count(S) == 0` over a comprehension
-written inline reads as an ordinary comparison, and `not count(S) > 0` is not read as "empty". An
-`and` or an `or` written inside a comprehension, an `every` or a `not` is read like any other
-expression, but partial evaluation answers for it with the documents it reads rather than with
-the requests that make it hold.
-
-## Layout
-
-```
-cmd/petard            the binary, which dispatches to the subcommands
-internal/cli          one package per subcommand, plus render for the printing rules
-internal/opaengine    everything that knows what Rego is
-internal/graph        the engine-neutral model, all a second engine has to fill
-internal/opengraph    the adapter to what BloodHound ingests, over bhgraph
-internal/taxonomy     the registry reader and the patterns
-internal/writemodel   who can write which path, declared rather than inferred
-internal/pep          who sets each part of the request, declared per enforcement point
-internal/fixture      generated worlds, and the truth about them
-queries/              the saved Cypher queries, one file each
-taxonomy-registry/    the patterns as versioned data, embedded for explain and patterns
-pep-registry/         the enforcement points as versioned data, embedded for -pep
-schema/               the extension definition schema, generated from the model
-fixtures/             the bundle written by hand, in Rego v1 and v0, embedded for demo
-```
+It reads files, and a running OPA over its API, read only. It never asks the server to decide
+anything, and it never connects to SpiceDB.
 
 ## Documentation
 
-- [docs/ten-minutes.md](docs/ten-minutes.md): one public policy, from the first run to a finding
-- [docs/engine.md](docs/engine.md): how a bundle is read, what the analysis reports, and how
-  each claim is checked
-- [docs/taxonomy.md](docs/taxonomy.md): the two escalation chains, and the three declarations a
-  claim rests on
+- [docs/ten-minutes.md](docs/ten-minutes.md): a public policy and a public schema, from the first
+  run to an answer
+- [docs/concepts.md](docs/concepts.md): what every engine shares, from the question to the graph
+- [docs/opa.md](docs/opa.md): how a Rego policy is read, the patterns, the flags for a policy of
+  your own, BloodHound, and how each claim is checked
+- [docs/zanzibar.md](docs/zanzibar.md): how a Zanzibar model is read and a check answered, how the
+  answers are held to SpiceDB, and the patterns
+- [docs/spicedb.md](docs/spicedb.md): the SpiceDB files Petard reads, and what a run on them
+  prints
 - [taxonomy-registry/README.md](taxonomy-registry/README.md): the format of a pattern file and
   what `verified` means
 - [pep-registry/README.md](pep-registry/README.md): the format of an enforcement point
   declaration, and the ones the binary carries
-- [fixtures/vulnerable-bundle/EXPECTED.md](fixtures/vulnerable-bundle/EXPECTED.md): what the
-  analysis has to find in the demo bundle, and what it must not
+- [fixtures/vulnerable-bundle/EXPECTED.md](fixtures/vulnerable-bundle/EXPECTED.md) and
+  [fixtures/vulnerable-spicedb/EXPECTED.md](fixtures/vulnerable-spicedb/EXPECTED.md): what the
+  analysis has to find in the demo fixtures, and what it must not
 - [queries/README.md](queries/README.md): the saved queries, and what the BloodHound backend
   will and will not run
 - [CHANGELOG.md](CHANGELOG.md): what changed between versions
