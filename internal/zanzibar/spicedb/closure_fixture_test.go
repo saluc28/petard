@@ -31,9 +31,18 @@ func TestFixtureClosure(t *testing.T) {
 	erin := zanzibar.Object{Type: "user", ID: "erin"}
 	roadmap := zanzibar.Object{Type: "document", ID: "roadmap"}
 
+	// Every relation of the fixture occurs only positively, so E1 holds and the
+	// closure is exact.
+	if ok, mixed := zanzibar.CheckE1(sample.Model, wm); !ok {
+		t.Fatalf("E1 should hold for the fixture, mixed: %v", mixed)
+	}
+
 	reach, err := zanzibar.Closure(sample.Model, wm, sample.Caveats, sample.Relationships, []zanzibar.Object{erin}, zanzibar.Options{Now: now})
 	if err != nil {
 		t.Fatalf("Closure: %v", err)
+	}
+	if !reach.Exact {
+		t.Fatal("the fixture closure should be exact")
 	}
 
 	sybil := zanzibar.Object{Type: "user", ID: "created-0"}

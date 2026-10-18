@@ -168,6 +168,120 @@ func TestClosure(t *testing.T) {
 	}
 }
 
+// A deny by exclusion is lifted by deleting the tuple that denies. Mallory is a
+// viewer but banned, so view does not hold; a delete rule on banned lets the
+// coalition remove its own ban, and view rises. banned occurs only negatively
+// and viewer only positively, so E1 holds and the closure is exact.
+func TestClosureDeletesLiftADeny(t *testing.T) {
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "banned", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "view", Expr: Exclusion{Base: Computed{Name: "viewer"}, Subtracted: []Expr{Computed{Name: "banned"}}}},
+		},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+		{Resource: "document", Relation: "banned", Operations: []Operation{Delete}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+	}}
+	roadmap := object("document:roadmap")
+	mallory := object("user:mallory")
+	start := []Relationship{rel("document:roadmap", "viewer", "user:mallory"), rel("document:roadmap", "banned", "user:mallory")}
+
+	reach, err := Closure(model, wm, nil, start, []Object{mallory}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Closure: %v", err)
+	}
+	if !reach.Exact {
+		t.Fatal("E1 holds for this schema, so the closure should be exact")
+	}
+	for _, r := range reach.State {
+		if r.Relation == "banned" {
+			t.Errorf("the ban %s should have been deleted", r)
+		}
+	}
+	view, err := reach.Holds(roadmap, "view")
+	if err != nil {
+		t.Fatalf("Holds view: %v", err)
+	}
+	if view != Yes {
+		t.Errorf("coalition view = %s, want yes once the ban is lifted", view)
+	}
+	assertSaturated(t, model, wm, nil, start, []Object{mallory}, reach)
+}
+
+// A relation that occurs in both polarities is mixed, so E1 fails: adding
+// editor raises edit but lowers flagged, and no single state holds both at
+// once. The closure then searches up to the bound and reports each raise it can
+// reach, edit by adding editor and flagged already in the starting state.
+func TestClosureE1Fails(t *testing.T) {
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "editor", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "reviewer", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "edit", Expr: Computed{Name: "editor"}},
+			{Name: "flagged", Expr: Exclusion{Base: Computed{Name: "reviewer"}, Subtracted: []Expr{Computed{Name: "editor"}}}},
+		},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+	}}
+	report := object("document:report")
+	mallory := object("user:mallory")
+	start := []Relationship{rel("document:report", "reviewer", "user:mallory")}
+
+	ok, mixed := CheckE1(model, wm)
+	if ok {
+		t.Fatal("editor is mixed, so E1 should fail")
+	}
+	if len(mixed) != 1 || mixed[0].String() != "document#editor (occurs in both polarities)" {
+		t.Errorf("mixed = %v, want [document#editor (occurs in both polarities)]", mixed)
+	}
+
+	reach, err := Closure(model, wm, nil, start, []Object{mallory}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Closure: %v", err)
+	}
+	if reach.Exact {
+		t.Fatal("E1 fails, so the closure should not be exact")
+	}
+	if reach.Bound != DefaultMaxWrites {
+		t.Errorf("bound = %d, want %d", reach.Bound, DefaultMaxWrites)
+	}
+	if len(reach.Mixed) != 1 || reach.Mixed[0].Relation != "editor" {
+		t.Errorf("reach.Mixed = %v, want document#editor", reach.Mixed)
+	}
+
+	edit, err := reach.Holds(report, "edit")
+	if err != nil {
+		t.Fatalf("Holds edit: %v", err)
+	}
+	if edit != Yes {
+		t.Errorf("edit = %s, want yes: it is reached by adding editor", edit)
+	}
+	flagged, err := reach.Holds(report, "flagged")
+	if err != nil {
+		t.Fatalf("Holds flagged: %v", err)
+	}
+	if flagged != Yes {
+		t.Errorf("flagged = %s, want yes: it holds in the starting state", flagged)
+	}
+}
+
 // addedTuples is the tuples of the reachable state that the start did not have.
 func addedTuples(start, state []Relationship) []Relationship {
 	was := map[string]bool{}

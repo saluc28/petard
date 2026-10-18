@@ -3,6 +3,7 @@ package zanzibar
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -34,6 +35,13 @@ type Options struct {
 	Now time.Time
 }
 
+func (o Options) maxWrites() int {
+	if o.MaxWrites <= 0 {
+		return DefaultMaxWrites
+	}
+	return o.MaxWrites
+}
+
 func (o Options) now() time.Time {
 	if o.Now.IsZero() {
 		return time.Now()
@@ -45,39 +53,126 @@ func (o Options) now() time.Time {
 // about. State is the tuples the coalition can make true, Objects the subjects
 // it ends up controlling.
 type Reach struct {
-	// State is the tuples of the reachable fixpoint, the starting state with
-	// every tuple the coalition can write added.
+	// State is the tuples the coalition can make true. When Exact, it is the
+	// fixpoint: the starting state with every write the coalition can make
+	// applied. When not Exact, it is the union of the tuples seen across the
+	// bounded search, and is informational.
 	State []Relationship
 
-	// Objects are the subjects the coalition controls at the fixpoint, its own
-	// subject and every object a creation rule let it make.
+	// Objects are the subjects the coalition controls, its own subjects and
+	// every object a creation rule let it make.
 	Objects []Object
 
-	engine *engine
+	// Exact is true when exactness condition E1 held, so the reachable states
+	// have one greatest element and Holds answers it without a bound. When it
+	// is false, Mixed names the relations that broke E1 and Bound is how many
+	// writes the search looked ahead.
+	Exact bool
+	Bound int
+	Mixed []MixedRelation
+
+	engine   *engine
+	explored []exploredState
 }
 
-// Holds is the level the coalition reaches for a permission or relation on an
-// object: the highest any of its subjects reaches, over the fixpoint state.
+// exploredState is one state the search reached, with the coalition it held
+// there. Under E1 there is one, the fixpoint; without E1 there is one per state
+// the bounded search reached.
+type exploredState struct {
+	state   *stateSet
+	objects []Object
+}
+
+// Holds is the most a coalition subject reaches for a permission or relation on
+// an object. Under E1 it reads the one greatest state; without E1 it is the
+// highest over every state the bounded search reached, so a raise a mix of
+// writes opens is still found, within the bound.
 func (r *Reach) Holds(resource Object, name string) (Level, error) {
-	checker := NewChecker(r.engine.model, r.State, r.engine.caveats, r.engine.opts.now())
-	return r.engine.coalitionLevel(checker, resource, name, r.Objects)
+	best := No
+	for _, es := range r.explored {
+		checker := NewChecker(r.engine.model, es.state.list(), r.engine.caveats, r.engine.opts.now())
+		level, err := r.engine.coalitionLevel(checker, resource, name, es.objects)
+		if err != nil {
+			return No, err
+		}
+		best = or(best, level)
+		if best == Yes {
+			break
+		}
+	}
+	return best, nil
 }
 
 // Closure computes the most access a coalition can bring about from a starting
-// state, under a write model. It adds every tuple the coalition can write while
-// any new one is still reachable, which is the least fixpoint of the write
-// rules: on the additive moves of this step every move only grants, so the
-// order writes are made in does not change the fixpoint, and the saturation
-// below reaches it.
+// state, under a write model.
+//
+// When exactness condition E1 holds, every write the coalition would make only
+// raises a permission: it adds a relation only where the relation occurs
+// positively and deletes one only where it occurs negatively. The reachable
+// states then have one greatest element, and the closure saturates to it,
+// adding and removing every such tuple while any change is still reachable. The
+// order of the writes does not change the result.
+//
+// When E1 fails, a relation the coalition can write is mixed, so no single
+// state dominates. The closure then searches every sequence of up to Bound
+// writes and reports the raises found as exact up to that bound, with Mixed
+// naming the relations that forced it.
 //
 // The coalition is its starting subjects together with every object a creation
 // rule lets it make. A write is available when the rule's gate holds for one of
-// those subjects on the resource and the subject written is one the coalition
-// can name. Service gates are never held by the coalition, and a relation with
-// no rule is not writable, so the model stays closed: a rule left out is a
-// missed write, never an invented one.
+// those subjects on the resource and the subject written or removed is one the
+// coalition can name. Service gates are never held by the coalition, and a
+// relation with no rule is not writable, so the model stays closed: a rule left
+// out is a missed write, never an invented one.
 func Closure(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, opts Options) (*Reach, error) {
 	e := newEngine(model, wm, caveats, start, coalition, opts)
+
+	ok, mixed := CheckE1(model, wm)
+	if ok {
+		state, objects, err := e.saturate()
+		if err != nil {
+			return nil, err
+		}
+		return &Reach{
+			State:    state.list(),
+			Objects:  objects,
+			Exact:    true,
+			engine:   e,
+			explored: []exploredState{{state: state, objects: objects}},
+		}, nil
+	}
+
+	bound := e.opts.maxWrites()
+	explored, err := e.explore(bound)
+	if err != nil {
+		return nil, err
+	}
+	union := e.start.clone()
+	var unionObjects []Object
+	for _, es := range explored {
+		for _, r := range es.state.list() {
+			union.add(r)
+		}
+		for _, o := range es.objects {
+			if !containsObject(unionObjects, o) {
+				unionObjects = append(unionObjects, o)
+			}
+		}
+	}
+	return &Reach{
+		State:    union.list(),
+		Objects:  unionObjects,
+		Exact:    false,
+		Bound:    bound,
+		Mixed:    mixed,
+		engine:   e,
+		explored: explored,
+	}, nil
+}
+
+// saturate applies every available write each round until none changes the
+// state, which under E1 is the one greatest element the coalition can reach.
+func (e *engine) saturate() (*stateSet, []Object, error) {
 	state := e.start.clone()
 	objects := slices.Clone(e.coalition)
 
@@ -85,15 +180,11 @@ func Closure(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Rela
 		checker := NewChecker(e.model, state.list(), e.caveats, e.opts.now())
 		moves, err := e.available(checker, state, objects)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		grew := false
 		for _, mv := range moves {
-			if mv.writesTuple() && state.add(mv.rel) {
-				grew = true
-			}
-			if mv.creates != nil && !containsObject(objects, mv.created) {
-				objects = append(objects, mv.created)
+			if applyMove(state, &objects, mv) {
 				grew = true
 			}
 		}
@@ -101,8 +192,65 @@ func Closure(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Rela
 			break
 		}
 	}
+	return state, objects, nil
+}
 
-	return &Reach{State: state.list(), Objects: objects, engine: e}, nil
+// explore walks every sequence of up to maxMoves writes and returns each state
+// it reaches. It is the bounded search E1's failure falls back to: no single
+// state dominates, so the raises are read across all of them, up to the bound.
+func (e *engine) explore(maxMoves int) ([]exploredState, error) {
+	type node struct {
+		state   *stateSet
+		objects []Object
+		depth   int
+	}
+	start := node{state: e.start.clone(), objects: slices.Clone(e.coalition)}
+	queue := []node{start}
+	visited := map[string]bool{signatureOf(start.state, start.objects): true}
+	var explored []exploredState
+
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		explored = append(explored, exploredState{state: cur.state, objects: cur.objects})
+		if cur.depth >= maxMoves {
+			continue
+		}
+		checker := NewChecker(e.model, cur.state.list(), e.caveats, e.opts.now())
+		moves, err := e.available(checker, cur.state, cur.objects)
+		if err != nil {
+			return nil, err
+		}
+		for _, mv := range moves {
+			next := node{state: cur.state.clone(), objects: slices.Clone(cur.objects), depth: cur.depth + 1}
+			if !applyMove(next.state, &next.objects, mv) {
+				continue
+			}
+			sig := signatureOf(next.state, next.objects)
+			if visited[sig] {
+				continue
+			}
+			visited[sig] = true
+			queue = append(queue, next)
+		}
+	}
+	return explored, nil
+}
+
+// applyMove changes a state by one move and reports whether anything changed.
+func applyMove(state *stateSet, objects *[]Object, mv move) bool {
+	changed := false
+	switch {
+	case mv.del:
+		changed = state.remove(mv.rel)
+	case mv.writesTuple():
+		changed = state.add(mv.rel)
+	}
+	if mv.creates != nil && !containsObject(*objects, mv.created) {
+		*objects = append(*objects, mv.created)
+		changed = true
+	}
+	return changed
 }
 
 // engine holds what a closure and its brute-force oracle both read. The two
@@ -118,6 +266,7 @@ type engine struct {
 	start     *stateSet
 	coalition []Object
 	opts      Options
+	pol       *polarities
 }
 
 func newEngine(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, opts Options) *engine {
@@ -132,6 +281,7 @@ func newEngine(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Re
 		start:     s,
 		coalition: slices.Clone(coalition),
 		opts:      opts,
+		pol:       analyzePolarities(model, wm),
 	}
 }
 
@@ -144,27 +294,38 @@ type move struct {
 	creates *CreationRule
 	created Object
 	writer  Subject
+
+	// del is true when the move removes rel rather than adding it, the move
+	// that lifts a deny by deleting a tuple that occurs negatively.
+	del bool
 }
 
 // writesTuple reports whether a move adds a tuple. A pure creation move brings
 // an object into the coalition and writes none.
-func (m move) writesTuple() bool { return m.rel.Relation != "" }
+func (m move) writesTuple() bool { return m.rel.Relation != "" && !m.del }
 
 // available is every move the coalition can make in a state, over the objects
 // it controls. It is the shared primitive: the closure applies all of them each
 // round, the oracle applies them one at a time.
+//
+// A relation is added only where it occurs positively and deleted only where it
+// occurs negatively, the two directions that raise a permission; the other
+// direction only lowers one, so it is never a move. A relation that occurs in
+// both, which E1 rules out of an exact run, offers both.
 func (e *engine) available(checker *Checker, state *stateSet, objects []Object) ([]move, error) {
 	var moves []move
 	domain := e.domain(state, objects)
+	tuples := state.list()
 
 	for _, rule := range e.wm.Writes {
-		if !writes(rule.Operations) {
-			// Delete moves are the business of exactness condition E1 and are
-			// added with it; an additive closure only adds.
-			continue
-		}
 		relation := e.relation(rule.Resource, rule.Relation)
 		if relation == nil {
+			continue
+		}
+		occ := e.pol.at(relKey{Type: rule.Resource, Relation: rule.Relation})
+		canAdd := writes(rule.Operations) && occ.pos
+		canDelete := deletes(rule.Operations) && (occ.neg || occ.mixedAll)
+		if !canAdd && !canDelete {
 			continue
 		}
 		for _, resource := range domain[rule.Resource] {
@@ -175,13 +336,21 @@ func (e *engine) available(checker *Checker, state *stateSet, objects []Object) 
 			if !held {
 				continue
 			}
-			for _, writer := range objects {
-				for _, subject := range e.subjects(rule, relation, writer, objects) {
-					rel := Relationship{Resource: resource, Relation: rule.Relation, Subject: subject}
-					if state.has(rel) {
-						continue
+			if canAdd {
+				for _, writer := range objects {
+					for _, subject := range e.subjects(rule, relation, writer, objects) {
+						rel := Relationship{Resource: resource, Relation: rule.Relation, Subject: subject}
+						if !state.has(rel) {
+							moves = append(moves, move{rel: rel, rule: rule, writer: Subject{Object: writer}})
+						}
 					}
-					moves = append(moves, move{rel: rel, rule: rule, writer: Subject{Object: writer}})
+				}
+			}
+			if canDelete {
+				for _, rel := range tuples {
+					if rel.Resource == resource && rel.Relation == rule.Relation && mayDelete(rule.Subject, rel.Subject, objects) {
+						moves = append(moves, move{rel: rel, rule: rule, del: true})
+					}
 				}
 			}
 		}
@@ -192,6 +361,43 @@ func (e *engine) available(checker *Checker, state *stateSet, objects []Object) 
 		return nil, err
 	}
 	return append(moves, creationMoves...), nil
+}
+
+// mayDelete says whether the coalition can delete a tuple of the given subject
+// under a rule. The subject has to be one the coalition controls, since
+// deleting a tuple that denies somebody else raises nothing for the coalition,
+// and the rule has to allow that subject form. A holds constraint on the
+// subject is left to a later step, so it deletes nothing rather than something
+// the coalition may not reach.
+func mayDelete(spec SubjectSpec, s Subject, objects []Object) bool {
+	controllable := s.ID == WildcardID || containsObject(objects, s.Object)
+	if !controllable {
+		return false
+	}
+	switch {
+	case spec.Any:
+		return true
+	case spec.Self:
+		return s.Relation == "" && containsObject(objects, s.Object)
+	case spec.Holds != "":
+		return false
+	case len(spec.Types) > 0:
+		return slices.Contains(spec.Types, subjectForm(s))
+	}
+	return false
+}
+
+// subjectForm names a stored subject the way a write rule names an allowed one:
+// user, team#member or user:*.
+func subjectForm(s Subject) string {
+	switch {
+	case s.ID == WildcardID:
+		return s.Type + ":*"
+	case s.Relation != "":
+		return s.Type + "#" + s.Relation
+	default:
+		return s.Type
+	}
 }
 
 // creations is every creation move the coalition can make: one object per
@@ -483,6 +689,17 @@ func (s *stateSet) add(r Relationship) bool {
 
 func (s *stateSet) has(r Relationship) bool { return s.keys[tupleKey(r)] }
 
+// remove takes a relationship out of the set and reports whether it was there.
+func (s *stateSet) remove(r Relationship) bool {
+	key := tupleKey(r)
+	if !s.keys[key] {
+		return false
+	}
+	delete(s.keys, key)
+	s.order = slices.DeleteFunc(s.order, func(x Relationship) bool { return tupleKey(x) == key })
+	return true
+}
+
 func (s *stateSet) list() []Relationship { return slices.Clone(s.order) }
 
 func (s *stateSet) clone() *stateSet {
@@ -505,4 +722,21 @@ func tupleKey(r Relationship) string {
 		key += "!exp"
 	}
 	return key
+}
+
+// signatureOf identifies a state and a coalition, so that two sequences of
+// writes that reach the same place are explored once. It sorts both, since the
+// set is what matters and not the order writes happened to arrive in.
+func signatureOf(state *stateSet, objects []Object) string {
+	keys := make([]string, 0, len(state.order))
+	for _, r := range state.order {
+		keys = append(keys, tupleKey(r))
+	}
+	slices.Sort(keys)
+	names := make([]string, 0, len(objects))
+	for _, o := range objects {
+		names = append(names, o.String())
+	}
+	slices.Sort(names)
+	return strings.Join(keys, ",") + "|" + strings.Join(names, ",")
 }
