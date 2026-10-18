@@ -1,8 +1,8 @@
 # What the analysis has to find in the SpiceDB fixture
 
 `schema.zed` is the schema of Quill's documents, and `validation.yaml` the relationships written
-against it and the checks asserted about them. `zed validate validation.yaml` accepts the file as
-it stands, with zed v1.2.1: five relationships, nine assertions.
+against it and the checks asserted about them: five relationships and nine assertions.
+`zed validate validation.yaml` accepts the file as it stands, with zed v1.2.1.
 
 ```
 petard analyze fixtures/vulnerable-spicedb

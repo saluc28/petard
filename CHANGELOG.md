@@ -10,12 +10,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - `petard analyze` reads SpiceDB schema files (`.zed`) and validation files, the format
-  `zed validate` and the SpiceDB playground read, under the paths it is given. For each file it
-  counts what the schema declares (definitions, relations, permissions and caveats) and, for a
-  validation file, the relationships, assertions and expected relations it holds. It applies the
-  patterns of the Zanzibar engine to them, and names the schema files no validation file reads,
-  which give the patterns no evidence. A path that holds SpiceDB files and no policy is read
-  instead of refused.
+  `zed validate` reads, under the paths it is given. For each file it counts what the schema
+  declares (definitions, relations, permissions and caveats) and, for a validation file, the
+  relationships, assertions and expected relations it holds. It applies the patterns of the
+  Zanzibar engine to them, and names the schema files no validation file reads, which give the
+  patterns no evidence. A path that holds SpiceDB files and no policy is read instead of refused.
 - `PTD-ZAN-001`, the first pattern for SpiceDB schemas: a caveat parameter the check is meant to
   supply, the caller's address or the time of the request, which whoever writes the relationship
   can set instead, since the context written on a relationship wins over the one a check

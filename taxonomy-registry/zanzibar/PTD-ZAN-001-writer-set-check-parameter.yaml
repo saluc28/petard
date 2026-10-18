@@ -234,6 +234,7 @@ notes:
     and no relationship that leaves it out. Without a validation file the pattern does not read
     the schema at all.
   - >
-    Not reported, by design: a relation that allows a subject both with and without the caveat,
-    `user | user with ip_allowlist`. Whoever writes the relationship chooses whether the condition
-    applies, and that is the choice the schema offers them, not a value meant for the check.
+    Not reported, by design: that a relation allowing a subject both with and without the caveat,
+    `user | user with ip_allowlist`, lets whoever writes the relationship leave the condition out.
+    That is a choice the schema offers the writer, not a value meant for the check. The parameters
+    of the caveat are reported on such a relation as on any other.

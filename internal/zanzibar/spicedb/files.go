@@ -37,8 +37,8 @@ type File struct {
 
 	Schema *Schema
 
-	// Validation is true for a validation file, the format of zed validate and
-	// of the SpiceDB playground.
+	// Validation is true for a validation file, the format zed validate reads
+	// (pkg/validationfile/fileformat.go:21-47 at v1.56.2).
 	Validation bool
 
 	Relationships []zanzibar.Relationship
