@@ -6,12 +6,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/saluc28/petard/internal/cli/analyze"
 )
 
 // Somebody holding a release binary has no policy of their own yet, and this is
-// the command that answers what the tool does. If the bundle is not in the
+// the command that answers what the tool does. If the fixtures are not in the
 // binary, or the analysis does not reach the patterns, there is nothing to see.
-func TestDemoAnalyzesTheBundleInTheBinary(t *testing.T) {
+func TestDemoAnalyzesTheFixturesInTheBinary(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := Run(nil, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
@@ -22,6 +24,8 @@ func TestDemoAnalyzesTheBundleInTheBinary(t *testing.T) {
 		"parsed as rego v1",
 		"carol -> alice",
 		"PUT /api/v1/users/{id}/roles",
+		"2 SpiceDB files",
+		"document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)",
 		"petard demo -extract",
 	} {
 		if !strings.Contains(out, want) {
@@ -42,8 +46,10 @@ func TestDemoShowsTheEvidenceWhenAsked(t *testing.T) {
 	for _, want := range []string{
 		"PTD-OPA-006 finding: carol can write editor",
 		// The report names the files it read, and they read like a checkout
-		// rather than like wherever the bundle happened to be unpacked.
+		// rather than like wherever the fixtures happened to be unpacked, with
+		// the same slashes for a schema as for a policy.
 		"vulnerable-bundle/policy-v1/authz.rego:",
+		"vulnerable-spicedb/schema.zed:26:3",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the detailed demo does not say %q:\n%s", want, out)
@@ -87,8 +93,8 @@ func TestDemoPrintsTheSameWhereverItUnpacks(t *testing.T) {
 	}
 }
 
-// The bundle is worth having on disk: it is the thing to edit to see what the
-// analysis says about a change.
+// The fixtures are worth having on disk: they are the thing to edit to see what
+// the analysis says about a change.
 func TestExtractWritesTheBundleAndStops(t *testing.T) {
 	dir := t.TempDir()
 
@@ -102,6 +108,9 @@ func TestExtractWritesTheBundleAndStops(t *testing.T) {
 		filepath.Join("vulnerable-bundle", "policy-v1", "authz.rego"),
 		filepath.Join("vulnerable-bundle", "data"),
 		filepath.Join("vulnerable-bundle", "EXPECTED.md"),
+		filepath.Join("vulnerable-spicedb", "schema.zed"),
+		filepath.Join("vulnerable-spicedb", "validation.yaml"),
+		filepath.Join("vulnerable-spicedb", "EXPECTED.md"),
 	} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("%s is missing from the unpacked bundle: %v", name, err)
@@ -109,6 +118,34 @@ func TestExtractWritesTheBundleAndStops(t *testing.T) {
 	}
 	if out := stdout.String(); strings.Contains(out, "decisions:") {
 		t.Errorf("extracting also ran the analysis:\n%s", out)
+	}
+}
+
+// The command -extract prints is the run the demo makes. Run where the fixtures
+// were written, it prints what the demo prints, up to the lines the demo adds
+// at the end.
+func TestTheExtractedCommandPrintsWhatTheDemoPrints(t *testing.T) {
+	var demo, stderr bytes.Buffer
+	if code := Run(nil, &demo, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+
+	t.Chdir(t.TempDir())
+	var extracted bytes.Buffer
+	if code := Run([]string{"-extract", "."}, &extracted, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	_, command, ok := strings.Cut(extracted.String(), "analyze them with: petard analyze ")
+	if !ok {
+		t.Fatalf("-extract prints no command:\n%s", extracted.String())
+	}
+
+	// The fixtures are full of findings, so the run exits 3; what it prints is
+	// what is compared.
+	var own bytes.Buffer
+	analyze.Run(strings.Fields(command), &own, &stderr)
+	if own.Len() == 0 || !strings.HasPrefix(demo.String(), own.String()) {
+		t.Errorf("the command -extract prints does not print what the demo prints:\n%s", own.String())
 	}
 }
 

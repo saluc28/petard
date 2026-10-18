@@ -34,6 +34,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `-registry` takes the registry directory, which holds one directory per engine, instead of the
   directory of the OPA patterns. The registry is at schema version 2: an entry of version 1 is one
   of version 2 with its `schema_version` changed.
+- `petard demo` analyzes a SpiceDB schema beside the bundle, in the same run: the schema of the
+  same documents service, with a validation file that holds the case and the counter case of
+  `PTD-ZAN-001`. `-extract` writes it next to the bundle and prints the command that repeats the
+  run.
 
 ## [0.5.0] - 2026-10-16
 

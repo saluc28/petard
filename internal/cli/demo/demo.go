@@ -19,8 +19,8 @@ const (
 	exitUsage   = 2
 )
 
-// Run unpacks the bundle and analyzes it, or writes it where the caller asked
-// and stops there.
+// Run unpacks the fixtures and analyzes them, or writes them where the caller
+// asked and stops there.
 //
 // It takes no policy path of its own: the point is to answer "what does this
 // thing do" for somebody holding a binary and nothing else.
@@ -29,10 +29,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprint(stderr, "usage: petard demo [-v] [-extract <dir>]\n\n"+
-			"Analyzes the vulnerable bundle built into this binary.\n\n")
+			"Analyzes the policy and the SpiceDB schema built into this binary, written by hand\n"+
+			"with defects in them.\n\n")
 		flags.PrintDefaults()
 	}
-	extract := flags.String("extract", "", "write the bundle here instead of analyzing it")
+	extract := flags.String("extract", "", "write the fixtures here instead of analyzing them")
 	verbose := flags.Bool("v", false, "print the evidence too, as petard analyze -v does")
 
 	if err := flags.Parse(args); err != nil {
@@ -40,18 +41,17 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	if flags.NArg() > 0 {
 		fmt.Fprintf(stderr, "petard demo: %q is not an argument this command takes; "+
-			"run petard analyze to analyze a policy of your own\n", flags.Arg(0))
+			"run petard analyze to analyze a policy or a schema of your own\n", flags.Arg(0))
 		return exitUsage
 	}
 
 	if *extract != "" {
-		root, err := fixtures.Unpack(*extract)
-		if err != nil {
+		if err := fixtures.Unpack(*extract); err != nil {
 			fmt.Fprintf(stderr, "petard demo: %v\n", err)
 			return exitFailure
 		}
-		fmt.Fprintf(stdout, "bundle written to %s\n", root)
-		fmt.Fprintf(stdout, "analyze it with: petard analyze %s\n", strings.Join(bundleArguments(root), " "))
+		fmt.Fprintf(stdout, "%s and %s written to %s\n", fixtures.BundleDir, fixtures.SpiceDBDir, *extract)
+		fmt.Fprintf(stdout, "analyze them with: petard analyze %s\n", strings.Join(fixtureArguments(*extract), " "))
 		return exitOK
 	}
 
@@ -62,7 +62,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	if _, err := fixtures.Unpack(dir); err != nil {
+	if err := fixtures.Unpack(dir); err != nil {
 		fmt.Fprintf(stderr, "petard demo: %v\n", err)
 		return exitFailure
 	}
@@ -82,37 +82,39 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// remove the directory a process is working in.
 	defer leave()
 
-	// A demonstration is not a gate: the bundle is built to be full of
-	// findings, and exiting 3 over the ones it was written to have would say
-	// something about the fixture rather than about the tool.
+	// A demonstration is not a gate: the fixtures are built to be full of
+	// findings, and exiting 3 over the ones they were written to have would
+	// say something about the fixtures rather than about the tool.
 	analysis := []string{"-fail-on", "none"}
 	if *verbose {
 		analysis = append(analysis, "-v")
 	}
-	analysis = append(analysis, bundleArguments(fixtures.BundleDir)...)
+	analysis = append(analysis, fixtureArguments(".")...)
 
 	if code := analyze.Run(analysis, stdout, stderr); code != exitOK {
 		return code
 	}
 
-	fmt.Fprint(stdout, "\nThat was the bundle built into this binary, written by hand with the "+
-		"escalations in it.\nRun petard demo -extract <dir> to get the files, edit them, and "+
-		"analyze them again.\n")
+	fmt.Fprint(stdout, "\nThat was the policy and the SpiceDB schema built into this binary, written by "+
+		"hand with\ndefects in them. Run petard demo -extract <dir> to get the files, edit them, and "+
+		"analyze\nthem again.\n")
 	return exitOK
 }
 
-// bundleArguments hand petard analyze the bundle unpacked at root: what the
-// bundle declares next to its policy, the requests it says its decisions grant,
-// then the policy. The demo runs with them and prints them for a run of one's
-// own, so the two say the same thing.
-func bundleArguments(root string) []string {
+// fixtureArguments hand petard analyze the fixtures unpacked under dir: what
+// the bundle declares next to its policy, the requests it says its decisions
+// grant, the policy, then the SpiceDB fixture. The demo runs with them and
+// prints them for a run of one's own, so the two say the same thing.
+func fixtureArguments(dir string) []string {
+	bundle := filepath.Join(dir, fixtures.BundleDir)
 	return []string{
-		"-pep", filepath.Join(root, "pep.yaml"),
-		"-write-model", filepath.Join(root, "write-model.yaml"),
-		"-data", filepath.Join(root, "data"),
-		"-granted", filepath.Join(root, "inputs", "granted-download.json"),
-		"-granted", filepath.Join(root, "inputs", "granted-mint.json"),
-		filepath.Join(root, "policy-v1"),
+		"-pep", filepath.Join(bundle, "pep.yaml"),
+		"-write-model", filepath.Join(bundle, "write-model.yaml"),
+		"-data", filepath.Join(bundle, "data"),
+		"-granted", filepath.Join(bundle, "inputs", "granted-download.json"),
+		"-granted", filepath.Join(bundle, "inputs", "granted-mint.json"),
+		filepath.Join(bundle, "policy-v1"),
+		filepath.Join(dir, fixtures.SpiceDBDir),
 	}
 }
 
