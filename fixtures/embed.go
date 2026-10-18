@@ -7,6 +7,7 @@ package fixtures
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -33,30 +34,62 @@ const (
 	SpiceDBDir = "vulnerable-spicedb"
 )
 
-// Unpack writes every fixture under dir, each in the directory it has in the
-// repository, creating dir if it is not there.
-func Unpack(dir string) error {
-	for _, name := range []string{BundleDir, SpiceDBDir} {
-		if err := unpack(dir, name); err != nil {
+// ExistsError is returned when the directory a fixture unpacks into is already
+// there. What it holds may be the edits somebody made to the fixture, and
+// writing over them would lose them without a word.
+type ExistsError struct {
+	Path string
+}
+
+// Error names the directory that is in the way.
+func (e *ExistsError) Error() string { return e.Path + " is already there" }
+
+// Unpack writes the fixtures named by their directory, BundleDir or
+// SpiceDBDir, under dir, creating dir if it is not there.
+//
+// Nothing is written when the directory of one of them is already under dir.
+// The files are written through an os.Root, so a link under dir cannot lead a
+// write out of it.
+func Unpack(dir string, names ...string) (err error) {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, root.Close()) }()
+
+	for _, name := range names {
+		_, err := root.Lstat(name)
+		if err == nil {
+			return &ExistsError{Path: filepath.Join(dir, name)}
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	for _, name := range names {
+		if err := unpack(root, name); err != nil {
 			return fmt.Errorf("unpacking %s: %w", name, err)
 		}
 	}
 	return nil
 }
 
-func unpack(dir, fixture string) error {
+func unpack(root *os.Root, fixture string) error {
 	return fs.WalkDir(Embedded, fixture, func(name string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(dir, filepath.FromSlash(name))
+		target := filepath.FromSlash(name)
 		if entry.IsDir() {
-			return os.MkdirAll(target, 0o750)
+			return root.Mkdir(target, 0o750)
 		}
 		content, err := Embedded.ReadFile(name)
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(target, content, 0o600)
+		return root.WriteFile(target, content, 0o600)
 	})
 }

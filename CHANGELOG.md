@@ -39,6 +39,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `PTD-ZAN-001`. `-extract` writes it next to the bundle and prints the command that repeats the
   run.
 
+### Fixed
+
+- `petard demo -extract` wrote over a fixture already in the directory, with the edits made to it.
+  It now refuses, names the directory, and writes nothing. The files are written only under the
+  directory given, and a link there cannot lead a write out of it.
+
 ## [0.5.0] - 2026-10-16
 
 ### Added

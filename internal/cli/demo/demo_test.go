@@ -121,6 +121,31 @@ func TestExtractWritesTheBundleAndStops(t *testing.T) {
 	}
 }
 
+// What -extract wrote is there to be edited, so a second run into the same
+// directory refuses rather than write over the edits.
+func TestExtractDoesNotWriteOverAFixture(t *testing.T) {
+	dir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-extract", dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	edited := filepath.Join(dir, "vulnerable-bundle", "write-model.yaml")
+	if err := os.WriteFile(edited, []byte("edited\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stderr.Reset()
+	if code := Run([]string{"-extract", dir}, &stdout, &stderr); code != exitFailure {
+		t.Fatalf("exit code = %d, want %d", code, exitFailure)
+	}
+	if !strings.Contains(stderr.String(), "vulnerable-bundle is already there") {
+		t.Errorf("the refusal does not name the directory:\n%s", stderr.String())
+	}
+	if content, err := os.ReadFile(edited); err != nil || string(content) != "edited\n" {
+		t.Errorf("the edit is gone: %q, %v", content, err)
+	}
+}
+
 // The command -extract prints is the run the demo makes. Run where the fixtures
 // were written, it prints what the demo prints, up to the lines the demo adds
 // at the end.

@@ -2,6 +2,7 @@
 package demo
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -46,8 +47,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if *extract != "" {
-		if err := fixtures.Unpack(*extract); err != nil {
-			fmt.Fprintf(stderr, "petard demo: %v\n", err)
+		if err := fixtures.Unpack(*extract, fixtures.BundleDir, fixtures.SpiceDBDir); err != nil {
+			var exists *fixtures.ExistsError
+			if errors.As(err, &exists) {
+				fmt.Fprintf(stderr, "petard demo: %s is already there, and the demo does not write over it; "+
+					"remove it or give -extract another directory\n", exists.Path)
+			} else {
+				fmt.Fprintf(stderr, "petard demo: %v\n", err)
+			}
 			return exitFailure
 		}
 		fmt.Fprintf(stdout, "%s and %s written to %s\n", fixtures.BundleDir, fixtures.SpiceDBDir, *extract)
@@ -62,7 +69,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	if err := fixtures.Unpack(dir); err != nil {
+	if err := fixtures.Unpack(dir, fixtures.BundleDir, fixtures.SpiceDBDir); err != nil {
 		fmt.Fprintf(stderr, "petard demo: %v\n", err)
 		return exitFailure
 	}
