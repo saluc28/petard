@@ -17,8 +17,8 @@ import (
 // checker, held to SpiceDB in spicedb/schema_oracle_test.go.
 func assertSaturated(t *testing.T, model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, reach *Reach) {
 	t.Helper()
-	if !reach.Exact {
-		t.Fatal("assertSaturated is for an exact closure; E1 did not hold")
+	if reach.Bound != 0 {
+		t.Fatal("assertSaturated is for the saturation path; the closure searched a bound")
 	}
 	e := newEngine(model, wm, caveats, start, coalition, Options{Now: time.Unix(0, 0)})
 	explored, err := exploreAll(e)

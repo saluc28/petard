@@ -282,6 +282,150 @@ func TestClosureE1Fails(t *testing.T) {
 	}
 }
 
+// E2 holding, the closure makes one object per choice of the On objects. The
+// coalition is a member of two folders and the rule creates a document in a
+// folder, owned by its creator, so the coalition ends up with a document it
+// owns in each folder.
+func TestClosureCreatesPerOnObject(t *testing.T) {
+	folder := &Type{Name: "folder", Relations: []*Relation{{Name: "member", Allowed: []Allowed{{Type: "user"}}}}}
+	document := &Type{
+		Name:        "document",
+		Relations:   []*Relation{{Name: "owner", Allowed: []Allowed{{Type: "user"}}}},
+		Permissions: []*Permission{{Name: "edit", Expr: Computed{Name: "owner"}}},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, folder, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Creates: []*CreationRule{{
+		Creates: "document",
+		Gate:    Gate{Anyone: true},
+		On:      []OnSpec{{Type: "folder", Gate: Gate{Holds: "member"}}},
+		Writes:  []CreationWrite{{Resource: CreatedPlaceholder, Relation: "owner", Subject: CreatorPlaceholder}},
+	}}}
+	mallory := object("user:mallory")
+	start := []Relationship{rel("folder:a", "member", "user:mallory"), rel("folder:b", "member", "user:mallory")}
+
+	reach, err := Closure(model, wm, nil, start, []Object{mallory}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Closure: %v", err)
+	}
+	if !reach.Exact {
+		t.Fatal("this schema holds E1 and E2, so the closure should be exact")
+	}
+	for _, id := range []string{"created-0-folder-a", "created-0-folder-b"} {
+		doc := Object{Type: "document", ID: id}
+		if !slices.Contains(reach.Objects, doc) {
+			t.Errorf("coalition should hold the created document %s, objects: %v", doc, reach.Objects)
+		}
+		edit, err := reach.Holds(doc, "edit")
+		if err != nil {
+			t.Fatalf("Holds edit on %s: %v", doc, err)
+		}
+		if edit != Yes {
+			t.Errorf("coalition edit of %s = %s, want yes", doc, edit)
+		}
+	}
+	assertSaturated(t, model, wm, nil, start, []Object{mallory}, reach)
+}
+
+// A folder created inside a folder is recursive, so E2 fails and the objects it
+// makes are merged into one per rule rather than nesting without end. The
+// closure is not exact, and it names the merged rule.
+func TestClosureMergesRecursiveCreations(t *testing.T) {
+	folder := &Type{
+		Name: "folder",
+		Relations: []*Relation{
+			{Name: "parent", Allowed: []Allowed{{Type: "folder"}}},
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "view", Expr: Union{Children: []Expr{Computed{Name: "viewer"}, Arrow{Through: "parent", Target: "view"}}}},
+		},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, folder}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Creates: []*CreationRule{{
+		Creates: "folder",
+		Gate:    Gate{Anyone: true},
+		On:      []OnSpec{{Type: "folder", Gate: Gate{Anyone: true}}},
+		Writes:  []CreationWrite{{Resource: CreatedPlaceholder, Relation: "parent", Subject: "folder"}},
+	}}}
+	mallory := object("user:mallory")
+	start := []Relationship{rel("folder:root", "viewer", "user:mallory")}
+
+	reach, err := Closure(model, wm, nil, start, []Object{mallory}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Closure: %v", err)
+	}
+	if reach.Exact {
+		t.Fatal("a recursive creation fails E2, so the closure should not be exact")
+	}
+	if !slices.Equal(reach.CreatedMerged, []string{"folder"}) {
+		t.Errorf("CreatedMerged = %v, want [folder]", reach.CreatedMerged)
+	}
+	created := 0
+	for _, o := range reach.Objects {
+		if o.Type == "folder" {
+			created++
+		}
+	}
+	if created != 1 {
+		t.Errorf("recursion made %d folders, want 1 merged object", created)
+	}
+	assertSaturated(t, model, wm, nil, start, []Object{mallory}, reach)
+}
+
+// A creation that writes a negative tuple fails E2, so the closure keeps k
+// copies of the object and searches up to the bound rather than saturating.
+func TestClosureKeepsCopiesForNegativeWrite(t *testing.T) {
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "banned", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "view", Expr: Exclusion{Base: Computed{Name: "viewer"}, Subtracted: []Expr{Computed{Name: "banned"}}}},
+		},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Creates: []*CreationRule{{
+		Creates: "document",
+		Gate:    Gate{Anyone: true},
+		Writes: []CreationWrite{
+			{Resource: CreatedPlaceholder, Relation: "viewer", Subject: CreatorPlaceholder},
+			{Resource: CreatedPlaceholder, Relation: "banned", Subject: CreatorPlaceholder},
+		},
+	}}}
+	mallory := object("user:mallory")
+
+	reach, err := Closure(model, wm, nil, nil, []Object{mallory}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Closure: %v", err)
+	}
+	if reach.Exact {
+		t.Fatal("a negative creation write fails E2, so the closure should not be exact")
+	}
+	if reach.CreatedCopies != DefaultCreatedCopies {
+		t.Errorf("CreatedCopies = %d, want %d", reach.CreatedCopies, DefaultCreatedCopies)
+	}
+	created := 0
+	for _, o := range reach.Objects {
+		if o.Type == "document" {
+			created++
+		}
+	}
+	if created != DefaultCreatedCopies {
+		t.Errorf("kept %d documents, want %d copies", created, DefaultCreatedCopies)
+	}
+}
+
 // addedTuples is the tuples of the reachable state that the start did not have.
 func addedTuples(start, state []Relationship) []Relationship {
 	was := map[string]bool{}

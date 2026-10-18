@@ -2,6 +2,7 @@ package zanzibar
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -30,6 +31,11 @@ type Options struct {
 	// DefaultMaxWrites.
 	MaxWrites int
 
+	// CreatedCopies is how many objects a creation rule is kept at when it
+	// writes a negative tuple and E2 does not hold. Zero takes
+	// DefaultCreatedCopies.
+	CreatedCopies int
+
 	// Now is the time expirations are read at. The zero value takes the current
 	// time when the run starts.
 	Now time.Time
@@ -40,6 +46,13 @@ func (o Options) maxWrites() int {
 		return DefaultMaxWrites
 	}
 	return o.MaxWrites
+}
+
+func (o Options) createdCopies() int {
+	if o.CreatedCopies <= 0 {
+		return DefaultCreatedCopies
+	}
+	return o.CreatedCopies
 }
 
 func (o Options) now() time.Time {
@@ -63,13 +76,27 @@ type Reach struct {
 	// every object a creation rule let it make.
 	Objects []Object
 
-	// Exact is true when exactness condition E1 held, so the reachable states
-	// have one greatest element and Holds answers it without a bound. When it
-	// is false, Mixed names the relations that broke E1 and Bound is how many
-	// writes the search looked ahead.
+	// Exact is true when exactness conditions E1 and E2 both held, so the
+	// reachable states have one greatest element and Holds answers it without a
+	// bound or a caveat. The fields below say which condition fell short when it
+	// is false.
 	Exact bool
+
+	// Bound is how many writes the search looked ahead when a move could lower a
+	// permission, zero on the saturation path. Mixed names the relations that
+	// broke E1.
 	Bound int
 	Mixed []MixedRelation
+
+	// CreatedMerged names, by the type they create, the recursive creation rules
+	// whose objects were merged to one each. The result is sound but may report
+	// a raise only a merged object allows.
+	CreatedMerged []string
+
+	// CreatedCopies is how many objects a creation that writes a negative tuple
+	// was kept at, zero when none did; the result is then exact up to that many
+	// created objects.
+	CreatedCopies int
 
 	engine   *engine
 	explored []exploredState
@@ -127,18 +154,25 @@ func (r *Reach) Holds(resource Object, name string) (Level, error) {
 func Closure(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, opts Options) (*Reach, error) {
 	e := newEngine(model, wm, caveats, start, coalition, opts)
 
-	ok, mixed := CheckE1(model, wm)
-	if ok {
+	e1ok, mixed := CheckE1(model, wm)
+	e2ok, e2fail := CheckE2(model, wm)
+	merged, negative := splitE2(e2fail)
+
+	// Saturation reaches the one greatest element only while every move raises a
+	// permission. A mixed relation (E1) or a creation that writes a negative
+	// tuple (E2) can lower one, and then no single state dominates.
+	if e1ok && !negative {
 		state, objects, err := e.saturate()
 		if err != nil {
 			return nil, err
 		}
 		return &Reach{
-			State:    state.list(),
-			Objects:  objects,
-			Exact:    true,
-			engine:   e,
-			explored: []exploredState{{state: state, objects: objects}},
+			State:         state.list(),
+			Objects:       objects,
+			Exact:         e1ok && e2ok,
+			CreatedMerged: merged,
+			engine:        e,
+			explored:      []exploredState{{state: state, objects: objects}},
 		}, nil
 	}
 
@@ -159,15 +193,35 @@ func Closure(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Rela
 			}
 		}
 	}
+	copies := 0
+	if negative {
+		copies = e.opts.createdCopies()
+	}
 	return &Reach{
-		State:    union.list(),
-		Objects:  unionObjects,
-		Exact:    false,
-		Bound:    bound,
-		Mixed:    mixed,
-		engine:   e,
-		explored: explored,
+		State:         union.list(),
+		Objects:       unionObjects,
+		Exact:         false,
+		Bound:         bound,
+		Mixed:         mixed,
+		CreatedMerged: merged,
+		CreatedCopies: copies,
+		engine:        e,
+		explored:      explored,
 	}, nil
+}
+
+// splitE2 separates the recursive failures, whose rules are merged, from the
+// negative-write failures, which force a bounded search. It returns the merged
+// rules by created type and whether any rule writes a negative tuple.
+func splitE2(failures []E2Failure) (merged []string, negative bool) {
+	for _, f := range failures {
+		if f.Reason == "recursive" {
+			merged = append(merged, f.Creates)
+		} else {
+			negative = true
+		}
+	}
+	return merged, negative
 }
 
 // saturate applies every available write each round until none changes the
@@ -267,6 +321,7 @@ type engine struct {
 	coalition []Object
 	opts      Options
 	pol       *polarities
+	e2modes   []creationMode
 }
 
 func newEngine(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, opts Options) *engine {
@@ -274,6 +329,8 @@ func newEngine(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Re
 	for _, r := range start {
 		s.add(r)
 	}
+	pol := analyzePolarities(model, wm)
+	modes, _ := e2plan(model, wm, pol, opts.createdCopies())
 	return &engine{
 		model:     model,
 		wm:        wm,
@@ -281,7 +338,8 @@ func newEngine(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Re
 		start:     s,
 		coalition: slices.Clone(coalition),
 		opts:      opts,
-		pol:       analyzePolarities(model, wm),
+		pol:       pol,
+		e2modes:   modes,
 	}
 }
 
@@ -401,67 +459,89 @@ func subjectForm(s Subject) string {
 }
 
 // creations is every creation move the coalition can make: one object per
-// creation rule, with the tuples the rule writes. One object per rule is the
-// exact choice while the rule's exactness condition E2 holds, which the engine
-// checks with condition E2; the recursive and k-copy fallbacks are added there.
+// creation rule and per choice of its On objects, with the tuples the rule
+// writes. One object per such choice is the exact materialization while
+// exactness condition E2 holds. A recursive rule is merged to one object per
+// rule, and a rule that writes a negative tuple is kept at k objects per choice,
+// the two fallbacks E2 names.
 func (e *engine) creations(checker *Checker, state *stateSet, objects []Object, domain map[string][]Object) ([]move, error) {
 	var moves []move
 	for i, rule := range e.wm.Creates {
-		created := Object{Type: rule.Creates, ID: createdID(i)}
-		if containsObject(objects, created) {
-			// The object this rule makes is already in the coalition; its writes
-			// were taken when it joined.
-			continue
-		}
-		ons, held, err := e.creationGate(checker, rule, objects, domain)
+		mode := e.e2modes[i]
+		combos, err := e.onCombos(checker, rule, objects, domain)
 		if err != nil {
 			return nil, err
 		}
-		if !held {
-			continue
-		}
-		// The creation itself brings the object into the coalition; each tuple
-		// the rule writes is a move of its own, so a rule with several writes
-		// adds each and the fixpoint carries them all.
-		moves = append(moves, move{creates: rule, created: created})
-		for _, w := range rule.Writes {
-			rel, ok := e.fillCreationWrite(w, created, ons)
-			if !ok || state.has(rel) {
-				continue
+		for _, combo := range combos {
+			for n := range mode.copies {
+				created := Object{Type: rule.Creates, ID: createdID(i, combo.sig, n, mode.merged)}
+				added := !containsObject(objects, created)
+				if added {
+					// The creation itself brings the object into the coalition.
+					moves = append(moves, move{creates: rule, created: created})
+				}
+				// The tuples the rule writes are moves of their own, so a rule
+				// with several writes adds each. They are offered even when the
+				// object is already in the coalition, since a merged object
+				// gathers the writes of every choice that folds into it.
+				for _, w := range rule.Writes {
+					rel, ok := e.fillCreationWrite(w, created, combo.ons)
+					if !ok || state.has(rel) {
+						continue
+					}
+					moves = append(moves, move{rel: rel, creates: rule, created: created})
+				}
 			}
-			moves = append(moves, move{rel: rel, creates: rule, created: created})
 		}
 	}
 	return moves, nil
 }
 
-// creationGate says whether the coalition can make an object of a rule, and on
-// which On objects. A rule with no On is gated on its own, and a gate that
-// holds a permission then holds on nothing, so only an anyone gate makes it. A
-// rule with On needs its gate to hold on one object of each On type.
-func (e *engine) creationGate(checker *Checker, rule *CreationRule, objects []Object, domain map[string][]Object) (map[string]Object, bool, error) {
+// onCombo is one choice of the objects a creation is made in, with a signature
+// that names the created object so that two choices make two objects.
+type onCombo struct {
+	ons map[string]Object
+	sig string
+}
+
+// onCombos is every choice of On objects a creation can be made on: for each On
+// type, the objects of that type the creation's gate holds on, combined across
+// the On types. A rule with no On has one choice when its gate is anyone, and
+// none otherwise. A gate that holds a permission needs an On object to hold on,
+// so a rule with no On and such a gate makes nothing.
+func (e *engine) onCombos(checker *Checker, rule *CreationRule, objects []Object, domain map[string][]Object) ([]onCombo, error) {
 	if len(rule.On) == 0 {
-		return nil, rule.Gate.Anyone, nil
+		if rule.Gate.Anyone {
+			return []onCombo{{}}, nil
+		}
+		return nil, nil
 	}
-	ons := make(map[string]Object, len(rule.On))
+	combos := []onCombo{{ons: map[string]Object{}}}
 	for _, on := range rule.On {
-		found := false
+		var candidates []Object
 		for _, candidate := range domain[on.Type] {
 			held, err := e.gateHolds(checker, on.Gate, candidate, objects)
 			if err != nil {
-				return nil, false, err
+				return nil, err
 			}
 			if held {
-				ons[on.Type] = candidate
-				found = true
-				break
+				candidates = append(candidates, candidate)
 			}
 		}
-		if !found {
-			return nil, false, nil
+		if len(candidates) == 0 {
+			return nil, nil
 		}
+		var next []onCombo
+		for _, combo := range combos {
+			for _, candidate := range candidates {
+				ons := maps.Clone(combo.ons)
+				ons[on.Type] = candidate
+				next = append(next, onCombo{ons: ons, sig: joinSig(combo.sig, candidate)})
+			}
+		}
+		combos = next
 	}
-	return ons, true, nil
+	return combos, nil
 }
 
 // fillCreationWrite turns a creation write into a tuple, its placeholders filled
@@ -612,8 +692,9 @@ func allowedName(a Allowed) string {
 }
 
 // domain is every object the coalition may write on or name, by type: the
-// objects of the state, the objects the coalition controls, and the objects
-// creation rules can make. Wildcards are subjects, not objects, so they are not
+// objects of the state and the objects the coalition controls, which already
+// hold every object a creation rule has made, since a creation puts its object
+// into the coalition. Wildcards are subjects, not objects, so they are not
 // here.
 func (e *engine) domain(state *stateSet, objects []Object) map[string][]Object {
 	byType := map[string][]Object{}
@@ -631,9 +712,6 @@ func (e *engine) domain(state *stateSet, objects []Object) map[string][]Object {
 	}
 	for _, o := range objects {
 		add(o)
-	}
-	for i, rule := range e.wm.Creates {
-		add(Object{Type: rule.Creates, ID: createdID(i)})
 	}
 	return byType
 }
@@ -659,10 +737,32 @@ func appendSubject(out *[]Subject, s Subject) {
 	}
 }
 
-// createdID is the identifier of the object a creation rule makes, one per rule
-// so that two rules do not collide.
-func createdID(ruleIndex int) string {
-	return fmt.Sprintf("created-%d", ruleIndex)
+// createdID is the identifier of an object a creation rule makes. A merged
+// rule has one object whatever the choice, so the signature and copy are left
+// off; otherwise the choice of On objects and the copy number keep two objects
+// of the same rule apart.
+func createdID(ruleIndex int, comboSig string, copy int, merged bool) string {
+	if merged {
+		return fmt.Sprintf("created-%d", ruleIndex)
+	}
+	id := fmt.Sprintf("created-%d", ruleIndex)
+	if comboSig != "" {
+		id += "-" + comboSig
+	}
+	if copy > 0 {
+		id += fmt.Sprintf("-copy%d", copy)
+	}
+	return id
+}
+
+// joinSig extends a choice signature with one more object, its colon turned to
+// a dash so the signature stays a plain identifier.
+func joinSig(sig string, o Object) string {
+	part := o.Type + "-" + o.ID
+	if sig == "" {
+		return part
+	}
+	return sig + "_" + part
 }
 
 // stateSet is a set of relationships with a stable order, keyed so that the
