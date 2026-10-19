@@ -95,8 +95,9 @@ Zanzibar model works:
   user or a resource into an identifier, which no schema holds.
 
 The other categories, a relationship the subject writes for itself, a write a permission allows,
-a group somebody joins, a deny somebody deletes, rest on who writes which relation, and petard
-reads no write model for Zanzibar models.
+a group somebody joins, a deny somebody deletes, rest on who writes which relation, which a
+`relationship-writes` write model declares. `PTD-ZAN-001` is the first instance built on it; the
+rest are not implemented yet.
 
 ### More than one instance per engine, when the causes are disjoint
 
@@ -406,7 +407,7 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-011` | ASSUMABLE-IDENTITY | opa | finding | A | `implemented`, a grant on a runtime identity an enforcement point proves, where whoever can deploy the workload it names or hold its credential assumes it |
 | `PTD-OPA-012` | LOOSE-ENFORCEMENT-MATCH | opa | finding | C | `implemented`, a grant on a resource matched as a substring, a prefix, a glob or an unanchored regex, wider than the value the enforcement point serves |
 | `PTD-OPA-013` | DELEGATION-NOT-NARROWED | opa | finding | A | `implemented`, a grant of a requested authority not bounded by the delegator's, so a delegated agent mints scopes the delegating user never held |
-| `PTD-ZAN-001` | SELF-ASSERTED-EXEMPTION | zanzibar | candidate | | `implemented`, the first of the Zanzibar engine: a caveat parameter the check is meant to supply, which whoever writes the relationship can fix |
+| `PTD-ZAN-001` | SELF-ASSERTED-EXEMPTION | zanzibar | finding | | `implemented`, the first of the Zanzibar engine: a caveat parameter the check is meant to supply, which whoever writes the relationship can fix |
 
 Between them the thirteen OPA patterns exercise `binding-resolution`, `concrete-data`, `enforcement-point`,
 `rule-graph` and `taint`. 007 adds no new capability, only a new construct within `rule-graph`,

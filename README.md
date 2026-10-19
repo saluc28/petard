@@ -28,10 +28,10 @@ an admission controller or a configuration check, and the report says so when th
 | [Zanzibar](docs/zanzibar.md) | [SpiceDB](docs/spicedb.md) schemas (`.zed`) and the validation files `zed validate` reads | 1, `PTD-ZAN-001` | SpiceDB v1.56.2, whose compiler and caveats are compiled in, and `zed validate`, which agrees with the engine on 26,123 checks in CI |
 
 On a policy, a match becomes a finding once what it rests on is known: the policy alone, or a
-write model and an enforcement point you declare. On a SpiceDB schema every match is a candidate,
-because who writes a relationship, and with which context, is decided by the application that
-writes to SpiceDB, and Petard reads no declaration of it. [docs/concepts.md](docs/concepts.md) is
-what the two engines share.
+write model and an enforcement point you declare. On a SpiceDB schema it becomes a finding once a
+`relationship-writes` write model names who writes the relationship, a `writes.yaml` beside the
+schema or one given with `-write-model`, and stays a candidate without one.
+[docs/concepts.md](docs/concepts.md) is what the two engines share.
 
 ## Quickstart
 
@@ -173,9 +173,9 @@ sequences are used only when the output is a terminal that takes them; `NO_COLOR
 It does not decide whether a finding is a problem in your system. A position in a hierarchy is a
 target rather than a defect, and the report says who can take it and leaves the judgment to you.
 
-It does not know who writes what in your deployment unless you say so. A match on a policy that
-rests on who writes a path stays a candidate until a write model names the writer, and a match on
-a SpiceDB schema stays one in any case.
+It does not know who writes what in your deployment unless you say so. A match that rests on who
+writes a path of a policy or a relation of a SpiceDB schema stays a candidate until a write model
+names the writer.
 
 It reads files, and a running OPA over its API, read only. It never asks the server to decide
 anything, and it never connects to SpiceDB.

@@ -47,8 +47,9 @@ Three facts a claim can rest on are in no policy:
 
 For a Rego policy each is a file Petard reads, given with `-write-model` and `-pep`.
 [opa.md](opa.md#what-holds-a-claim-up) has the details. For a SpiceDB schema, who writes a
-relation and with which context is decided by the application that writes to SpiceDB, and
-Petard reads no declaration of it.
+relation and with which context is decided by the application that writes to SpiceDB, which a
+`relationship-writes` write model declares: a `writes.yaml` beside the schema, or one given with
+`-write-model`. [spicedb.md](spicedb.md#a-run) has the details.
 
 ## Findings and candidates
 
@@ -69,9 +70,10 @@ with the product's own tools.
 - An escalation in a policy is `proven by` a request: the decision refuses it as the data stands
   and grants it once the write is made. OPA answers both questions, and `-tests` writes the pair
   as an opa test that fails while the escalation is open.
-- A caveat parameter of a schema is `shown by` a check of the validation file: the check goes from
-  no to yes once a relationship carries the value. Written into the file that way, `zed validate`
-  fails on the assertion the check came from.
+- A caveat parameter of a schema, matched as a candidate, is `shown by` a check of the validation
+  file: the check goes from no to yes once a relationship carries the value. Written into the file
+  that way, `zed validate` fails on the assertion the check came from. A finding, which rests on a
+  write model, names who writes the relation and the permission it raises instead.
 
 ## The registry
 

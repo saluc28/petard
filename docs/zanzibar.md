@@ -95,14 +95,18 @@ One pattern applies to Zanzibar models. `petard explain <id>` prints it in full,
 |---|---|
 | `PTD-ZAN-001` | a caveat parameter the check is meant to supply, which whoever writes the relationship can set instead |
 
-`PTD-ZAN-001` reads, for every parameter of every caveat a relation allows, whether the
-validation file says the parameter is meant for the check: an assertion supplies it after
-`with`, or the relationships of the relation leave it out and none writes it. In the fixture
-those are the caller's address and the time of the request. A write may set any parameter of the
-caveat (`internal/relationships/validation.go:248-262` at v1.56.2), so the writer of the
-relationship can fix such a parameter once, for every check to come. Each match is shown by a
-check of the file where one exists: each value the checks supply is written on each relationship
-that leaves the parameter out, and a check whose answer rises is the witness.
+`PTD-ZAN-001` reads, for every parameter of every caveat a relation allows, whether the parameter
+is meant for the check and who writes the relation. A write may set any parameter of the caveat
+(`internal/relationships/validation.go:248-262` at v1.56.2), so the writer can fix such a
+parameter once, for every check to come. In the fixture those parameters are the caller's address
+and the time of the request.
+
+With a write model the match is a finding: the model marks the parameter the application's and
+names the gate that says who writes the relation, which petard confirms a coalition can reach
+from a starting position. Without one, the validation file is the evidence of a candidate: an
+assertion supplies the parameter after `with`, or the relationships of the relation leave it out
+and none writes it, and the candidate carries a check of the file whose answer rises once a
+relationship fixes the value.
 
 A parameter every relationship writes and no check supplies, the network an allowlist holds a
 viewer to, is the writer's by design, and the pattern leaves it alone.
@@ -118,3 +122,50 @@ names who writes each relation and, per caveat parameter, whether the writer or 
 fills it. With one, a match is a finding; without one, a candidate, and `-fail-on any` is what
 fails a run on a candidate. A schema no validation file reads is named in the report as one with
 no evidence. `petard export` does not read schemas.
+
+## The write model
+
+The write model is a YAML file that declares `model: relationship-writes`, the same file family as
+the OPA write model (`model: write-paths`); the kind tells the two apart. `petard analyze` reads
+one found beside a schema, and the `-write-model` flag passes one by path. A relation with no rule
+is not writable by a coalition, so what is left out is a missed write, never an invented one.
+`fixtures/vulnerable-spicedb/writes.yaml` is a worked example.
+
+A `writes` entry is a rule for one relation:
+
+| Field | What |
+|---|---|
+| `resource`, `relation` | the relation written |
+| `operations` | `create`, `touch`, `delete` |
+| `gate` | who may write: `anyone`, `{ holds: <permission> }` the writer holds on the resource, or `{ service: <name> }` for a write no end user can cause |
+| `subject` | what may be written as the subject: `self`, `any`, a list of types or usersets (`[user, "team#member"]`), or `{ holds: <permission> }` the subject object holds |
+| `wildcard` | whether the writer may write `T:*` |
+| `caveat` | the caveats the writer may attach, and per parameter whether the `writer` or the `application` fills it; `writer` is the default, because the written context wins over the check's |
+| `expiration` | `writer`, `application` or `none` |
+| `via`, `note`, `intended` | how the write happens, a note, and whether the raise it allows is by design and so not reported |
+
+A `creates` entry is a rule for a new object a coalition can make. Sign-up is one on the user type
+gated `anyone`, which is what puts sybil accounts in a coalition:
+
+```yaml
+writes:
+  - resource: document
+    relation: viewer
+    operations: [create, touch]
+    gate: { holds: edit }          # whoever can edit may share
+    subject: [user, "team#member"]
+    caveat:
+      - name: ip_allowlist
+        parameters:
+          cidr: writer             # the network, chosen when the share is made
+          user_ip: application     # the caller's address, meant to come with the check
+    via: the share endpoint
+
+creates:
+  - creates: user                  # sign-up
+    gate: anyone
+```
+
+A `creates` entry holds `creates`, a `gate`, an optional `on` (the objects it is made in, each
+with its own gate), and `writes`, the tuples it writes, where `{created}` stands for the object
+just made and `{creator}` for the coalition that made it.

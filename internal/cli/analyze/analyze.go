@@ -74,7 +74,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	maxCallDepth := flags.Int("max-call-depth", 0, "how many calls deep to follow an argument (0 for the default)")
 	maxCallPaths := flags.Int("max-call-paths", 0, "how many call paths to explore per reference (0 for the default)")
 	maxResiduals := flags.Int("max-residuals", 0, "how many residual conditions to report per decision (0 for the default)")
-	writeModelPath := flags.String("write-model", "", "path to the write model; without it a match that rests on who writes a path stays a candidate")
+	writeModelPath := flags.String("write-model", "", "path to a write model; without it a match that rests on who writes a path or a relation stays a candidate")
 	dataPath := flags.String("data", "", "path to the concrete data, in place of the data.json and data.yaml files of the bundle; with it the decisions are also partially evaluated")
 	registryPath := flags.String("registry", "", registry.FlagUsage)
 	showGraph := flags.Bool("graph", false, "also build the internal graph model and report what it holds")
