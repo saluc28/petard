@@ -33,7 +33,7 @@ func Run(s Sample, wm *WriteModel) []Match {
 	if wm == nil {
 		return candidates
 	}
-	findings := SelfAssertedExemptions(s.Model, wm, defaultAttacker, Options{})
+	findings := SelfAssertedExemptions(s.Model, wm, Options{})
 	confirmed := make(map[string]bool, len(findings))
 	for _, f := range findings {
 		confirmed[f.Subject] = true
@@ -46,12 +46,6 @@ func Run(s Sample, wm *WriteModel) []Match {
 	}
 	return out
 }
-
-// defaultAttacker is the subject Run studies as the coalition: a user, the
-// identity an application turns an end user into. A schema with no user type
-// grants it nothing, and the run reports no finding that rests on reaching a
-// permission it would need.
-var defaultAttacker = Object{Type: "user", ID: "attacker"}
 
 // Assertion is a check somebody wrote down with the answer they expect, as a
 // validation file asserts it.

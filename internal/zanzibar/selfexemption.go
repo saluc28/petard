@@ -25,8 +25,12 @@ const SelfAssertedExemptionID = "PTD-ZAN-001"
 // the parameter is the check's, are declared, so the match is a finding. Where
 // no write model says so, WriterSetParameters reads the same pattern off the
 // sample as a candidate.
-func SelfAssertedExemptions(model *Model, wm *WriteModel, attacker Object, opts Options) []Match {
-	positions := StartingPositions(model, attacker, opts)
+//
+// The coalition is studied as every type the schema admits as a subject, not a
+// user alone, so a schema whose actors are accounts or services is covered too:
+// a gate is reachable when any such subject can hold it.
+func SelfAssertedExemptions(model *Model, wm *WriteModel, opts Options) []Match {
+	positions := startingPositionsForSubjects(model, opts)
 	var out []Match
 	for _, w := range wm.Writes {
 		if !writes(w.Operations) {
@@ -70,6 +74,35 @@ func SelfAssertedExemptions(model *Model, wm *WriteModel, attacker Object, opts 
 		}
 	}
 	return out
+}
+
+// startingPositionsForSubjects generates starting positions for an attacker of
+// every type the schema admits as a direct subject, so reachability is judged
+// over all of them rather than over a user alone.
+func startingPositionsForSubjects(model *Model, opts Options) []StartingPosition {
+	var positions []StartingPosition
+	for _, typ := range subjectTypes(model) {
+		positions = append(positions, StartingPositions(model, Object{Type: typ, ID: "attacker"}, opts)...)
+	}
+	return positions
+}
+
+// subjectTypes is every type that appears as a direct subject of some relation:
+// the objects the schema lets hold a relation on their own, which is what a
+// coalition member is. A userset or a wildcard is not one, since neither is an
+// object a coalition controls by being it.
+func subjectTypes(model *Model) []string {
+	var types []string
+	for _, t := range model.Types {
+		for _, r := range t.Relations {
+			for _, a := range r.Allowed {
+				if a.Relation == "" && !a.Wildcard && !slices.Contains(types, a.Type) {
+					types = append(types, a.Type)
+				}
+			}
+		}
+	}
+	return types
 }
 
 // relationAllowsCaveat reports whether a relation has an allowed subject form

@@ -34,7 +34,6 @@ func exemptionSchema(t *testing.T) *Model {
 
 func TestSelfAssertedExemptions(t *testing.T) {
 	model := exemptionSchema(t)
-	attacker := Object{Type: "user", ID: "attacker"}
 
 	// shareRule writes viewer, held by edit, with the ip_allowlist caveat and
 	// the given fillers.
@@ -94,7 +93,7 @@ func TestSelfAssertedExemptions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{tt.rule}}
 			var got []string
-			for _, m := range SelfAssertedExemptions(model, wm, attacker, Options{}) {
+			for _, m := range SelfAssertedExemptions(model, wm, Options{}) {
 				if m.PatternID != SelfAssertedExemptionID || m.Verdict != Finding {
 					t.Errorf("%s: %s %s, want a finding of %s", m.Subject, m.PatternID, m.Verdict, SelfAssertedExemptionID)
 				}
@@ -106,6 +105,34 @@ func TestSelfAssertedExemptions(t *testing.T) {
 				t.Errorf("findings = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// The coalition is not assumed to be a user. A schema whose subject is an
+// account, with no user type, still yields a finding, because reachability is
+// judged over the types the schema admits as subjects.
+func TestSelfAssertedExemptionsInfersSubjectType(t *testing.T) {
+	secret := &Type{
+		Name: "secret",
+		Relations: []*Relation{
+			{Name: "reader", Allowed: []Allowed{{Type: "account"}, {Type: "account", Caveat: "ip_allowlist"}}},
+		},
+		Permissions: []*Permission{{Name: "read", Expr: Computed{Name: "reader"}}},
+	}
+	caveats := []*Caveat{{Name: "ip_allowlist", Parameters: []Parameter{{Name: "user_ip", Type: "ipaddress"}}}}
+	model, err := NewModel([]*Type{{Name: "account"}, secret}, caveats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "secret", Relation: "reader", Operations: []Operation{Create}, Gate: Gate{Holds: "read"},
+			Subject: SubjectSpec{Types: []string{"account"}},
+			Caveats: []CaveatWrite{{Name: "ip_allowlist", Parameters: map[string]Filler{"user_ip": FillerApplication}}}},
+	}}
+
+	matches := SelfAssertedExemptions(model, wm, Options{})
+	if len(matches) != 1 || matches[0].Subject != "secret#reader, user_ip of caveat ip_allowlist" {
+		t.Errorf("findings = %+v, want one on secret#reader/user_ip (the account gate must be reachable)", matches)
 	}
 }
 
