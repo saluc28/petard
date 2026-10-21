@@ -20,10 +20,19 @@ definition team {
   relation member: user
 }
 
+definition folder {
+  relation parent: folder
+  relation viewer: user
+  permission view = viewer + parent->view
+}
+
 definition document {
+  relation parent: folder
   relation owner: user
   relation editor: user | user with not_expired
-  relation viewer: user | team#member | user with ip_allowlist
+  relation viewer: user | user:* | team#member | user with ip_allowlist
+  relation banned: user
   permission edit = owner + editor
-  permission view = viewer + edit
+  permission view = viewer + edit + parent->view
+  permission access = view - banned
 }

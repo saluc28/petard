@@ -15,8 +15,8 @@ Two findings of `PTD-ZAN-001`, one per relationship a writer can exempt from a c
 
 | Relation | Caveat | Parameter | Written by | Raises |
 |---|---|---|---|---|
-| `document#viewer` | `ip_allowlist` | `user_ip` | whoever can `edit` | `view` |
-| `document#editor` | `not_expired` | `now` | the `owner` | `edit`, `view` |
+| `document#viewer` | `ip_allowlist` | `user_ip` | anyone | `view`, `access` |
+| `document#editor` | `not_expired` | `now` | whoever holds `view` | `edit`, `view`, `access` |
 
 The caveats hold each relationship to a value the check supplies: the address of the caller for
 `ip_allowlist`, the time of the request for `not_expired`. The write model marks `user_ip` and

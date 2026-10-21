@@ -60,27 +60,26 @@ written by hand with the case and the counter case of `PTD-ZAN-001` in them, and
 <!-- output of: petard analyze fixtures/vulnerable-spicedb -->
 ```
 2 SpiceDB files
-  fixtures/vulnerable-spicedb/schema.zed       3 definitions, 4 relations, 2 permissions, 2 caveats
+  fixtures/vulnerable-spicedb/schema.zed       4 definitions, 8 relations, 4 permissions, 2 caveats
   fixtures/vulnerable-spicedb/validation.yaml  validation file of fixtures/vulnerable-spicedb/schema.zed, 5 relationships, 9 assertions
 
 Findings
     2  PTD-ZAN-001  A relationship fixes a caveat value the check was meant to supply
 
   document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)
-    written by   whoever holds edit may write document#viewer, at
-                 fixtures/vulnerable-spicedb/schema.zed:26:3, with ip_allowlist, through POST
-                 /api/v1/documents/{id}/viewers
+    written by   anyone may write document#viewer, at fixtures/vulnerable-spicedb/schema.zed:33:3,
+                 with ip_allowlist, through POST /api/v1/documents/{id}/viewers
     the check brings user_ip, which the writer may set on the relationship instead, fixing it for every
                  check that goes through
-    raises       view on document, from conditional to unconditional
+    raises       view and access on document, from conditional to unconditional
 
   document#editor, now of caveat not_expired  (PTD-ZAN-001)
-    written by   whoever holds owner may write document#editor, at
-                 fixtures/vulnerable-spicedb/schema.zed:25:3, with not_expired, through POST
+    written by   whoever holds view may write document#editor, at
+                 fixtures/vulnerable-spicedb/schema.zed:32:3, with not_expired, through POST
                  /api/v1/documents/{id}/editors
     the check brings now, which the writer may set on the relationship instead, fixing it for every
                  check that goes through
-    raises       edit and view on document, from conditional to unconditional
+    raises       edit, view and access on document, from conditional to unconditional
 
 Run petard explain <id> for what a pattern looks for and what it will not report.
 ```

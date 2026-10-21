@@ -643,15 +643,19 @@ func (e *engine) coalitionLevel(checker *Checker, resource Object, name string, 
 func (e *engine) subjects(rule *WriteRule, relation *Relation, writer Object, objects []Object) []Subject {
 	var out []Subject
 	for _, allowed := range relation.Allowed {
-		if !subjectAllowed(rule.Subject, allowed, writer) {
-			continue
-		}
-		switch {
-		case allowed.Wildcard:
+		// A wildcard is a separate axis from the subject list: the dedicated
+		// wildcard flag allows it, not naming its type among the subjects.
+		if allowed.Wildcard {
 			if rule.Wildcard {
 				appendSubject(&out, Subject{Object: Object{Type: allowed.Type, ID: WildcardID}})
 			}
-		case allowed.Relation == "":
+			continue
+		}
+		if !subjectAllowed(rule.Subject, allowed, writer) {
+			continue
+		}
+		switch allowed.Relation {
+		case "":
 			// subjectAllowed has already held a self subject to the writer's
 			// own type, so the writer is a subject of this form.
 			if rule.Subject.Self {

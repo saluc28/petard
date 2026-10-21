@@ -25,7 +25,7 @@ an admission controller or a configuration check, and the report says so when th
 | Engine | Reads | Patterns | Answers held to |
 |---|---|---|---|
 | [OPA](docs/opa.md) | Rego policies in either syntax, directories and bundle archives, a running OPA over its API, and the data beside them | 13, `PTD-OPA-001` to `PTD-OPA-013` | OPA v1.21.2, compiled in, which Petard asks by partial evaluation what is left of each decision |
-| [Zanzibar](docs/zanzibar.md) | [SpiceDB](docs/spicedb.md) schemas (`.zed`) and the validation files `zed validate` reads | 1, `PTD-ZAN-001` | SpiceDB v1.56.2, whose compiler and caveats are compiled in, and `zed validate`, which agrees with the engine on 26,123 checks in CI |
+| [Zanzibar](docs/zanzibar.md) | [SpiceDB](docs/spicedb.md) schemas (`.zed`) and the validation files `zed validate` reads | 1, `PTD-ZAN-001` | SpiceDB v1.56.2, whose compiler and caveats are compiled in, and `zed validate`, which agrees with the engine on 26,543 checks in CI |
 
 On a policy, a match becomes a finding once what it rests on is known: the policy alone, or a
 write model and an enforcement point you declare. On a SpiceDB schema it becomes a finding once a
@@ -76,12 +76,11 @@ bring, which whoever writes the relationship can set instead.
 <!-- output of: petard demo spicedb -->
 ```
   document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)
-    written by   whoever holds edit may write document#viewer, at
-                 vulnerable-spicedb/schema.zed:26:3, with ip_allowlist, through POST
-                 /api/v1/documents/{id}/viewers
+    written by   anyone may write document#viewer, at vulnerable-spicedb/schema.zed:33:3, with
+                 ip_allowlist, through POST /api/v1/documents/{id}/viewers
     the check brings user_ip, which the writer may set on the relationship instead, fixing it for every
                  check that goes through
-    raises       view on document, from conditional to unconditional
+    raises       view and access on document, from conditional to unconditional
 ```
 
 `written by` is who the write model lets write the relation, `the check brings` the parameter the

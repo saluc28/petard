@@ -1,23 +1,26 @@
 # Who can write each relationship of Quill's documents schema, and who can make
-# a new account.
+# a new account or folder.
 #
 # It is the one part of the fixture that is NOT in the schema: SpiceDB says
 # which tuples are well formed, this says which of them the application lets an
 # end user bring about. Here it is declared by hand, the way it will have to be
-# in the general case.
+# in the general case. Each rule carries a defect on purpose; EXPECTED.md says
+# which finding it opens.
 schema_version: 1
 model: relationship-writes
 
 writes:
   # ---------------------------------------------------------------------
-  # Whoever can edit a document may share it: add a viewer, a person or the
-  # members of a team. The network a viewer is held to is chosen when the share
+  # Anyone may share a document: add a viewer, a person, a team, or everyone.
+  # The defect is the open gate, which lets a coalition write itself, a sybil,
+  # or a wildcard in. The network a viewer is held to is chosen when the share
   # is made; the caller's address comes with the check.
   - resource: document
     relation: viewer
     operations: [create, touch]
-    gate: { holds: edit }
+    gate: anyone
     subject: [user, "team#member"]
+    wildcard: true
     caveat:
       - name: ip_allowlist
         parameters:
@@ -26,12 +29,14 @@ writes:
     via: "POST /api/v1/documents/{id}/viewers"
 
   # ---------------------------------------------------------------------
-  # The owner adds editors, each held to a date. The date is chosen when the
-  # editor is added; the time of the request comes with the check.
+  # Whoever can view a document may add editors. The defect is that view, the
+  # weakest permission, gates writing editor, the stronger one. The date an
+  # editor is held to is chosen when the editor is added; the time comes with
+  # the check.
   - resource: document
     relation: editor
     operations: [create, touch]
-    gate: { holds: owner }
+    gate: { holds: view }
     subject: [user]
     caveat:
       - name: not_expired
@@ -41,15 +46,34 @@ writes:
     via: "POST /api/v1/documents/{id}/editors"
 
   # ---------------------------------------------------------------------
-  # A team's members are managed by the team, a capability no document write
-  # reaches. It is a service write, so the closure does not take it as something
-  # an end user can drive.
+  # Anyone may move a document into a folder, which grants it the view of that
+  # folder. A coalition that controls a folder links a document it does not own
+  # to it.
+  - resource: document
+    relation: parent
+    operations: [create, touch]
+    gate: anyone
+    subject: [folder]
+    via: "POST /api/v1/documents/{id}/move"
+
+  # ---------------------------------------------------------------------
+  # Anyone may lift a ban, their own included, which an exclusion reads.
+  - resource: document
+    relation: banned
+    operations: [delete]
+    gate: anyone
+    subject: [user]
+    via: "DELETE /api/v1/documents/{id}/bans/{user}"
+
+  # ---------------------------------------------------------------------
+  # Anyone may join any team, and a document a team can view is then viewable by
+  # whoever joined.
   - resource: team
     relation: member
-    operations: [create, touch, delete]
-    gate: { service: teams }
+    operations: [create, touch]
+    gate: anyone
     subject: [user]
-    via: "team administration"
+    via: "POST /api/v1/teams/{id}/members"
 
 creates:
   # ---------------------------------------------------------------------
@@ -59,6 +83,17 @@ creates:
     gate: anyone
     via: "POST /api/v1/users"
 
+  # ---------------------------------------------------------------------
+  # Anyone can make a folder and is its viewer, so a coalition controls a folder
+  # to move documents into.
+  - creates: folder
+    gate: anyone
+    writes:
+      - resource: "{created}"
+        relation: viewer
+        subject: "{creator}"
+    via: "POST /api/v1/folders"
+
 # ---------------------------------------------------------------------------
 # Not declared, and so not writable by a coalition (section 4.3 of the
 # definitions): what is left out is a missed write, never an invented one.
@@ -67,3 +102,5 @@ creates:
 #                      could write it would own any document, so it has no rule
 #                      here and the run reports it as a relation to find a safe
 #                      gate for.
+#   folder#parent, folder#viewer  <- a folder's own structure, managed by the
+#                      service that creates folders.

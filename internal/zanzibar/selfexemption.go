@@ -149,7 +149,7 @@ func exemptionMatch(w *WriteRule, at Position, caveat, parameter string, perms [
 	m.Details = append(m.Details,
 		Detail{
 			Label:    "written by",
-			Text:     fmt.Sprintf("whoever %s may write %s#%s, at %s, with %s, through %s", gateText(w.Gate), w.Resource, w.Relation, at, caveat, via),
+			Text:     fmt.Sprintf("%s may write %s#%s, at %s, with %s, through %s", gatePhrase(w.Gate), w.Resource, w.Relation, at, caveat, via),
 			Position: at,
 		},
 		Detail{
@@ -164,17 +164,17 @@ func exemptionMatch(w *WriteRule, at Position, caveat, parameter string, perms [
 	return m
 }
 
-// gateText says who a gate lets write, in the words of a report.
-func gateText(g Gate) string {
+// gatePhrase names who a gate lets write, as the subject of a report sentence.
+func gatePhrase(g Gate) string {
 	switch {
 	case g.Anyone:
-		return "is anyone"
+		return "anyone"
 	case g.Holds != "":
-		return "holds " + g.Holds
+		return "whoever holds " + g.Holds
 	case g.Service != "":
-		return "is the " + g.Service + " service"
+		return "the " + g.Service + " service"
 	}
-	return "is allowed"
+	return "whoever is allowed"
 }
 
 // permissionList writes a list of permissions as prose, one or several.

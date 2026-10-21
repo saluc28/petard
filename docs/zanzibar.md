@@ -78,7 +78,7 @@ usersets as subjects, with no context and with each context the assertions of th
 writes the answers into the file as assertions, and `zed validate`, from zed v1.2.1, says whether
 SpiceDB gives the same ones.
 
-On 76 files that is 26,123 checks, and SpiceDB agrees on all of them. Another 36 are left out:
+On 76 files that is 26,543 checks, and SpiceDB agrees on all of them. Another 36 are left out:
 they go round a loop and grant nothing, and SpiceDB fails them at its depth limit rather than
 answering. To run it with a zed binary of your own:
 

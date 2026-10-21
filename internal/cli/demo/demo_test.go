@@ -80,7 +80,7 @@ func TestDemoShowsTheEvidenceWhenAsked(t *testing.T) {
 		// rather than like wherever the fixtures happened to be unpacked, with
 		// the same slashes for a schema as for a policy.
 		"vulnerable-bundle/policy-v1/authz.rego:",
-		"vulnerable-spicedb/schema.zed:26:3",
+		"vulnerable-spicedb/schema.zed:33:3",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the detailed demo does not say %q:\n%s", want, out)
