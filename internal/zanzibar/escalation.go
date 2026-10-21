@@ -86,6 +86,11 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 		state   *stateSet
 		objects []Object
 		path    []move
+		// up is the targets already above their starting level at the parent. A
+		// target above it here that is not in up is one the last move raised, so
+		// the decisive write is the write after which the permission rises, not a
+		// later write of the same path that finds it already up.
+		up map[string]bool
 	}
 	start := node{state: e.start.clone(), objects: slices.Clone(e.coalition)}
 	queue := []node{start}
@@ -98,33 +103,37 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 		queue = queue[1:]
 		checker := NewChecker(e.model, cur.state.list(), e.caveats, e.opts.now())
 
-		if len(cur.path) > 0 {
-			decisive := cur.path[len(cur.path)-1]
-			for key, q := range raised {
-				sig := key + "|" + decisiveSig(decisive)
-				if seen[sig] {
-					continue
-				}
-				level, err := e.coalitionLevel(checker, q.resource, q.name, cur.objects)
-				if err != nil {
-					return nil, err
-				}
-				if level <= before[key] {
-					continue
-				}
-				seen[sig] = true
-				if allIntended(cur.path) {
-					continue
-				}
-				out = append(out, Escalation{
-					Object:     q.resource,
-					Permission: q.name,
-					Before:     before[key],
-					After:      level,
-					Writes:     steps(cur.path),
-					moves:      slices.Clone(cur.path),
-				})
+		up := make(map[string]bool, len(raised))
+		for key, q := range raised {
+			level, err := e.coalitionLevel(checker, q.resource, q.name, cur.objects)
+			if err != nil {
+				return nil, err
 			}
+			if level <= before[key] {
+				continue
+			}
+			up[key] = true
+			if len(cur.path) == 0 || cur.up[key] {
+				// The start holds no write, and a target already up at the parent
+				// was raised earlier and is recorded where it first rose.
+				continue
+			}
+			sig := key + "|" + decisiveSig(cur.path[len(cur.path)-1])
+			if seen[sig] {
+				continue
+			}
+			seen[sig] = true
+			if allIntended(cur.path) {
+				continue
+			}
+			out = append(out, Escalation{
+				Object:     q.resource,
+				Permission: q.name,
+				Before:     before[key],
+				After:      level,
+				Writes:     steps(cur.path),
+				moves:      slices.Clone(cur.path),
+			})
 		}
 
 		if len(cur.path) >= bound {
@@ -135,7 +144,7 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 			return nil, err
 		}
 		for _, mv := range moves {
-			next := node{state: cur.state.clone(), objects: slices.Clone(cur.objects), path: append(slices.Clone(cur.path), mv)}
+			next := node{state: cur.state.clone(), objects: slices.Clone(cur.objects), path: append(slices.Clone(cur.path), mv), up: up}
 			if !applyMove(next.state, &next.objects, mv) {
 				continue
 			}

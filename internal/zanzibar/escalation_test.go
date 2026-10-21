@@ -53,12 +53,14 @@ func TestEscalationsSelfWrite(t *testing.T) {
 }
 
 // A gate that only opens after a first write gives a two-write witness, and the
-// decisive write is the second.
+// decisive write is the second. Writing a viewer is open to anyone and raises
+// view in one write; writing an editor is gated on holding view, so edit rises
+// only after the viewer is written, and its witness is those two writes.
 func TestEscalationsGateChain(t *testing.T) {
 	model := documents(t)
 	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
-		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
-		{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Holds: "edit"}, Subject: SubjectSpec{Self: true}},
+		{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Holds: "view"}, Subject: SubjectSpec{Self: true}},
 	}}
 	roadmap := object("document:roadmap")
 	mallory := object("user:mallory")
@@ -69,21 +71,22 @@ func TestEscalationsGateChain(t *testing.T) {
 		t.Fatalf("Escalations: %v", err)
 	}
 
-	// edit rises on the first write, so its shortest witness is that one write.
-	if esc, ok := findEscalation(escs, roadmap, "edit", rel("document:roadmap", "editor", "user:mallory")); !ok {
-		t.Errorf("no escalation on edit by writing editor@mallory; got %+v", escs)
+	// view rises on the viewer write, which anyone may make, so its witness is
+	// that one write.
+	if esc, ok := findEscalation(escs, roadmap, "view", rel("document:roadmap", "viewer", "user:mallory")); !ok {
+		t.Errorf("no escalation on view by writing viewer@mallory; got %+v", escs)
 	} else if len(esc.Writes) != 1 {
-		t.Errorf("edit witness has %d writes, want 1", len(esc.Writes))
+		t.Errorf("view witness has %d writes, want 1", len(esc.Writes))
 	}
 
-	// view is reachable through the written viewer, whose rule's gate holds only
-	// after edit is written, so that witness is two writes.
-	esc, ok := findEscalation(escs, roadmap, "view", rel("document:roadmap", "viewer", "user:mallory"))
+	// edit rises on the editor write, whose gate holds only once view is held, so
+	// that witness is the viewer write and then the editor.
+	esc, ok := findEscalation(escs, roadmap, "edit", rel("document:roadmap", "editor", "user:mallory"))
 	if !ok {
-		t.Fatalf("no escalation on view by writing viewer@mallory; got %+v", escs)
+		t.Fatalf("no escalation on edit by writing editor@mallory; got %+v", escs)
 	}
 	if len(esc.Writes) != 2 {
-		t.Errorf("view-through-viewer witness has %d writes, want 2: %+v", len(esc.Writes), esc.Writes)
+		t.Errorf("edit-through-editor witness has %d writes, want 2: %+v", len(esc.Writes), esc.Writes)
 	}
 }
 
