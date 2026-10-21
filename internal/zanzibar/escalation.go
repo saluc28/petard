@@ -35,6 +35,10 @@ type Escalation struct {
 	// Writes is the shortest witness, the writes in order, the last of which is
 	// the decisive write.
 	Writes []WriteStep
+
+	// moves is the same witness as the moves the closure applies, kept so the
+	// state before a write can be replayed exactly when a finding needs it.
+	moves []move
 }
 
 // Decisive is the write after which the permission rose, the last of the
@@ -118,6 +122,7 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 					Before:     before[key],
 					After:      level,
 					Writes:     steps(cur.path),
+					moves:      slices.Clone(cur.path),
 				})
 			}
 		}
@@ -197,15 +202,17 @@ func steps(path []move) []WriteStep {
 
 // decisiveSig distinguishes the decisive writes of two witnesses of the same
 // target, so that a raise reachable by different writes is recorded once per
-// write rather than once overall.
+// write rather than once overall. The writer is part of it: the same tuple
+// written for oneself and written for another coalition subject are different
+// decisive writes, one a self-write and the other a delegation.
 func decisiveSig(mv move) string {
 	switch {
 	case mv.creates != nil && !mv.writesTuple():
 		return "create:" + mv.created.String()
 	case mv.del:
-		return "del:" + tupleKey(mv.rel)
+		return "del:" + tupleKey(mv.rel) + "@by:" + mv.writer.String()
 	default:
-		return "add:" + tupleKey(mv.rel)
+		return "add:" + tupleKey(mv.rel) + "@by:" + mv.writer.String()
 	}
 }
 

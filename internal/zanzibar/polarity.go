@@ -161,7 +161,7 @@ func (p *polarities) resolve(typ, name string, pol polarity) {
 		return
 	}
 	if t.Relation(name) != nil {
-		p.mark(relKey{Type: typ, Relation: name}, pol, false)
+		p.markRelation(typ, name, pol)
 		return
 	}
 	perm := t.Permission(name)
@@ -174,6 +174,33 @@ func (p *polarities) resolve(typ, name string, pol polarity) {
 	}
 	p.visited[key] = true
 	p.walk(typ, perm.Expr, pol)
+}
+
+// markRelation records a relation at a polarity, then follows the usersets it
+// grants to: the members of a userset a relation admits are granted that
+// relation, so they occur at the same polarity. An arrow does not propagate
+// this way, since it ignores the subject relation of the tuples it walks
+// (section 2.2 of the definitions), so only a direct reference comes here.
+func (p *polarities) markRelation(typ, name string, pol polarity) {
+	p.mark(relKey{Type: typ, Relation: name}, pol, false)
+	key := visitKey{Type: typ, Name: name, pol: pol}
+	if p.visited[key] {
+		return
+	}
+	p.visited[key] = true
+	t := p.model.Type(typ)
+	if t == nil {
+		return
+	}
+	r := t.Relation(name)
+	if r == nil {
+		return
+	}
+	for _, a := range r.Allowed {
+		if a.Relation != "" {
+			p.markRelation(a.Type, a.Relation, pol)
+		}
+	}
 }
 
 // arrow records the walked relation and walks the target on every type the
