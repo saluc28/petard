@@ -80,60 +80,57 @@ func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, propos
 		demoted := false
 		for i := range proposals {
 			for _, gate := range slices.Clone(proposals[i].Safe) {
-				esc, ok, err := combinedEscalates(model, wm, combined, caveats, positions, proposals[i].Type, gate, opts)
+				esc, ok, err := combinedEscalates(model, combined, caveats, positions, proposals[i].Type, proposals[i].Relation, gate, opts)
 				if err != nil {
 					return err
 				}
 				if ok {
-					demoteGate(proposals, esc.decisiveType, esc.decisiveRel, esc.gate, esc.escalation)
+					demoteGate(proposals, proposals[i].Type, proposals[i].Relation, gate, esc)
 					demoted = true
+					break
 				}
 			}
+			if demoted {
+				break
+			}
 		}
+		// A demotion removes one rule from the combination, which can make a gate
+		// unsafe only in its company safe again, so each is rebuilt and rechecked
+		// from the start until the set holds together. Demoting the gate under
+		// test, in proposal order, keeps which one is dropped the same on every run.
 		if !demoted {
 			return nil
 		}
 	}
 }
 
-// combinedResult carries the escalation a combined check found and the proposed
-// rule it rode: the relation and gate to demote.
-type combinedResult struct {
-	escalation   Escalation
-	decisiveType string
-	decisiveRel  string
-	gate         string
-}
-
 // combinedEscalates runs the closure over the model that holds every proposal at
-// once, from the positions in which the attacker holds gate on typ, and returns
-// the first escalation whose decisive write is a proposed rule, the sign that a
-// proposal escalates only once the others are writable too. A proposed rule is
-// one for a relation the original write model leaves without a rule; an
-// escalation decisive on a rule the author declared is a finding the run already
-// reports, not a proposal's fault, so it is passed over.
-func combinedEscalates(model *Model, wm, combined *WriteModel, caveats CaveatEvaluator, positions []StartingPosition, typ, gate string, opts Options) (combinedResult, bool, error) {
+// once, from the positions in which the attacker holds gate on typ, and reports
+// whether writing relation under gate is then the decisive write of a raise. That
+// is the sign the gate is safe only while the other relations stay unwritable:
+// the relation has no rule of its own, so the only rule for it in the combined
+// model is the proposed one, and an escalation some declared rule is decisive for
+// is a finding the run already reports, not counted here.
+func combinedEscalates(model *Model, combined *WriteModel, caveats CaveatEvaluator, positions []StartingPosition, typ, relation, gate string, opts Options) (Escalation, bool, error) {
 	for _, pos := range positions {
 		if pos.Type != typ || pos.Target != gate {
 			continue
 		}
 		escs, err := Escalations(model, combined, caveats, pos.Tuples, []Object{pos.Attacker}, opts)
 		if err != nil {
-			return combinedResult{}, false, err
+			return Escalation{}, false, err
 		}
 		for _, esc := range escs {
 			dw, ok := esc.Decisive()
-			if !ok || dw.Rule == nil || dw.Rule.Gate.Holds == "" {
+			if !ok || dw.Rule == nil || dw.Rule.Gate.Holds != gate {
 				continue
 			}
-			res, rel := dw.Relationship.Resource.Type, dw.Relationship.Relation
-			if hasWriteRule(wm, res, rel) {
-				continue
+			if dw.Relationship.Resource.Type == typ && dw.Relationship.Relation == relation {
+				return esc, true, nil
 			}
-			return combinedResult{escalation: esc, decisiveType: res, decisiveRel: rel, gate: dw.Rule.Gate.Holds}, true, nil
 		}
 	}
-	return combinedResult{}, false, nil
+	return Escalation{}, false, nil
 }
 
 // withProposals is the write model with a rule added for every gate the
@@ -162,22 +159,20 @@ func withProposals(model *Model, wm *WriteModel, proposals []GateProposal) *Writ
 }
 
 // demoteGate moves a gate from the safe set of its proposal to the unsafe one,
-// with the witness of what it opened in combination. It reports whether it did,
-// so a gate already unsafe does not loop the fixpoint.
-func demoteGate(proposals []GateProposal, resource, relation, gate string, esc Escalation) bool {
+// with the witness of what it opened in combination.
+func demoteGate(proposals []GateProposal, resource, relation, gate string, esc Escalation) {
 	for i := range proposals {
 		if proposals[i].Type != resource || proposals[i].Relation != relation {
 			continue
 		}
 		at := slices.Index(proposals[i].Safe, gate)
 		if at < 0 {
-			return false
+			return
 		}
 		proposals[i].Safe = slices.Delete(proposals[i].Safe, at, at+1)
 		proposals[i].Unsafe = append(proposals[i].Unsafe, UnsafeGate{Permission: gate, Escalation: esc})
-		return true
+		return
 	}
-	return false
 }
 
 // hasWriteRule reports whether the write model already has a rule for a relation.
