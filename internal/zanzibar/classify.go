@@ -94,6 +94,14 @@ func (e *engine) classify(esc Escalation) (Category, bool) {
 	if !ok {
 		return "", false
 	}
+	if step.Creation != nil {
+		// A creation and the tuples it writes build the coalition's own objects;
+		// none of the eight kinds of section 7.1 is a creation. A raise a creation
+		// takes part in reaches a pre-existing object only through a rule write
+		// that links to it, and that write is an equal-length decisive write the
+		// classifier labels instead, so the creation step is left unclassified.
+		return "", false
+	}
 	rel := step.Relationship
 	subject := rel.Subject
 
