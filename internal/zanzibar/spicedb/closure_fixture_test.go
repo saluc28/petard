@@ -134,3 +134,42 @@ func addedKeys(start, state []zanzibar.Relationship) []string {
 	}
 	return added
 }
+
+// The fixture leaves document#owner without a write rule, so petard proposes a
+// gate for it. Over the real schema edit is a safe gate and view is not: an
+// editor who makes itself owner gains nothing, a viewer gains edit.
+func TestFixtureSafeGates(t *testing.T) {
+	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
+	sample := findOne(t, fixtureValidation).Sample(now)
+	wm, err := zanzibar.LoadWriteModel(fixtureWrites)
+	if err != nil {
+		t.Fatalf("LoadWriteModel: %v", err)
+	}
+
+	proposals, err := zanzibar.SafeGates(sample.Model, wm, sample.Caveats, zanzibar.Options{Now: now})
+	if err != nil {
+		t.Fatalf("SafeGates: %v", err)
+	}
+
+	var owner *zanzibar.GateProposal
+	for i := range proposals {
+		if proposals[i].Type == "document" && proposals[i].Relation == "owner" {
+			owner = &proposals[i]
+		}
+	}
+	if owner == nil {
+		t.Fatalf("no gate proposal for document#owner; got %+v", proposals)
+	}
+	if !slices.Contains(owner.Safe, "edit") {
+		t.Errorf("edit should be a safe gate for owner, safe = %v", owner.Safe)
+	}
+	unsafe := false
+	for _, u := range owner.Unsafe {
+		if u.Permission == "view" {
+			unsafe = true
+		}
+	}
+	if !unsafe {
+		t.Errorf("view should be an unsafe gate for owner, unsafe = %+v", owner.Unsafe)
+	}
+}
