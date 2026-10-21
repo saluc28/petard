@@ -126,6 +126,32 @@ out is one meant for the check, and the candidate carries the check whose answer
 relationship fixes it. The escalations rest on who writes a relation, which only a write model
 says, so with none they are not reported at all.
 
+## The write model it proposes
+
+A relation the write model leaves without a rule is one no coalition can write (section 4.3 of the
+definitions), so the run cannot reach a permission through it. Rather than leave that unsaid, petard
+proposes a gate: for each such relation it computes the permissions that are safe gates, the ones
+that let no coalition raise anything when their holders write the relation, and names them.
+
+<!-- output of: petard analyze fixtures/vulnerable-spicedb -->
+```
+Relations with no write rule
+  folder#parent   safe to gate on view
+  folder#viewer   safe to gate on view
+  document#owner  safe to gate on edit
+```
+
+`document#owner` is set by a service when a document is created; `edit` is a safe gate for it,
+because an editor who makes itself owner gains nothing it did not already hold, while a viewer
+would gain `edit`. A relation with no safe gate at all is named as such. The gates are checked
+together before being proposed, since two writes a coalition can make can raise what neither raises
+alone.
+
+`-questions <file>` writes the proposal out as a `relationship-writes` write model, one entry per
+relation without a rule, gated by a safe permission, with the subject and the `via` to fill in.
+Confirm the gate the application really uses, then rerun with `-write-model <file>` and it is input
+no longer. A run that also reads a policy writes the policy's questions there instead.
+
 ## Repeating a witness with zed
 
 The finding says the writer can fix `user_ip`, and `zed validate` shows what that does. Write

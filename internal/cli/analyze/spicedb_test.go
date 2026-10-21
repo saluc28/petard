@@ -2,9 +2,12 @@ package analyze
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/saluc28/petard/internal/zanzibar"
 )
 
 func spicedbTestdata(name string) string {
@@ -74,6 +77,49 @@ func TestRunReportsSpiceDBFindings(t *testing.T) {
 		if strings.Contains(out, unexpected) {
 			t.Errorf("the report says %q, which the relationships are meant to carry:\n%s", unexpected, out)
 		}
+	}
+}
+
+// The fixture leaves document#owner and the folder relations without a write
+// rule, so the run proposes a safe gate for each, and -questions writes them as
+// a relationship-writes model the author confirms and reruns with.
+func TestRunProposesSafeGatesForSpiceDB(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{spicedbFixture}, &stdout, &stderr); code != exitFound {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFound, stderr.String())
+	}
+	out := stdout.String()
+	for _, expected := range []string{
+		"Relations with no write rule",
+		"document#owner",
+		"safe to gate on edit",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the report does not propose a gate: missing %q:\n%s", expected, out)
+		}
+	}
+
+	path := filepath.Join(t.TempDir(), "proposed.yaml")
+	var qout, qerr bytes.Buffer
+	if code := Run([]string{"-questions", path, spicedbFixture}, &qout, &qerr); code != exitFound {
+		t.Fatalf("questions run exit = %d (stderr: %s)", code, qerr.String())
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the questions file: %v", err)
+	}
+	content := string(raw)
+	for _, expected := range []string{
+		"model: relationship-writes",
+		"relation: owner",
+		"gate: { holds: edit }",
+	} {
+		if !strings.Contains(content, expected) {
+			t.Errorf("the skeleton is missing %q:\n%s", expected, content)
+		}
+	}
+	if _, err := zanzibar.LoadWriteModel(path); err != nil {
+		t.Errorf("the proposed write model does not load: %v", err)
 	}
 }
 

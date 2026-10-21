@@ -29,6 +29,17 @@ type spiceDBRun struct {
 	// which leaves the patterns no relationship and no check to take
 	// evidence from.
 	unread []string
+
+	// proposals are, per schema with a write model, the safe gates for the
+	// relations the model leaves without a rule: the write model petard proposes
+	// for the author to confirm (section 6 of the definitions).
+	proposals []schemaProposals
+}
+
+// schemaProposals are the safe-gate proposals for one schema.
+type schemaProposals struct {
+	schema    string
+	proposals []zanzibar.GateProposal
 }
 
 // runSpiceDB applies the patterns of the Zanzibar engine to every file found.
@@ -36,17 +47,19 @@ type spiceDBRun struct {
 // A schema read by two validation files is one schema, and a fact about it is
 // reported once: the first file that shows it, in the order the files sort,
 // is the one the report cites.
-func runSpiceDB(files []*spicedb.File, now time.Time, writeModels map[string]*zanzibar.WriteModel) spiceDBRun {
+func runSpiceDB(files []*spicedb.File, now time.Time, writeModels map[string]*zanzibar.WriteModel, propose bool) (spiceDBRun, error) {
 	run := spiceDBRun{files: files}
 	read := map[string]bool{}
 	seen := map[string]bool{}
+	proposed := map[string]bool{}
 	for _, f := range files {
 		if !f.Validation {
 			continue
 		}
 		read[f.SchemaPath] = true
 		wm := writeModels[path.Dir(f.SchemaPath)]
-		for _, m := range zanzibar.Run(f.Sample(now), wm) {
+		sample := f.Sample(now)
+		for _, m := range zanzibar.Run(sample, wm) {
 			key := m.PatternID + "\x00" + f.SchemaPath + "\x00" + m.Subject
 			if seen[key] {
 				continue
@@ -54,13 +67,27 @@ func runSpiceDB(files []*spicedb.File, now time.Time, writeModels map[string]*za
 			seen[key] = true
 			run.matches = append(run.matches, m)
 		}
+		// Safe gates are proposed where a write model leaves relations without a
+		// rule, once per schema, so the author sees which gate to fill in. The
+		// closure they run is skipped when nothing will show or serialize them, so
+		// a quiet pipeline run does not pay for them.
+		if propose && wm != nil && !proposed[f.SchemaPath] {
+			proposed[f.SchemaPath] = true
+			gates, err := zanzibar.SafeGates(sample.Model, wm, sample.Caveats, zanzibar.Options{})
+			if err != nil {
+				return spiceDBRun{}, err
+			}
+			if len(gates) > 0 {
+				run.proposals = append(run.proposals, schemaProposals{schema: f.SchemaPath, proposals: gates})
+			}
+		}
 	}
 	for _, f := range files {
 		if !f.Validation && !read[f.Path] {
 			run.unread = append(run.unread, f.Path)
 		}
 	}
-	return run
+	return run, nil
 }
 
 // discoverWriteModels reads a relationship-writes write model from the
@@ -184,10 +211,35 @@ func printSpiceDB(out io.Writer, r spiceDBRun, patterns []taxonomy.Pattern, p pr
 	if p.quiet {
 		return
 	}
+	printProposals(out, r.proposals, style)
 	for _, path := range r.unread {
 		fmt.Fprintln(out)
 		render.Print(out, path+" is read by no validation file under the paths, so the patterns had "+
 			"no relationship and no check to take evidence from.", "")
+	}
+}
+
+// printProposals prints, per schema, the relations the write model leaves
+// without a rule and the permission that is a safe gate to write each, the write
+// model petard proposes for the author to confirm.
+func printProposals(out io.Writer, groups []schemaProposals, style render.Style) {
+	for _, g := range groups {
+		fmt.Fprintln(out)
+		heading := "Relations with no write rule"
+		if len(groups) > 1 {
+			heading += ", in " + g.schema
+		}
+		fmt.Fprintln(out, style.Bold(heading))
+		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+		for _, p := range g.proposals {
+			rel := p.Type + "#" + p.Relation
+			if len(p.Safe) > 0 {
+				fmt.Fprintf(tw, "  %s\tsafe to gate on %s\n", rel, strings.Join(p.Safe, ", "))
+			} else {
+				fmt.Fprintf(tw, "  %s\tno safe gate: any lets a coalition escalate\n", rel)
+			}
+		}
+		tw.Flush()
 	}
 }
 

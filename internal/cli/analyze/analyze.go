@@ -157,7 +157,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	style := render.StyleFor(stdout, *noColor)
-	spice := runSpiceDB(spiceFiles, time.Now(), writeModels)
+	spice, err := runSpiceDB(spiceFiles, time.Now(), writeModels, !*quiet || *questionsPath != "")
+	if err != nil {
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+		return exitFailure
+	}
 	pr := printing{style: style, quiet: *quiet, verbose: *verbose}
 
 	ctx := context.Background()
@@ -181,6 +185,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	})
 	if errors.Is(err, opaengine.ErrNoModules) && len(spiceFiles) > 0 {
 		printSpiceDB(stdout, spice, patterns, pr)
+		if *questionsPath != "" {
+			written, err := writeSpiceQuestions(*questionsPath, spice.proposals)
+			if err != nil {
+				fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+				return exitFailure
+			}
+			if !*quiet {
+				reportEntriesWritten(stdout, written, *questionsPath)
+			}
+		}
 		printFooter(stdout, pr, false)
 		return spice.exitCode(*failOn)
 	}
@@ -251,14 +265,20 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		if !*quiet {
-			entries := "entries"
-			if written == 1 {
-				entries = "entry"
-			}
-			fmt.Fprintf(stdout, "\n%d %s written to %s\n", written, entries, *questionsPath)
+			reportEntriesWritten(stdout, written, *questionsPath)
 		}
 	}
 	return max(exitCode(found, *failOn), spice.exitCode(*failOn))
+}
+
+// reportEntriesWritten says how many write-model entries were written and where,
+// for the two flags that write one.
+func reportEntriesWritten(out io.Writer, n int, path string) {
+	entries := "entries"
+	if n == 1 {
+		entries = "entry"
+	}
+	fmt.Fprintf(out, "\n%d %s written to %s\n", n, entries, path)
 }
 
 // How -fail-on is spelled, and what each spelling counts.
