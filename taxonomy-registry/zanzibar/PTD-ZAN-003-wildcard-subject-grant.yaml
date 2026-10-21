@@ -1,0 +1,170 @@
+schema_version: 2
+
+id: PTD-ZAN-003
+name: wildcard-subject-grant
+title: A wildcard subject grants a relation to every object of a type
+closes: >
+  A relation that admits no wildcard subject, or whose write rule does not let the coalition write
+  one, grants to the subjects it names and no more. The wildcard flag on the write rule is what
+  opens it, so a relation written without it closes the pattern.
+engine: zanzibar
+front_ends: [spicedb]
+status: implemented
+
+category:
+  id: GLOBAL-SWITCH
+  title: Global switch
+  summary: >
+    One write changes an authorization decision for every principal at once, those the data has
+    never heard of included. Nobody's own record is involved: whoever holds the write holds the
+    decision for all of them.
+    Abstract category: it holds for any engine that keeps the policy apart from the data it
+    consumes, and lets a single piece of that data govern requests that do not choose it.
+  category_note: >
+    In a Zanzibar model the single piece of data is a wildcard subject, `user:*`. A relationship
+    written with it grants the relation to every object of its type, so a permission the relation
+    feeds holds for everyone at once. The OPA instance is a document the request does not pick;
+    here it is a subject that stands for all of them, and the write that sets it is one tuple.
+
+summary: >
+  A relation admits a wildcard subject, `viewer: user:*`, and the write model lets a coalition
+  write it. One relationship, `document#viewer@user:*`, makes everyone a viewer: the coalition, and
+  every account the model never named. The permissions the relation feeds, `view` and the `access`
+  over it, then hold for all of them. The decisive write is the wildcard, and it raises the
+  permission for the coalition the same way it raises it for anybody.
+
+preconditions:
+  - capability: The coalition can write the wildcard subject of a relation the schema allows one on
+    note: >
+      The write rule's wildcard flag says the coalition may write `T:*`. A relation that admits a
+      wildcard the write model does not let the coalition write is out of reach, and the pattern
+      says nothing about it.
+
+mechanism:
+  description: >
+    A relationship stored with the wildcard subject `user:*` is matched for any concrete subject of
+    that type: a check of the relation resolves the wildcard form of the subject
+    (`internal/graph/check.go:383-401` at v1.56.2, which queries with `tuple.PublicWildcard` when a
+    relation has a wildcard subject). A wildcard cannot itself be the subject of a check
+    (`internal/graph/check.go:179`), so the coalition does not ask "does `user:*` hold view"; it
+    writes the wildcard and then every member of the coalition holds the relation as a plain
+    subject, through the wildcard the write put there.
+  example: |
+    schema: |-
+      definition user {}
+
+      definition document {
+        relation viewer: user | user:*
+        permission view = viewer
+      }
+    relationships: |-
+      document:roadmap#viewer@user:*
+    assertions:
+      assertTrue:
+        - document:roadmap#view@user:mallory
+        - document:roadmap#view@user:nobody_named_anywhere
+  example_note: >
+    One relationship, `document:roadmap#viewer@user:*`, and `view` is true for any user asked,
+    including one no other relationship names. Held with zed v1.2.1.
+
+detection:
+  requires:
+    - write-model
+    - relationships
+  requires_note: >
+    `write-model` for the finding: the wildcard flag on a write rule says the coalition may write
+    `T:*`. `relationships` is one of the two starting states the closure runs from, next to the
+    starting positions generated from the schema, from which the wildcard write raises the
+    permission for the coalition.
+  signals:
+    - order: 1
+      check: >
+        A relation admits a wildcard subject, and the write model's rule for it sets the wildcard
+        flag.
+      rationale: >
+        The wildcard flag is the one axis that lets a coalition write `T:*`; naming the type among
+        the subjects does not. A rule with the flag can write the subject that stands for every
+        object of the type.
+    - order: 2
+      check: >
+        The closure writes the wildcard subject and a permission the relation feeds rises for the
+        coalition, with the wildcard write as the decisive write.
+      rationale: >
+        It is the raise, read on the model the engine builds: the permission goes from no to yes on
+        the wildcard write, which grants to the coalition as it grants to everyone.
+  requires_write_model: true
+  requires_write_model_note: >
+    For the finding. The schema admitting a wildcard subject is a possibility; the write model
+    saying a coalition may write it is what makes it a reachable write. Without the wildcard flag on
+    a rule, there is no write to make.
+
+graph:
+  emits: finding
+  emits_note: >
+    A finding when a write rule's wildcard flag lets a coalition write a relation's wildcard subject.
+    Who may write it is in the write model, not the schema, so there is no candidate without one.
+  marks: []
+  marks_note: >
+    No mark: `petard export` reads no SpiceDB schema.
+
+false_positives:
+  - condition: >
+      The wildcard is a public share the product offers on purpose, a document anybody may read by
+      design, and writing it is the feature rather than an abuse.
+    discriminator: >
+      Whether a public grant is intended is the design of the product and not in the schema. A rule
+      marked `intended` in the write model is a raise by design and is not reported.
+    measurement: out-of-band
+  - condition: >
+      Only a service the coalition cannot drive writes the wildcard, a platform that opens a
+      resource to everyone through a reviewed path.
+    discriminator: >
+      Who may write the wildcard is decided by the application. A rule gated by a service is out of
+      a coalition's reach, which the write model says and the closure respects.
+    measurement: out-of-band
+
+not_a_lint_rule: >
+  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.56.2) and do not
+  flag a relation that admits a wildcard, which is a declared, supported subject form. `zed validate`
+  confirms that a written wildcard grants to everyone, which is what it is meant to do. That a
+  coalition can write it is in the write model, not the schema.
+
+fixture:
+  validation: fixtures/vulnerable-spicedb/validation.yaml
+  case: >
+    `document#viewer` admits `user:*`, and the write model's rule for it sets the wildcard flag, so
+    a coalition writes `document#viewer@user:*` and every subject, itself included, becomes a viewer.
+  counter_case: >
+    `document#owner` and `document#editor` admit no wildcard, so no wildcard write is possible on
+    them; they raise through other writes, not this one.
+  expected: >
+    A finding of `PTD-ZAN-003` on `document#view` (and the `access` over it), its decisive write a
+    wildcard `document#viewer@user:*` the write model's flag allows.
+
+references:
+  - title: authzed/spicedb, how a wildcard subject is matched
+    note: >
+      At v1.56.2, `internal/graph/check.go:383-401`: a relation with a wildcard subject is checked
+      by querying the wildcard form `tuple.PublicWildcard`, so a stored `T:*` relationship satisfies
+      the relation for any concrete subject of type `T`.
+  - title: authzed/spicedb, a wildcard is not a check subject
+    note: >
+      At v1.56.2, `internal/graph/check.go:179`: asking a check whose subject is `T:*` is an error,
+      so the wildcard is written and read through concrete subjects, not queried as one.
+
+verified:
+  date: 2026-10-21
+  tool_version: spicedb 1.56.2, zed 1.2.1
+  how: >
+    Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-003` on
+    `document#view` and `document#access`: the wildcard flag on the viewer rule lets the coalition
+    write `document#viewer@user:*`, which raises both permissions from no to yes. The SpiceDB effect
+    was held with zed v1.2.1 on the example above, a written wildcard granting `view` to a user no
+    relationship names, and the engine's answers agree with SpiceDB's on the whole corpus the
+    oracle runs.
+
+related:
+  - id: PTD-OPA-008
+    note: >
+      The same category in Rego, a document every request shares. There one document decides for
+      principals it never names; here one wildcard subject grants to every object of a type.

@@ -38,15 +38,20 @@ func TestFixture(t *testing.T) {
 	assertMatches(t, zanzibar.Run(sample, nil), zanzibar.Candidate, want)
 }
 
-// assertMatches checks that the matches are the PTD-ZAN-001 ones expected, each
-// with the given verdict.
+// assertMatches checks that the PTD-ZAN-001 matches are the ones expected, each
+// with the given verdict. A run with a write model also emits the escalation
+// findings of the other patterns; those are checked elsewhere, so this looks at
+// the self-asserted exemption alone.
 func assertMatches(t *testing.T, matches []zanzibar.Match, verdict zanzibar.Verdict, want []string) {
 	t.Helper()
 	var subjects []string
 	for _, m := range matches {
+		if m.PatternID != zanzibar.SelfAssertedExemptionID {
+			continue
+		}
 		subjects = append(subjects, m.Subject)
-		if m.PatternID != zanzibar.SelfAssertedExemptionID || m.Verdict != verdict {
-			t.Errorf("%s: %s %s, want a %s of %s", m.Subject, m.PatternID, m.Verdict, verdict, zanzibar.SelfAssertedExemptionID)
+		if m.Verdict != verdict {
+			t.Errorf("%s: %s %s, want a %s", m.Subject, m.PatternID, m.Verdict, verdict)
 		}
 	}
 	slices.Sort(subjects)
@@ -71,11 +76,23 @@ type zanzibarEntry struct {
 	} `yaml:"false_positives"`
 }
 
-// reports says whether the pattern of id matches anything in a file.
+// reports says whether the pattern of id matches anything in a file. It loads a
+// write model sitting beside the file, as an analysis does, so the patterns that
+// rest on who writes a relation, the escalation categories, are found where the
+// caveat candidate of PTD-ZAN-001 needs none.
 func reports(t *testing.T, path, id string) bool {
 	t.Helper()
 
-	for _, m := range zanzibar.Run(findOne(t, path).Sample(time.Now()), nil) {
+	var wm *zanzibar.WriteModel
+	writes := filepath.Join(filepath.Dir(path), "writes.yaml")
+	if _, err := os.Stat(writes); err == nil {
+		loaded, err := zanzibar.LoadWriteModel(writes)
+		if err != nil {
+			t.Fatalf("LoadWriteModel %s: %v", writes, err)
+		}
+		wm = loaded
+	}
+	for _, m := range zanzibar.Run(findOne(t, path).Sample(time.Now()), wm) {
 		if m.PatternID == id {
 			return true
 		}

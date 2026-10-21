@@ -1,0 +1,174 @@
+schema_version: 2
+
+id: PTD-ZAN-004
+name: arrow-links-controlled-object
+title: An arrow links an object to one the coalition controls
+closes: >
+  A relation an arrow walks that no coalition can write keeps the objects an arrow reaches fixed.
+  A write rule on the walked relation, with a subject type the coalition can bring an object of, is
+  what lets it link in one it controls, so a walked relation with no such rule closes the pattern.
+engine: zanzibar
+front_ends: [spicedb]
+status: implemented
+
+category:
+  id: TRANSITIVE-GRANT
+  title: Transitive grant through an intermediate object
+  summary: >
+    Access propagates along a relation between objects: containment, ownership, an org chart.
+    How far it propagates is visible neither in the policy nor in any single record. A tiny
+    position at the top is worth many positions at the bottom.
+    Abstract category: it holds for any engine with transitive relations, and for ReBAC models
+    in general.
+  category_note: >
+    A Zanzibar model is the ReBAC model the category names, and the transitive relation is an arrow,
+    `parent->view`. The write model's part is the relation the arrow walks: when a coalition can
+    write it with a subject it controls, it links the object to one whose permission it already
+    holds, and the arrow carries that permission back to the object.
+
+summary: >
+  A permission reaches across an arrow, `view = viewer + parent->view`, so a document inherits the
+  view of the folder it is in. The write model lets a coalition set a document's `parent`, and the
+  coalition controls a folder, one it created and views. It moves the document under that folder,
+  and the arrow carries the folder's view to the document. The decisive write is the one that sets
+  the parent, linking an object the coalition did not own to one it does.
+
+preconditions:
+  - capability: The coalition can write the relation an arrow walks, with a subject it controls
+    note: >
+      The write rule on the walked relation, `parent`, says who may set it and to what. The
+      coalition needs a controllable object of the subject type, which a creation rule gives it
+      when the schema has a type it can make and hold a permission on.
+
+mechanism:
+  description: >
+    `view = viewer + parent->view` is a union whose second arm is an arrow: SpiceDB resolves it as
+    a tuple-to-userset, walking `parent` and checking `view` on each object it reaches
+    (`internal/graph/check.go:575-576` at v1.56.2). The coalition creates a folder and is its
+    viewer, so it holds `view` on the folder. It then writes `document#parent@folder`, and the
+    arrow carries the folder's `view` to the document. The decisive write is the parent link; the
+    folder and its viewer are setup the witness records before it.
+  example: |
+    schema: |-
+      definition user {}
+
+      definition folder {
+        relation viewer: user
+        permission view = viewer
+      }
+
+      definition document {
+        relation parent: folder
+        relation viewer: user
+        permission view = viewer + parent->view
+      }
+    relationships: |-
+      folder:shared#viewer@user:mallory
+      document:roadmap#parent@folder:shared
+    assertions:
+      assertTrue:
+        - document:roadmap#view@user:mallory
+  example_note: >
+    Mallory views the folder, the roadmap's parent is that folder, and so `view` of the roadmap is
+    true for mallory, carried across the arrow. Held with zed v1.2.1.
+
+detection:
+  requires:
+    - write-model
+    - relationships
+  requires_note: >
+    `write-model` for the finding: a write rule on the relation the arrow walks, and a creation rule
+    for the object the coalition links in. `relationships` is one of the two starting states the
+    closure runs from, next to the starting positions generated from the schema.
+  signals:
+    - order: 1
+      check: >
+        A permission walks an arrow, `r->p`, and the write model lets the coalition write the walked
+        relation `r` with a subject of a type it can control.
+      rationale: >
+        The left of an arrow is a relation of the object. Writing it with an object the coalition
+        controls extends what the arrow reaches to that object, whose permission the coalition holds.
+    - order: 2
+      check: >
+        The closure creates or takes a controllable object of the subject type, grants itself the
+        walked permission on it, writes the arrow's relation to it, and the object's permission rises,
+        with the arrow write as the decisive write.
+      rationale: >
+        It is the raise, read on the model the engine builds: the permission goes from no to yes on
+        the link, and the witness carries the controllable object's setup before it.
+  requires_write_model: true
+  requires_write_model_note: >
+    For the finding. The arrow is in the schema; that a coalition can write the relation it walks,
+    and control an object of the subject type, is in the write model and the creation rules. Without
+    them there is no link to make.
+
+graph:
+  emits: finding
+  emits_note: >
+    A finding when the write model lets a coalition write the walked relation with a controllable
+    object. The arrow is in the schema, but who can link an object in is not, so there is no
+    candidate without a write model.
+  marks: []
+  marks_note: >
+    No mark: `petard export` reads no SpiceDB schema.
+
+false_positives:
+  - condition: >
+      Moving an object under a container the mover controls is the intended use, a user filing their
+      own document into their own folder, and the inherited access is theirs already.
+    discriminator: >
+      Whether the link is a raise depends on whether the object pre-existed the coalition; the
+      engine measures a raise only on an object the coalition did not create. A move within what the
+      coalition already owns raises nothing and is not reported.
+    measurement: out-of-band
+  - condition: >
+      Only a service the coalition cannot drive sets the relation the arrow walks, a platform that
+      organizes a hierarchy on the user's behalf.
+    discriminator: >
+      Who may write the walked relation is decided by the application. A rule gated by a service is
+      out of a coalition's reach, which the write model says and the closure respects.
+    measurement: out-of-band
+
+not_a_lint_rule: >
+  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.56.2); an arrow
+  is a declared, recommended construct, and the warnings about arrows are about names and
+  unreachable targets, not about who can write the walked relation. `zed validate` confirms the
+  arrow carries access as written. That a coalition can link in an object it controls is in the
+  write model, not the schema.
+
+fixture:
+  validation: fixtures/vulnerable-spicedb/validation.yaml
+  case: >
+    `view = viewer + edit + parent->view`, the write model lets anyone set `document#parent` to a
+    folder, and a creation rule lets anyone make a folder and be its viewer. The coalition moves a
+    document it does not own under a folder it controls and inherits its view.
+  counter_case: >
+    `document#owner` and `document#editor` feed no arrow, so no link raises them; they are reached
+    through other writes, not this one.
+  expected: >
+    A finding of `PTD-ZAN-004` on `document#view` (and the `access` over it), its decisive write a
+    `document#parent` to a folder the coalition controls.
+
+references:
+  - title: authzed/spicedb, how an arrow resolves
+    note: >
+      At v1.56.2, `internal/graph/check.go:575-576`: an arrow in a permission is a tuple-to-userset,
+      which walks the named relation and checks the target permission on each object it reaches.
+      Writing the walked relation to a new object extends what the arrow reaches.
+
+verified:
+  date: 2026-10-21
+  tool_version: spicedb 1.56.2, zed 1.2.1
+  how: >
+    Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-004` on
+    `document#view` and `document#access`: the coalition creates a folder it views, writes the
+    document's `parent` to it, and the arrow raises both permissions from no to yes. The SpiceDB
+    effect was held with zed v1.2.1 on the example above, a document inheriting the view of its
+    parent folder, and the engine's answers agree with SpiceDB's on the whole corpus the oracle runs.
+
+related:
+  - id: PTD-OPA-003
+    note: >
+      The same category in Rego, a transitive grant through ownership. There the engine chains a
+      self-write into a reachability walk; here the arrow is the walk and the write is the link into
+      an object the coalition controls.

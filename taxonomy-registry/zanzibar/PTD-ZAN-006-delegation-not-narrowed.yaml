@@ -1,0 +1,177 @@
+schema_version: 2
+
+id: PTD-ZAN-006
+name: delegation-not-narrowed
+title: A gated write grants to another a right the writer never held
+closes: >
+  A write rule whose subject is `self` grants only to the writer, so the gate it passes bounds who
+  gets the grant. A rule gated on a permission but free to name any subject is what lets the writer
+  hand the grant to someone who never passed the gate, so a self-only subject closes the pattern.
+engine: zanzibar
+front_ends: [spicedb]
+status: implemented
+
+category:
+  id: DELEGATION-NOT-NARROWED
+  title: Delegation not narrowed
+  summary: >
+    A decision grants a delegated principal the authority it asks for, its own scopes or role,
+    without bounding that authority by the authority of the principal who delegated to it. The agent
+    mints authority its delegator never held. The fact no policy contains on its own: what the
+    delegator granted, and that the requested authority has to sit inside it.
+    Abstract category: it holds for any engine that grants a requested authority without intersecting
+    it with the delegated one.
+  category_note: >
+    In a Zanzibar model the delegation is a write rule gated on a permission the writer holds but
+    free to write any subject. The gate bounds the writer, not the subject, so a writer that passes
+    it writes the relation for a confederate who never did. The authority the confederate gains is
+    not narrowed to the writer's, and the subject it is written for is one the gate never checked.
+
+summary: >
+  A write rule lets whoever holds `view` add an `editor`, and the subject it writes need not be the
+  writer. A viewer of a document, which anyone can become, writes `editor` for a second account it
+  controls, one that never held `view`. That account now holds `edit`, a right the gate was meant
+  to bound to view-holders, handed to a subject the gate never saw. The decisive write is the
+  editor written for another, and the writer did not hold `edit` to begin with.
+
+preconditions:
+  - capability: The coalition can write a relation, gated on a permission it holds, for a subject other than the writer
+    note: >
+      The write rule gates the write on a permission and lets the subject be any object of a type,
+      not only the writer. A rule whose subject is `self` does not delegate: it grants only to who
+      passed the gate.
+
+mechanism:
+  description: >
+    The write rule for `editor` is gated `holds: view` and its subject is a list of types, not
+    `self`, so a writer that holds `view` may write `editor` for any user, itself or another. A
+    stored relationship grants its relation to its subject whatever the gate the writer passed, and
+    a tuple carries no record of who wrote it. So a coalition member that holds `view` writes
+    `editor` for a second subject it controls, a fresh account that never held `view`, and that
+    subject holds `edit = owner + editor`. The decisive write is the editor written for the other,
+    and the writer lacked `edit` on the state just before it.
+  example: |
+    schema: |-
+      definition user {}
+
+      definition document {
+        relation editor: user
+        permission edit = editor
+      }
+    relationships: |-
+      document:roadmap#editor@user:sybil
+    assertions:
+      assertTrue:
+        - document:roadmap#edit@user:sybil
+  example_note: >
+    The written editor grants `edit` to the subject it names, `user:sybil`, whoever wrote it and
+    whatever they held. The write model is what says a view-holder could write this for a sybil that
+    never held view. Held with zed v1.2.1.
+
+detection:
+  requires:
+    - write-model
+    - relationships
+  requires_note: >
+    `write-model` for the finding: a write rule gated on a permission, with a subject that may be
+    other than the writer. `relationships` and the generated starting positions are the states the
+    closure runs from, where a coalition member first holds the gated permission and then writes the
+    relation for a second subject it controls.
+  signals:
+    - order: 1
+      check: >
+        A write rule is gated on a permission (`holds: p`) and its subject is not `self`, so it can
+        write the relation for a subject other than the writer.
+      rationale: >
+        The gate bounds the writer; the subject it writes is free. A writer that passes the gate can
+        write the relation for a confederate who did not, which is a grant not narrowed to the gate.
+    - order: 2
+      check: >
+        The closure has a coalition subject hold the gated permission, write the relation for a
+        second coalition subject that does not hold it, and the permission the relation feeds rises
+        for the coalition, with that write as the decisive one and the writer lacking it before.
+      rationale: >
+        It is the raise, read on the model the engine builds: the second subject gains the
+        permission through a write its own position never earned, and the writer passing it on did
+        not hold it either.
+  requires_write_model: true
+  requires_write_model_note: >
+    For the finding. The gate and the free subject are both in the write model; the schema says
+    only that the relation exists. Without the write model there is no gate to pass and no subject
+    to write for another.
+
+graph:
+  emits: finding
+  emits_note: >
+    A finding when a write rule gated on a permission writes a subject other than the writer. The
+    gate and the subject are in the write model, not the schema, so there is no candidate without one.
+  marks: []
+  marks_note: >
+    No mark: `petard export` reads no SpiceDB schema.
+
+false_positives:
+  - condition: >
+      Writing the relation for another is the intended delegation, a manager granting a report
+      access the manager holds, and the product means a gate-holder to be able to pass it on.
+    discriminator: >
+      Whether a delegation is meant to be narrowed is the design of the product and not in the
+      schema. A rule marked `intended` in the write model is a raise by design and is not reported.
+    measurement: out-of-band
+  - condition: >
+      The subject written for another must itself already hold the gated permission, enforced
+      outside SpiceDB before the write is accepted.
+    discriminator: >
+      Whether the application narrows the subject to gate-holders is in the application, not the
+      schema or the write model as declared. A write model that marks the subject `holds: p` carries
+      that narrowing, and the closure then writes only subjects that hold it.
+    measurement: out-of-band
+
+not_a_lint_rule: >
+  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.56.2), and the
+  schema says only that a relation exists, not who may write it or for whom. `zed validate` confirms
+  a written editor grants edit to its subject, which is correct. That the gate bounds the writer and
+  not the subject is in the write model, which SpiceDB does not read.
+
+fixture:
+  validation: fixtures/vulnerable-spicedb/validation.yaml
+  case: >
+    `document#editor` is gated `holds: view` and its subject is `[user]`, not `self`. A coalition
+    member becomes a viewer, then writes `editor` for a sybil that never held view, and the sybil
+    gains `edit`.
+  counter_case: >
+    `document#viewer` behind an open gate is not this pattern: an open gate narrows nothing, so
+    writing a viewer for another is not a right the writer held and passed on. It is reported, from
+    the same rule, as the attribute self-write and the global switch instead.
+  expected: >
+    A finding of `PTD-ZAN-006` on `document#edit` (and the `view` and `access` over it), its decisive
+    write an `editor` the writer holds `view` to make, written for another coalition subject.
+
+references:
+  - title: petard, the write model format
+    note: >
+      A write rule carries a `gate` and a `subject` independently (`fixtures/vulnerable-spicedb/writes.yaml`):
+      a gate of `{ holds: view }` with a subject of `[user]` lets a view-holder write the relation
+      for any user, where a subject of `self` would bound it to the writer. The narrowing the gate
+      implies is not enforced unless the subject carries it too.
+
+verified:
+  date: 2026-10-21
+  tool_version: spicedb 1.56.2, zed 1.2.1
+  how: >
+    Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-006` on
+    `document#edit`: a coalition member holds `view`, writes `editor` for a second subject it
+    controls that never held `view`, and that subject gains `edit`, which the writer did not hold
+    before the write. The SpiceDB effect of the written editor was held with zed v1.2.1 on the
+    example above, and the engine's answers agree with SpiceDB's on the whole corpus the oracle runs.
+
+related:
+  - id: PTD-OPA-013
+    note: >
+      The same category in Rego, a granted authority not bounded by the delegated one. There an
+      agent mints scopes its delegator never held; here a gate-holder writes a relation for a
+      subject the gate never checked.
+  - id: PTD-ZAN-007
+    note: >
+      The same rule's self-write is the split grant: there the gate-holder writes the relation for
+      itself, and the raise is the weaker permission gating the stronger. Here the subject is
+      another, and the raise is a grant the writer never held passed on.

@@ -1,0 +1,182 @@
+schema_version: 2
+
+id: PTD-ZAN-002
+name: delete-lifts-a-deny
+title: Deleting a tuple an exclusion reads lifts the deny
+closes: >
+  A relation on the subtracted side of an exclusion that no coalition can delete keeps the deny:
+  the exclusion holds as long as the tuple it reads is there. A delete rule on that relation is
+  what opens it, so a relation with no delete rule closes the pattern.
+engine: zanzibar
+front_ends: [spicedb]
+status: implemented
+
+category:
+  id: FAIL-OPEN-ON-ABSENCE
+  title: Fail-open on absence
+  summary: >
+    A security check stops applying, not because somebody switched it off, but because the data
+    it rests on is not there. The logic is right; its domain of application is smaller than it
+    looks, and the difference is invisible in the code.
+    Abstract category: it holds for any engine where the absence of a piece of data produces the
+    absence of a decision instead of an error.
+  category_note: >
+    In a Zanzibar model the absence that fails open is a tuple an exclusion subtracts. A permission
+    written `a - b` holds where `a` holds and `b` does not, so a relationship of `b` is what keeps
+    the deny, and deleting it lifts the permission for whoever `a` already grants. A missing
+    relationship grants nothing on its own, and an arrow with `all` over nothing holds for nobody
+    (`internal/graph/check.go:842-844` at v1.56.2), so the Zanzibar fail-open is the delete of a
+    present tuple, not a gap left by one never written.
+
+summary: >
+  A permission excludes a relation, `access = view - banned`, so a ban keeps a viewer out. The
+  write model lets a coalition delete the ban, its own included, and with the ban gone the
+  exclusion subtracts nothing and the permission holds. The deny was one relationship, and whoever
+  could remove that relationship could lift it. In the fixture anyone may clear a ban, so a banned
+  viewer deletes its own ban and `access` rises from no to yes.
+
+preconditions:
+  - capability: The coalition can delete a relationship of the subtracted relation on the object
+    note: >
+      The delete rule of the write model says who may remove it. A relation no rule can delete is
+      fixed, and the exclusion it feeds cannot be lifted by a coalition.
+
+mechanism:
+  description: >
+    `access = view - banned` subtracts the members of `banned` from those of `view`: an exclusion
+    dispatches to a set difference (`internal/graph/check.go:552-555` at v1.56.2) and the excluded
+    sets are taken away from the base (`internal/graph/check.go:1233-1243`). A subject that holds
+    `view` and is `banned` does not hold `access`. Deleting the `banned` relationship removes it
+    from the subtracted set, and `access` holds for that subject with nothing else changed. The
+    decisive write is the delete.
+  example: |
+    schema: |-
+      definition user {}
+
+      definition document {
+        relation viewer: user
+        relation banned: user
+        permission view = viewer
+        permission access = view - banned
+      }
+    relationships: |-
+      document:roadmap#viewer@user:mallory
+      document:roadmap#banned@user:mallory
+    assertions:
+      assertTrue:
+        - document:roadmap#view@user:mallory
+      assertFalse:
+        - document:roadmap#access@user:mallory
+  example_note: >
+    Mallory views the roadmap and is banned, so `view` is true and `access` is false. Delete
+    `document:roadmap#banned@user:mallory` and `access` becomes true: the same check, with the one
+    relationship the exclusion read gone.
+
+detection:
+  requires:
+    - write-model
+    - relationships
+  requires_note: >
+    `write-model` for the finding: a delete rule on the subtracted relation says a coalition can
+    remove it. `relationships` is one of the two starting states the closure runs from, next to the
+    starting positions it generates from the schema, one of which puts the attacker on an object it
+    is banned on.
+  signals:
+    - order: 1
+      check: >
+        A permission subtracts a relation, `a - b`, and the write model has a delete rule for the
+        subtracted relation `b`.
+      rationale: >
+        The relation on the subtracted side is the deny. A delete rule on it lets a coalition take
+        the deny away, which is the one move that lifts an exclusion whose base the coalition
+        already holds.
+    - order: 2
+      check: >
+        From a starting state where the coalition holds the base and is on the subtracted side, the
+        closure deletes the subtracted relation and the permission rises, with the delete as the
+        decisive write.
+      rationale: >
+        It is the raise, read on the model the engine builds: the permission goes from no to yes on
+        the delete, and the witness is that delete, with any writes that put the base in place
+        before it.
+  requires_write_model: true
+  requires_write_model_note: >
+    For the finding. Without a delete rule naming who removes the relation, the exclusion is one no
+    coalition can lift, and the pattern says nothing. There is no candidate form: the delete is the
+    whole mechanism, and who may delete is only in the write model.
+
+graph:
+  emits: finding
+  emits_note: >
+    A finding when a delete rule lets a coalition remove the relation an exclusion reads. Without a
+    write model there is nothing to read, since who may delete is not in the schema.
+  marks: []
+  marks_note: >
+    No mark: `petard export` reads no SpiceDB schema.
+
+false_positives:
+  - condition: >
+      The relationship is removed only by a service the coalition cannot drive, an appeal behind a
+      review, and no end user deletes it.
+    discriminator: >
+      Who may delete the relation is decided by the application. A delete rule gated by a service is
+      out of a coalition's reach, which the write model says and the closure respects.
+    measurement: out-of-band
+  - condition: >
+      The subtracted relation is a block the product lets a subject clear for itself on purpose, a
+      self-service unban.
+    discriminator: >
+      Whether lifting the deny is intended is the design of the product and not in the schema. A
+      rule marked `intended` in the write model is a raise by design and is not reported.
+    measurement: out-of-band
+
+not_a_lint_rule: >
+  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.56.2), and an
+  exclusion is a correct construct they do not flag. `zed validate` confirms that a banned viewer
+  is denied, which stays true until the ban is deleted. Who may delete the ban is in the write
+  model, not the schema, so neither check can see the deny is one relationship away from gone.
+
+fixture:
+  validation: fixtures/vulnerable-spicedb/validation.yaml
+  case: >
+    `access = view - banned`, and the write model lets anyone delete `document#banned`. A viewer of
+    a document who is banned deletes its own ban and reaches `access`.
+  counter_case: >
+    `document#owner` has no write rule: a relation no coalition can write or delete raises nothing,
+    and the run proposes a safe gate for it instead.
+  expected: >
+    A finding of `PTD-ZAN-002` on `document#access`, its decisive write a delete of `document#banned`
+    that anyone may make.
+
+references:
+  - title: authzed/spicedb, how an exclusion resolves
+    note: >
+      At v1.56.2, `internal/graph/check.go:552-555` dispatches an exclusion to a set difference, and
+      `1233-1243` subtracts the members of the excluded sets from the base. A subject in the
+      subtracted set does not hold the permission; removing it from that set restores it.
+  - title: authzed/spicedb, an arrow with all over nothing
+    note: >
+      At v1.56.2, `internal/graph/check.go:842-844`: an `all` arrow over a relation that reaches
+      nothing holds for nobody, so a missing relationship does not fail open the way an empty
+      `every` does in Rego. The Zanzibar fail-open is the delete of a present tuple.
+
+verified:
+  date: 2026-10-21
+  tool_version: spicedb 1.56.2, zed 1.2.1
+  how: >
+    Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-002` on
+    `document#access`: from a position where the attacker is a banned viewer, deleting the ban the
+    write model lets anyone remove raises `access` from no to yes. The SpiceDB effect was held with
+    zed v1.2.1 on the example above, a banned viewer denied `access` and granted it once the ban
+    relationship is gone, and the engine's answers agree with SpiceDB's on the whole corpus the
+    oracle runs.
+
+related:
+  - id: PTD-OPA-002
+    note: >
+      The same category in Rego, where a check goes quiet because the data it reads is absent. There
+      the absence is a document never written; here it is a relationship deleted out of an exclusion.
+  - id: PTD-OPA-005
+    note: >
+      The transient form of the category in Rego, an absence from the network. The Zanzibar instance
+      has only the persistent form, a relationship removed from the state.

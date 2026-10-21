@@ -65,6 +65,13 @@ written by hand with the case and the counter case of `PTD-ZAN-001` in them, and
 
 Findings
     2  PTD-ZAN-001  A relationship fixes a caveat value the check was meant to supply
+    1  PTD-ZAN-002  Deleting a tuple an exclusion reads lifts the deny
+    2  PTD-ZAN-003  A wildcard subject grants a relation to every object of a type
+    2  PTD-ZAN-004  An arrow links an object to one the coalition controls
+    2  PTD-ZAN-005  Joining a userset a relation grants to takes on its access
+    3  PTD-ZAN-006  A gated write grants to another a right the writer never held
+    1  PTD-ZAN-007  A weaker permission gates writing a stronger one into the object
+    2  PTD-ZAN-008  A subject writes itself a relation behind an open gate
 
   document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)
     written by   anyone may write document#viewer, at fixtures/vulnerable-spicedb/schema.zed:33:3,
@@ -81,12 +88,18 @@ Findings
                  check that goes through
     raises       edit, view and access on document, from conditional to unconditional
 
-Run petard explain <id> for what a pattern looks for and what it will not report.
+  document#access, a deny lifted by a delete  (PTD-ZAN-002)
+    written by   anyone may delete document#banned, through DELETE
+                 /api/v1/documents/{id}/bans/{user}
+    raises       access on document, from no to yes
 ```
 
 They are findings because `fixtures/vulnerable-spicedb/writes.yaml` is a write model beside the
-schema. The run lists what each file declares, then the matches. Each match names a relation, a
-parameter and the caveat it belongs to, and under it:
+schema. The run lists what each file declares, then a count per pattern, then the matches. Two
+kinds of finding come out of it.
+
+`PTD-ZAN-001` is the caveat finding, a parameter the check was meant to bring and the writer can
+fix instead. Each match names a relation, a parameter and the caveat it belongs to, and under it:
 
 - `written by` is who the write model lets write the relation, and where the schema declares it.
   SpiceDB lets a write carry any parameter of the caveat and the written value wins over the
@@ -96,9 +109,22 @@ parameter and the caveat it belongs to, and under it:
 - `raises` is the permissions the relation feeds, which go from conditional to unconditional once
   the parameter is fixed.
 
-Without a write model the two are candidates instead, read off the relationships and the checks:
-a parameter a check of the file supplies and the relationships leave out is one meant for the
-check, and the candidate carries the check whose answer rises once a relationship fixes it.
+`PTD-ZAN-002` through `PTD-ZAN-008` are the escalation findings, one per kind of decisive write a
+coalition can make: deleting a tuple an exclusion reads, writing a wildcard subject, linking an
+object across an arrow, joining a userset, writing a grant for another, and writing itself in
+behind a gate that is a permission or none. Each names the permission it raises and, under it:
+
+- `written by` is who the write model lets make the write, and the endpoint it goes through.
+- `raises` is the permission the write lifts on the object, from no to yes.
+
+The heading says the kind of write in a few words, and the id says which pattern classified it.
+`petard explain <id>` has the full account of each.
+
+Without a write model the two `PTD-ZAN-001` matches are candidates instead, read off the
+relationships and the checks: a parameter a check of the file supplies and the relationships leave
+out is one meant for the check, and the candidate carries the check whose answer rises once a
+relationship fixes it. The escalations rest on who writes a relation, which only a write model
+says, so with none they are not reported at all.
 
 ## Repeating a witness with zed
 

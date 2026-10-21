@@ -25,7 +25,7 @@ an admission controller or a configuration check, and the report says so when th
 | Engine | Reads | Patterns | Answers held to |
 |---|---|---|---|
 | [OPA](docs/opa.md) | Rego policies in either syntax, directories and bundle archives, a running OPA over its API, and the data beside them | 13, `PTD-OPA-001` to `PTD-OPA-013` | OPA v1.21.2, compiled in, which Petard asks by partial evaluation what is left of each decision |
-| [Zanzibar](docs/zanzibar.md) | [SpiceDB](docs/spicedb.md) schemas (`.zed`) and the validation files `zed validate` reads | 1, `PTD-ZAN-001` | SpiceDB v1.56.2, whose compiler and caveats are compiled in, and `zed validate`, which agrees with the engine on 26,543 checks in CI |
+| [Zanzibar](docs/zanzibar.md) | [SpiceDB](docs/spicedb.md) schemas (`.zed`) and the validation files `zed validate` reads | 8, `PTD-ZAN-001` to `PTD-ZAN-008` | SpiceDB v1.56.2, whose compiler and caveats are compiled in, and `zed validate`, which agrees with the engine on 26,543 checks in CI |
 
 On a policy, a match becomes a finding once what it rests on is known: the policy alone, or a
 write model and an enforcement point you declare. On a SpiceDB schema it becomes a finding once a
@@ -70,8 +70,11 @@ Escalations
 ```
 
 The `proven by` line is a request the decision refuses as the data stands and grants once the
-write is made. For the schema it names each finding: a caveat parameter the check was meant to
-bring, which whoever writes the relationship can set instead.
+write is made. For the schema it leads with the caveat finding, a parameter the check was meant to
+bring which whoever writes the relationship can set instead, and then the escalations: a permission
+a coalition can raise by a write the model allows, one for each kind of decisive write, a deleted
+ban, a wildcard subject, an arrow to a folder it controls, a team it joins, and a relation it
+writes for itself or another.
 
 <!-- output of: petard demo spicedb -->
 ```

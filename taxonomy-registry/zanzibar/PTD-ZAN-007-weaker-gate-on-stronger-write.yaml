@@ -1,0 +1,181 @@
+schema_version: 2
+
+id: PTD-ZAN-007
+name: weaker-gate-on-stronger-write
+title: A weaker permission gates writing a stronger one into the object
+closes: >
+  A write rule whose gate is at least the permission the written relation feeds grants nothing new:
+  the writer already holds what the write would give. A gate weaker than what the write grants is
+  what splits them, so a gate no weaker than the raise closes the pattern.
+engine: zanzibar
+front_ends: [spicedb]
+status: implemented
+
+category:
+  id: SPLIT-GRANT
+  title: A grant split across two decisions
+  summary: >
+    One decision governs who may change a piece of authorization data, and another decision
+    grants on that data. Each is reasonable on its own, and what they grant together appears in
+    neither. It is the shape of the methods Rhino Security Labs catalogued for AWS, where
+    `iam:PassRole` and `ec2:RunInstances` together hand somebody a role neither gives alone.
+    Abstract category: it holds wherever the authority to change what a policy reads is itself
+    decided by a policy.
+  category_note: >
+    In a Zanzibar model the two decisions are the gate on a write and the permission the written
+    relation feeds. The write rule for `editor` is gated on holding `view`, and `editor` grants
+    `edit`. View is the weaker permission, edit the stronger, and the gate lets the holder of the
+    weaker write itself the stronger. The authority to write and the authority written are two
+    permissions of the same object, and the gap between them is the raise.
+
+summary: >
+  A write rule gates adding an `editor` on holding `view`, and an editor holds `edit`. So a viewer,
+  the weakest position, writes itself an editor and holds `edit`, a permission `view` does not
+  reach. The decision of who may write and the decision of what the write grants are two
+  permissions, and the first is weaker than the second. The decisive write is the editor the
+  viewer makes for itself, behind a gate that asks only for `view`.
+
+preconditions:
+  - capability: The coalition holds the gate permission and can write itself the relation it gates
+    note: >
+      The write rule gates the write on a permission the coalition holds, `view`, and its subject
+      is `self`. A gate the coalition cannot reach, or a subject that is not itself, is not this
+      pattern.
+
+mechanism:
+  description: >
+    `edit = owner + editor` and `view = viewer + edit`, so `edit` is stronger than `view`: everyone
+    with edit has view, not the other way round. The write rule for `editor` is gated `holds: view`
+    and its subject is `self`, so a subject that holds `view` writes itself `editor` and then holds
+    `edit`. The gate asked for the weaker permission and the write granted the stronger. The
+    decisive write is the self-written editor, allowed by a gate that is a permission the coalition
+    held.
+  example: |
+    schema: |-
+      definition user {}
+
+      definition document {
+        relation editor: user
+        relation viewer: user
+        permission edit = editor
+        permission view = viewer + edit
+      }
+    relationships: |-
+      document:roadmap#editor@user:mallory
+    assertions:
+      assertTrue:
+        - document:roadmap#edit@user:mallory
+        - document:roadmap#view@user:mallory
+  example_note: >
+    The written editor gives mallory `edit`, and `view` with it. The write model is what says a
+    viewer, holding only `view`, could write this editor for itself, promoting `view` into `edit`.
+    Held with zed v1.2.1.
+
+detection:
+  requires:
+    - write-model
+    - relationships
+  requires_note: >
+    `write-model` for the finding: a write rule whose gate is a permission weaker than the one the
+    written relation feeds, with a `self` subject. `relationships` and the generated starting
+    positions are the states the closure runs from, one of which puts the coalition at the gate
+    permission.
+  signals:
+    - order: 1
+      check: >
+        A write rule has a `holds: p` gate and a `self` subject, and the relation it writes feeds a
+        permission the gate permission `p` does not reach.
+      rationale: >
+        The gate decides who may write and the fed permission is what the write grants. When the
+        gate is the weaker of the two, its holder writes itself up to the stronger.
+    - order: 2
+      check: >
+        From a starting position where the coalition holds the gate permission, the closure writes
+        itself the relation and the stronger permission rises, with that self-write as the decisive
+        write and its gate a permission the coalition held.
+      rationale: >
+        It is the raise, read on the model the engine builds: the permission goes from no to yes on
+        the self-write, and the gate the write passed was a weaker permission the coalition already
+        had.
+  requires_write_model: true
+  requires_write_model_note: >
+    For the finding. That `editor` feeds `edit` is in the schema; that holding `view` lets a subject
+    write `editor` for itself is in the write model. Without it there is no gate to compare with the
+    raise.
+
+graph:
+  emits: finding
+  emits_note: >
+    A finding when a write rule's gate is a permission weaker than the one its relation feeds. The
+    gate is in the write model, not the schema, so there is no candidate without one.
+  marks: []
+  marks_note: >
+    No mark: `petard export` reads no SpiceDB schema.
+
+false_positives:
+  - condition: >
+      The gate and the raise are meant to differ, an editor who may add a viewer, where the write
+      grants less than the gate rather than more.
+    discriminator: >
+      The direction is the finding: the pattern reports only where the gate is weaker than the
+      permission the write feeds, so a write that grants no more than its gate is not reported.
+    measurement: out-of-band
+  - condition: >
+      Promoting oneself is the intended flow, a trial that upgrades itself, and the gap between gate
+      and grant is the product's design.
+    discriminator: >
+      Whether the promotion is intended is the design of the product and not in the schema. A rule
+      marked `intended` in the write model is a raise by design and is not reported.
+    measurement: out-of-band
+
+not_a_lint_rule: >
+  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.56.2), and the
+  schema is right: `edit` is stronger than `view` by design. `zed validate` confirms an editor holds
+  edit. That holding the weaker permission lets a subject write itself the stronger is in the write
+  model, which SpiceDB does not read, so no check on the schema can see the two permissions gate each
+  other the wrong way round.
+
+fixture:
+  validation: fixtures/vulnerable-spicedb/validation.yaml
+  case: >
+    `document#editor` is gated `holds: view` with a `self` subject, and `editor` feeds `edit`, which
+    `view` does not reach. A viewer writes itself an editor and gains `edit`.
+  counter_case: >
+    `document#viewer` behind an open gate is not this pattern: its gate is not a permission, so
+    there are not two decisions to split. It is reported as the attribute self-write instead.
+  expected: >
+    A finding of `PTD-ZAN-007` on `document#edit`, its decisive write a self-written `editor` behind
+    a gate that holds `view`.
+
+references:
+  - title: petard, the write model format
+    note: >
+      A write rule's `gate` of `{ holds: view }` and the permission its relation feeds, `edit`, are
+      the two decisions (`fixtures/vulnerable-spicedb/writes.yaml`): the engine compares the gate
+      permission with the raise and reports where the gate is the weaker of the two.
+  - title: Rhino Security Labs, AWS privilege escalation methods
+    note: >
+      The catalogue where a pair of permissions, each harmless alone, compose into one escalation,
+      `iam:PassRole` with `ec2:RunInstances` among them. The split grant is that shape: who may
+      write is one decision, what the write grants is another.
+
+verified:
+  date: 2026-10-21
+  tool_version: spicedb 1.56.2, zed 1.2.1
+  how: >
+    Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-007` on
+    `document#edit`: from a position where the coalition holds `view`, writing itself an editor
+    behind the `holds: view` gate raises `edit` from no to yes. The SpiceDB effect of the editor was
+    held with zed v1.2.1 on the example above, and the engine's answers agree with SpiceDB's on the
+    whole corpus the oracle runs.
+
+related:
+  - id: PTD-OPA-006
+    note: >
+      The same category in Rego, a grant split across two decisions. There one decision authorizes a
+      write and another grants on it; here the gate on a write and the permission the write feeds are
+      two permissions of the same object.
+  - id: PTD-ZAN-008
+    note: >
+      Where the gate needs no permission at all, the self-write is the attribute self-write instead:
+      there is only one decision, not two, so there is nothing to split.

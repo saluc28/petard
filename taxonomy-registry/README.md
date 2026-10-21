@@ -81,23 +81,33 @@ a hole.
 
 ### The Zanzibar engine
 
-The schemas of SpiceDB, read by the engine in `internal/zanzibar`, have one instance so far:
-`PTD-ZAN-001`, in SELF-ASSERTED-EXEMPTION. The categories below have none, for a reason in how a
-Zanzibar model works:
+The schemas of SpiceDB, read by the engine in `internal/zanzibar`, have eight instances:
+`PTD-ZAN-001` in SELF-ASSERTED-EXEMPTION, and `PTD-ZAN-002` through `PTD-ZAN-008`, one for each
+kind of decisive write a coalition can make against a write model (section 7.1 of the
+definitions). Two categories still have none, for a reason in how a Zanzibar model works:
 
 - EXTERNAL-SOURCE-TAINT: a schema reads no source outside the relationships and the context of
-  the check.
-- FAIL-OPEN-ON-ABSENCE, through something missing: a relationship that is not there grants
-  nothing, and an arrow with `all` over nothing gives nobody (`internal/graph/check.go:842-844` in
-  SpiceDB v1.56.2), where an `every` over an empty domain in Rego holds.
-- GLOBAL-SWITCH, through a document: there is no document every check shares.
+  the check, so there is nothing from outside to follow.
 - UNCONTROLLED-IDENTIFIER and LOOSE-ENFORCEMENT-MATCH: they live in how the application turns a
   user or a resource into an identifier, which no schema holds.
 
-The other categories, a relationship the subject writes for itself, a write a permission allows,
-a group somebody joins, a deny somebody deletes, rest on who writes which relation, which a
-`relationship-writes` write model declares. `PTD-ZAN-001` is the first instance built on it; the
-rest are not implemented yet.
+Two of the eight take a shape the OPA instance of the same category does not, because a Zanzibar
+model fails open and grants globally through different mechanisms:
+
+- FAIL-OPEN-ON-ABSENCE is `PTD-ZAN-002`, through a delete and not a gap: a relationship that is
+  not there grants nothing, and an arrow with `all` over nothing gives nobody
+  (`internal/graph/check.go:842-844` at v1.56.2), where an `every` over an empty domain in Rego
+  holds. The Zanzibar fail-open is deleting a tuple an exclusion subtracts, which lifts the deny
+  it kept.
+- GLOBAL-SWITCH is `PTD-ZAN-003`, through a wildcard subject and not a document: there is no
+  document every check shares, but a relationship written with `user:*` grants a relation to every
+  object of its type at once.
+
+The rest, `PTD-ZAN-004` through `PTD-ZAN-008`, are the writes that rest on who writes which
+relation, which a `relationship-writes` write model declares: an object linked across an arrow to
+one the coalition controls, a userset somebody joins, a grant written for another, and a self-write
+behind a permission or behind an open gate. `PTD-ZAN-001` rests on the write model too, for the
+context a write may carry.
 
 ### More than one instance per engine, when the causes are disjoint
 
@@ -408,6 +418,13 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-OPA-012` | LOOSE-ENFORCEMENT-MATCH | opa | finding | C | `implemented`, a grant on a resource matched as a substring, a prefix, a glob or an unanchored regex, wider than the value the enforcement point serves |
 | `PTD-OPA-013` | DELEGATION-NOT-NARROWED | opa | finding | A | `implemented`, a grant of a requested authority not bounded by the delegator's, so a delegated agent mints scopes the delegating user never held |
 | `PTD-ZAN-001` | SELF-ASSERTED-EXEMPTION | zanzibar | finding | | `implemented`, the first of the Zanzibar engine: a caveat parameter the check is meant to supply, which whoever writes the relationship can fix |
+| `PTD-ZAN-002` | FAIL-OPEN-ON-ABSENCE | zanzibar | finding | | `implemented`, deleting a tuple an exclusion subtracts lifts the deny it kept |
+| `PTD-ZAN-003` | GLOBAL-SWITCH | zanzibar | finding | | `implemented`, a wildcard subject grants a relation to every object of a type at once |
+| `PTD-ZAN-004` | TRANSITIVE-GRANT | zanzibar | finding | | `implemented`, an arrow links an object to one the coalition controls |
+| `PTD-ZAN-005` | ASSUMABLE-IDENTITY | zanzibar | finding | | `implemented`, joining a userset a relation grants to takes on its access |
+| `PTD-ZAN-006` | DELEGATION-NOT-NARROWED | zanzibar | finding | | `implemented`, a gated write grants to another a right the writer never held |
+| `PTD-ZAN-007` | SPLIT-GRANT | zanzibar | finding | | `implemented`, a weaker permission gates writing a stronger one into the object |
+| `PTD-ZAN-008` | ATTR-SELF-WRITE | zanzibar | finding | | `implemented`, a subject writes itself a relation behind an open gate |
 
 Between them the thirteen OPA patterns exercise `binding-resolution`, `concrete-data`, `enforcement-point`,
 `rule-graph` and `taint`. 007 adds no new capability, only a new construct within `rule-graph`,
@@ -420,7 +437,10 @@ granting decision whether it bounds a requested authority by the delegated one, 
 enforcement point and, where the decision reads any, the concrete data.
 
 `PTD-ZAN-001` reads the relationships and the assertions of a validation file, and evaluates
-caveats in SpiceDB's own environment.
+caveats in SpiceDB's own environment. `PTD-ZAN-002` through `PTD-ZAN-008` read the write model and
+run the closure from the two starting states the definitions name, the relationships of the
+validation file and the positions generated from the schema, then classify each escalation by its
+decisive write.
 
 `partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
 the engine measures with, and in 002 it is how the fixture checks the consequence of a

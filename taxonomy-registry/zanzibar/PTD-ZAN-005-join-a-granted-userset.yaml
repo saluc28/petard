@@ -1,0 +1,171 @@
+schema_version: 2
+
+id: PTD-ZAN-005
+name: join-a-granted-userset
+title: Joining a userset a relation grants to takes on its access
+closes: >
+  A userset a relation grants to that no coalition can join keeps its members fixed. A write rule
+  on the userset's relation, open to a coalition subject, is what lets it in, so a userset with no
+  such rule closes the pattern.
+engine: zanzibar
+front_ends: [spicedb]
+status: implemented
+
+category:
+  id: ASSUMABLE-IDENTITY
+  title: Assumable identity
+  summary: >
+    A decision grants to a runtime identity it trusts, a workload's SPIFFE id, an agent principal,
+    a process lineage. The enforcement point proves the identity, so the caller cannot forge it in
+    the request. Who can become that identity is a question another layer answers: whoever can
+    deploy the workload the id names, spawn the process, or obtain the credential. Neither the policy
+    nor the enforcement point's set_by holds that fact.
+    Abstract category: it holds for any engine that decides on an identity an enforcement point
+    asserts, where the identity can be assumed in a layer the policy does not see.
+  category_note: >
+    In a Zanzibar model the identity a relation grants to is a userset, `team:design#member`, and
+    the layer that decides who can become it is the write model for the userset's own relation. A
+    relationship grants to the members of the userset, so a subject that can be written into the
+    userset takes on the grant. The identity is not assumed in a layer the schema cannot see; it is
+    assumed by a write the write model names.
+
+summary: >
+  A relation grants to a userset, `document#viewer@team:design#member`, so the document's viewers
+  are whoever is a member of the team. The write model lets a coalition join the team, and joining
+  makes it a viewer of the document without the document being touched. The grant was to the team,
+  and membership of the team was open. In the fixture anyone may join any team, so the coalition
+  joins the team the roadmap grants to and reaches `view`.
+
+preconditions:
+  - capability: The coalition can write itself into a userset a relation on the object grants to
+    note: >
+      The write rule on the userset's own relation, `team#member`, says who may join. A userset
+      whose membership no rule lets the coalition write is one it cannot assume.
+
+mechanism:
+  description: >
+    A relationship with a userset subject, `document#viewer@team:design#member`, grants `viewer` to
+    the members of `team:design`: resolving the relation follows the userset subject to its own
+    relation and checks membership there (`internal/graph/check.go:765-779` at v1.56.2, which
+    matches a subject against the members a userset resolves to). The coalition writes
+    `team:design#member@attacker`, becomes a member, and holds `viewer` of the document through the
+    grant the document already made to the team. The decisive write is the join.
+  example: |
+    schema: |-
+      definition user {}
+
+      definition team {
+        relation member: user
+      }
+
+      definition document {
+        relation viewer: user | team#member
+        permission view = viewer
+      }
+    relationships: |-
+      document:roadmap#viewer@team:design#member
+      team:design#member@user:mallory
+    assertions:
+      assertTrue:
+        - document:roadmap#view@user:mallory
+  example_note: >
+    The roadmap grants `viewer` to the members of the design team, mallory is a member, and so
+    `view` of the roadmap is true for mallory, through the team. Held with zed v1.2.1.
+
+detection:
+  requires:
+    - write-model
+    - relationships
+  requires_note: >
+    `relationships` for the grant to the userset, which the starting state holds; `write-model` for
+    the finding, a write rule on the userset's own relation that lets the coalition join. The
+    pre-existing grant to the userset comes from the validation file, one of the two starting states.
+  signals:
+    - order: 1
+      check: >
+        A relation on the object admits a userset subject, and the write model lets the coalition
+        write the userset's own relation with a subject it controls.
+      rationale: >
+        A relationship to a userset grants to its members. If the coalition can write itself into
+        that userset, it takes on the grant without the object being written.
+    - order: 2
+      check: >
+        From a starting state where the object grants to the userset, the closure writes the
+        coalition into the userset and a permission the relation feeds rises, with the join as the
+        decisive write.
+      rationale: >
+        It is the raise, read on the model the engine builds: the permission goes from no to yes on
+        the join, and the object the grant is on is never written.
+  requires_write_model: true
+  requires_write_model_note: >
+    For the finding. That a relation grants to a userset is in the schema and the relationships;
+    that a coalition can join the userset is in the write model for the userset's relation. Without
+    it there is no join to make.
+
+graph:
+  emits: finding
+  emits_note: >
+    A finding when the write model lets a coalition write a userset's own relation, and a relation
+    on the object grants to that userset. Who may join is in the write model, not the schema.
+  marks: []
+  marks_note: >
+    No mark: `petard export` reads no SpiceDB schema.
+
+false_positives:
+  - condition: >
+      The userset is one the product lets anybody join on purpose, an open team or a self-service
+      group, and the access its members get is the point.
+    discriminator: >
+      Whether joining is intended is the design of the product and not in the schema. A rule marked
+      `intended` in the write model is a raise by design and is not reported.
+    measurement: out-of-band
+  - condition: >
+      Only a service the coalition cannot drive writes the membership, an identity platform that
+      provisions teams.
+    discriminator: >
+      Who may write the membership is decided by the application. A rule gated by a service is out
+      of a coalition's reach, which the write model says and the closure respects.
+    measurement: out-of-band
+
+not_a_lint_rule: >
+  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.56.2); a relation
+  that grants to a userset is a supported, recommended construct. `zed validate` confirms the
+  members of the userset hold the grant, which is what it is for. Who can become a member of the
+  userset is in the write model, not the schema.
+
+fixture:
+  validation: fixtures/vulnerable-spicedb/validation.yaml
+  case: >
+    The roadmap grants `viewer` to `team:design#member`, and the write model lets anyone join any
+    team. The coalition joins the design team and reaches `view` of the roadmap.
+  counter_case: >
+    A userset no write rule lets the coalition join grants nothing it can take; the roadmap's direct
+    viewers, written by name, are not a userset the coalition can assume.
+  expected: >
+    A finding of `PTD-ZAN-005` on `document#view` (and the `access` over it), its decisive write a
+    `team#member` join the write model lets anyone make.
+
+references:
+  - title: authzed/spicedb, how a userset subject is matched
+    note: >
+      At v1.56.2, `internal/graph/check.go:765-779`: a relation with a userset subject is satisfied
+      for a subject that resolves to a member of that userset, so a relationship granting to
+      `team#member` grants to whoever is a member of the team.
+
+verified:
+  date: 2026-10-21
+  tool_version: spicedb 1.56.2, zed 1.2.1
+  how: >
+    Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-005` on
+    `document#view` and `document#access`: the roadmap grants `viewer` to the design team, the write
+    model lets anyone join, and joining raises both permissions from no to yes. The SpiceDB effect
+    was held with zed v1.2.1 on the example above, a team member holding the view the document
+    grants to the team, and the engine's answers agree with SpiceDB's on the whole corpus the oracle
+    runs.
+
+related:
+  - id: PTD-OPA-011
+    note: >
+      The same category in Rego, a grant on a runtime identity an enforcement point proves. There
+      the identity is assumed in a layer the policy does not see; here it is a userset the write
+      model lets the coalition join.

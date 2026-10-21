@@ -1,0 +1,168 @@
+schema_version: 2
+
+id: PTD-ZAN-008
+name: self-write-behind-open-gate
+title: A subject writes itself a relation behind an open gate
+closes: >
+  A relation whose write rule gates on a permission, or whose subject is not the writer, is not
+  this pattern: the grant is bounded by the gate or goes to another. An open gate with a `self`
+  subject is what lets a subject grant itself, so a gated write closes the pattern.
+engine: zanzibar
+front_ends: [spicedb]
+status: implemented
+
+category:
+  id: ATTR-SELF-WRITE
+  title: Attribute self-write
+  summary: >
+    An authorization decision depends on a piece of data the subject of that decision can write.
+    The check is there and the logic is right, but the data it rests on is under the control of
+    the person being checked.
+    Abstract category: it holds for any engine that keeps the policy apart from the data it
+    consumes.
+  category_note: >
+    In a Zanzibar model the data the decision rests on is a relationship, and the subject writes it
+    for itself behind a gate that asks for no permission on the object. A permission the relation
+    feeds then holds for the subject because the subject put the relationship there. There is one
+    decision, not two: the gate needs nothing, so nothing bounds the self-grant.
+
+summary: >
+  A write rule lets anyone add a `viewer`, and the subject it writes is the writer itself. So a
+  subject writes `document#viewer@itself` and holds `view`, with no permission on the document
+  asked for first. The permission rests on a relationship the subject it checks can write, behind a
+  gate that checks nothing. The decisive write is the viewer the subject makes for itself, allowed
+  by a gate that needs no permission on the object.
+
+preconditions:
+  - capability: The coalition can write itself into a relation behind a gate that holds no permission
+    note: >
+      The write rule's gate is `anyone` (or any gate the coalition can hold without a permission on
+      the object) and its subject is `self`. A gate that is a permission makes this the split grant
+      instead; a subject that is another makes it the delegation.
+
+mechanism:
+  description: >
+    The write rule for `viewer` has an `anyone` gate and a `self` subject, so any subject writes
+    `document#viewer@itself`. `view = viewer + ...` is a union, so the written viewer is enough for
+    `view` to hold for that subject. Nothing on the object was required to make the write, so the
+    decision that `view` holds rests entirely on a relationship the checked subject controls. The
+    decisive write is the self-written viewer behind the open gate.
+  example: |
+    schema: |-
+      definition user {}
+
+      definition document {
+        relation viewer: user
+        permission view = viewer
+      }
+    relationships: |-
+      document:roadmap#viewer@user:mallory
+    assertions:
+      assertTrue:
+        - document:roadmap#view@user:mallory
+  example_note: >
+    The written viewer gives mallory `view`. The write model is what says mallory could write this
+    for itself behind a gate that asks for nothing. Held with zed v1.2.1.
+
+detection:
+  requires:
+    - write-model
+    - relationships
+  requires_note: >
+    `write-model` for the finding: a write rule with a gate that holds no permission on the object
+    and a `self` subject. `relationships` and the generated starting positions are the states the
+    closure runs from, one of which puts the coalition on an object it does not yet hold the
+    permission on.
+  signals:
+    - order: 1
+      check: >
+        A write rule has a gate that is not a permission on the object (`anyone`, or one the
+        coalition holds without one) and a `self` subject, and the relation it writes feeds a
+        permission.
+      rationale: >
+        An open gate bounds nobody and a `self` subject grants to the writer, so the subject the
+        decision checks is the one that writes the data it rests on, with nothing asked first.
+    - order: 2
+      check: >
+        From a starting position where the coalition does not hold the permission, the closure
+        writes the coalition itself into the relation and the permission rises, with that self-write
+        as the decisive write and its gate holding no permission.
+      rationale: >
+        It is the raise, read on the model the engine builds: the permission goes from no to yes on
+        the self-write, behind a gate that asked for nothing on the object.
+  requires_write_model: true
+  requires_write_model_note: >
+    For the finding. That `viewer` feeds `view` is in the schema; that anyone may write `viewer` for
+    itself is in the write model. Without it there is no gate to see is open.
+
+graph:
+  emits: finding
+  emits_note: >
+    A finding when a write rule with an open gate and a `self` subject feeds a permission. The gate
+    is in the write model, not the schema, so there is no candidate without one.
+  marks: []
+  marks_note: >
+    No mark: `petard export` reads no SpiceDB schema.
+
+false_positives:
+  - condition: >
+      Writing oneself in is the intended flow, a public document anybody may add themselves to as a
+      viewer, and the access is the feature.
+    discriminator: >
+      Whether the self-grant is intended is the design of the product and not in the schema. A rule
+      marked `intended` in the write model is a raise by design and is not reported.
+    measurement: out-of-band
+  - condition: >
+      The gate reads as open in the write model but the application enforces a check before the
+      write that the write model does not capture.
+    discriminator: >
+      What the application checks before a write is in the application; the write model is the
+      declaration of it. A gate that should hold a permission is written `holds: p`, and the closure
+      then requires it.
+    measurement: out-of-band
+
+not_a_lint_rule: >
+  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.56.2), and a
+  relation feeding a permission is the ordinary shape of a model. `zed validate` confirms a viewer
+  holds view. That the subject being checked can write the viewer for itself, with no permission
+  asked first, is in the write model, which SpiceDB does not read.
+
+fixture:
+  validation: fixtures/vulnerable-spicedb/validation.yaml
+  case: >
+    `document#viewer` has an `anyone` gate, and its subject includes the writer. A coalition subject
+    writes itself a viewer and holds `view`, with nothing on the document asked first.
+  counter_case: >
+    `document#editor` behind a `holds: view` gate is the split grant, not this: a gate that is a
+    permission bounds the self-grant. `document#owner`, with no write rule, is reached by nobody.
+  expected: >
+    A finding of `PTD-ZAN-008` on `document#view` (and the `access` over it), its decisive write a
+    self-written `viewer` behind an open gate.
+
+references:
+  - title: petard, the write model format
+    note: >
+      A write rule's `gate` of `anyone` and `subject` of `self` are the open gate and the self-grant
+      (`fixtures/vulnerable-spicedb/writes.yaml`): the engine reports a self-write behind a gate that
+      holds no permission on the object, telling it apart from the split grant, whose gate is a
+      permission, and the delegation, whose subject is another.
+
+verified:
+  date: 2026-10-21
+  tool_version: spicedb 1.56.2, zed 1.2.1
+  how: >
+    Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-008` on
+    `document#view` and `document#access`: from a position where the coalition holds neither, writing
+    itself a viewer behind the open gate raises both from no to yes. The SpiceDB effect of the viewer
+    was held with zed v1.2.1 on the example above, and the engine's answers agree with SpiceDB's on
+    the whole corpus the oracle runs.
+
+related:
+  - id: PTD-OPA-001
+    note: >
+      The same category in Rego, a decision on a field the subject can write. There the data is a
+      field of the subject's own record; here it is a relationship the subject writes for itself.
+  - id: PTD-ZAN-007
+    note: >
+      Where the gate is a permission rather than open, the same self-write is the split grant: the
+      gate bounds who may write, and the raise is the gap between it and what the write feeds.

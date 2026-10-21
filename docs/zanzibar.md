@@ -88,12 +88,19 @@ PETARD_ZED=zed PETARD_ZANZIBAR_CORPUS="$(go list -m -f '{{.Dir}}' github.com/aut
 
 ## The patterns
 
-One pattern applies to Zanzibar models. `petard explain <id>` prints it in full, and its file in
-`taxonomy-registry/zanzibar/` is the source of truth.
+Eight patterns apply to Zanzibar models. `petard explain <id>` prints each in full, and the files
+in `taxonomy-registry/zanzibar/` are the source of truth.
 
 | ID | What it looks for |
 |---|---|
 | `PTD-ZAN-001` | a caveat parameter the check is meant to supply, which whoever writes the relationship can set instead |
+| `PTD-ZAN-002` | a deny an exclusion keeps, lifted by deleting the tuple it subtracts |
+| `PTD-ZAN-003` | a relation granted to every object of a type at once, through a wildcard subject |
+| `PTD-ZAN-004` | an object linked across an arrow to one the coalition controls |
+| `PTD-ZAN-005` | a userset a relation grants to, which the coalition can join |
+| `PTD-ZAN-006` | a gated write that grants to another a right the writer never held |
+| `PTD-ZAN-007` | a weaker permission gating the write of a stronger one into the object |
+| `PTD-ZAN-008` | a subject writing itself a relation behind a gate that needs no permission |
 
 `PTD-ZAN-001` reads, for every parameter of every caveat a relation allows, whether the parameter
 is meant for the check and who writes the relation. A write may set any parameter of the caveat
@@ -110,6 +117,16 @@ relationship fixes the value.
 
 A parameter every relationship writes and no check supplies, the network an allowlist holds a
 viewer to, is the writer's by design, and the pattern leaves it alone.
+
+`PTD-ZAN-002` through `PTD-ZAN-008` ask a different question, the one the definitions open with:
+can a coalition, writing only what the write model allows, raise a permission it did not hold on an
+object that was there before it started. The engine runs a closure from the starting states, the
+relationships of the validation file and the positions generated from the schema, and labels each
+escalation it finds by its decisive write, the write after which the permission rises (section 7.1
+of the definitions): a delete under an exclusion, a wildcard subject, an arrow link to a controlled
+object, a userset join, a grant written for another, and a self-write behind a permission or an
+open gate. They rest on the write model and are reported only with one, since who writes a relation
+is not in the schema.
 
 The categories of the registry with no Zanzibar instance, and why, are in section 3 of
 [taxonomy-registry/README.md](../taxonomy-registry/README.md).
