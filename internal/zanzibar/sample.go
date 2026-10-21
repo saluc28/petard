@@ -44,7 +44,7 @@ func Run(s Sample, wm *WriteModel) []Match {
 			out = append(out, c)
 		}
 	}
-	out = append(out, EscalationFindings(s, wm)...)
+	out = append(out, escalationFindings(s, wm)...)
 	return out
 }
 

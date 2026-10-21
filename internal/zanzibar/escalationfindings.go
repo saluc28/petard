@@ -30,7 +30,7 @@ func (c Category) patternID() string {
 	return ""
 }
 
-// EscalationFindings are the escalations a coalition can raise over a sample,
+// escalationFindings are the escalations a coalition can raise over a sample,
 // each labelled with the registry id of its decisive-write category. The
 // coalition is an attacker of every type the schema admits as a subject, run
 // from both starting states the definitions name (section 3): the relationships
@@ -41,8 +41,8 @@ func (c Category) patternID() string {
 //
 // It needs a write model, since every category rests on a write the model
 // allows; with none it returns nothing, and SelfAssertedExemptions still reads
-// its candidate off the sample.
-func EscalationFindings(s Sample, wm *WriteModel) []Match {
+// its candidate off the sample. Run is the one caller.
+func escalationFindings(s Sample, wm *WriteModel) []Match {
 	if s.Model == nil || wm == nil {
 		return nil
 	}
