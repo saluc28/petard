@@ -18,84 +18,120 @@ import (
 // at v9.7.1). It uses the functions text/template has built in and nothing
 // else, so that a test can render it the way the server does.
 
-// registryURL is where the file of each pattern of the OPA engine is read on
-// GitHub, the name of the file away.
-const registryURL = registry.BlobURL + registry.Dir + "/" + registry.OPADir + "/"
-
 // patternNote is what the panel says about one pattern: its title in the
-// registry, the name that makes its file, and what closes it, which is what the
-// counter case of the fixture shows, where there is one to show.
+// registry, the engine and name that make its file, and what closes it, which
+// is what the counter case of the fixture shows, where there is one to show.
 type patternNote struct {
-	id, name, title, closes string
+	id, name, engine, title, closes string
 }
 
 // patternNotes are the patterns of the registry, in order. A test holds them to
 // the registry, so that a pattern added there and forgotten here fails.
 var patternNotes = []patternNote{
 	{
-		id: "PTD-OPA-001", name: "attribute-self-write",
+		id: "PTD-OPA-001", name: "attribute-self-write", engine: registry.OPADir,
 		title:  "The subject writes an attribute the policy reads to decide about them",
 		closes: "A field the subject cannot write, assigned by a role through an administration API, is the counter case.",
 	},
 	{
-		id: "PTD-OPA-002", name: "deny-undefined-on-missing-data",
+		id: "PTD-OPA-002", name: "deny-undefined-on-missing-data", engine: registry.OPADir,
 		title:  "A deny rule is silent for part of the data, so the check does not apply there",
 		closes: "A default that denies on the rule that reads, or a second rule of the decision that denies when the path is missing, closes it.",
 	},
 	{
-		id: "PTD-OPA-003", name: "transitive-grant-via-ownership",
+		id: "PTD-OPA-003", name: "transitive-grant-via-ownership", engine: registry.OPADir,
 		title:  "A position in a hierarchy grants everything below it, and nothing says so",
 		closes: "A position is a target rather than a defect: what matters is who can take it.",
 	},
 	{
-		id: "PTD-OPA-004", name: "decision-tainted-by-external-source",
+		id: "PTD-OPA-004", name: "decision-tainted-by-external-source", engine: registry.OPADir,
 		title:  "A decision depends on an external source, so whoever controls it decides",
 		closes: "Whoever controls the endpoint, or can steer where the call goes, decides in the policy's place.",
 	},
 	{
-		id: "PTD-OPA-005", name: "fail-open-on-source-unavailable",
+		id: "PTD-OPA-005", name: "fail-open-on-source-unavailable", engine: registry.OPADir,
 		title:  "A check that needs an external source stops applying when it does not answer",
 		closes: "Consuming the error closes it, by denying when the source does not answer.",
 	},
 	{
-		id: "PTD-OPA-006", name: "write-allowed-by-another-decision",
+		id: "PTD-OPA-006", name: "write-allowed-by-another-decision", engine: registry.OPADir,
 		title:  "One decision lets a principal write the data another decision grants on",
 		closes: "The decision that allows the write refusing the value the other one grants on closes it.",
 	},
 	{
-		id: "PTD-OPA-007", name: "every-over-empty-domain",
+		id: "PTD-OPA-007", name: "every-over-empty-domain", engine: registry.OPADir,
 		title:  "A check written with every stops applying when its domain is empty",
 		closes: "Requiring at least one element before the every closes it.",
 	},
 	{
-		id: "PTD-OPA-008", name: "global-document-decides-for-anybody",
+		id: "PTD-OPA-008", name: "global-document-decides-for-anybody", engine: registry.OPADir,
 		title:  "A document every request shares decides for anybody who asks",
 		closes: "Reading the document next to the requester's own record closes it: somebody with no record gets nothing.",
 	},
 	{
-		id: "PTD-OPA-009", name: "self-asserted-exemption",
+		id: "PTD-OPA-009", name: "self-asserted-exemption", engine: registry.OPADir,
 		title:  "A request lifts a check on itself by saying it is exempt",
 		closes: "Taking the exemption from a part of the request the enforcement point sets, as it sets a second factor, closes it.",
 	},
 	{
-		id: "PTD-OPA-010", name: "grant-on-uncontrolled-name",
+		id: "PTD-OPA-010", name: "grant-on-uncontrolled-name", engine: registry.OPADir,
 		title:  "A decision grants on a name somebody else picks",
 		closes: "Granting on the id the issuer assigns, which nobody picks and nothing else is ever given, closes it.",
 	},
 	{
-		id: "PTD-OPA-011", name: "grant-on-assumable-identity",
+		id: "PTD-OPA-011", name: "grant-on-assumable-identity", engine: registry.OPADir,
 		title:  "A decision grants on an identity somebody can assume",
 		closes: "Pinning the identity to a credential the enforcement point verifies, which nobody below the grant can assume, closes it.",
 	},
 	{
-		id: "PTD-OPA-012", name: "grant-on-loose-match",
+		id: "PTD-OPA-012", name: "grant-on-loose-match", engine: registry.OPADir,
 		title:  "A decision grants on a value matched more loosely than it is enforced",
 		closes: "Matching the value whole, by equality or by its components, so a crafted value cannot slip through, closes it. Where the value is canonicalized after the decision, refusing one that is not already canonical does.",
 	},
 	{
-		id: "PTD-OPA-013", name: "grant-beyond-delegated-scope",
+		id: "PTD-OPA-013", name: "grant-beyond-delegated-scope", engine: registry.OPADir,
 		title:  "A decision grants a requested authority not bounded by the delegator's",
 		closes: "Bounding the requested authority by the delegator's, so every scope asked for has to sit inside the one the delegating edge carries, closes it.",
+	},
+	{
+		id: "PTD-ZAN-001", name: "writer-set-check-parameter", engine: registry.ZanzibarDir,
+		title:  "A relationship fixes a caveat value the check was meant to supply",
+		closes: "Refusing, on the path that writes the relationship, a context that sets a parameter the check supplies closes it: SpiceDB itself accepts any parameter of the caveat.",
+	},
+	{
+		id: "PTD-ZAN-002", name: "delete-lifts-a-deny", engine: registry.ZanzibarDir,
+		title:  "Deleting a tuple an exclusion reads lifts the deny",
+		closes: "A relation on the subtracted side of an exclusion that no coalition can delete keeps the deny: the exclusion holds as long as the tuple it reads is there. A delete rule on that relation is what opens it, so a relation with no delete rule closes the pattern.",
+	},
+	{
+		id: "PTD-ZAN-003", name: "wildcard-subject-grant", engine: registry.ZanzibarDir,
+		title:  "A wildcard subject grants a relation to every object of a type",
+		closes: "A relation that admits no wildcard subject, or whose write rule does not let the coalition write one, grants to the subjects it names and no more. The wildcard flag on the write rule is what opens it, so a relation written without it closes the pattern.",
+	},
+	{
+		id: "PTD-ZAN-004", name: "arrow-links-controlled-object", engine: registry.ZanzibarDir,
+		title:  "An arrow links an object to one the coalition controls",
+		closes: "A relation an arrow walks that no coalition can write keeps the objects an arrow reaches fixed. A write rule on the walked relation, with a subject type the coalition can bring an object of, is what lets it link in one it controls, so a walked relation with no such rule closes the pattern.",
+	},
+	{
+		id: "PTD-ZAN-005", name: "join-a-granted-userset", engine: registry.ZanzibarDir,
+		title:  "Joining a userset a relation grants to takes on its access",
+		closes: "A userset a relation grants to that no coalition can join keeps its members fixed. A write rule on the userset's relation, open to a coalition subject, is what lets it in, so a userset with no such rule closes the pattern.",
+	},
+	{
+		id: "PTD-ZAN-006", name: "delegation-not-narrowed", engine: registry.ZanzibarDir,
+		title:  "A gated write grants to another a right the writer never held",
+		closes: "A write rule whose subject is `self` grants only to the writer, so the gate it passes bounds who gets the grant. A rule gated on a permission but free to name any subject is what lets the writer hand the grant to someone who never passed the gate, so a self-only subject closes the pattern.",
+	},
+	{
+		id: "PTD-ZAN-007", name: "weaker-gate-on-stronger-write", engine: registry.ZanzibarDir,
+		title:  "A weaker permission gates writing a stronger one into the object",
+		closes: "A write rule whose gate is at least the permission the written relation feeds grants nothing new: the writer already holds what the write would give. A gate weaker than what the write grants is what splits them, so a gate no weaker than the raise closes the pattern.",
+	},
+	{
+		id: "PTD-ZAN-008", name: "self-write-behind-open-gate", engine: registry.ZanzibarDir,
+		title:  "A subject writes itself a relation behind an open gate",
+		closes: "A relation whose write rule gates on a permission, or whose subject is not the writer, is not this pattern: the grant is bounded by the gate or goes to another. An open gate with a `self` subject is what lets a subject grant itself, so a gated write closes the pattern.",
 	},
 }
 
@@ -105,8 +141,9 @@ func patternLines(key, heading string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "{{ with .Properties.%s }}\n**%s**\n{{ range . }}", key, heading)
 	for _, note := range patternNotes {
+		url := registry.URL(note.engine, note.id+"-"+note.name+".yaml")
 		fmt.Fprintf(&b, `{{ if eq . "%s" }}
-- [%s](%s%s-%s.yaml): %s. %s{{ end }}`, note.id, note.id, registryURL, note.id, note.name, note.title, note.closes)
+- [%s](%s): %s. %s{{ end }}`, note.id, note.id, url, note.title, note.closes)
 	}
 	b.WriteString("{{ end }}\n{{ end }}")
 	return b.String()
@@ -249,13 +286,17 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 		)
 	case graph.EdgeKindCanEscalateTo:
 		return withDetails(meaning(
-			"The principal can reach the position the other one holds, by writing something it is "+
-				"allowed to write. The only edge that means privilege escalation.",
+			"The principal can reach a position it was not given, by writing something it is allowed "+
+				"to write. Against a policy the position is another principal's and the edge ends "+
+				"there; against a Zanzibar model it is a permission on an object, and the edge ends at "+
+				"the object. The only edge that means privilege escalation.",
 		),
-			"**{{ .Source.Properties.name }}** can take the position **{{ .Target.Properties.name }}** holds"+
+			"{{ with .Properties.permission }}**{{ $.Source.Properties.name }}** raises **{{ . }}** on "+
+				"**{{ $.Target.Properties.name }}**.{{ else }}"+
+				"**{{ .Source.Properties.name }}** can take the position **{{ .Target.Properties.name }}** holds"+
 				"{{ with .Properties.decision }} in `{{ . }}`{{ end }}"+
 				"{{ with .Properties.via_write_path }}, by writing `{{ . }}`{{ end }}"+
-				"{{ with .Properties.via }} through `{{ . }}`{{ end }}.",
+				"{{ with .Properties.via }} through `{{ . }}`{{ end }}.{{ end }}",
 			"{{ with .Properties.value }}The value written is `{{ . }}`{{ with $.Properties.authorized_by }}, which `{{ . }}` allows{{ end }}.{{ end }}",
 			"{{ with .Properties.relation }}Through `{{ . }}`: {{ $.Properties.reach_transitive }} ways in with it, {{ $.Properties.reach_direct }} without it.{{ end }}",
 			"{{ with .Properties.witness_request }}**Proven by** the request `{{ . }}`, which `{{ $.Properties.decision }}` "+

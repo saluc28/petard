@@ -3,6 +3,7 @@ package opengraph
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/saluc28/bhgraph"
 
+	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/writemodel"
@@ -17,23 +19,60 @@ import (
 )
 
 // The Entity Panel names every pattern by its title and links its file, so the
-// notes here and the registry have to agree, one pattern for one pattern.
+// notes here and the registry have to agree, one pattern for one pattern, for
+// every engine the registry holds.
 func TestPatternNotesFollowTheRegistry(t *testing.T) {
-	patterns, err := taxonomy.LoadRegistry(registry.OPA)
-	if err != nil {
-		t.Fatalf("LoadRegistry() error = %v", err)
-	}
-	if len(patterns) != len(patternNotes) {
-		t.Fatalf("the registry holds %d patterns, the notes %d", len(patterns), len(patternNotes))
-	}
-	for i, pattern := range patterns {
-		note := patternNotes[i]
-		if note.id != pattern.ID || note.name != pattern.Name || note.title != pattern.Title {
-			t.Errorf("note %d = %s %s %q, the registry says %s %s %q",
-				i, note.id, note.name, note.title, pattern.ID, pattern.Name, pattern.Title)
+	for _, engine := range []struct {
+		dir string
+		fs  fs.FS
+	}{
+		{registry.OPADir, registry.OPA},
+		{registry.ZanzibarDir, registry.Zanzibar},
+	} {
+		patterns, err := taxonomy.LoadRegistry(engine.fs)
+		if err != nil {
+			t.Fatalf("LoadRegistry(%s) error = %v", engine.dir, err)
 		}
-		if note.closes != pattern.Closes {
-			t.Errorf("%s closes = %q, the registry says %q", note.id, note.closes, pattern.Closes)
+		var notes []patternNote
+		for _, note := range patternNotes {
+			if note.engine == engine.dir {
+				notes = append(notes, note)
+			}
+		}
+		if len(patterns) != len(notes) {
+			t.Fatalf("the %s registry holds %d patterns, the notes %d", engine.dir, len(patterns), len(notes))
+		}
+		for i, pattern := range patterns {
+			note := notes[i]
+			if note.id != pattern.ID || note.name != pattern.Name || note.title != pattern.Title {
+				t.Errorf("%s note %d = %s %s %q, the registry says %s %s %q",
+					engine.dir, i, note.id, note.name, note.title, pattern.ID, pattern.Name, pattern.Title)
+			}
+			if note.closes != pattern.Closes {
+				t.Errorf("%s closes = %q, the registry says %q", note.id, note.closes, pattern.Closes)
+			}
+		}
+	}
+}
+
+// The panel links each pattern's file by id and name, built the same way the
+// URL is, so a name that does not match its file would 404 in the browser
+// without the other test noticing: that one checks the name against the YAML
+// field, this one against the file that is actually there.
+func TestEveryNoteLinksAFileThatExists(t *testing.T) {
+	registries := map[string]fs.FS{
+		registry.OPADir:      registry.OPA,
+		registry.ZanzibarDir: registry.Zanzibar,
+	}
+	for _, note := range patternNotes {
+		fsys, ok := registries[note.engine]
+		if !ok {
+			t.Errorf("%s has engine %q, which the registry does not hold", note.id, note.engine)
+			continue
+		}
+		file := note.id + "-" + note.name + ".yaml"
+		if _, err := fs.Stat(fsys, file); err != nil {
+			t.Errorf("%s links %s, not in the %s registry: %v", note.id, file, note.engine, err)
 		}
 	}
 }
@@ -229,6 +268,44 @@ func TestPanelsRenderForEveryEntityOfTheFixture(t *testing.T) {
 	for what, text := range rendered {
 		if strings.HasPrefix(what, "PTD_CanEscalateTo CAROL") && !strings.Contains(text, "PTD-OPA-006") {
 			t.Errorf("%s does not name the pattern that drew it:\n%s", what, text)
+		}
+	}
+}
+
+// The CanEscalateTo panel reads a Zanzibar raise, where the edge ends at a
+// resource and carries a permission, not an OPA position between two
+// principals. The fixture the panel test renders against is OPA only, so this
+// builds the Zanzibar shape by hand to exercise the permission branch and the
+// Zanzibar pattern link, which nothing else renders.
+func TestCanEscalateToPanelReadsAZanzibarRaise(t *testing.T) {
+	var sections map[string]string
+	for _, kind := range Schema().RelationshipKinds {
+		if kind.Name == string(graph.EdgeKindCanEscalateTo) {
+			sections = contents(kind.Info)
+		}
+	}
+	if sections == nil {
+		t.Fatal("the schema has no PTD_CanEscalateTo kind to render")
+	}
+
+	edge := relationshipContext{
+		Source:     nodeContext{Properties: map[string]any{"name": "user:attacker"}},
+		Target:     nodeContext{Properties: map[string]any{"name": "document:roadmap"}},
+		Kind:       kindContext{Name: string(graph.EdgeKindCanEscalateTo)},
+		Properties: map[string]any{graph.PropPermission: "view", graph.PropPatterns: []any{"PTD-ZAN-008"}},
+	}
+
+	panel := render(t, sections, edge)
+	if strings.Contains(panel, "<no value>") || strings.Contains(panel, "{{") {
+		t.Errorf("the panel renders a missing value or a raw template:\n%s", panel)
+	}
+	for _, want := range []string{
+		"**user:attacker** raises **view** on **document:roadmap**",
+		"PTD-ZAN-008",
+		"A subject writes itself a relation behind an open gate",
+	} {
+		if !strings.Contains(panel, want) {
+			t.Errorf("the panel does not say %q:\n%s", want, panel)
 		}
 	}
 }
