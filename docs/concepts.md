@@ -100,8 +100,8 @@ petard explain PTD-ZAN-001
 
 ## The graph
 
-The escalations Petard finds in a policy leave it as a BloodHound OpenGraph, over
-[bhgraph](https://github.com/saluc28/bhgraph): five node kinds and five relationship kinds,
+The escalations Petard finds, in a policy or a SpiceDB schema, leave it as a BloodHound OpenGraph,
+over [bhgraph](https://github.com/saluc28/bhgraph): five node kinds and five relationship kinds,
 declared in `internal/graph`.
 
 ```mermaid
@@ -110,6 +110,7 @@ graph LR
   Attribute -->|PTD_WrittenBy| Principal[PTD_Principal]
   Principal -->|PTD_CanEscalateTo| Other[PTD_Principal]
   Principal -->|PTD_CanPerform| Resource[PTD_Resource]
+  Principal -->|PTD_CanEscalateTo| Resource
   Principal -->|PTD_CanPerform| Action[PTD_Action]
   Attribute -->|PTD_TaintedBy| Source["PTD_Principal, an external source"]
 ```
@@ -121,7 +122,10 @@ the model and the schema is generated from it, so the two cannot drift apart.
 
 The kind names and the property keys are a contract. They end up in ingested data and in saved
 queries, so renaming one means re-ingesting every graph and rewriting every query that mentions
-it. `petard export` reads policies; it does not read SpiceDB schemas.
+it. `petard export` reads both a policy and the SpiceDB schemas under its paths, and draws the
+escalations of each into the one graph. A `PTD_CanEscalateTo` from a policy ends at the principal
+whose position is taken; one from a schema ends at the resource a permission is raised on, with
+the permission carried on the edge.
 
 ## How the claims are held
 

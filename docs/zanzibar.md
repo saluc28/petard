@@ -138,7 +138,8 @@ SpiceDB, and no schema says it. A `relationship-writes` write model beside the s
 names who writes each relation and, per caveat parameter, whether the writer or the application
 fills it. With one, a match is a finding; without one, a candidate, and `-fail-on any` is what
 fails a run on a candidate. A schema no validation file reads is named in the report as one with
-no evidence. `petard export` does not read schemas.
+no evidence. `petard export` reads the schemas as well, and draws the escalations it finds as a
+BloodHound OpenGraph.
 
 ## The write model
 

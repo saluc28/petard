@@ -120,6 +120,10 @@ behind a gate that is a permission or none. Each names the permission it raises 
 The heading says the kind of write in a few words, and the id says which pattern classified it.
 `petard explain <id>` has the full account of each.
 
+These escalations also leave petard as a BloodHound OpenGraph. `petard export` reads the same
+schemas and draws each as an edge pathfinding can walk; [concepts.md](concepts.md#the-graph) has
+the model.
+
 Without a write model the two `PTD-ZAN-001` matches are candidates instead, read off the
 relationships and the checks: a parameter a check of the file supplies and the relationships leave
 out is one meant for the check, and the candidate carries the check whose answer rises once a
