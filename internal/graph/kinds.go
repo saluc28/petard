@@ -243,6 +243,13 @@ const (
 	PropPatterns          = "patterns"
 	PropCandidatePatterns = "candidate_patterns"
 
+	// PropPermission is the permission a Zanzibar escalation raises, and the one
+	// property that tells its PTD_CanEscalateTo apart from the OPA one. The far
+	// end of the Zanzibar edge is the resource the permission is raised on; of
+	// the OPA edge, the principal whose position is taken. Reading it is how a
+	// panel or a query knows which of the two it is looking at.
+	PropPermission = "permission"
+
 	// PropPositions are the positions in a hierarchy a principal holds, one
 	// line per decision with what it grants through the relation and without.
 	PropPositions = "positions"
