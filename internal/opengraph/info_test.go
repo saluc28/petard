@@ -310,6 +310,30 @@ func TestCanEscalateToPanelReadsAZanzibarRaise(t *testing.T) {
 	}
 }
 
+// The Attribute kind is shared: an OPA field read from data and a Zanzibar
+// relation on an object are the same node kind, so the panel has to read right
+// for a Zanzibar attribute too, not describe the OPA one alone.
+func TestAttributePanelDescribesAZanzibarAttribute(t *testing.T) {
+	var sections map[string]string
+	for _, kind := range Schema().NodeKinds {
+		if kind.Name == string(graph.NodeKindAttribute) {
+			sections = contents(kind.Info)
+		}
+	}
+	if sections == nil {
+		t.Fatal("the schema has no PTD_Attribute kind to render")
+	}
+
+	node := nodeContext{Properties: map[string]any{"name": "document:roadmap#viewer"}}
+	panel := render(t, sections, node)
+	if strings.Contains(panel, "<no value>") || strings.Contains(panel, "{{") {
+		t.Errorf("the panel renders a missing value or a raw template:\n%s", panel)
+	}
+	if !strings.Contains(panel, "Zanzibar") {
+		t.Errorf("the Attribute panel does not describe a Zanzibar attribute:\n%s", panel)
+	}
+}
+
 func contents(info map[string]bhgraph.KindInfo) map[string]string {
 	out := make(map[string]string, len(info))
 	for key, section := range info {

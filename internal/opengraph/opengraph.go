@@ -76,13 +76,13 @@ var displays = map[graph.NodeKind]display{
 	},
 	graph.NodeKindResource: {
 		displayName: "Resource",
-		description: "What an action is performed on, named by the document a decision turned out to allow.",
+		description: "What an action is performed on: a document a decision grants, or an object a Zanzibar permission is raised on.",
 		icon:        "file",
 		color:       "#6a994e",
 	},
 	graph.NodeKindAttribute: {
 		displayName: "Attribute",
-		description: "A field a decision depends on, whether it was read from data or believed from an external answer. It is what an escalation aims at.",
+		description: "A field a decision depends on, and what an escalation aims at: a document read from data, a value from an external source, or a relation on an object in a Zanzibar model.",
 		icon:        "tag",
 		color:       "#9b5de5",
 	},

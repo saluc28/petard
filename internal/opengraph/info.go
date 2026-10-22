@@ -231,11 +231,13 @@ func nodeInfo(kind graph.NodeKind) map[string]bhgraph.KindInfo {
 			"fixes for it. Capabilities point here.")
 	case graph.NodeKindAttribute:
 		return meaning(
-			"A field a decision depends on: a document under `data`, which the rules that read it "+
-				"point to with `PTD_Reads`, or a value an external source answered with, joined to that "+
-				"source by `PTD_TaintedBy`.",
-			"Whoever the write model says can write it is at the end of `PTD_WrittenBy`, and that is "+
-				"where an escalation aims.",
+			"A field a decision depends on, and what an escalation aims at: the question worth asking "+
+				"about it is who can write it, and whoever the write model says can is at the end of "+
+				"`PTD_WrittenBy`.",
+			"In an OPA graph it is a document under `data`, which the rules that read it reach by "+
+				"`PTD_Reads`, or a value an external source answered, joined to that source by "+
+				"`PTD_TaintedBy`. In a Zanzibar graph it is a relation on an object, named "+
+				"`object#relation`.",
 		)
 	case graph.NodeKindRule:
 		return withDetails(meaning(

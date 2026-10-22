@@ -50,7 +50,7 @@
     {
       "name": "PTD_Resource",
       "display_name": "Resource",
-      "description": "What an action is performed on, named by the document a decision turned out to allow.",
+      "description": "What an action is performed on: a document a decision grants, or an object a Zanzibar permission is raised on.",
       "is_display_kind": true,
       "icon": "file",
       "color": "#6a994e",
@@ -67,7 +67,7 @@
     {
       "name": "PTD_Attribute",
       "display_name": "Attribute",
-      "description": "A field a decision depends on, whether it was read from data or believed from an external answer. It is what an escalation aims at.",
+      "description": "A field a decision depends on, and what an escalation aims at: a document read from data, a value from an external source, or a relation on an object in a Zanzibar model.",
       "is_display_kind": true,
       "icon": "tag",
       "color": "#9b5de5",
@@ -76,7 +76,7 @@
           "title": "What it means",
           "position": 1,
           "markdown": {
-            "content": "A field a decision depends on: a document under `data`, which the rules that read it point to with `PTD_Reads`, or a value an external source answered with, joined to that source by `PTD_TaintedBy`.\n\nWhoever the write model says can write it is at the end of `PTD_WrittenBy`, and that is where an escalation aims."
+            "content": "A field a decision depends on, and what an escalation aims at: the question worth asking about it is who can write it, and whoever the write model says can is at the end of `PTD_WrittenBy`.\n\nIn an OPA graph it is a document under `data`, which the rules that read it reach by `PTD_Reads`, or a value an external source answered, joined to that source by `PTD_TaintedBy`. In a Zanzibar graph it is a relation on an object, named `object#relation`."
           }
         }
       }
