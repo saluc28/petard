@@ -117,6 +117,72 @@ func TestRunSaysWhatTheGraphLeavesOut(t *testing.T) {
 	}
 }
 
+// The export reads the SpiceDB files under the paths and draws their
+// escalations, so a run against a schema with no Rego beside it is a graph of
+// the Zanzibar findings rather than the empty-bundle error a policy-only run
+// would make of it.
+func TestRunExportsTheSpiceDBEscalations(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "petard.json")
+	spiceFixture := filepath.Join("..", "..", "..", "fixtures", "vulnerable-spicedb")
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-out", path, spiceFixture}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the payload: %v", err)
+	}
+	var payload struct {
+		Graph struct {
+			Nodes []struct {
+				Kinds []string `json:"kinds"`
+			} `json:"nodes"`
+			Edges []struct {
+				Kind       string         `json:"kind"`
+				Properties map[string]any `json:"properties"`
+			} `json:"edges"`
+		} `json:"graph"`
+	}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		t.Fatalf("the payload is not the shape BloodHound ingests: %v", err)
+	}
+
+	attributes := 0
+	for _, node := range payload.Graph.Nodes {
+		if slices.Contains(node.Kinds, "PTD_Attribute") {
+			attributes++
+		}
+	}
+	written, raises := 0, 0
+	for _, edge := range payload.Graph.Edges {
+		switch edge.Kind {
+		case "PTD_WrittenBy":
+			written++
+		case "PTD_CanEscalateTo":
+			raises++
+			if permission, _ := edge.Properties["permission"].(string); permission == "" {
+				t.Errorf("a %s edge has no permission, which is what tells a Zanzibar raise from an OPA one", edge.Kind)
+			}
+			patterns, _ := edge.Properties["patterns"].([]any)
+			named := false
+			for _, p := range patterns {
+				if id, ok := p.(string); ok && strings.HasPrefix(id, "PTD-ZAN-") {
+					named = true
+				}
+			}
+			if !named {
+				t.Errorf("a %s edge names no Zanzibar pattern: %v", edge.Kind, patterns)
+			}
+		}
+	}
+
+	if attributes == 0 || written == 0 || raises == 0 {
+		t.Fatalf("graph has %d attributes, %d writes, %d raises, want the whole escalation path", attributes, written, raises)
+	}
+}
+
 // instance is a stand in for BloodHound, answering the endpoints this command
 // uses the way the real one does.
 //

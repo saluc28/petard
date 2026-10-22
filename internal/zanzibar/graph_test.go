@@ -168,6 +168,45 @@ func TestEscalationGraphEmpty(t *testing.T) {
 	}
 }
 
+// AddEscalations builds several samples together, so a raise two validation
+// files both reach is one edge naming its category once, not one edge per file.
+func TestAddEscalationsMergesAcrossSamples(t *testing.T) {
+	model := documents(t)
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+	}}
+	sample := Sample{
+		Model:         model,
+		Relationships: []Relationship{rel("document:roadmap", "owner", "user:olivia")},
+		Now:           time.Unix(0, 0),
+	}
+
+	// The same sample twice stands for two validation files that both reach the
+	// same raise.
+	g := graph.New()
+	if err := AddEscalations(g, []GraphInput{{Sample: sample, WriteModel: wm}, {Sample: sample, WriteModel: wm}}); err != nil {
+		t.Fatalf("AddEscalations: %v", err)
+	}
+
+	wantNodes := []string{
+		"PTD_Principal user:attacker",
+		"PTD_Resource document:roadmap",
+		"PTD_Attribute document:roadmap#viewer",
+	}
+	if got := nodeLines(g); !slices.Equal(got, wantNodes) {
+		t.Errorf("nodes:\n got %#v\nwant %#v", got, wantNodes)
+	}
+	// One PTD_WrittenBy, and one PTD_CanEscalateTo whose patterns name the
+	// category once rather than twice.
+	wantEdges := []string{
+		"PTD_WrittenBy document:roadmap#viewer -> user:attacker map[]",
+		"PTD_CanEscalateTo user:attacker -> document:roadmap map[patterns:[PTD-ZAN-008] permission:view]",
+	}
+	if got := edgeLines(g); !slices.Equal(got, wantEdges) {
+		t.Errorf("edges:\n got %#v\nwant %#v", got, wantEdges)
+	}
+}
+
 // nodeLines renders the graph's nodes as "<kind> <id>", in insertion order.
 func nodeLines(g *graph.Graph) []string {
 	var out []string

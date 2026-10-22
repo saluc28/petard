@@ -9,45 +9,73 @@ import (
 	"github.com/saluc28/petard/internal/graph"
 )
 
-// EscalationGraph turns the escalations a coalition can raise over a sample
-// into the engine-neutral graph the exporter serializes (section 5.1 of the
-// definitions): the attacker and the object it raises a permission on as nodes,
-// a PTD_WrittenBy for each relation the witness writes, and a PTD_CanEscalateTo
-// for the raise. It is the Zanzibar counterpart of the OPA taxonomy's
-// AddEscalations, built from the same classifiedEscalations the findings are,
-// so a report and a graph of one sample never disagree about what the engine
-// found.
-//
-// It returns an empty graph, not an error, when there is nothing to draw: a
-// sample with no model or no write model has no escalations, and an exporter
-// merging several engines wants an empty graph it can add nothing from rather
-// than a nil it has to guard.
-func EscalationGraph(s Sample, wm *WriteModel) (*graph.Graph, error) {
-	found := classifiedEscalations(s, wm)
+// GraphInput is one sample and the write model for its schema. A graph is built
+// from several at once, since a set of paths can hold more than one validation
+// file, and an escalation two of them both reach is one edge, not one per file.
+type GraphInput struct {
+	Sample     Sample
+	WriteModel *WriteModel
+}
 
-	// The closure visits states in a map's order, so sort the escalations
-	// before anything enters the graph: nodes keep insertion order and the
-	// export is diffed, so two runs over one sample have to build byte for byte
-	// the same file. The key is unique per kept escalation, so the order is
-	// total.
+// EscalationGraph is the escalation graph of a single sample, built into a fresh
+// graph and handed back. It is for callers that have one sample and want the
+// graph returned rather than a graph to add into; AddEscalations is the general
+// form.
+func EscalationGraph(s Sample, wm *WriteModel) (*graph.Graph, error) {
+	g := graph.New()
+	if err := AddEscalations(g, []GraphInput{{Sample: s, WriteModel: wm}}); err != nil {
+		return nil, err
+	}
+	return g, nil
+}
+
+// AddEscalations adds the escalations the inputs allow into g (section 5.1 of
+// the definitions): the attacker and the object it raises a permission on as
+// nodes, a PTD_WrittenBy for each relation a witness writes, and a
+// PTD_CanEscalateTo for the raise. It is the Zanzibar counterpart of the OPA
+// taxonomy's AddEscalations, built from the same classifiedEscalations the
+// findings are, so a report and a graph of one set of paths never disagree
+// about what the engine found.
+//
+// The inputs are built together, so a raise two validation files both reach is
+// one PTD_CanEscalateTo naming every category, not one edge per file. g may
+// already hold another engine's graph: what is added goes in after whatever is
+// there, and an id another engine used under a different kind fails loud with
+// graph.ErrKindConflict rather than merging two unrelated things.
+func AddEscalations(g *graph.Graph, inputs []GraphInput) error {
+	var found []attackerEscalation
+	for _, in := range inputs {
+		found = append(found, classifiedEscalations(in.Sample, in.WriteModel)...)
+	}
+
+	// The closure visits states in a map's order, and across samples the key a
+	// finding dedups on, by object type, is not unique, so sort by the concrete
+	// attacker, object and permission as well. The export is diffed, so the
+	// graph has to be built the same way on every run.
 	slices.SortFunc(found, func(a, b attackerEscalation) int {
-		return cmp.Compare(a.key(), b.key())
+		if c := cmp.Compare(a.patternID, b.patternID); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.attacker.String(), b.attacker.String()); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.esc.Object.String(), b.esc.Object.String()); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.esc.Permission, b.esc.Permission)
 	})
 
 	b := &escalationBuilder{
-		g:      graph.New(),
+		g:      g,
 		writes: map[string]*writeEdge{},
 		raises: map[string]*raiseEdge{},
 	}
 	for _, f := range found {
 		if err := b.add(f); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	if err := b.flush(); err != nil {
-		return nil, err
-	}
-	return b.g, nil
+	return b.flush()
 }
 
 // escalationBuilder gathers the nodes and edges of an escalation graph. The
@@ -163,7 +191,9 @@ func (b *escalationBuilder) flush() error {
 			To:   raise.object,
 			Properties: map[string]any{
 				graph.PropPermission: raise.permission,
-				graph.PropPatterns:   slices.Sorted(slices.Values(raise.patterns)),
+				// Compacted: the same category can reach one raise from two
+				// validation files, and the edge names it once.
+				graph.PropPatterns: slices.Compact(slices.Sorted(slices.Values(raise.patterns))),
 			},
 		}); err != nil {
 			return fmt.Errorf("zanzibar: adding the escalation to %s: %w", raise.object, err)

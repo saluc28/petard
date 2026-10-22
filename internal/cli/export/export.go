@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -31,10 +32,12 @@ import (
 	"github.com/saluc28/bhgraph/client"
 
 	"github.com/saluc28/petard/internal/cli/render"
+	"github.com/saluc28/petard/internal/cli/spicesetup"
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
+	"github.com/saluc28/petard/internal/zanzibar"
 	"github.com/saluc28/petard/queries"
 )
 
@@ -72,6 +75,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stderr, "usage: petard export [flags] <path>...\n\n"+
 			"Paths are Rego files, directories holding them, bundle archives such as bundle.tar.gz,\n"+
 			"or the URL of a running OPA, whose policies are read over its API with a token from $"+taxonomy.TokenEnv+".\n"+
+			"SpiceDB schema files (.zed) and validation files under the paths are read as well, and their\n"+
+			"escalations drawn into the same graph.\n"+
 			"With -url, the BloodHound credentials are read from "+envTokenID+" and "+envTokenKey+".\n\n")
 		flags.PrintDefaults()
 	}
@@ -131,9 +136,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		mode = opaengine.ParseModeV1
 	}
 
+	setup, err := spicesetup.Load(paths, *writeModelPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "petard export: %v\n", err)
+		return exitFailure
+	}
+
 	ctx := context.Background()
 	payload, analysis, gaps, err := build(ctx, taxonomy.Inputs{
-		Paths:            paths,
+		Paths:            setup.PolicyPaths,
 		Mode:             mode,
 		Entrypoints:      entrypoints,
 		DenyEntrypoints:  denyEntrypoints,
@@ -143,13 +154,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		EnforcementPoint: *enforcementPoint,
 		Granted:          granted,
 		DataPath:         *dataPath,
-		WriteModelPath:   *writeModelPath,
+		WriteModelPath:   setup.PolicyWriteModel,
 		Limits: opaengine.Limits{
 			MaxCallDepth: *maxCallDepth,
 			MaxCallPaths: *maxCallPaths,
 			MaxResiduals: *maxResiduals,
 		},
-	})
+	}, setup)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard export: %v\n", err)
 		return exitFailure
@@ -199,6 +210,11 @@ type remote struct {
 // build runs the analysis and turns what it found into a payload BloodHound
 // would accept.
 //
+// It merges two engines into one graph: the OPA taxonomy, and the Zanzibar
+// escalations of whatever SpiceDB files the paths held. An id one engine used
+// under a kind the other gives it is a bug the graph refuses with
+// ErrKindConflict rather than merging two unrelated things.
+//
 // The ids are uppercased before anything else looks at them. BloodHound
 // uppercases object ids during ingest, so a payload that keeps its own case
 // describes nodes under ids the server will not have: the next lookup, the next
@@ -208,19 +224,27 @@ type remote struct {
 // The analysis comes back with the payload, so that the run can say what the
 // graph rests on, the decisions above all, and so do the gaps, which are what
 // the analysis knows and the graph could not hold.
-func build(ctx context.Context, inputs taxonomy.Inputs) (bhgraph.Graph, taxonomy.Analysis, taxonomy.Gaps, error) {
-	analysis, err := taxonomy.Load(ctx, inputs)
+func build(ctx context.Context, inputs taxonomy.Inputs, spice spicesetup.Found) (bhgraph.Graph, taxonomy.Analysis, taxonomy.Gaps, error) {
+	g, analysis, gaps, err := policyGraph(ctx, inputs, len(spice.Files) > 0)
 	if err != nil {
 		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
 	}
 
-	findings, err := taxonomy.Run(ctx, analysis)
-	if err != nil {
-		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
-	}
-	g, gaps, err := taxonomy.Assemble(ctx, analysis, findings)
-	if err != nil {
-		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
+	if len(spice.Files) > 0 {
+		now := time.Now()
+		var graphInputs []zanzibar.GraphInput
+		for _, f := range spice.Files {
+			if !f.Validation {
+				continue
+			}
+			graphInputs = append(graphInputs, zanzibar.GraphInput{
+				Sample:     f.Sample(now),
+				WriteModel: spice.WriteModels[path.Dir(f.SchemaPath)],
+			})
+		}
+		if err := zanzibar.AddEscalations(g, graphInputs); err != nil {
+			return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
+		}
 	}
 
 	payload := opengraph.Payload(g)
@@ -229,6 +253,29 @@ func build(ctx context.Context, inputs taxonomy.Inputs) (bhgraph.Graph, taxonomy
 		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
 	}
 	return payload, analysis, gaps, nil
+}
+
+// policyGraph runs the OPA analysis and assembles its graph. A set of paths that
+// holds SpiceDB files but no Rego is not the empty bundle that is an error: it
+// returns an empty graph for the Zanzibar side to fill.
+func policyGraph(ctx context.Context, inputs taxonomy.Inputs, haveSpiceDB bool) (*graph.Graph, taxonomy.Analysis, taxonomy.Gaps, error) {
+	analysis, err := taxonomy.Load(ctx, inputs)
+	if errors.Is(err, opaengine.ErrNoModules) && haveSpiceDB {
+		return graph.New(), taxonomy.Analysis{}, taxonomy.Gaps{}, nil
+	}
+	if err != nil {
+		return nil, taxonomy.Analysis{}, taxonomy.Gaps{}, err
+	}
+
+	findings, err := taxonomy.Run(ctx, analysis)
+	if err != nil {
+		return nil, taxonomy.Analysis{}, taxonomy.Gaps{}, err
+	}
+	g, gaps, err := taxonomy.Assemble(ctx, analysis, findings)
+	if err != nil {
+		return nil, taxonomy.Analysis{}, taxonomy.Gaps{}, err
+	}
+	return g, analysis, gaps, nil
 }
 
 // write puts the payload where it was asked for, indented, because a payload
