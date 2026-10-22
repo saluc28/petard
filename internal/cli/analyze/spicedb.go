@@ -1,12 +1,9 @@
 package analyze
 
 import (
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -14,7 +11,6 @@ import (
 
 	"github.com/saluc28/petard/internal/cli/render"
 	"github.com/saluc28/petard/internal/taxonomy"
-	"github.com/saluc28/petard/internal/writemodel"
 	"github.com/saluc28/petard/internal/zanzibar"
 	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 )
@@ -88,71 +84,6 @@ func runSpiceDB(files []*spicedb.File, now time.Time, writeModels map[string]*za
 		}
 	}
 	return run, nil
-}
-
-// discoverWriteModels reads a relationship-writes write model from the
-// directory of each schema the SpiceDB files name, so that a schema with a
-// write model beside it is analyzed with one and its matches become findings.
-// A YAML that is not a write model, a validation file among them, is left
-// alone; a write model that does not hold together is an error named to the
-// user.
-func discoverWriteModels(files []*spicedb.File) (map[string]*zanzibar.WriteModel, error) {
-	models := map[string]*zanzibar.WriteModel{}
-	for _, dir := range spiceDirs(files) {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			// A schema held inline in a validation file has no directory of its
-			// own to read, and a directory already walked for the schema is read
-			// for what it holds either way.
-			continue
-		}
-		for _, e := range entries {
-			name := e.Name()
-			if e.IsDir() || (!strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml")) {
-				continue
-			}
-			wm, err := zanzibar.LoadWriteModel(path.Join(dir, name))
-			switch {
-			case err == nil:
-				models[dir] = wm
-			case errors.Is(err, writemodel.ErrNotAWriteModel):
-				// A validation file or some other YAML; not a write model.
-			default:
-				return nil, err
-			}
-		}
-	}
-	return models, nil
-}
-
-// spiceDirs is the distinct directories the schemas live in, in a stable order.
-func spiceDirs(files []*spicedb.File) []string {
-	var dirs []string
-	for _, f := range files {
-		dir := path.Dir(f.SchemaPath)
-		if !slices.Contains(dirs, dir) {
-			dirs = append(dirs, dir)
-		}
-	}
-	return dirs
-}
-
-// policyPaths are the paths left for the policy loader once the SpiceDB files
-// named one by one are taken out. A schema named on the command line is not a
-// Rego file, and the loader reads every file it is handed as one; a directory
-// stays, since the loader takes only the Rego files under it.
-func policyPaths(paths []string, files []*spicedb.File) []string {
-	named := map[string]bool{}
-	for _, f := range files {
-		named[filepath.Clean(f.Path)] = true
-	}
-	var out []string
-	for _, p := range paths {
-		if !named[filepath.Clean(p)] {
-			out = append(out, p)
-		}
-	}
-	return out
 }
 
 // counts are the matches by pattern, the way the summary of a policy counts

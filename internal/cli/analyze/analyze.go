@@ -15,13 +15,11 @@ import (
 	"time"
 
 	"github.com/saluc28/petard/internal/cli/render"
+	"github.com/saluc28/petard/internal/cli/spicesetup"
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
-	"github.com/saluc28/petard/internal/writemodel"
-	"github.com/saluc28/petard/internal/zanzibar"
-	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
@@ -125,39 +123,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Before the policies, so that a schema that does not compile stops the
-	// run the way a policy that does not parse does.
-	spiceFiles, err := spicedb.Find(paths)
+	// run the way a policy that does not parse does. The write-model flag feeds
+	// both engines, and spicesetup tells them apart by the kind the file declares.
+	setup, err := spicesetup.Load(paths, *writeModelPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
-	}
-	writeModels, err := discoverWriteModels(spiceFiles)
-	if err != nil {
-		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
-		return exitFailure
-	}
-	// The write-model flag feeds both engines, told apart by the kind the file
-	// declares. A relationship-writes model named there overrides what was
-	// found beside the schemas, and is kept from the policy loader, which reads
-	// the write-paths kind.
-	opaWriteModelPath := *writeModelPath
-	if *writeModelPath != "" {
-		wm, err := zanzibar.LoadWriteModel(*writeModelPath)
-		switch {
-		case err == nil:
-			opaWriteModelPath = ""
-			for _, dir := range spiceDirs(spiceFiles) {
-				writeModels[dir] = wm
-			}
-		case errors.Is(err, writemodel.ErrNotAWriteModel):
-			// A write-paths model for the policy engine; left for it to load.
-		default:
-			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
-			return exitFailure
-		}
 	}
 	style := render.StyleFor(stdout, *noColor)
-	spice, err := runSpiceDB(spiceFiles, time.Now(), writeModels, !*quiet || *questionsPath != "")
+	spice, err := runSpiceDB(setup.Files, time.Now(), setup.WriteModels, !*quiet || *questionsPath != "")
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
@@ -166,7 +140,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	ctx := context.Background()
 	analyzed, err := taxonomy.Load(ctx, taxonomy.Inputs{
-		Paths:            policyPaths(paths, spiceFiles),
+		Paths:            setup.PolicyPaths,
 		Mode:             mode,
 		Entrypoints:      entrypoints,
 		DenyEntrypoints:  denyEntrypoints,
@@ -176,14 +150,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		EnforcementPoint: *enforcementPoint,
 		Granted:          granted,
 		DataPath:         *dataPath,
-		WriteModelPath:   opaWriteModelPath,
+		WriteModelPath:   setup.PolicyWriteModel,
 		Limits: opaengine.Limits{
 			MaxCallDepth: *maxCallDepth,
 			MaxCallPaths: *maxCallPaths,
 			MaxResiduals: *maxResiduals,
 		},
 	})
-	if errors.Is(err, opaengine.ErrNoModules) && len(spiceFiles) > 0 {
+	if errors.Is(err, opaengine.ErrNoModules) && len(setup.Files) > 0 {
 		printSpiceDB(stdout, spice, patterns, pr)
 		if *questionsPath != "" {
 			written, err := writeSpiceQuestions(*questionsPath, spice.proposals)
@@ -218,7 +192,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	printSummary(stdout, analyzed, found, coverage, pr)
 	// The SpiceDB files are summed up beside the policies, ahead of the
 	// evidence -v adds for the policies, so the first screen holds both.
-	if len(spiceFiles) > 0 && (!*quiet || len(spice.matches) > 0) {
+	if len(setup.Files) > 0 && (!*quiet || len(spice.matches) > 0) {
 		fmt.Fprintln(stdout)
 		printSpiceDB(stdout, spice, patterns, pr)
 	}
