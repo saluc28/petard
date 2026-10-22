@@ -2,6 +2,7 @@ package spicedb
 
 import (
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,6 +11,7 @@ import (
 
 	yaml "go.yaml.in/yaml/v3"
 
+	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/zanzibar"
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
@@ -134,6 +136,85 @@ func TestRegistryCases(t *testing.T) {
 				}
 				if got := reports(t, path, entry.ID); got != fp.Case.Reports {
 					t.Errorf("case of %q: reported %t, the registry says %t", fp.Condition, got, fp.Case.Reports)
+				}
+			}
+		})
+	}
+}
+
+// The registry says where each pattern leaves its id in the exported graph, and
+// the saved queries rest on that. So it is held against the engine: on the
+// fixture, the kinds a pattern marks are the ones its file declares, and a
+// pattern that declares none leaves none, as the caveat finding does, drawing no
+// edge.
+func TestRegistryMarksAreWhereTheEngineLeavesThem(t *testing.T) {
+	wm, err := zanzibar.LoadWriteModel(fixtureWrites)
+	if err != nil {
+		t.Fatalf("LoadWriteModel: %v", err)
+	}
+	g, err := zanzibar.EscalationGraph(findOne(t, fixtureValidation).Sample(time.Now()), wm)
+	if err != nil {
+		t.Fatalf("EscalationGraph: %v", err)
+	}
+
+	// marked holds, per pattern and per kind, the properties of every element
+	// the pattern left its id on.
+	marked := map[string]map[string][]map[string]any{}
+	note := func(kind string, properties map[string]any) {
+		ids, _ := properties[graph.PropPatterns].([]string)
+		for _, id := range ids {
+			if marked[id] == nil {
+				marked[id] = map[string][]map[string]any{}
+			}
+			marked[id][kind] = append(marked[id][kind], properties)
+		}
+	}
+	for _, node := range g.Nodes() {
+		note(string(node.Kind), node.Properties)
+	}
+	for _, edge := range g.Edges() {
+		note(string(edge.Kind), edge.Properties)
+	}
+
+	files, err := fs.Glob(registry.Zanzibar, "*.yaml")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no Zanzibar pattern in the registry: %v", err)
+	}
+	for _, file := range files {
+		raw, err := fs.ReadFile(registry.Zanzibar, file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entry struct {
+			ID    string `yaml:"id"`
+			Graph struct {
+				Marks []struct {
+					Kind       string   `yaml:"kind"`
+					Properties []string `yaml:"properties"`
+				} `yaml:"marks"`
+			} `yaml:"graph"`
+		}
+		if err := yaml.Unmarshal(raw, &entry); err != nil {
+			t.Fatal(err)
+		}
+
+		t.Run(entry.ID, func(t *testing.T) {
+			declared := map[string][]string{}
+			for _, mark := range entry.Graph.Marks {
+				declared[mark.Kind] = mark.Properties
+			}
+			kinds := slices.Sorted(maps.Keys(marked[entry.ID]))
+			if expected := slices.Sorted(maps.Keys(declared)); !slices.Equal(kinds, expected) {
+				t.Fatalf("the engine marks %v on the fixture, the file declares %v", kinds, expected)
+			}
+			for kind, properties := range declared {
+				for _, property := range properties {
+					if !slices.ContainsFunc(marked[entry.ID][kind], func(held map[string]any) bool {
+						_, found := held[property]
+						return found
+					}) {
+						t.Errorf("no %s the pattern marks carries %q", kind, property)
+					}
 				}
 			}
 		})

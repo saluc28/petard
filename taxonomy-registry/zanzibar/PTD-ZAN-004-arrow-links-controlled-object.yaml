@@ -108,9 +108,14 @@ graph:
     A finding when the write model lets a coalition write the walked relation with a controllable
     object. The arrow is in the schema, but who can link an object in is not, so there is no
     candidate without a write model.
-  marks: []
+  marks:
+    - kind: PTD_CanEscalateTo
+      properties: [patterns, permission]
   marks_note: >
-    No mark: `petard export` reads no SpiceDB schema.
+    The escalation is a `PTD_CanEscalateTo` from the coalition to the object it raises the
+    permission on, carrying the permission and this pattern's id. The writes behind it are
+    `PTD_WrittenBy` edges on the attributes the witness wrote, which the graph holds without
+    tagging them with the pattern.
 
 false_positives:
   - condition: >

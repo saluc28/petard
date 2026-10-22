@@ -133,7 +133,8 @@ graph:
     the checks and emits a candidate.
   marks: []
   marks_note: >
-    No mark: `petard export` reads no SpiceDB schema.
+    No mark: the caveat exemption is a finding about a relationship, not an escalation, so
+    `petard export` draws no edge for it.
 
 false_positives:
   - condition: >
