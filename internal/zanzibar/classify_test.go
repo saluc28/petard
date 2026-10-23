@@ -181,3 +181,36 @@ func TestControlsRecognizesCreatedObjectsByTheWitnessNotTheName(t *testing.T) {
 		t.Error("an input object named created-0 that no creation made must not be controlled")
 	}
 }
+
+// classify reads what the writer held with a check, and a check can fail. A
+// decisive write that names a relation the model does not declare makes it
+// fail; such an escalation is one the search would never produce, built here by
+// hand to prove the error travels out rather than being read as "not a
+// delegation".
+func TestClassifyPropagatesACheckError(t *testing.T) {
+	m, err := NewModel([]*Type{
+		{Name: "user"},
+		{Name: "doc", Relations: []*Relation{{Name: "editor", Allowed: []Allowed{{Type: "user"}}}}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := newEngine(m, &WriteModel{SchemaVersion: 1, Kind: "relationship-writes"}, nil, nil,
+		[]Object{object("user:mallory")}, Options{Now: time.Unix(0, 0)})
+
+	// doc#undeclared is not in the model, so the writer check returns an error.
+	// The subject is not the writer, so the delegation case is the one reached.
+	decisive := WriteStep{
+		Relationship: rel("doc:x", "undeclared", "user:victim"),
+		Writer:       Subject{Object: object("user:mallory")},
+	}
+	esc := Escalation{
+		Object:     object("doc:x"),
+		Permission: "edit",
+		Writes:     []WriteStep{decisive},
+		moves:      []move{{rel: decisive.Relationship, writer: decisive.Writer}},
+	}
+	if _, _, err := e.classify(esc); err == nil {
+		t.Error("classify should return the check error, not swallow it")
+	}
+}
