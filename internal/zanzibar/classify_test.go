@@ -161,3 +161,23 @@ func TestClassify(t *testing.T) {
 		})
 	}
 }
+
+// A created object is one a creation made on the witness, not one whose
+// identifier happens to start the way createdID writes them. An input object
+// named like a synthetic one must not be taken for the coalition's, or a write
+// of it would be classified as a self-write it is not.
+func TestControlsRecognizesCreatedObjectsByTheWitnessNotTheName(t *testing.T) {
+	e := &engine{coalition: []Object{object("user:mallory")}}
+	writer := Subject{Object: object("user:mallory")}
+
+	made := object("folder:created-0")
+	witness := []move{{creates: &CreationRule{Creates: "folder"}, created: made}}
+	if !e.controls(Subject{Object: made}, writer, createdObjects(witness)) {
+		t.Error("an object a creation made on the witness should be controlled")
+	}
+
+	lookalike := object("user:created-0")
+	if e.controls(Subject{Object: lookalike}, writer, createdObjects(nil)) {
+		t.Error("an input object named created-0 that no creation made must not be controlled")
+	}
+}

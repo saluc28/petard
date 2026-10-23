@@ -104,6 +104,7 @@ func (e *engine) classify(esc Escalation) (Category, bool) {
 	}
 	rel := step.Relationship
 	subject := rel.Subject
+	created := createdObjects(esc.moves)
 
 	switch {
 	// A delete under E1 removes a tuple that occurs only negatively, so it lifts
@@ -114,37 +115,48 @@ func (e *engine) classify(esc Escalation) (Category, bool) {
 	case subject.ID == WildcardID:
 		return CategoryGlobalSwitch, true
 
-	case e.arrowThroughs(rel.Resource.Type)[rel.Relation] && e.controls(subject, step.Writer):
+	case e.arrowThroughs(rel.Resource.Type)[rel.Relation] && e.controls(subject, step.Writer, created):
 		return CategoryTransitiveGrant, true
 
-	case e.grantsToUserset(esc.Object.Type, rel.Resource.Type, rel.Relation) && e.controls(subject, step.Writer):
+	case e.grantsToUserset(esc.Object.Type, rel.Resource.Type, rel.Relation) && e.controls(subject, step.Writer, created):
 		return CategoryAssumableIdentity, true
 
 	case subject.Object != step.Writer.Object && e.writerLacks(esc, step):
 		return CategoryDelegationNotNarrowed, true
 
-	case rel.Resource == esc.Object && e.controls(subject, step.Writer) && step.Rule != nil && step.Rule.Gate.Holds != "":
+	case rel.Resource == esc.Object && e.controls(subject, step.Writer, created) && step.Rule != nil && step.Rule.Gate.Holds != "":
 		return CategorySplitGrant, true
 
-	case rel.Resource == esc.Object && e.controls(subject, step.Writer) && step.Rule != nil && step.Rule.Gate.Anyone:
+	case rel.Resource == esc.Object && e.controls(subject, step.Writer, created) && step.Rule != nil && step.Rule.Gate.Anyone:
 		return CategoryAttrSelfWrite, true
 	}
 	return "", false
 }
 
 // controls reports whether a written subject is one the coalition controls: the
-// writer itself, a starting coalition member, or an object a creation made.
-func (e *engine) controls(subject Subject, writer Subject) bool {
+// writer itself, a starting coalition member, or an object a creation made on
+// the witness.
+func (e *engine) controls(subject, writer Subject, created map[Object]bool) bool {
 	if subject.Relation != "" || subject.ID == WildcardID {
 		return false
 	}
-	return subject.Object == writer.Object || containsObject(e.coalition, subject.Object) || isCreated(subject.Object)
+	return subject.Object == writer.Object || containsObject(e.coalition, subject.Object) || created[subject.Object]
 }
 
-// isCreated reports whether an object was made by a creation rule, by the
-// identifier createdID gives it.
-func isCreated(o Object) bool {
-	return len(o.ID) >= len("created-") && o.ID[:len("created-")] == "created-"
+// createdObjects is the set of objects a witness made: the object each creation
+// move brought into the coalition. A witness can only write a created object it
+// made earlier on the same path, so its own moves are the complete set. Reading
+// it this way, rather than from the shape of the identifier createdID gives a
+// created object, never mistakes an input object named like a synthetic one for
+// a created one.
+func createdObjects(moves []move) map[Object]bool {
+	created := map[Object]bool{}
+	for _, mv := range moves {
+		if mv.creates != nil {
+			created[mv.created] = true
+		}
+	}
+	return created
 }
 
 // arrowThroughs is the relations an arrow walks in the permissions of a type.
