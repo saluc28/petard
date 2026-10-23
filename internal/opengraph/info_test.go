@@ -18,61 +18,24 @@ import (
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
-// The Entity Panel names every pattern by its title and links its file, so the
-// notes here and the registry have to agree, one pattern for one pattern, for
-// every engine the registry holds.
-func TestPatternNotesFollowTheRegistry(t *testing.T) {
-	for _, engine := range []struct {
-		dir string
-		fs  fs.FS
-	}{
-		{registry.OPADir, registry.OPA},
-		{registry.ZanzibarDir, registry.Zanzibar},
-	} {
-		patterns, err := taxonomy.LoadRegistry(engine.fs)
-		if err != nil {
-			t.Fatalf("LoadRegistry(%s) error = %v", engine.dir, err)
-		}
-		var notes []patternNote
-		for _, note := range patternNotes {
-			if note.engine == engine.dir {
-				notes = append(notes, note)
-			}
-		}
-		if len(patterns) != len(notes) {
-			t.Fatalf("the %s registry holds %d patterns, the notes %d", engine.dir, len(patterns), len(notes))
-		}
-		for i, pattern := range patterns {
-			note := notes[i]
-			if note.id != pattern.ID || note.name != pattern.Name || note.title != pattern.Title {
-				t.Errorf("%s note %d = %s %s %q, the registry says %s %s %q",
-					engine.dir, i, note.id, note.name, note.title, pattern.ID, pattern.Name, pattern.Title)
-			}
-			if note.closes != pattern.Closes {
-				t.Errorf("%s closes = %q, the registry says %q", note.id, note.closes, pattern.Closes)
-			}
-		}
-	}
-}
-
 // The panel links each pattern's file by id and name, built the same way the
-// URL is, so a name that does not match its file would 404 in the browser
-// without the other test noticing: that one checks the name against the YAML
-// field, this one against the file that is actually there.
+// URL is, so a name that does not match its file would 404 in the browser. The
+// notes are loaded from the registry, so this checks that the id and name the
+// link is built from land on a file that is actually there.
 func TestEveryNoteLinksAFileThatExists(t *testing.T) {
 	registries := map[string]fs.FS{
 		registry.OPADir:      registry.OPA,
 		registry.ZanzibarDir: registry.Zanzibar,
 	}
 	for _, note := range patternNotes {
-		fsys, ok := registries[note.engine]
+		fsys, ok := registries[note.Engine]
 		if !ok {
-			t.Errorf("%s has engine %q, which the registry does not hold", note.id, note.engine)
+			t.Errorf("%s has engine %q, which the registry does not hold", note.ID, note.Engine)
 			continue
 		}
-		file := note.id + "-" + note.name + ".yaml"
+		file := note.ID + "-" + note.Name + ".yaml"
 		if _, err := fs.Stat(fsys, file); err != nil {
-			t.Errorf("%s links %s, not in the %s registry: %v", note.id, file, note.engine, err)
+			t.Errorf("%s links %s, not in the %s registry: %v", note.ID, file, note.Engine, err)
 		}
 	}
 }
