@@ -26,6 +26,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - SpiceDB files are read only from under the paths given. A validation file whose `schemaFile` is
   absolute or leads out of them is refused, and so is one that holds a schema and names a
   `schemaFile` as well, which SpiceDB refuses too.
+- The write model for SpiceDB schemas, `relationship-writes`, declares who may write each
+  relationship tuple, as what subject, under which gate, and with which caveat and expiration, and
+  what objects a coalition may create. The schema says which tuples are well formed, the write
+  model which of them an end user can bring about. It is given with `-write-model` or read as a
+  `writes.yaml` beside the schema. A relation with no rule is taken as not writable, so a rule left
+  out is a missed raise and never an invented one.
+- `PTD-ZAN-002` to `PTD-ZAN-008`, the escalations a coalition can raise over a SpiceDB schema under
+  a write model, one for each kind of decisive write: a deleted ban an exclusion reads, a wildcard
+  subject, an arrow to an object the coalition controls, a userset it joins, a grant written for
+  another the writer does not hold, a stronger relation gated on a weaker one, and a relation
+  written for itself behind an open gate. A closure engine computes the access a coalition reaches
+  by every write the model allows, exact under the conditions E1 and E2 and bounded with the bound
+  named when they do not hold. `petard analyze` reports each raise with the permission it opens and
+  the write that opens it. Without a write model nothing is reported, since who writes a relation
+  is not in the schema.
+- `petard analyze` proposes a safe gate for each relation the write model leaves without a rule:
+  the permissions that, used as the gate to write it, let no coalition raise anything, weighed
+  together so a gate that is safe alone and not beside another is demoted. `-questions` writes them
+  as a `relationship-writes` model to confirm and rerun with.
 
 ### Changed
 
@@ -35,9 +54,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   directory of the OPA patterns. The registry is at schema version 2: an entry of version 1 is one
   of version 2 with its `schema_version` changed.
 - `petard demo` analyzes a SpiceDB schema beside the bundle, in the same run: the schema of the
-  same documents service, with a validation file that holds the case and the counter case of
-  `PTD-ZAN-001`. `petard demo opa` and `petard demo spicedb` take one of the two alone. `-extract`
-  writes the fixtures it is given and prints the command that repeats the run.
+  same documents service, with a validation file whose write model carries one defect per rule, so
+  the one fixture shows the caveat finding and every escalation the engine has. `petard demo opa`
+  and `petard demo spicedb` take one of the two alone. `-extract` writes the fixtures it is given
+  and prints the command that repeats the run.
+- `petard export` reads the SpiceDB files under the paths and draws their escalations into the same
+  BloodHound graph as a policy's: a `PTD_CanEscalateTo` for each raise, carrying the permission it
+  opens and ending at the object it is raised on, a `PTD_WrittenBy` for each relation a witness
+  writes, and the `PTD_Attribute` nodes they aim at. A set of paths that holds SpiceDB files and no
+  Rego is a graph of the Zanzibar findings rather than the empty-bundle error a policy-only run
+  makes of it.
+- The extension schema, now `v0.3.0`, holds the node and relationship kinds for both engines,
+  carries the `permission` a Zanzibar raise opens on a `PTD_CanEscalateTo`, and describes the
+  Zanzibar escalations in the Entity Panel. The schema installed by an earlier version has to be
+  reinstalled with `petard export -install` to read the new one. The saved queries that come with
+  Petard rise to 48, with the ones that ask for each Zanzibar escalation.
 
 ### Fixed
 
