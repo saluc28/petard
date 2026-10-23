@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	github.com/authzed/spicedb v1.56.2
-	github.com/open-policy-agent/opa v1.21.2
+	github.com/open-policy-agent/opa v1.21.4
 	github.com/saluc28/bhgraph v0.4.0
 	go.yaml.in/yaml/v3 v3.0.5
 )
