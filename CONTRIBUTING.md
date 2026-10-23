@@ -37,7 +37,7 @@ the rest of the rules, and `taxonomy-registry/SCHEMA.md` has the fields.
 
 ## Getting set up
 
-Go 1.26.6 or newer, which is the floor SpiceDB v1.56.2 declares.
+Go 1.26.9 or newer, which is the floor SpiceDB v1.57.0 declares.
 
 ```
 go build ./...

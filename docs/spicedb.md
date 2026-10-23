@@ -31,7 +31,7 @@ for a candidate. A `writes.yaml` beside the schema, a `relationship-writes` writ
 into a finding: it says who writes a relation and, per caveat parameter, whether the writer or the
 application fills it. Petard counts the expected relations of a file and does not read them.
 
-Schemas are compiled with SpiceDB's own compiler, from SpiceDB v1.56.2, which `petard version`
+Schemas are compiled with SpiceDB's own compiler, from SpiceDB v1.57.0, which `petard version`
 names. A schema that does not compile stops the run, as a policy that does not parse does, and so
 does one that names a type, a relation, a permission or a caveat it does not declare, or that
 walks a permission or a wildcard with an arrow. A schema reads its imports from its own

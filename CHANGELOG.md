@@ -48,8 +48,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- SpiceDB v1.56.2 is compiled in, and schemas are read with its own compiler. `petard version` names
-  it beside OPA and bhgraph. Building from source needs Go 1.26.6 or later.
+- SpiceDB v1.57.0 is compiled in, and schemas are read with its own compiler. `petard version` names
+  it beside OPA and bhgraph. Building from source needs Go 1.26.9 or later.
 - OPA v1.21.4 is compiled in, up from v1.21.2, for its security fixes and a rebuild with Go 1.27.3.
   What the analysis reports is unchanged.
 - `-registry` takes the registry directory, which holds one directory per engine, instead of the
