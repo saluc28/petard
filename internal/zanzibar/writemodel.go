@@ -248,6 +248,13 @@ type SubjectSpec struct {
 	Holds string
 }
 
+// empty reports whether the spec names no subject form. It is the zero value a
+// rule leaves behind when it omits subject, and a rule with an empty spec
+// writes no concrete subject: both subjects and mayDelete come back empty on it.
+func (s SubjectSpec) empty() bool {
+	return !s.Self && !s.Any && len(s.Types) == 0 && s.Holds == ""
+}
+
 // UnmarshalYAML reads a subject written as the scalar self or any, as a list of
 // types or usersets, or as a mapping with holds.
 func (s *SubjectSpec) UnmarshalYAML(node *yaml.Node) error {
@@ -353,6 +360,15 @@ func (m *WriteModel) validate() error {
 			if op != Create && op != Touch && op != Delete {
 				return fmt.Errorf("%w: %s#%s has operation %q, want create, touch or delete", writemodel.ErrInvalid, w.Resource, w.Relation, op)
 			}
+		}
+		// A rule that can name no subject is a silent no-op: subjects and
+		// mayDelete both produce nothing from an empty spec, so the rule writes
+		// nothing and its raise goes unreported. A wildcard is a separate axis
+		// that subjects writes without a spec, but only for an add; a delete
+		// names its subject through the spec alone, which rules out a wildcard
+		// delete with no spec.
+		if w.Subject.empty() && (!w.Wildcard || deletes(w.Operations)) {
+			return fmt.Errorf("%w: %s#%s names no subject to write: give subject (self, any, a list of types, or {holds: ...}), or wildcard: true for a rule that only adds", writemodel.ErrInvalid, w.Resource, w.Relation)
 		}
 		if err := w.Gate.validate(fmt.Sprintf("%s#%s", w.Resource, w.Relation)); err != nil {
 			return err

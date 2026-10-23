@@ -133,6 +133,21 @@ func TestParseWriteModelErrors(t *testing.T) {
 			content: "schema_version: 1\nmodel: relationship-writes\nwrites:\n  - resource: document\n    relation: viewer\n    operations: [create]\n    gate: anyone\n    subject: everyone\n",
 			want:    writemodel.ErrInvalid,
 		},
+		{
+			name:    "no subject and no wildcard",
+			content: "schema_version: 1\nmodel: relationship-writes\nwrites:\n  - resource: document\n    relation: viewer\n    operations: [create]\n    gate: anyone\n",
+			want:    writemodel.ErrInvalid,
+		},
+		{
+			name:    "empty subject list",
+			content: "schema_version: 1\nmodel: relationship-writes\nwrites:\n  - resource: document\n    relation: viewer\n    operations: [create]\n    gate: anyone\n    subject: []\n",
+			want:    writemodel.ErrInvalid,
+		},
+		{
+			name:    "delete with a wildcard but no subject",
+			content: "schema_version: 1\nmodel: relationship-writes\nwrites:\n  - resource: document\n    relation: viewer\n    operations: [delete]\n    gate: anyone\n    wildcard: true\n",
+			want:    writemodel.ErrInvalid,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -144,5 +159,21 @@ func TestParseWriteModelErrors(t *testing.T) {
 				t.Errorf("error = %v, want %v", err, tt.want)
 			}
 		})
+	}
+}
+
+// A rule that only adds the every-object subject needs no subject list: the
+// wildcard is the subject it writes, so an add-only wildcard rule with no
+// subject is accepted, where a rule that names neither a subject nor a wildcard
+// is turned away rather than kept as one that writes nothing.
+func TestParseWriteModelWildcardNeedsNoSubject(t *testing.T) {
+	content := []byte("schema_version: 1\nmodel: relationship-writes\n" +
+		"writes:\n  - resource: document\n    relation: viewer\n    operations: [create, touch]\n    gate: anyone\n    wildcard: true\n")
+	m, err := ParseWriteModel(content)
+	if err != nil {
+		t.Fatalf("ParseWriteModel: %v", err)
+	}
+	if len(m.Writes) != 1 || !m.Writes[0].Wildcard || !m.Writes[0].Subject.empty() {
+		t.Fatalf("want one wildcard rule with an empty subject spec, got %+v", m.Writes)
 	}
 }
