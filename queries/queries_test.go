@@ -6,7 +6,6 @@ import (
 	"flag"
 	"os"
 	"regexp"
-	"slices"
 	"strings"
 	"testing"
 
@@ -52,21 +51,43 @@ func TestCommittedLibraryMatchesTheFiles(t *testing.T) {
 
 var guid = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
+// enginePatterns is one engine's registry, with the platform its queries carry
+// and the directory its files sit in.
+type enginePatterns struct {
+	patterns []taxonomy.Pattern
+	platform string
+	dir      string
+}
+
 // Every query carries what the library asks of one, under a name and a guid of
 // its own, and belongs either to Petard as a whole or to a pattern the registry
-// holds, under that pattern's category and with a link to its file.
+// holds, under that pattern's category, with its engine's platform and a link
+// to its file.
 func TestEveryQueryIsComplete(t *testing.T) {
 	all, err := All()
 	if err != nil {
 		t.Fatalf("All() error = %v", err)
 	}
-	patterns, err := taxonomy.LoadRegistry(registry.OPA)
+
+	opa, err := taxonomy.LoadRegistry(registry.OPA)
 	if err != nil {
-		t.Fatalf("LoadRegistry() error = %v", err)
+		t.Fatalf("LoadRegistry(opa) error = %v", err)
 	}
-	byID := map[string]taxonomy.Pattern{}
-	for _, pattern := range patterns {
-		byID[pattern.ID] = pattern
+	zanzibar, err := taxonomy.LoadRegistry(registry.Zanzibar)
+	if err != nil {
+		t.Fatalf("LoadRegistry(zanzibar) error = %v", err)
+	}
+	engines := []enginePatterns{
+		{opa, "Open Policy Agent", registry.OPADir},
+		{zanzibar, "SpiceDB", registry.ZanzibarDir},
+	}
+	byID := map[string]enginePatterns{}
+	platforms := map[string]bool{}
+	for _, engine := range engines {
+		platforms[engine.platform] = true
+		for _, pattern := range engine.patterns {
+			byID[pattern.ID] = enginePatterns{dir: engine.dir, platform: engine.platform, patterns: []taxonomy.Pattern{pattern}}
+		}
 	}
 
 	names, guids, perPattern := map[string]bool{}, map[string]bool{}, map[string]int{}
@@ -82,7 +103,7 @@ func TestEveryQueryIsComplete(t *testing.T) {
 			if query.Prebuilt || query.Revision < 1 || query.Description == "" || query.Query == "" {
 				t.Errorf("prebuilt, revision, description or query is not what the library asks for")
 			}
-			if !slices.Equal(query.Platforms, []string{"Open Policy Agent"}) || len(query.Resources) != 1 {
+			if len(query.Platforms) != 1 || !platforms[query.Platforms[0]] || len(query.Resources) != 1 {
 				t.Errorf("platforms = %v, resources = %v", query.Platforms, query.Resources)
 			}
 
@@ -96,26 +117,38 @@ func TestEveryQueryIsComplete(t *testing.T) {
 				}
 				return
 			}
-			pattern, known := byID[id]
+			engine, known := byID[id]
 			if !known {
-				t.Fatalf("%s is not a pattern of the registry", id)
+				t.Fatalf("%s is not a pattern of any registry", id)
 			}
+			pattern := engine.patterns[0]
 			perPattern[id]++
 			if query.Category != pattern.Category.Title {
 				t.Errorf("category = %q, want the registry's %q", query.Category, pattern.Category.Title)
 			}
-			if !strings.HasSuffix(query.Resources[0], "/taxonomy-registry/opa/"+id+"-"+pattern.Name+".yaml") {
+			if query.Platforms[0] != engine.platform {
+				t.Errorf("platform = %q, want %q for a %s pattern", query.Platforms[0], engine.platform, engine.dir)
+			}
+			if want := "/taxonomy-registry/" + engine.dir + "/" + id + "-" + pattern.Name + ".yaml"; !strings.HasSuffix(query.Resources[0], want) {
 				t.Errorf("resource %q is not the file of %s", query.Resources[0], id)
 			}
 		})
 	}
-	// Two is the floor rather than a target. How many questions a pattern
-	// affords depends on what it marks: one that marks a rule and nothing
-	// around it has fewer than one that marks a read, and a third query
+	// Every pattern that marks the graph gets a query, so a question can reach
+	// what it finds. OPA gets at least two, since its patterns mark several
+	// kinds of node and edge; Zanzibar at least one, since its escalation
+	// patterns mark only the one edge. A pattern that marks nothing, the caveat
+	// exemption among them, draws no edge and so gets no query, and a third
 	// written to reach a quota is one that returns nothing.
-	for _, pattern := range patterns {
-		if perPattern[pattern.ID] < 2 {
-			t.Errorf("%s has %d queries, and every pattern gets at least two", pattern.ID, perPattern[pattern.ID])
+	floors := map[string]int{registry.OPADir: 2, registry.ZanzibarDir: 1}
+	for _, engine := range engines {
+		for _, pattern := range engine.patterns {
+			if len(pattern.Graph.Marks) == 0 {
+				continue
+			}
+			if floor := floors[engine.dir]; perPattern[pattern.ID] < floor {
+				t.Errorf("%s has %d queries, want at least %d", pattern.ID, perPattern[pattern.ID], floor)
+			}
 		}
 	}
 }
@@ -151,7 +184,7 @@ func TestQueriesAskForWhatTheGraphHolds(t *testing.T) {
 		graph.PropWriteConfidence, graph.PropUncoveredKeys, graph.PropKeysChecked,
 		graph.PropEnforcingSide, graph.PropReachTransitive, graph.PropReachDirect,
 		graph.PropRelation, graph.PropPatterns, graph.PropCandidatePatterns,
-		graph.PropPositions, graph.PropEmptyDomains, graph.PropMitigation,
+		graph.PropPermission, graph.PropPositions, graph.PropEmptyDomains, graph.PropMitigation,
 	} {
 		properties[key] = true
 	}

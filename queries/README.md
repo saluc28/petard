@@ -2,14 +2,15 @@
 
 Cypher queries for the graph Petard exports, one file per query in the format of the
 [BloodHound Query Library](https://github.com/SpecterOps/BloodHoundQueryLibrary). Each pattern
-has two to four, named after its id, and the queries named `Petard:` look at the graph as a
-whole. How many depends on what the pattern marks: a third query written to reach a quota is a
-query that returns nothing.
+that marks the graph has one to four, named after its id, and the queries named `Petard:` look at
+the graph as a whole. How many a pattern has depends on what it marks, an OPA pattern that marks
+several kinds affording more than a Zanzibar escalation that marks one edge, since a query written
+to reach a quota is one that returns nothing.
 
 Every pattern leaves its id on the nodes and edges it reports on, in `patterns` for a finding and
 in `candidate_patterns` for a candidate, and that is what the queries ask for. Which kind a
-pattern marks, and with which properties, is declared in the `graph.marks` of its file in
-`taxonomy-registry/opa`.
+pattern marks, and with which properties, is declared in the `graph.marks` of its file under
+`taxonomy-registry`.
 
 ## They all return a graph
 

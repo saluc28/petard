@@ -1,0 +1,17 @@
+name: "Petard: what a coalition writes to escalate"
+guid: 8efe24f5-1f18-4b8d-984e-ec21e616bbd0
+prebuilt: false
+platforms:
+  - SpiceDB
+category: Petard
+description: >
+  The relations a coalition writes or deletes to raise a permission, each from the attribute it
+  writes, through the coalition, to the object it reaches. The attribute is what a write model
+  has to keep out of the coalition's hands.
+query: |-
+  MATCH p = (:PTD_Attribute)-[:PTD_WrittenBy]->(:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Resource)
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard
+acknowledgements: []

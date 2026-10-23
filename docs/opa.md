@@ -301,7 +301,7 @@ graph: 71 nodes, 84 edges
   3 declared writers name a rule for finding somebody, not somebody, and have no edge
   131 ways of granting depend on something an edge cannot say, and are left out
 schema installed, 3 of 5 relationship kinds are traversable
-saved queries: 39 added, 0 already there
+saved queries: 48 added, 0 already there
 ingest job 1 started
 job 1 processed 1 file(s) with no errors
   MALLORY -> DAVE: pathfinding walks it
@@ -333,10 +333,10 @@ Pathfinding walks them too, which is what `-verify` checks over the API.
 
 ![Pathfinding between the two principals](assets/pathfinding.png)
 
-Installing also saves 39 Cypher queries, two to four per pattern, named after the question they
-ask. They return nodes and paths, so the answer opens in the graph and in the table view next to
-it. [queries/README.md](../queries/README.md) says what they ask for and what the BloodHound
-backend will and will not run.
+Installing also saves 48 Cypher queries, named after the question they ask. They return nodes and
+paths, so the answer opens in the graph and in the table view next to it.
+[queries/README.md](../queries/README.md) says what they ask for and what the BloodHound backend
+will and will not run.
 
 ![The saved queries, filtered](assets/saved-queries.png)
 

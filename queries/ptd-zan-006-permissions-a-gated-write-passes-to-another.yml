@@ -1,0 +1,17 @@
+name: "PTD-ZAN-006: permissions a gated write passes to another"
+guid: efe05f9d-c78b-45b1-80c2-e4c0afad84e2
+prebuilt: false
+platforms:
+  - SpiceDB
+category: Delegation not narrowed
+description: >
+  The permissions a coalition raises by writing a grant for another subject, one the writer passed
+  a gate to make but the subject it names never did.
+query: |-
+  MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)
+  WHERE 'PTD-ZAN-006' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-006-delegation-not-narrowed.yaml
+acknowledgements: []

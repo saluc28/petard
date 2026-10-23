@@ -1,0 +1,17 @@
+name: "PTD-ZAN-008: permissions a self-write behind an open gate raises"
+guid: a4eb094a-491e-420b-a54e-8ea64aae2d31
+prebuilt: false
+platforms:
+  - SpiceDB
+category: Attribute self-write
+description: >
+  The permissions a coalition raises by writing itself a relation behind a gate that needs no
+  permission on the object, an open share link or a sign-up among them.
+query: |-
+  MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)
+  WHERE 'PTD-ZAN-008' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-008-self-write-behind-open-gate.yaml
+acknowledgements: []

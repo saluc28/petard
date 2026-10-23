@@ -1,0 +1,17 @@
+name: "PTD-ZAN-002: permissions a delete can lift"
+guid: 80b6298e-2a64-4ccc-aa50-2d768420278e
+prebuilt: false
+platforms:
+  - SpiceDB
+category: Fail-open on absence
+description: >
+  The permissions a coalition raises by deleting a relation an exclusion reads, so the deny the
+  exclusion carried no longer holds and the permission falls through.
+query: |-
+  MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)
+  WHERE 'PTD-ZAN-002' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-002-delete-lifts-a-deny.yaml
+acknowledgements: []

@@ -1,0 +1,17 @@
+name: "PTD-ZAN-005: permissions reached by joining a userset"
+guid: aeb9792f-4cfe-4e22-b18e-f55d281af060
+prebuilt: false
+platforms:
+  - SpiceDB
+category: Assumable identity
+description: >
+  The permissions a coalition raises by writing itself into a userset the object already grants
+  to, taking on the access the userset carries.
+query: |-
+  MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)
+  WHERE 'PTD-ZAN-005' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-005-join-a-granted-userset.yaml
+acknowledgements: []

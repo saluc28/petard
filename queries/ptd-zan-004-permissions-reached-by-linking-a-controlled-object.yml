@@ -1,0 +1,17 @@
+name: "PTD-ZAN-004: permissions reached by linking a controlled object"
+guid: 19dddd0f-c0e0-4a14-b35b-3304ad2355a6
+prebuilt: false
+platforms:
+  - SpiceDB
+category: Transitive grant through an intermediate object
+description: >
+  The permissions a coalition raises by writing the relation an arrow walks, linking the object
+  under attack to one the coalition controls.
+query: |-
+  MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)
+  WHERE 'PTD-ZAN-004' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-004-arrow-links-controlled-object.yaml
+acknowledgements: []

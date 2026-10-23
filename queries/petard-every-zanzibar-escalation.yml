@@ -1,0 +1,17 @@
+name: "Petard: every Zanzibar escalation"
+guid: f1573c1e-0779-4ab1-b835-98d447d18f55
+prebuilt: false
+platforms:
+  - SpiceDB
+category: Petard
+description: >
+  Every permission a coalition can raise on an object it did not start out holding, by writing
+  something the write model allows. The far end is the object, and the edge says which permission
+  it raises and which pattern classified the write.
+query: |-
+  MATCH p = (:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Resource)
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard
+acknowledgements: []

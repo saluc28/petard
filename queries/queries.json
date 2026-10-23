@@ -544,6 +544,134 @@
     "acknowledgements": []
   },
   {
+    "name": "PTD-ZAN-002: permissions a delete can lift",
+    "guid": "80b6298e-2a64-4ccc-aa50-2d768420278e",
+    "prebuilt": false,
+    "platforms": [
+      "SpiceDB"
+    ],
+    "category": "Fail-open on absence",
+    "description": "The permissions a coalition raises by deleting a relation an exclusion reads, so the deny the exclusion carried no longer holds and the permission falls through.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)\nWHERE 'PTD-ZAN-002' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-002-delete-lifts-a-deny.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-ZAN-003: permissions a wildcard write opens",
+    "guid": "15bd238e-1289-4fc8-af8e-1661b8364542",
+    "prebuilt": false,
+    "platforms": [
+      "SpiceDB"
+    ],
+    "category": "Global switch",
+    "description": "The permissions a coalition raises by writing a relation to the wildcard subject, which grants it to every object of a type at once, the coalition among them.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)\nWHERE 'PTD-ZAN-003' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-003-wildcard-subject-grant.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-ZAN-004: permissions reached by linking a controlled object",
+    "guid": "19dddd0f-c0e0-4a14-b35b-3304ad2355a6",
+    "prebuilt": false,
+    "platforms": [
+      "SpiceDB"
+    ],
+    "category": "Transitive grant through an intermediate object",
+    "description": "The permissions a coalition raises by writing the relation an arrow walks, linking the object under attack to one the coalition controls.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)\nWHERE 'PTD-ZAN-004' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-004-arrow-links-controlled-object.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-ZAN-005: permissions reached by joining a userset",
+    "guid": "aeb9792f-4cfe-4e22-b18e-f55d281af060",
+    "prebuilt": false,
+    "platforms": [
+      "SpiceDB"
+    ],
+    "category": "Assumable identity",
+    "description": "The permissions a coalition raises by writing itself into a userset the object already grants to, taking on the access the userset carries.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)\nWHERE 'PTD-ZAN-005' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-005-join-a-granted-userset.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-ZAN-006: permissions a gated write passes to another",
+    "guid": "efe05f9d-c78b-45b1-80c2-e4c0afad84e2",
+    "prebuilt": false,
+    "platforms": [
+      "SpiceDB"
+    ],
+    "category": "Delegation not narrowed",
+    "description": "The permissions a coalition raises by writing a grant for another subject, one the writer passed a gate to make but the subject it names never did.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)\nWHERE 'PTD-ZAN-006' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-006-delegation-not-narrowed.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-ZAN-007: permissions a weaker gate lets one write in",
+    "guid": "6961ba59-9157-41ae-9258-3980ce6113ea",
+    "prebuilt": false,
+    "platforms": [
+      "SpiceDB"
+    ],
+    "category": "A grant split across two decisions",
+    "description": "The permissions a coalition raises by writing a relation gated on a permission weaker than the one the write feeds, so holding the weaker is enough to write the stronger in.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)\nWHERE 'PTD-ZAN-007' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-007-weaker-gate-on-stronger-write.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "PTD-ZAN-008: permissions a self-write behind an open gate raises",
+    "guid": "a4eb094a-491e-420b-a54e-8ea64aae2d31",
+    "prebuilt": false,
+    "platforms": [
+      "SpiceDB"
+    ],
+    "category": "Attribute self-write",
+    "description": "The permissions a coalition raises by writing itself a relation behind a gate that needs no permission on the object, an open share link or a sign-up among them.",
+    "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)\nWHERE 'PTD-ZAN-008' IN e.patterns\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-008-self-write-behind-open-gate.yaml"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "Petard: every Zanzibar escalation",
+    "guid": "f1573c1e-0779-4ab1-b835-98d447d18f55",
+    "prebuilt": false,
+    "platforms": [
+      "SpiceDB"
+    ],
+    "category": "Petard",
+    "description": "Every permission a coalition can raise on an object it did not start out holding, by writing something the write model allows. The far end is the object, and the edge says which permission it raises and which pattern classified the write.",
+    "query": "MATCH p = (:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Resource)\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard"
+    ],
+    "acknowledgements": []
+  },
+  {
     "name": "Petard: every escalation",
     "guid": "add3eff5-92cc-47fa-9e23-d29f03dfe870",
     "prebuilt": false,
@@ -553,6 +681,22 @@
     "category": "Petard",
     "description": "Every principal that can reach the position another one holds, by writing something it is allowed to write. The edges come from PTD-OPA-003 and PTD-OPA-006.",
     "query": "MATCH p = (:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Principal)\nRETURN p",
+    "revision": 1,
+    "resources": [
+      "https://github.com/saluc28/petard"
+    ],
+    "acknowledgements": []
+  },
+  {
+    "name": "Petard: what a coalition writes to escalate",
+    "guid": "8efe24f5-1f18-4b8d-984e-ec21e616bbd0",
+    "prebuilt": false,
+    "platforms": [
+      "SpiceDB"
+    ],
+    "category": "Petard",
+    "description": "The relations a coalition writes or deletes to raise a permission, each from the attribute it writes, through the coalition, to the object it reaches. The attribute is what a write model has to keep out of the coalition's hands.",
+    "query": "MATCH p = (:PTD_Attribute)-[:PTD_WrittenBy]->(:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Resource)\nRETURN p",
     "revision": 1,
     "resources": [
       "https://github.com/saluc28/petard"

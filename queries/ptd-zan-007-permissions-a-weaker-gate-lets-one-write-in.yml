@@ -1,0 +1,17 @@
+name: "PTD-ZAN-007: permissions a weaker gate lets one write in"
+guid: 6961ba59-9157-41ae-9258-3980ce6113ea
+prebuilt: false
+platforms:
+  - SpiceDB
+category: A grant split across two decisions
+description: >
+  The permissions a coalition raises by writing a relation gated on a permission weaker than the
+  one the write feeds, so holding the weaker is enough to write the stronger in.
+query: |-
+  MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)
+  WHERE 'PTD-ZAN-007' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-007-weaker-gate-on-stronger-write.yaml
+acknowledgements: []

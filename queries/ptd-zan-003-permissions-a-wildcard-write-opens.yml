@@ -1,0 +1,17 @@
+name: "PTD-ZAN-003: permissions a wildcard write opens"
+guid: 15bd238e-1289-4fc8-af8e-1661b8364542
+prebuilt: false
+platforms:
+  - SpiceDB
+category: Global switch
+description: >
+  The permissions a coalition raises by writing a relation to the wildcard subject, which grants
+  it to every object of a type at once, the coalition among them.
+query: |-
+  MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)
+  WHERE 'PTD-ZAN-003' IN e.patterns
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard/blob/main/taxonomy-registry/zanzibar/PTD-ZAN-003-wildcard-subject-grant.yaml
+acknowledgements: []
