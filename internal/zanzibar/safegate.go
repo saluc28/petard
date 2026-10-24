@@ -1,6 +1,11 @@
 package zanzibar
 
-import "slices"
+import (
+	"runtime"
+	"slices"
+
+	"golang.org/x/sync/errgroup"
+)
 
 // GateProposal is, for a relation the write model leaves without a rule, which
 // permissions on the resource are safe gates to write it and which would let a
@@ -38,31 +43,89 @@ type UnsafeGate struct {
 // permission is unsafe has no safe gate, and the run says so rather than
 // proposing one.
 func SafeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, opts Options) ([]GateProposal, error) {
-	var proposals []GateProposal
+	// The starting positions depend on the schema alone, not on the relation or
+	// the gate under test, so they are generated once and indexed by the gate
+	// they put the attacker on. Regenerating them inside the per-relation,
+	// per-permission loop walked the whole schema again for every pair, which is
+	// quadratic in the permissions of a type and dominates on a large one.
+	positions := startingPositionsForSubjects(model, opts)
+	byGate := positionsByGate(positions)
+
+	// The relations with no rule are weighed one per worker: each reads only the
+	// shared model, write model, caveats and positions, none of which it changes,
+	// so the work splits across the processors without a lock. The result of each
+	// is placed back by its index, so the proposals come out in the same order,
+	// the same bytes, however the workers interleave.
+	type unruled struct {
+		t *Type
+		r *Relation
+	}
+	var jobs []unruled
 	for _, t := range model.Types {
 		for _, r := range t.Relations {
-			if hasWriteRule(wm, t.Name, r.Name) {
-				continue
+			if !hasWriteRule(wm, t.Name, r.Name) {
+				jobs = append(jobs, unruled{t: t, r: r})
 			}
-			proposal := GateProposal{Type: t.Name, Relation: r.Name}
-			for _, p := range t.Permissions {
-				esc, unsafe, err := gateEscalates(model, wm, caveats, t.Name, r, p.Name, opts)
-				if err != nil {
-					return nil, err
-				}
-				if unsafe {
-					proposal.Unsafe = append(proposal.Unsafe, UnsafeGate{Permission: p.Name, Escalation: esc})
-				} else {
-					proposal.Safe = append(proposal.Safe, p.Name)
-				}
-			}
-			proposals = append(proposals, proposal)
 		}
 	}
-	if err := checkTogether(model, wm, caveats, proposals, opts); err != nil {
+
+	proposals := make([]GateProposal, len(jobs))
+	g := new(errgroup.Group)
+	g.SetLimit(runtime.GOMAXPROCS(0))
+	for i, jb := range jobs {
+		g.Go(func() error {
+			proposal, err := relationGates(model, wm, caveats, jb.t, jb.r, byGate, opts)
+			if err != nil {
+				return err
+			}
+			proposals[i] = proposal
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	if err := checkTogether(model, wm, caveats, proposals, positions, opts); err != nil {
 		return nil, err
 	}
 	return proposals, nil
+}
+
+// relationGates weighs each permission of a type as a gate for writing one of
+// its relations, and returns which are safe and which a coalition could
+// escalate through. It reads only shared inputs it does not change, so one call
+// is independent of the next and they can run on separate workers.
+func relationGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, t *Type, r *Relation, byGate map[gateKey][]StartingPosition, opts Options) (GateProposal, error) {
+	proposal := GateProposal{Type: t.Name, Relation: r.Name}
+	for _, p := range t.Permissions {
+		esc, unsafe, err := gateEscalates(model, wm, caveats, t.Name, r, p.Name, byGate, opts)
+		if err != nil {
+			return GateProposal{}, err
+		}
+		if unsafe {
+			proposal.Unsafe = append(proposal.Unsafe, UnsafeGate{Permission: p.Name, Escalation: esc})
+		} else {
+			proposal.Safe = append(proposal.Safe, p.Name)
+		}
+	}
+	return proposal, nil
+}
+
+// gateKey is a starting position's type and the relation or permission the
+// attacker holds, the two fields a gate check looks a position up by.
+type gateKey struct{ typ, target string }
+
+// positionsByGate indexes the starting positions by the gate they put the
+// attacker on, so a gate check reads its positions in one lookup rather than
+// filtering the whole set.
+func positionsByGate(positions []StartingPosition) map[gateKey][]StartingPosition {
+	byGate := map[gateKey][]StartingPosition{}
+	for _, p := range positions {
+		k := gateKey{typ: p.Type, target: p.Target}
+		byGate[k] = append(byGate[k], p)
+	}
+	return byGate
 }
 
 // checkTogether holds the proposals against one another, since two writes a
@@ -73,8 +136,7 @@ func SafeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, opts Optio
 // was safe only while the other relations stayed unwritable. An escalation whose
 // decisive write is a rule the author declared is a finding the run already
 // reports, not a fault of a proposal, so it demotes nothing.
-func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, proposals []GateProposal, opts Options) error {
-	positions := startingPositionsForSubjects(model, opts)
+func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, proposals []GateProposal, positions []StartingPosition, opts Options) error {
 	for {
 		combined := withProposals(model, wm, proposals)
 		demoted := false
@@ -192,7 +254,7 @@ func hasWriteRule(wm *WriteModel, resource, relation string) bool {
 // relation r of type typ lets a coalition escalate, with a witness when it does.
 // It adds the proposed rule to the write model and runs the escalation search
 // from every starting position in which the attacker holds the gate.
-func gateEscalates(model *Model, wm *WriteModel, caveats CaveatEvaluator, typ string, r *Relation, gate string, opts Options) (Escalation, bool, error) {
+func gateEscalates(model *Model, wm *WriteModel, caveats CaveatEvaluator, typ string, r *Relation, gate string, byGate map[gateKey][]StartingPosition, opts Options) (Escalation, bool, error) {
 	proposed := &WriteModel{
 		SchemaVersion: wm.SchemaVersion,
 		Kind:          wm.Kind,
@@ -207,10 +269,7 @@ func gateEscalates(model *Model, wm *WriteModel, caveats CaveatEvaluator, typ st
 		Creates: wm.Creates,
 	}
 
-	for _, p := range startingPositionsForSubjects(model, opts) {
-		if p.Type != typ || p.Target != gate {
-			continue
-		}
+	for _, p := range byGate[gateKey{typ: typ, target: gate}] {
 		escs, err := Escalations(model, proposed, caveats, p.Tuples, []Object{p.Attacker}, opts)
 		if err != nil {
 			return Escalation{}, false, err

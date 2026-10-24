@@ -126,7 +126,15 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 		checker := NewChecker(e.model, cur.state.list(), e.caveats, e.opts.now())
 
 		up := make(map[string]bool, len(raised))
+		// The start state holds no write, so every target sits at its before level
+		// there and none is raised; only a node that has made a move can raise one.
+		// Checking the targets at the root would recompute the before levels and
+		// find nothing, so it is skipped, which on a schema with many permissions
+		// is a whole pass over the targets saved per search.
 		for key, q := range raised {
+			if len(cur.path) == 0 {
+				break
+			}
 			level, err := e.coalitionLevel(checker, q.resource, q.name, cur.objects)
 			if err != nil {
 				return nil, err
@@ -135,9 +143,9 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 				continue
 			}
 			up[key] = true
-			if len(cur.path) == 0 || cur.up[key] {
-				// The start holds no write, and a target already up at the parent
-				// was raised earlier and is recorded where it first rose.
+			if cur.up[key] {
+				// A target already up at the parent was raised earlier and is
+				// recorded where it first rose.
 				continue
 			}
 			sig := key + "|" + decisiveSig(cur.path[len(cur.path)-1])
