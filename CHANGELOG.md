@@ -17,6 +17,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the caveats it carries, read from the schema, so the author narrows and confirms rather than
   looking them up. A caveat parameter is marked for the writer, the one that wins over the check's;
   the author marks application for the parameters the check supplies.
+- `petard analyze` reports findings, and `petard export` draws the escalation graph, for a SpiceDB
+  schema that a write model stands beside even when no validation file reads it. The patterns start
+  from the positions generated from the schema, so neither needs a validation file written by hand.
+  A schema with no write model and no validation file is still named as one with no evidence.
 
 ### Fixed
 

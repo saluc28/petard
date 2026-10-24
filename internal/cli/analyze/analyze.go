@@ -131,7 +131,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	style := render.StyleFor(stdout, *noColor)
-	spice, err := runSpiceDB(setup.Files, time.Now(), setup.WriteModels, !*quiet || *questionsPath != "")
+	spice, err := runSpiceDB(setup, time.Now(), !*quiet || *questionsPath != "")
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure

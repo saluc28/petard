@@ -23,7 +23,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -231,15 +230,12 @@ func build(ctx context.Context, inputs taxonomy.Inputs, spice spicesetup.Found) 
 	}
 
 	if len(spice.Files) > 0 {
-		now := time.Now()
 		var graphInputs []zanzibar.GraphInput
-		for _, f := range spice.Files {
-			if !f.Validation {
-				continue
-			}
+		analyses, _ := spice.Analyses(time.Now())
+		for _, a := range analyses {
 			graphInputs = append(graphInputs, zanzibar.GraphInput{
-				Sample:     f.Sample(now),
-				WriteModel: spice.WriteModels[path.Dir(f.SchemaPath)],
+				Sample:     a.Sample,
+				WriteModel: a.WriteModel,
 			})
 		}
 		if err := zanzibar.AddEscalations(g, graphInputs); err != nil {

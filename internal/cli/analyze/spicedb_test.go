@@ -194,6 +194,50 @@ func TestRunProposesSafeGatesFromABareSchema(t *testing.T) {
 	}
 }
 
+// A schema with a write model but no validation file is still analyzed: the
+// escalation patterns run from the positions generated from the schema, so a
+// finding surfaces without a validation file written by hand. Here a holder of
+// edit may write a wildcard viewer, which grants view to every user at once.
+func TestRunFindsEscalationsFromASchemaAndWriteModel(t *testing.T) {
+	dir := t.TempDir()
+	schema := "definition user {}\n\n" +
+		"definition document {\n" +
+		"\trelation editor: user\n" +
+		"\trelation viewer: user | user:*\n" +
+		"\tpermission edit = editor\n" +
+		"\tpermission view = viewer\n" +
+		"}\n"
+	writeModel := "schema_version: 1\n" +
+		"model: relationship-writes\n" +
+		"writes:\n" +
+		"  - resource: document\n" +
+		"    relation: viewer\n" +
+		"    operations: [create, touch]\n" +
+		"    gate: { holds: edit }\n" +
+		"    subject: [user]\n" +
+		"    wildcard: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "schema.zed"), []byte(schema), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "writes.yaml"), []byte(writeModel), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{dir}, &stdout, &stderr); code != exitFound {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, exitFound, stderr.String())
+	}
+	out := stdout.String()
+	for _, expected := range []string{
+		"document#view, a grant to every subject at once  (PTD-ZAN-003)",
+		"whoever holds edit may write document#viewer",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the run does not report the escalation from the schema and write model: missing %q:\n%s", expected, out)
+		}
+	}
+}
+
 // Findings fail the run by default, and on -fail-on any, and never on none, the
 // same as the findings of a policy.
 func TestRunFailsOnSpiceDBFindings(t *testing.T) {
@@ -257,15 +301,15 @@ func TestTheFooterComesAfterEverySummary(t *testing.T) {
 	}
 }
 
-// A schema no validation file reads gives the patterns nothing to take
-// evidence from, and the run says so instead of reading as clean.
+// A schema with no write model that no validation file reads gives the patterns
+// nothing to run from, and the run says so instead of reading as clean.
 func TestRunSaysWhichSchemasHaveNoEvidence(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	if code := Run([]string{filepath.Join(spicedbTestdata("find"), "schema.zed")}, &stdout, &stderr); code != exitOK {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "is read by no validation file under the paths") {
+	if !strings.Contains(stdout.String(), "has no write model and is read by no validation file") {
 		t.Errorf("the report does not say the schema has no evidence:\n%s", stdout.String())
 	}
 }

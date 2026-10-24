@@ -183,6 +183,73 @@ func TestRunExportsTheSpiceDBEscalations(t *testing.T) {
 	}
 }
 
+// The escalation graph is drawn from a schema and its write model even when no
+// validation file reads the schema, the same inputs petard analyze reports
+// findings from, so the report and the graph agree on what the engine found.
+func TestRunExportsEscalationsFromASchemaAndWriteModel(t *testing.T) {
+	dir := t.TempDir()
+	schema := "definition user {}\n\n" +
+		"definition document {\n" +
+		"\trelation editor: user\n" +
+		"\trelation viewer: user | user:*\n" +
+		"\tpermission edit = editor\n" +
+		"\tpermission view = viewer\n" +
+		"}\n"
+	writeModel := "schema_version: 1\n" +
+		"model: relationship-writes\n" +
+		"writes:\n" +
+		"  - resource: document\n" +
+		"    relation: viewer\n" +
+		"    operations: [create, touch]\n" +
+		"    gate: { holds: edit }\n" +
+		"    subject: [user]\n" +
+		"    wildcard: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "schema.zed"), []byte(schema), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "writes.yaml"), []byte(writeModel), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(t.TempDir(), "petard.json")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-out", out, dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+
+	content, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("reading the payload: %v", err)
+	}
+	var payload struct {
+		Graph struct {
+			Edges []struct {
+				Kind       string         `json:"kind"`
+				Properties map[string]any `json:"properties"`
+			} `json:"edges"`
+		} `json:"graph"`
+	}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		t.Fatalf("the payload is not the shape BloodHound ingests: %v", err)
+	}
+
+	raised := false
+	for _, edge := range payload.Graph.Edges {
+		if edge.Kind != "PTD_CanEscalateTo" {
+			continue
+		}
+		patterns, _ := edge.Properties["patterns"].([]any)
+		for _, p := range patterns {
+			if id, ok := p.(string); ok && id == "PTD-ZAN-003" {
+				raised = true
+			}
+		}
+	}
+	if !raised {
+		t.Errorf("the graph has no PTD-ZAN-003 escalation from the schema and its write model:\n%s", content)
+	}
+}
+
 // instance is a stand in for BloodHound, answering the endpoints this command
 // uses the way the real one does.
 //

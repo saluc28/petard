@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/saluc28/petard/internal/writemodel"
 	"github.com/saluc28/petard/internal/zanzibar"
@@ -79,6 +80,59 @@ func Load(paths []string, writeModelPath string) (Found, error) {
 		PolicyPaths:      nonSchemaPaths(paths, files),
 		PolicyWriteModel: policyWriteModel,
 	}, nil
+}
+
+// Analysis is one schema the patterns run on: the sample to read it with, and
+// the write model that says who writes its relations. A validation file brings
+// its own relationships and checks; a bare schema brings none, and the patterns
+// take their starting state from the positions the schema generates instead.
+type Analysis struct {
+	// SchemaPath is the schema the analysis is about, so a caller can report a
+	// fact about one schema once even when two validation files read it.
+	SchemaPath string
+	Sample     zanzibar.Sample
+	WriteModel *zanzibar.WriteModel
+}
+
+// Analyses is what the patterns run on, and the schemas left with nothing to run
+// from. A schema a validation file reads is analyzed with that file, one entry
+// per file, so its relationships and checks are evidence. A schema no validation
+// file reads is still analyzed, from its bare schema, when a write model beside
+// it says who writes its relations: the patterns start from the positions the
+// schema generates, which is what lets a schema be validated without a
+// validation file written by hand. A schema with neither is left out of the
+// first value and named in the second, for the caller to report as lacking
+// evidence rather than read as clean.
+//
+// The entries come in the order the files sort, so a command reads the same
+// inputs the same way on every run.
+func (f Found) Analyses(now time.Time) (run []Analysis, noEvidence []string) {
+	readByValidation := map[string]bool{}
+	for _, file := range f.Files {
+		if file.Validation {
+			readByValidation[file.SchemaPath] = true
+		}
+	}
+	seen := map[string]bool{}
+	for _, file := range f.Files {
+		wm := f.WriteModels[path.Dir(file.SchemaPath)]
+		if file.Validation {
+			run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm})
+			continue
+		}
+		// A schema a validation file reads is analyzed with that file above; a bare
+		// schema named more than once is analyzed once.
+		if readByValidation[file.SchemaPath] || seen[file.SchemaPath] {
+			continue
+		}
+		seen[file.SchemaPath] = true
+		if wm == nil {
+			noEvidence = append(noEvidence, file.Path)
+			continue
+		}
+		run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm})
+	}
+	return run, noEvidence
 }
 
 // discoverWriteModels reads a relationship-writes write model from the

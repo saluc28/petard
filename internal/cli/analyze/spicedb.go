@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/saluc28/petard/internal/cli/render"
+	"github.com/saluc28/petard/internal/cli/spicesetup"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/zanzibar"
 	"github.com/saluc28/petard/internal/zanzibar/spicedb"
@@ -21,9 +22,11 @@ type spiceDBRun struct {
 	files   []*spicedb.File
 	matches []zanzibar.Match
 
-	// unread are the schema files no validation file under the paths reads,
-	// which leaves the patterns no relationship and no check to take
-	// evidence from.
+	// unread are the schema files that no validation file reads and that have no
+	// write model beside them, so the patterns have no rule for who writes their
+	// relations and no relationship or check to take as evidence. A schema with a
+	// write model is analyzed from the positions generated from it instead, and
+	// does not appear here.
 	unread []string
 
 	// proposals are, per schema, the safe gates for the relations its write model
@@ -41,24 +44,25 @@ type schemaProposals struct {
 	proposals []zanzibar.GateProposal
 }
 
-// runSpiceDB applies the patterns of the Zanzibar engine to every file found.
+// runSpiceDB applies the patterns of the Zanzibar engine to the SpiceDB files
+// found. A schema a validation file reads is analyzed with that file; a schema
+// no validation file reads is analyzed from the positions generated from it
+// when a write model stands beside it, so findings surface without a validation
+// file written by hand. Found.Analyses decides which, so analyze and export read
+// the same schemas the same way.
 //
 // A schema read by two validation files is one schema, and a fact about it is
 // reported once: the first file that shows it, in the order the files sort,
 // is the one the report cites.
-func runSpiceDB(files []*spicedb.File, now time.Time, writeModels map[string]*zanzibar.WriteModel, propose bool) (spiceDBRun, error) {
-	run := spiceDBRun{files: files}
-	read := map[string]bool{}
+func runSpiceDB(found spicesetup.Found, now time.Time, propose bool) (spiceDBRun, error) {
+	run := spiceDBRun{files: found.Files}
+	analyses, noEvidence := found.Analyses(now)
+	run.unread = noEvidence
+
 	seen := map[string]bool{}
-	for _, f := range files {
-		if !f.Validation {
-			continue
-		}
-		read[f.SchemaPath] = true
-		wm := writeModels[path.Dir(f.SchemaPath)]
-		sample := f.Sample(now)
-		for _, m := range zanzibar.Run(sample, wm) {
-			key := m.PatternID + "\x00" + f.SchemaPath + "\x00" + m.Subject
+	for _, a := range analyses {
+		for _, m := range zanzibar.Run(a.Sample, a.WriteModel) {
+			key := m.PatternID + "\x00" + a.SchemaPath + "\x00" + m.Subject
 			if seen[key] {
 				continue
 			}
@@ -71,16 +75,11 @@ func runSpiceDB(files []*spicedb.File, now time.Time, writeModels map[string]*za
 	// closure they run is skipped when a quiet run will neither show nor
 	// serialize them, so a pipeline run does not pay for them.
 	if propose {
-		props, err := spiceProposals(files, writeModels)
+		props, err := spiceProposals(found.Files, found.WriteModels)
 		if err != nil {
 			return spiceDBRun{}, err
 		}
 		run.proposals = props
-	}
-	for _, f := range files {
-		if !f.Validation && !read[f.Path] {
-			run.unread = append(run.unread, f.Path)
-		}
 	}
 	return run, nil
 }
@@ -176,8 +175,8 @@ func printSpiceDB(out io.Writer, r spiceDBRun, patterns []taxonomy.Pattern, p pr
 	printProposals(out, r.proposals, style)
 	for _, path := range r.unread {
 		fmt.Fprintln(out)
-		render.Print(out, path+" is read by no validation file under the paths, so the patterns had "+
-			"no relationship and no check to take evidence from.", "")
+		render.Print(out, path+" has no write model and is read by no validation file under the paths, "+
+			"so the patterns had no rule for who writes its relations and no relationship or check to take as evidence.", "")
 	}
 }
 

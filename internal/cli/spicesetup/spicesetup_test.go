@@ -1,13 +1,23 @@
 package spicesetup
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // rel names a path under the repository root, three levels up from this package.
 func rel(parts ...string) string {
 	return filepath.Join(append([]string{"..", "..", ".."}, parts...)...)
+}
+
+// writeFile writes a SpiceDB input into a test directory.
+func writeFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Load reads the schema and its write model from the same directory, and leaves
@@ -37,6 +47,87 @@ func TestLoadDiscoversTheWriteModelBesideTheSchema(t *testing.T) {
 	if len(found.PolicyPaths) != 1 || filepath.Clean(found.PolicyPaths[0]) != filepath.Clean(dir) {
 		t.Errorf("policy paths = %v, want just the directory for the policy loader", found.PolicyPaths)
 	}
+}
+
+// Analyses decides what each schema is run with: a validation file brings its
+// own relationships; a schema no validation file reads is run from its bare
+// schema when a write model stands beside it; a schema with neither is left
+// without evidence for the caller to report rather than read as clean.
+func TestAnalysesChoosesWhatEachSchemaIsRunWith(t *testing.T) {
+	schema := "definition user {}\n\n" +
+		"definition document {\n" +
+		"\trelation viewer: user\n" +
+		"\tpermission view = viewer\n" +
+		"}\n"
+	writeModel := "schema_version: 1\n" +
+		"model: relationship-writes\n" +
+		"writes:\n" +
+		"  - resource: document\n" +
+		"    relation: viewer\n" +
+		"    operations: [create, touch]\n" +
+		"    gate: anyone\n" +
+		"    subject: [user]\n"
+
+	t.Run("a validation file brings its own relationships", func(t *testing.T) {
+		found, err := Load([]string{rel("fixtures", "vulnerable-spicedb")}, "")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		run, noEvidence := found.Analyses(time.Now())
+		if len(run) != 1 {
+			t.Fatalf("analyses = %d, want 1 for the validation file", len(run))
+		}
+		if run[0].WriteModel == nil {
+			t.Error("the analysis has no write model, but one stands beside the schema")
+		}
+		if len(run[0].Sample.Relationships) == 0 {
+			t.Error("the validation file's relationships are not in the sample")
+		}
+		if len(noEvidence) != 0 {
+			t.Errorf("no-evidence = %v, want none", noEvidence)
+		}
+	})
+
+	t.Run("a schema with a write model is run from its bare schema", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "schema.zed", schema)
+		writeFile(t, dir, "writes.yaml", writeModel)
+
+		found, err := Load([]string{dir}, "")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		run, noEvidence := found.Analyses(time.Now())
+		if len(run) != 1 {
+			t.Fatalf("analyses = %d, want 1 from the bare schema", len(run))
+		}
+		if run[0].WriteModel == nil {
+			t.Error("the analysis has no write model, but one stands beside the schema")
+		}
+		if len(run[0].Sample.Relationships) != 0 {
+			t.Errorf("the bare schema's sample carries %d relationships, want none", len(run[0].Sample.Relationships))
+		}
+		if len(noEvidence) != 0 {
+			t.Errorf("no-evidence = %v, want none", noEvidence)
+		}
+	})
+
+	t.Run("a schema with neither is left without evidence", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, dir, "schema.zed", schema)
+
+		found, err := Load([]string{dir}, "")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		run, noEvidence := found.Analyses(time.Now())
+		if len(run) != 0 {
+			t.Errorf("analyses = %d, want none without a write model", len(run))
+		}
+		if len(noEvidence) != 1 {
+			t.Fatalf("no-evidence = %v, want the one schema", noEvidence)
+		}
+	})
 }
 
 // The write-model flag feeds both engines, told apart by the kind the file
