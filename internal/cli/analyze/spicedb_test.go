@@ -123,6 +123,60 @@ func TestRunProposesSafeGatesForSpiceDB(t *testing.T) {
 	}
 }
 
+// A schema with no write model and no validation file still gets safe-gate
+// proposals: the gates rest on the positions generated from the schema, so a
+// run on a bare schema proposes the write-model skeleton to start from. This is
+// what lets someone validate their own schema without first writing the model
+// by hand.
+func TestRunProposesSafeGatesFromABareSchema(t *testing.T) {
+	dir := t.TempDir()
+	schema := "definition user {}\n\n" +
+		"definition document {\n" +
+		"  relation owner: user\n" +
+		"  relation viewer: user\n" +
+		"  permission edit = owner\n" +
+		"  permission view = viewer + edit\n" +
+		"}\n"
+	schemaPath := filepath.Join(dir, "schema.zed")
+	if err := os.WriteFile(schemaPath, []byte(schema), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{schemaPath}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	out := stdout.String()
+	for _, expected := range []string{
+		"Relations with no write rule",
+		"document#viewer",
+		"safe to gate on",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("a bare schema does not propose a gate: missing %q:\n%s", expected, out)
+		}
+	}
+
+	qpath := filepath.Join(dir, "skeleton.yaml")
+	var qout, qerr bytes.Buffer
+	if code := Run([]string{"-questions", qpath, schemaPath}, &qout, &qerr); code != exitOK {
+		t.Fatalf("questions exit = %d (stderr: %s)", code, qerr.String())
+	}
+	raw, err := os.ReadFile(qpath)
+	if err != nil {
+		t.Fatalf("reading the skeleton: %v", err)
+	}
+	content := string(raw)
+	for _, expected := range []string{"model: relationship-writes", "relation: viewer", "gate: { holds:"} {
+		if !strings.Contains(content, expected) {
+			t.Errorf("the skeleton from a bare schema is missing %q:\n%s", expected, content)
+		}
+	}
+	if _, err := zanzibar.LoadWriteModel(qpath); err != nil {
+		t.Errorf("the proposed write model does not load: %v", err)
+	}
+}
+
 // Findings fail the run by default, and on -fail-on any, and never on none, the
 // same as the findings of a policy.
 func TestRunFailsOnSpiceDBFindings(t *testing.T) {

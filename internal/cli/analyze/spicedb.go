@@ -26,9 +26,10 @@ type spiceDBRun struct {
 	// evidence from.
 	unread []string
 
-	// proposals are, per schema with a write model, the safe gates for the
-	// relations the model leaves without a rule: the write model petard proposes
-	// for the author to confirm (section 6 of the definitions).
+	// proposals are, per schema, the safe gates for the relations its write model
+	// leaves without a rule, or every writable relation when it has no write
+	// model: the write model petard proposes for the author to confirm (section 6
+	// of the definitions).
 	proposals []schemaProposals
 }
 
@@ -47,7 +48,6 @@ func runSpiceDB(files []*spicedb.File, now time.Time, writeModels map[string]*za
 	run := spiceDBRun{files: files}
 	read := map[string]bool{}
 	seen := map[string]bool{}
-	proposed := map[string]bool{}
 	for _, f := range files {
 		if !f.Validation {
 			continue
@@ -63,20 +63,17 @@ func runSpiceDB(files []*spicedb.File, now time.Time, writeModels map[string]*za
 			seen[key] = true
 			run.matches = append(run.matches, m)
 		}
-		// Safe gates are proposed where a write model leaves relations without a
-		// rule, once per schema, so the author sees which gate to fill in. The
-		// closure they run is skipped when nothing will show or serialize them, so
-		// a quiet pipeline run does not pay for them.
-		if propose && wm != nil && !proposed[f.SchemaPath] {
-			proposed[f.SchemaPath] = true
-			gates, err := zanzibar.SafeGates(sample.Model, wm, sample.Caveats, zanzibar.Options{})
-			if err != nil {
-				return spiceDBRun{}, err
-			}
-			if len(gates) > 0 {
-				run.proposals = append(run.proposals, schemaProposals{schema: f.SchemaPath, proposals: gates})
-			}
+	}
+	// Safe gates are proposed per schema, so the author sees which gate to fill
+	// in even from a schema with no write model and no validation file. The
+	// closure they run is skipped when a quiet run will neither show nor
+	// serialize them, so a pipeline run does not pay for them.
+	if propose {
+		props, err := spiceProposals(files, writeModels)
+		if err != nil {
+			return spiceDBRun{}, err
 		}
+		run.proposals = props
 	}
 	for _, f := range files {
 		if !f.Validation && !read[f.Path] {
@@ -84,6 +81,38 @@ func runSpiceDB(files []*spicedb.File, now time.Time, writeModels map[string]*za
 		}
 	}
 	return run, nil
+}
+
+// spiceProposals are, per schema among the files, the safe gates SafeGates finds
+// for the relations its write model leaves without a rule. The gates rest on the
+// positions generated from the schema, so a schema with no write model yields a
+// skeleton for every writable relation, and one needs no validation file. A
+// schema whose write model already rules every relation leaves nothing to
+// propose and does not appear. One entry per schema, in the order the files
+// sort, so the same inputs print the same bytes.
+func spiceProposals(files []*spicedb.File, writeModels map[string]*zanzibar.WriteModel) ([]schemaProposals, error) {
+	var out []schemaProposals
+	done := map[string]bool{}
+	for _, f := range files {
+		if done[f.SchemaPath] {
+			continue
+		}
+		done[f.SchemaPath] = true
+		wm := writeModels[path.Dir(f.SchemaPath)]
+		if wm == nil {
+			// No write model yet: propose a gate for every writable relation, the
+			// skeleton the author starts from, rather than nothing.
+			wm = &zanzibar.WriteModel{}
+		}
+		gates, err := zanzibar.SafeGates(f.Schema.Model, wm, f.Schema, zanzibar.Options{})
+		if err != nil {
+			return nil, err
+		}
+		if len(gates) > 0 {
+			out = append(out, schemaProposals{schema: f.SchemaPath, proposals: gates})
+		}
+	}
+	return out, nil
 }
 
 // counts are the matches by pattern, the way the summary of a policy counts

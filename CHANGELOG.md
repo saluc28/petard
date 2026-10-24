@@ -7,6 +7,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `petard analyze` proposes safe gates, and `-questions` writes the write-model skeleton, for a
+  SpiceDB schema with no write model and no validation file. The gates rest on the positions
+  generated from the schema, so pointing petard at a schema alone yields the skeleton to confirm,
+  rather than only once a write model or a validation file is present.
+
 ### Fixed
 
 - An escalation a coalition reaches by creating an object it controls and linking a pre-existing
