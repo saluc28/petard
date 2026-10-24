@@ -83,9 +83,25 @@ func (e Escalation) decisiveWrite() (WriteStep, bool) {
 // witness made only of writes a rule marks intended, joining a public group
 // among them, is a raise the write model allows by design and is left out.
 func Escalations(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, opts Options) ([]Escalation, error) {
+	return escalationsScoped(model, wm, caveats, start, coalition, nil, opts)
+}
+
+// escalationsScoped is Escalations with an optional scope. When scope is
+// non-nil, only the pre-existing targets whose permission is in it are weighed
+// for a raise; a permission that cannot read anything the write model changes
+// can never rise, so SafeGates passes the set that can, which on a type with
+// many permissions is far fewer than all of them (raisableIndex). A nil scope
+// weighs every target, the behavior the findings path and the graph keep, so
+// what they report is unchanged.
+func escalationsScoped(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, scope map[permRef]bool, opts Options) ([]Escalation, error) {
 	e := newEngine(model, wm, caveats, start, coalition, opts)
 
 	targets := e.preExistingTargets()
+	if scope != nil {
+		targets = slices.DeleteFunc(targets, func(q target) bool {
+			return !scope[permRef{typ: q.resource.Type, name: q.name}]
+		})
+	}
 	before := make(map[string]Level, len(targets))
 	checker0 := NewChecker(model, start, caveats, opts.now())
 	raised := make(map[string]target, len(targets))

@@ -43,6 +43,16 @@ type UnsafeGate struct {
 // permission is unsafe has no safe gate, and the run says so rather than
 // proposing one.
 func SafeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, opts Options) ([]GateProposal, error) {
+	// Each gate check need only weigh the permissions a write to the relation
+	// under it could reach; the rest cannot change and would read the same every
+	// time. The reach that says which those are is read off the schema once here.
+	return safeGates(model, wm, caveats, newReach(model, wm), opts)
+}
+
+// safeGates is SafeGates with the reach given rather than read from the model,
+// so a test can run it both with the reach and with an empty one and confirm
+// the scoping leaves every proposal unchanged.
+func safeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, rc reach, opts Options) ([]GateProposal, error) {
 	// The starting positions depend on the schema alone, not on the relation or
 	// the gate under test, so they are generated once and indexed by the gate
 	// they put the attacker on. Regenerating them inside the per-relation,
@@ -74,7 +84,7 @@ func SafeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, opts Optio
 	g.SetLimit(runtime.GOMAXPROCS(0))
 	for i, jb := range jobs {
 		g.Go(func() error {
-			proposal, err := relationGates(model, wm, caveats, jb.t, jb.r, byGate, opts)
+			proposal, err := relationGates(model, wm, caveats, jb.t, jb.r, byGate, rc, opts)
 			if err != nil {
 				return err
 			}
@@ -86,7 +96,7 @@ func SafeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, opts Optio
 		return nil, err
 	}
 
-	if err := checkTogether(model, wm, caveats, proposals, positions, opts); err != nil {
+	if err := checkTogether(model, wm, caveats, proposals, positions, rc, opts); err != nil {
 		return nil, err
 	}
 	return proposals, nil
@@ -96,10 +106,10 @@ func SafeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, opts Optio
 // its relations, and returns which are safe and which a coalition could
 // escalate through. It reads only shared inputs it does not change, so one call
 // is independent of the next and they can run on separate workers.
-func relationGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, t *Type, r *Relation, byGate map[gateKey][]StartingPosition, opts Options) (GateProposal, error) {
+func relationGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, t *Type, r *Relation, byGate map[gateKey][]StartingPosition, rc reach, opts Options) (GateProposal, error) {
 	proposal := GateProposal{Type: t.Name, Relation: r.Name}
 	for _, p := range t.Permissions {
-		esc, unsafe, err := gateEscalates(model, wm, caveats, t.Name, r, p.Name, byGate, opts)
+		esc, unsafe, err := gateEscalates(model, wm, caveats, t.Name, r, p.Name, byGate, rc, opts)
 		if err != nil {
 			return GateProposal{}, err
 		}
@@ -136,13 +146,14 @@ func positionsByGate(positions []StartingPosition) map[gateKey][]StartingPositio
 // was safe only while the other relations stayed unwritable. An escalation whose
 // decisive write is a rule the author declared is a finding the run already
 // reports, not a fault of a proposal, so it demotes nothing.
-func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, proposals []GateProposal, positions []StartingPosition, opts Options) error {
+func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, proposals []GateProposal, positions []StartingPosition, rc reach, opts Options) error {
 	for {
 		combined := withProposals(model, wm, proposals)
+		scope := rc.scopeOf(model, combined)
 		demoted := false
 		for i := range proposals {
 			for _, gate := range slices.Clone(proposals[i].Safe) {
-				esc, ok, err := combinedEscalates(model, combined, caveats, positions, proposals[i].Type, proposals[i].Relation, gate, opts)
+				esc, ok, err := combinedEscalates(model, combined, caveats, positions, scope, proposals[i].Type, proposals[i].Relation, gate, opts)
 				if err != nil {
 					return err
 				}
@@ -176,12 +187,12 @@ func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, propos
 // read past a trailing creation (decisiveWrite), so a gate that links a created
 // object into a pre-existing one is not called safe because a setup write of the
 // creation happened to end the witness.
-func combinedEscalates(model *Model, combined *WriteModel, caveats CaveatEvaluator, positions []StartingPosition, typ, relation, gate string, opts Options) (Escalation, bool, error) {
+func combinedEscalates(model *Model, combined *WriteModel, caveats CaveatEvaluator, positions []StartingPosition, scope map[permRef]bool, typ, relation, gate string, opts Options) (Escalation, bool, error) {
 	for _, pos := range positions {
 		if pos.Type != typ || pos.Target != gate {
 			continue
 		}
-		escs, err := Escalations(model, combined, caveats, pos.Tuples, []Object{pos.Attacker}, opts)
+		escs, err := escalationsScoped(model, combined, caveats, pos.Tuples, []Object{pos.Attacker}, scope, opts)
 		if err != nil {
 			return Escalation{}, false, err
 		}
@@ -254,7 +265,7 @@ func hasWriteRule(wm *WriteModel, resource, relation string) bool {
 // relation r of type typ lets a coalition escalate, with a witness when it does.
 // It adds the proposed rule to the write model and runs the escalation search
 // from every starting position in which the attacker holds the gate.
-func gateEscalates(model *Model, wm *WriteModel, caveats CaveatEvaluator, typ string, r *Relation, gate string, byGate map[gateKey][]StartingPosition, opts Options) (Escalation, bool, error) {
+func gateEscalates(model *Model, wm *WriteModel, caveats CaveatEvaluator, typ string, r *Relation, gate string, byGate map[gateKey][]StartingPosition, rc reach, opts Options) (Escalation, bool, error) {
 	proposed := &WriteModel{
 		SchemaVersion: wm.SchemaVersion,
 		Kind:          wm.Kind,
@@ -268,9 +279,10 @@ func gateEscalates(model *Model, wm *WriteModel, caveats CaveatEvaluator, typ st
 		}),
 		Creates: wm.Creates,
 	}
+	scope := rc.scopeOf(model, proposed)
 
 	for _, p := range byGate[gateKey{typ: typ, target: gate}] {
-		escs, err := Escalations(model, proposed, caveats, p.Tuples, []Object{p.Attacker}, opts)
+		escs, err := escalationsScoped(model, proposed, caveats, p.Tuples, []Object{p.Attacker}, scope, opts)
 		if err != nil {
 			return Escalation{}, false, err
 		}
