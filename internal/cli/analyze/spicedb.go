@@ -146,6 +146,19 @@ func (r spiceDBRun) exitCode(failOn string) int {
 	return exitCode(summary{byPattern: r.counts(nil)}, failOn)
 }
 
+// hasEvidence reports whether any match carries a line -v would add, so the
+// footer offers -v only where it shows something the first screen did not.
+func (r spiceDBRun) hasEvidence() bool {
+	for _, m := range r.matches {
+		for _, d := range m.Details {
+			if d.Verbose {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // printSpiceDB says what the SpiceDB files declare and what the patterns found
 // in them. Quiet, it prints the matches alone, and nothing when there are none.
 func printSpiceDB(out io.Writer, r spiceDBRun, patterns []taxonomy.Pattern, p printing) {
@@ -166,7 +179,7 @@ func printSpiceDB(out io.Writer, r spiceDBRun, patterns []taxonomy.Pattern, p pr
 	printCounts(out, headingFindings, counts, style, sayNothing, func(c patternCount) int { return c.findings })
 	printCounts(out, headingCandidates, counts, style, stayQuiet, func(c patternCount) int { return c.candidates })
 	for _, m := range r.matches {
-		printMatch(out, m, style)
+		printMatch(out, m, style, p.verbose)
 	}
 
 	if p.quiet {
@@ -208,11 +221,16 @@ func printProposals(out io.Writer, groups []schemaProposals, style render.Style)
 // text of every line starts in the same column.
 const matchLabelWidth = 12
 
-// printMatch prints one match under its subject, a line per detail.
-func printMatch(out io.Writer, m zanzibar.Match, style render.Style) {
+// printMatch prints one match under its subject, a line per detail. A detail
+// marked verbose is the evidence behind the finding, printed only under -v, so
+// the default report is the claim and -v is the proof.
+func printMatch(out io.Writer, m zanzibar.Match, style render.Style, verbose bool) {
 	fmt.Fprintf(out, "\n  %s  (%s)\n", style.Bold(m.Subject), m.PatternID)
 	hanging := strings.Repeat(" ", 4+matchLabelWidth+1)
 	for _, d := range m.Details {
+		if d.Verbose && !verbose {
+			continue
+		}
 		lines := render.Wrap(d.Text, hanging)
 		if len(lines) == 0 {
 			continue

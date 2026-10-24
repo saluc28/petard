@@ -167,14 +167,20 @@ func printSummary(out io.Writer, a taxonomy.Analysis, s summary, coverage taxono
 
 // printFooter says where the rest of the report is. It goes under everything
 // the run sums up, the policies and the SpiceDB files alike, and offers -v only
-// where -v adds something, which is the evidence behind the policies.
-func printFooter(out io.Writer, p printing, policies bool) {
+// where -v adds something: the reads behind the policies, or the writes behind a
+// SpiceDB escalation. A run already verbose is shown the evidence and is not
+// offered the flag again.
+func printFooter(out io.Writer, p printing, policies, spiceEvidence bool) {
 	if p.quiet {
 		return
 	}
 	fmt.Fprintln(out)
-	if policies && !p.verbose {
+	switch {
+	case p.verbose:
+	case policies:
 		fmt.Fprint(out, "Run with -v for the reads behind this, and every place to look.\n")
+	case spiceEvidence:
+		fmt.Fprint(out, "Run with -v for the writes behind each escalation.\n")
 	}
 	fmt.Fprint(out, "Run petard explain <id> for what a pattern looks for and what it will not report.\n")
 }

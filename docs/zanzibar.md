@@ -126,7 +126,9 @@ escalation it finds by its decisive write, the write after which the permission 
 of the definitions): a delete under an exclusion, a wildcard subject, an arrow link to a controlled
 object, a userset join, a grant written for another, and a self-write behind a permission or an
 open gate. They rest on the write model and are reported only with one, since who writes a relation
-is not in the schema.
+is not in the schema. The report names the decisive write of each. With -v it adds the whole
+witness: the writes in order that reach the raise and who the write model lets make each, so a
+multi-write escalation shows the setup it needs and not only the write that ends it.
 
 The categories of the registry with no Zanzibar instance, and why, are in section 3 of
 [taxonomy-registry/README.md](../taxonomy-registry/README.md).

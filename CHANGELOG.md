@@ -21,6 +21,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   schema that a write model stands beside even when no validation file reads it. The patterns start
   from the positions generated from the schema, so neither needs a validation file written by hand.
   A schema with no write model and no validation file is still named as one with no evidence.
+- `petard analyze -v` prints the witness behind each SpiceDB escalation: the writes in order that
+  reach the raise and who the write model lets make each, so a multi-write escalation shows its
+  setup and not only the decisive write. The default report is unchanged, and a run that found
+  escalations now offers -v.
 
 ### Fixed
 

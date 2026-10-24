@@ -138,7 +138,68 @@ func escalationMatch(id string, c ClassifiedEscalation) Match {
 		Label: "raises",
 		Text:  fmt.Sprintf("%s on %s, from %s to %s", c.Permission, c.Object.Type, c.Before, c.After),
 	})
+	m.Details = append(m.Details, witnessDetails(c.Writes)...)
 	return m
+}
+
+// witnessDetails are the evidence lines of a finding: the writes of the witness
+// in order, each the tuple the coalition adds, removes or the object it creates,
+// and who the write model lets make it. The summary names the decisive write
+// alone; these show the whole path it ends, the setup a multi-write escalation
+// needs, so -v answers "how" and the first screen does not carry it. They are
+// marked verbose, since a path is read after the claim, not before it.
+func witnessDetails(writes []WriteStep) []Detail {
+	details := make([]Detail, 0, len(writes))
+	for i, w := range writes {
+		label := ""
+		if i == 0 {
+			label = "path"
+		}
+		details = append(details, Detail{Label: label, Text: stepText(w), Verbose: true})
+	}
+	return details
+}
+
+// stepText describes one write of a witness: the tuple it adds or removes, or
+// the object it creates, and who the write model lets make it. A tuple a
+// creation writes on its own new object rides on the creation's gate, named at
+// the create step above it, so it carries no gate of its own.
+func stepText(w WriteStep) string {
+	var verb, what string
+	var gate Gate
+	var via string
+	switch {
+	case w.Delete:
+		verb, what = "delete", w.Relationship.String()
+		if w.Rule != nil {
+			gate, via = w.Rule.Gate, w.Rule.Via
+		}
+	case w.Creation != nil:
+		// Whoever may create the object makes both its birth and the tuples the
+		// creation writes on it, so each carries the creation's gate. A birth
+		// writes no tuple of its own, so it is named by the object it brings in.
+		gate, via = w.Creation.Gate, w.Creation.Via
+		if w.Relationship.Relation == "" {
+			verb, what = "create", w.Created.String()
+		} else {
+			verb, what = "write", w.Relationship.String()
+		}
+	default:
+		verb, what = "write", w.Relationship.String()
+		if w.Rule != nil {
+			gate, via = w.Rule.Gate, w.Rule.Via
+		}
+	}
+
+	line := verb + " " + what
+	if gate == (Gate{}) {
+		return line
+	}
+	who := gatePhrase(gate)
+	if via != "" {
+		who += ", through " + via
+	}
+	return line + " (" + who + ")"
 }
 
 // categoryPhrase names the kind of a decisive write in a few words, for the

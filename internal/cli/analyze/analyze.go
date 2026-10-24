@@ -169,7 +169,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 				reportEntriesWritten(stdout, written, *questionsPath)
 			}
 		}
-		printFooter(stdout, pr, false)
+		printFooter(stdout, pr, false, spice.hasEvidence())
 		return spice.exitCode(*failOn)
 	}
 	if err != nil {
@@ -196,7 +196,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout)
 		printSpiceDB(stdout, spice, patterns, pr)
 	}
-	printFooter(stdout, pr, true)
+	printFooter(stdout, pr, true, spice.hasEvidence())
 
 	if *verbose {
 		fmt.Fprintln(stdout)

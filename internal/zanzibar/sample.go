@@ -111,4 +111,9 @@ type Detail struct {
 	Label string
 	Text  string
 	Position
+
+	// Verbose marks a line as evidence, the detail behind the finding that a
+	// report prints only when asked for it, so the first screen stays the claim
+	// and the proof sits behind -v.
+	Verbose bool
 }

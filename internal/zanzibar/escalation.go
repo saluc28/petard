@@ -20,6 +20,11 @@ type WriteStep struct {
 
 	// Writer is the coalition subject that made a rule write.
 	Writer Subject
+
+	// Created is the object a creation brought into the coalition, set on a
+	// creation step so the witness can name it even when the step itself writes
+	// no tuple, the bare birth of an object.
+	Created Object
 }
 
 // Escalation is a permission a coalition can raise on an object that existed
@@ -221,6 +226,7 @@ func steps(path []move) []WriteStep {
 			Rule:         mv.rule,
 			Creation:     mv.creates,
 			Writer:       mv.writer,
+			Created:      mv.created,
 		})
 	}
 	return out

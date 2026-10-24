@@ -238,6 +238,39 @@ func TestRunFindsEscalationsFromASchemaAndWriteModel(t *testing.T) {
 	}
 }
 
+// The witness behind an escalation is evidence: the default names the decisive
+// write, and -v adds the whole path. The arrow-link finding takes two writes,
+// creating a folder and linking the document to it, so the created folder and
+// the link through it show only under -v.
+func TestTheEscalationWitnessIsBehindTheFlag(t *testing.T) {
+	var brief, detail, stderr bytes.Buffer
+	if code := Run([]string{"-fail-on", "none", spicedbFixture}, &brief, &stderr); code != exitOK {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr.String())
+	}
+	if code := Run([]string{"-fail-on", "none", "-v", spicedbFixture}, &detail, &stderr); code != exitOK {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr.String())
+	}
+
+	for _, witness := range []string{
+		"folder:created-1",
+		"document:roadmap#parent@folder:created-1",
+	} {
+		if strings.Contains(brief.String(), witness) {
+			t.Errorf("the default report prints the witness (%q):\n%s", witness, brief.String())
+		}
+		if !strings.Contains(detail.String(), witness) {
+			t.Errorf("-v does not print the witness (%q)", witness)
+		}
+	}
+	if !strings.Contains(detail.String(), "path") {
+		t.Errorf("-v does not label the witness path:\n%s", detail.String())
+	}
+	// Offering a flag already passed reads as a report that is not listening.
+	if strings.Contains(detail.String(), "Run with -v") {
+		t.Error("-v still offers -v")
+	}
+}
+
 // Findings fail the run by default, and on -fail-on any, and never on none, the
 // same as the findings of a policy.
 func TestRunFailsOnSpiceDBFindings(t *testing.T) {
@@ -274,8 +307,8 @@ func TestRunQuietPrintsSpiceDBMatches(t *testing.T) {
 }
 
 // A run over policies and SpiceDB files sums up both before it says where the
-// rest is, and a run over SpiceDB files alone does not offer the evidence -v
-// adds for policies.
+// rest is, and a run over SpiceDB files alone, when it found escalations, offers
+// -v for the writes behind them.
 func TestTheFooterComesAfterEverySummary(t *testing.T) {
 	var mixed, alone, stderr bytes.Buffer
 	if code := Run([]string{"-fail-on", "none", fixture("policy-v1"), spicedbFixture}, &mixed, &stderr); code != exitOK {
@@ -296,8 +329,11 @@ func TestTheFooterComesAfterEverySummary(t *testing.T) {
 		t.Errorf("the run does not end with the footer:\n%s", out)
 	}
 
-	if !strings.Contains(alone.String(), "Run petard explain") || strings.Contains(alone.String(), "Run with -v") {
-		t.Errorf("the footer of a run over SpiceDB files alone is wrong:\n%s", alone.String())
+	if !strings.Contains(alone.String(), "Run with -v for the writes behind each escalation") {
+		t.Errorf("a SpiceDB-alone run with escalations does not offer -v for their evidence:\n%s", alone.String())
+	}
+	if !strings.Contains(alone.String(), "Run petard explain") {
+		t.Errorf("a SpiceDB-alone run does not point to petard explain:\n%s", alone.String())
 	}
 }
 
