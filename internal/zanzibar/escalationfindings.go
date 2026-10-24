@@ -133,9 +133,7 @@ func escalationMatch(id string, c ClassifiedEscalation) Match {
 		Verdict:   Finding,
 		Subject:   fmt.Sprintf("%s#%s, %s", c.Object.Type, c.Permission, categoryPhrase(c.Category)),
 	}
-	if dw, ok := c.Decisive(); ok {
-		m.Details = append(m.Details, Detail{Label: "written by", Text: decisiveText(dw)})
-	}
+	m.Details = append(m.Details, Detail{Label: "written by", Text: decisiveText(c.DecisiveWrite)})
 	m.Details = append(m.Details, Detail{
 		Label: "raises",
 		Text:  fmt.Sprintf("%s on %s, from %s to %s", c.Permission, c.Object.Type, c.Before, c.After),

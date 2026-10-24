@@ -50,6 +50,23 @@ func (e Escalation) Decisive() (WriteStep, bool) {
 	return e.Writes[len(e.Writes)-1], true
 }
 
+// decisiveWrite is the write a raise is attributed to for a report or a gate
+// check: the last write of the witness that is not a creation. A creation only
+// builds the coalition's own object, so when the witness order leaves one last,
+// the write the raise rests on is the earlier rule write that links the
+// pre-existing object. A witness that is all creations, touching no
+// pre-existing object, falls back to the positional last. The classifier skips
+// trailing creations the same way, but keeps looking earlier for a write that
+// matches a category, which this single step need not.
+func (e Escalation) decisiveWrite() (WriteStep, bool) {
+	for i := len(e.Writes) - 1; i >= 0; i-- {
+		if e.Writes[i].Creation == nil {
+			return e.Writes[i], true
+		}
+	}
+	return e.Decisive()
+}
+
 // Escalations finds every permission a coalition can raise on a pre-existing
 // object, from a starting state under a write model, each with the shortest
 // witness that produces the raise. A raise reachable by writes of different

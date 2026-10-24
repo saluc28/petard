@@ -44,10 +44,18 @@ const (
 )
 
 // ClassifiedEscalation is an escalation with the category its decisive write
-// falls into.
+// falls into, and the write that classification read the category from.
 type ClassifiedEscalation struct {
 	Escalation
 	Category Category
+
+	// DecisiveWrite is the write the category was read from. It is the last
+	// write of the witness in the usual case, but when that write is a creation,
+	// which only builds the coalition's own object, it is the rule write in the
+	// witness that links the pre-existing object instead, the write the category
+	// describes. A report names this write, so its heading and its "written by"
+	// line agree even when the witness order left a setup creation at the end.
+	DecisiveWrite WriteStep
 }
 
 // Classify finds the escalations a coalition can reach and labels each by its
@@ -65,7 +73,7 @@ func Classify(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Rel
 	best := map[string]ClassifiedEscalation{}
 	var order []string
 	for _, esc := range escs {
-		category, ok, err := e.classify(esc)
+		category, decisive, ok, err := e.classify(esc)
 		if err != nil {
 			return nil, err
 		}
@@ -78,7 +86,7 @@ func Classify(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Rel
 			if !seen {
 				order = append(order, key)
 			}
-			best[key] = ClassifiedEscalation{Escalation: esc, Category: category}
+			best[key] = ClassifiedEscalation{Escalation: esc, Category: category, DecisiveWrite: decisive}
 		}
 	}
 
@@ -89,22 +97,49 @@ func Classify(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Rel
 	return out, nil
 }
 
-// classify labels the decisive write of an escalation by the first row of the
-// section 7.1 table that matches. The rows are checked in order, so the first
-// match wins and the categories need not be mutually exclusive.
-func (e *engine) classify(esc Escalation) (Category, bool, error) {
+// classify labels an escalation by the first row of the section 7.1 table its
+// decisive write matches, and returns that write. The decisive write is the
+// last of the witness, except that a creation only builds the coalition's own
+// object and matches no row: when the last write is a creation, the category is
+// read instead from the rule write in the witness that links the pre-existing
+// object, and that write is returned so a report names it. The rows are checked
+// in order, so the first match wins and the categories need not be mutually
+// exclusive.
+func (e *engine) classify(esc Escalation) (Category, WriteStep, bool, error) {
 	step, ok := esc.Decisive()
 	if !ok {
-		return "", false, nil
+		return "", WriteStep{}, false, nil
 	}
-	if step.Creation != nil {
-		// A creation and the tuples it writes build the coalition's own objects;
-		// none of the eight kinds of section 7.1 is a creation. A raise a creation
-		// takes part in reaches a pre-existing object only through a rule write
-		// that links to it, and that write is an equal-length decisive write the
-		// classifier labels instead, so the creation step is left unclassified.
-		return "", false, nil
+	if step.Creation == nil {
+		cat, ok, err := e.classifyStep(esc, step, len(esc.Writes)-1)
+		return cat, step, ok, err
 	}
+	// The last write is a creation, which brings one of the coalition's own
+	// objects into being and is none of the eight kinds. A raise on a
+	// pre-existing object is reached through a rule write that links it to that
+	// object; the witness holds such a write, but the order can leave a setup
+	// creation at the end when the controlled object took more than one write to
+	// build. Scan back from the last so the write nearest the raise is labeled.
+	for i := len(esc.Writes) - 1; i >= 0; i-- {
+		w := esc.Writes[i]
+		if w.Creation != nil {
+			continue
+		}
+		cat, ok, err := e.classifyStep(esc, w, i)
+		if err != nil {
+			return "", WriteStep{}, false, err
+		}
+		if ok {
+			return cat, w, true, nil
+		}
+	}
+	return "", WriteStep{}, false, nil
+}
+
+// classifyStep reads the category one write of a witness falls into, at its
+// position i so the writer's holdings, for a delegation, are read on the state
+// just before it.
+func (e *engine) classifyStep(esc Escalation, step WriteStep, i int) (Category, bool, error) {
 	rel := step.Relationship
 	subject := rel.Subject
 	created := createdObjects(esc.moves)
@@ -130,7 +165,7 @@ func (e *engine) classify(esc Escalation) (Category, bool, error) {
 	// can fail, so this case stands apart from the switch where its error can
 	// travel rather than be read as "the writer held it".
 	if subject.Object != step.Writer.Object {
-		lacks, err := e.writerLacks(esc, step)
+		lacks, err := e.writerLacks(esc, step, i)
 		if err != nil {
 			return "", false, err
 		}
@@ -234,12 +269,12 @@ func (e *engine) grantsToUserset(objectType, usersetType, usersetRel string) boo
 }
 
 // writerLacks reports whether the writer did not itself hold what it wrote for
-// another, read on the state just before the decisive write. A delegation is a
-// grant the writer passes on without holding it.
-func (e *engine) writerLacks(esc Escalation, step WriteStep) (bool, error) {
+// another, read on the state just before write i of the witness. A delegation
+// is a grant the writer passes on without holding it.
+func (e *engine) writerLacks(esc Escalation, step WriteStep, i int) (bool, error) {
 	state := e.start.clone()
 	objects := slices.Clone(e.coalition)
-	for _, mv := range esc.moves[:len(esc.moves)-1] {
+	for _, mv := range esc.moves[:i] {
 		applyMove(state, &objects, mv)
 	}
 	checker := NewChecker(e.model, state.list(), e.caveats, e.opts.now())

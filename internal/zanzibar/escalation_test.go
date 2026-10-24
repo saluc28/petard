@@ -127,3 +127,35 @@ func TestEscalationsIntendedIsNotReported(t *testing.T) {
 		t.Errorf("an intended write is not an escalation, got %+v", escs)
 	}
 }
+
+// decisiveWrite reads past a trailing creation to the rule write a raise rests
+// on, so a report and a gate check name the link rather than a setup write the
+// witness order left last. A witness of only creations falls back to the last.
+func TestDecisiveWrite(t *testing.T) {
+	link := WriteStep{Relationship: rel("org:o", "granted", "binding:b"), Rule: &WriteRule{}}
+	create1 := WriteStep{Relationship: rel("binding:b", "bearer", "user:x"), Creation: &CreationRule{}}
+	create2 := WriteStep{Relationship: rel("binding:b", "role", "role:admin"), Creation: &CreationRule{}}
+
+	tests := []struct {
+		name   string
+		writes []WriteStep
+		want   string // the decisive relationship, or "" when none
+		ok     bool
+	}{
+		{name: "no writes", writes: nil, ok: false},
+		{name: "link last", writes: []WriteStep{create1, link}, want: link.Relationship.String(), ok: true},
+		{name: "creation last, link earlier", writes: []WriteStep{link, create2}, want: link.Relationship.String(), ok: true},
+		{name: "all creations fall back to the last", writes: []WriteStep{create1, create2}, want: create2.Relationship.String(), ok: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := Escalation{Writes: tt.writes}.decisiveWrite()
+			if ok != tt.ok {
+				t.Fatalf("ok = %v, want %v", ok, tt.ok)
+			}
+			if ok && got.Relationship.String() != tt.want {
+				t.Errorf("decisiveWrite = %s, want %s", got.Relationship, tt.want)
+			}
+		})
+	}
+}

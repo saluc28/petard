@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- An escalation a coalition reaches by creating an object it controls and linking a pre-existing
+  object to it through a gated write is now reported when the witness ends in one of the creation's
+  own writes rather than the link. The category is read from the link, the rule write the raise
+  rests on, instead of the creation that the witness order left last, and the safe-gate proposals
+  read it the same way, so a gate is no longer called safe when the raise it would allow ends the
+  witness with a setup write. This is the role-binding RBAC self-escalation, where holding the
+  permission to manage policies is enough to bind oneself to a stronger role.
+
 ## [0.6.0] - 2026-10-23
 
 ### Added

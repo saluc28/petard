@@ -210,7 +210,106 @@ func TestClassifyPropagatesACheckError(t *testing.T) {
 		Writes:     []WriteStep{decisive},
 		moves:      []move{{rel: decisive.Relationship, writer: decisive.Writer}},
 	}
-	if _, _, err := e.classify(esc); err == nil {
+	if _, _, _, err := e.classify(esc); err == nil {
 		t.Error("classify should return the check error, not swallow it")
+	}
+}
+
+// rolebindingRBAC is a minimal user-defined-roles schema: a role carries a
+// permission through a wildcard relation, a binding ties a bearer to a role,
+// and an org reads a binding through `granted`. It is the shape every
+// RBAC-via-rolebinding SpiceDB schema shares, reduced to what an escalation
+// turns on, so the test is about the create-and-link path and not one repo.
+func rolebindingRBAC(t *testing.T) *Model {
+	t.Helper()
+	role := &Type{Name: "role", Relations: []*Relation{
+		{Name: "admin_perm", Allowed: []Allowed{{Type: "user", Wildcard: true}}},
+		{Name: "pm_perm", Allowed: []Allowed{{Type: "user", Wildcard: true}}},
+	}}
+	binding := &Type{Name: "binding",
+		Relations: []*Relation{
+			{Name: "bearer", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "role", Allowed: []Allowed{{Type: "role"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "administer", Expr: Intersection{Children: []Expr{Computed{Name: "bearer"}, Arrow{Through: "role", Target: "admin_perm"}}}},
+			{Name: "policymanage", Expr: Intersection{Children: []Expr{Computed{Name: "bearer"}, Arrow{Through: "role", Target: "pm_perm"}}}},
+		},
+	}
+	org := &Type{Name: "org",
+		Relations: []*Relation{{Name: "granted", Allowed: []Allowed{{Type: "binding"}}}},
+		Permissions: []*Permission{
+			{Name: "update", Expr: Arrow{Through: "granted", Target: "administer"}},
+			{Name: "policymanage", Expr: Union{Children: []Expr{Arrow{Through: "granted", Target: "administer"}, Arrow{Through: "granted", Target: "policymanage"}}}},
+		},
+	}
+	m, err := NewModel([]*Type{{Name: "user"}, role, binding, org}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// A coalition that starts holding policymanage on an org, writing only what the
+// write model allows, can create a binding to the admin role and link the org
+// to it with a `granted` write, raising org#update it did not hold. The raise
+// takes three writes, and the witness can leave a setup creation (binding#role)
+// last, so the positional decisive write is a creation. The escalation is still
+// real, and its category is read from the `granted` rule write that links the
+// pre-existing org to the controlled binding: a transitive grant. Before the
+// classifier looked past a trailing creation, this escalation was found and
+// then dropped, a permission raise the run stayed silent on.
+func TestClassifyLinksThroughATrailingCreation(t *testing.T) {
+	model := rolebindingRBAC(t)
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes",
+		Creates: []*CreationRule{{
+			Creates: "binding",
+			Gate:    Gate{Anyone: true},
+			On:      []OnSpec{{Type: "role", Gate: Gate{Anyone: true}}},
+			Writes: []CreationWrite{
+				{Resource: CreatedPlaceholder, Relation: "bearer", Subject: CreatorPlaceholder},
+				{Resource: CreatedPlaceholder, Relation: "role", Subject: "role"},
+			},
+		}},
+		Writes: []*WriteRule{{
+			Resource: "org", Relation: "granted", Operations: []Operation{Create, Touch},
+			Gate: Gate{Holds: "policymanage"}, Subject: SubjectSpec{Types: []string{"binding"}},
+		}},
+	}
+	// The attacker is a policy manager: bound to a role that carries only
+	// policymanage. The admin role is present for the attacker to bind itself to.
+	start := []Relationship{
+		rel("role:admin", "admin_perm", "user:*"),
+		rel("role:pm", "pm_perm", "user:*"),
+		rel("binding:b_att", "bearer", "user:attacker"),
+		rel("binding:b_att", "role", "role:pm"),
+		rel("org:o", "granted", "binding:b_att"),
+	}
+	coalition := []Object{object("user:attacker")}
+
+	cs, err := Classify(model, wm, nil, start, coalition, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Classify: %v", err)
+	}
+
+	cats := categoriesOn(cs, object("org:o"), "update")
+	if !slices.Contains(cats, CategoryTransitiveGrant) {
+		t.Fatalf("org:o#update: want a %s finding, got %v", CategoryTransitiveGrant, cats)
+	}
+
+	// The category rests on the granted link, not on the trailing creation.
+	var found bool
+	for _, c := range cs {
+		if c.Object != object("org:o") || c.Permission != "update" || c.Category != CategoryTransitiveGrant {
+			continue
+		}
+		found = true
+		dw := c.DecisiveWrite
+		if dw.Creation != nil || dw.Rule == nil || dw.Relationship.Resource.Type != "org" || dw.Relationship.Relation != "granted" {
+			t.Errorf("decisive write = %+v, want the org#granted rule write", dw)
+		}
+	}
+	if !found {
+		t.Fatal("no TRANSITIVE-GRANT escalation on org:o#update to inspect")
 	}
 }

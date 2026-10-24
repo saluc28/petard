@@ -63,10 +63,7 @@ func (tc categoryCase) matches(c zanzibar.ClassifiedEscalation, coalition []zanz
 	if c.Category != tc.category || c.Object != tc.object || c.Permission != tc.permission {
 		return false
 	}
-	dw, ok := c.Decisive()
-	if !ok {
-		return false
-	}
+	dw := c.DecisiveWrite
 	rel := dw.Relationship
 	if rel.Resource.Type != tc.resource || rel.Relation != tc.relation || dw.Delete != tc.del {
 		return false
@@ -222,7 +219,7 @@ func TestFixtureAllCategories(t *testing.T) {
 				t.Errorf("no %s escalation raising %s on %s by the expected write;\ngot:\n%s", tc.category, tc.permission, tc.object, dumpClassified(cs))
 			}
 			for _, c := range cs {
-				dw, _ := c.Decisive()
+				dw := c.DecisiveWrite
 				if dw.Creation != nil {
 					t.Errorf("classified %s on %s#%s by a creation step (%s): a creation is setup, not a decisive write", c.Category, c.Object, c.Permission, dw.Relationship)
 				}
@@ -258,7 +255,7 @@ func TestFixtureAllCategories(t *testing.T) {
 func dumpClassified(cs []zanzibar.ClassifiedEscalation) string {
 	var b strings.Builder
 	for _, c := range cs {
-		dw, _ := c.Decisive()
+		dw := c.DecisiveWrite
 		verb := "write"
 		if dw.Delete {
 			verb = "delete"

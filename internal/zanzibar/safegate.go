@@ -110,7 +110,10 @@ func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, propos
 // is the sign the gate is safe only while the other relations stay unwritable:
 // the relation has no rule of its own, so the only rule for it in the combined
 // model is the proposed one, and an escalation some declared rule is decisive for
-// is a finding the run already reports, not counted here.
+// is a finding the run already reports, not counted here. The decisive write is
+// read past a trailing creation (decisiveWrite), so a gate that links a created
+// object into a pre-existing one is not called safe because a setup write of the
+// creation happened to end the witness.
 func combinedEscalates(model *Model, combined *WriteModel, caveats CaveatEvaluator, positions []StartingPosition, typ, relation, gate string, opts Options) (Escalation, bool, error) {
 	for _, pos := range positions {
 		if pos.Type != typ || pos.Target != gate {
@@ -121,7 +124,7 @@ func combinedEscalates(model *Model, combined *WriteModel, caveats CaveatEvaluat
 			return Escalation{}, false, err
 		}
 		for _, esc := range escs {
-			dw, ok := esc.Decisive()
+			dw, ok := esc.decisiveWrite()
 			if !ok || dw.Rule == nil || dw.Rule.Gate.Holds != gate {
 				continue
 			}
