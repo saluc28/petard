@@ -33,9 +33,11 @@ type spiceDBRun struct {
 	proposals []schemaProposals
 }
 
-// schemaProposals are the safe-gate proposals for one schema.
+// schemaProposals are the safe-gate proposals for one schema, with the model
+// the skeleton reads each relation's allowed subjects and caveats from.
 type schemaProposals struct {
 	schema    string
+	model     *zanzibar.Model
 	proposals []zanzibar.GateProposal
 }
 
@@ -109,7 +111,7 @@ func spiceProposals(files []*spicedb.File, writeModels map[string]*zanzibar.Writ
 			return nil, err
 		}
 		if len(gates) > 0 {
-			out = append(out, schemaProposals{schema: f.SchemaPath, proposals: gates})
+			out = append(out, schemaProposals{schema: f.SchemaPath, model: f.Schema.Model, proposals: gates})
 		}
 	}
 	return out, nil

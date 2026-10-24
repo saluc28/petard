@@ -13,6 +13,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   SpiceDB schema with no write model and no validation file. The gates rest on the positions
   generated from the schema, so pointing petard at a schema alone yields the skeleton to confirm,
   rather than only once a write model or a validation file is present.
+- The `-questions` skeleton fills in the subjects each relation allows, the wildcard it admits, and
+  the caveats it carries, read from the schema, so the author narrows and confirms rather than
+  looking them up. A caveat parameter is marked for the writer, the one that wins over the check's;
+  the author marks application for the parameters the check supplies.
 
 ### Fixed
 

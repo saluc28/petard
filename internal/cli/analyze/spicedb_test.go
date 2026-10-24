@@ -130,10 +130,13 @@ func TestRunProposesSafeGatesForSpiceDB(t *testing.T) {
 // by hand.
 func TestRunProposesSafeGatesFromABareSchema(t *testing.T) {
 	dir := t.TempDir()
-	schema := "definition user {}\n\n" +
+	schema := "caveat recent(now timestamp, until timestamp) {\n" +
+		"  now < until\n" +
+		"}\n\n" +
+		"definition user {}\n\n" +
 		"definition document {\n" +
 		"  relation owner: user\n" +
-		"  relation viewer: user\n" +
+		"  relation viewer: user | user with recent\n" +
 		"  permission edit = owner\n" +
 		"  permission view = viewer + edit\n" +
 		"}\n"
@@ -167,10 +170,24 @@ func TestRunProposesSafeGatesFromABareSchema(t *testing.T) {
 		t.Fatalf("reading the skeleton: %v", err)
 	}
 	content := string(raw)
-	for _, expected := range []string{"model: relationship-writes", "relation: viewer", "gate: { holds:"} {
+	// The skeleton fills the subjects the schema allows and the caveat the
+	// relation carries, so the author confirms rather than looks them up.
+	for _, expected := range []string{
+		"model: relationship-writes",
+		"relation: viewer",
+		"gate: { holds:",
+		"subject: [user]",
+		"caveat:",
+		"- name: recent",
+		"now: writer",
+	} {
 		if !strings.Contains(content, expected) {
 			t.Errorf("the skeleton from a bare schema is missing %q:\n%s", expected, content)
 		}
+	}
+	// The type that appears both plain and caveated is listed once, not twice.
+	if strings.Contains(content, "[user, user]") {
+		t.Errorf("the subject lists a type twice instead of deduplicating:\n%s", content)
 	}
 	if _, err := zanzibar.LoadWriteModel(qpath); err != nil {
 		t.Errorf("the proposed write model does not load: %v", err)
