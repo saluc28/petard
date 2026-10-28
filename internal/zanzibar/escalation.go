@@ -104,16 +104,63 @@ func escalationsScoped(model *Model, wm *WriteModel, caveats CaveatEvaluator, st
 	}
 	before := make(map[string]Level, len(targets))
 	checker0 := NewChecker(model, start, caveats, opts.now())
-	raised := make(map[string]target, len(targets))
 	for _, q := range targets {
 		lvl, err := e.coalitionLevel(checker0, q.resource, q.name, coalition)
 		if err != nil {
 			return nil, err
 		}
 		before[q.key()] = lvl
-		raised[q.key()] = q
+	}
+
+	raised, err := e.candidateTargets(targets, before)
+	if err != nil {
+		return nil, err
+	}
+	if len(raised) == 0 {
+		return nil, nil
 	}
 	return e.witnesses(raised, before, opts.maxWrites())
+}
+
+// candidateTargets is the targets a bounded search could find above their
+// starting level, which are all it need weigh: a target that cannot rise yields
+// no witness. Off the saturation path every target is a candidate, since nothing
+// cheaper rules one out, and the bounded search weighs them itself.
+//
+// On the saturation path, where E1 holds and no creation writes a negative tuple,
+// every move only raises a permission, so the reachable states have one greatest
+// element. Saturation reaches it without the bounded search's walk over the
+// orderings of writes, which is where that search blows up when many writes are
+// available at once. A target not above its starting level in the greatest state
+// is not above it in any reachable state, bounded ones included, so it can never
+// be raised and is dropped; when none survives, the caller skips the search
+// entirely. This rests on the greatest-element property the brute-force oracle
+// holds the saturation to (assertSaturated in closure_oracle_test.go): the
+// targets dropped are exactly those the search would return nothing for, so the
+// witnesses are unchanged.
+func (e *engine) candidateTargets(targets []target, before map[string]Level) (map[string]target, error) {
+	raised := make(map[string]target, len(targets))
+	if !e.e1Holds() || e.hasNegativeCreation() {
+		for _, q := range targets {
+			raised[q.key()] = q
+		}
+		return raised, nil
+	}
+	state, objects, err := e.saturate()
+	if err != nil {
+		return nil, err
+	}
+	checker := NewChecker(e.model, state.list(), e.caveats, e.opts.now())
+	for _, q := range targets {
+		lvl, err := e.coalitionLevel(checker, q.resource, q.name, objects)
+		if err != nil {
+			return nil, err
+		}
+		if lvl > before[q.key()] {
+			raised[q.key()] = q
+		}
+	}
+	return raised, nil
 }
 
 // witnesses walks the states reachable in up to bound writes and returns, for

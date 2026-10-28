@@ -78,6 +78,20 @@ func recursive(rule *CreationRule, cyclic map[string]bool) bool {
 	return false
 }
 
+// hasNegativeCreation reports whether a creation rule writes a tuple of a
+// relation that occurs negatively. That is the E2 failure that lets a creation
+// lower a permission, so no single state dominates and saturation is not the
+// greatest element. It is the `negative` of splitE2 read off the polarities the
+// engine already built, for a caller that has an engine in hand.
+func (e *engine) hasNegativeCreation() bool {
+	for _, rule := range e.wm.Creates {
+		if negativeWrite(rule, e.pol) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // negativeWrite returns a relation the creation writes that occurs negatively,
 // or empty when every tuple it writes occurs only positively. A negative write
 // can lower a permission, so the creation is no longer a one-way move.

@@ -253,6 +253,22 @@ func CheckE1(model *Model, wm *WriteModel) (bool, []MixedRelation) {
 	return len(mixed) == 0, mixed
 }
 
+// e1Holds reports whether exactness condition E1 holds for the engine's write
+// model: no relation the coalition can add or delete is mixed. It is CheckE1's
+// test read off the polarities the engine already built, so it adds no walk, for
+// a caller that has an engine in hand.
+func (e *engine) e1Holds() bool {
+	for _, w := range e.wm.Writes {
+		if !writes(w.Operations) && !deletes(w.Operations) {
+			continue
+		}
+		if e.pol.at(relKey{Type: w.Resource, Relation: w.Relation}).mixed() {
+			return false
+		}
+	}
+	return true
+}
+
 // reason says in a few words why a relation is mixed.
 func (o occurrence) reason() string {
 	if o.mixedAll {
