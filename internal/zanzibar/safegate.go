@@ -96,7 +96,7 @@ func safeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, rc reach, 
 		return nil, err
 	}
 
-	if err := checkTogether(model, wm, caveats, proposals, positions, rc, opts); err != nil {
+	if err := checkTogether(model, wm, caveats, proposals, byGate, rc, opts); err != nil {
 		return nil, err
 	}
 	return proposals, nil
@@ -146,18 +146,30 @@ func positionsByGate(positions []StartingPosition) map[gateKey][]StartingPositio
 // was safe only while the other relations stayed unwritable. An escalation whose
 // decisive write is a rule the author declared is a finding the run already
 // reports, not a fault of a proposal, so it demotes nothing.
-func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, proposals []GateProposal, positions []StartingPosition, rc reach, opts Options) error {
+func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, proposals []GateProposal, byGate map[gateKey][]StartingPosition, rc reach, opts Options) error {
 	for {
 		combined := withProposals(model, wm, proposals)
 		scope := rc.scopeOf(model, combined)
+		// The combined run from a starting position depends on the type and gate
+		// the position puts the attacker on, not on which relation is weighed, so
+		// it is run once per gate and reused across the relations of that type that
+		// share it. On a type with many unruled relations this is the difference
+		// between one run per relation and one per gate.
+		gates := map[gateKey]map[string]Escalation{}
 		demoted := false
 		for i := range proposals {
-			for _, gate := range slices.Clone(proposals[i].Safe) {
-				esc, ok, err := combinedEscalates(model, combined, caveats, positions, scope, proposals[i].Type, proposals[i].Relation, gate, opts)
-				if err != nil {
-					return err
+			for _, gate := range proposals[i].Safe {
+				k := gateKey{typ: proposals[i].Type, target: gate}
+				byRel, ok := gates[k]
+				if !ok {
+					var err error
+					byRel, err = combinedGate(model, combined, caveats, byGate[k], scope, k, opts)
+					if err != nil {
+						return err
+					}
+					gates[k] = byRel
 				}
-				if ok {
+				if esc, found := byRel[proposals[i].Relation]; found {
 					demoteGate(proposals, proposals[i].Type, proposals[i].Relation, gate, esc)
 					demoted = true
 					break
@@ -177,36 +189,40 @@ func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, propos
 	}
 }
 
-// combinedEscalates runs the closure over the model that holds every proposal at
-// once, from the positions in which the attacker holds gate on typ, and reports
-// whether writing relation under gate is then the decisive write of a raise. That
-// is the sign the gate is safe only while the other relations stay unwritable:
-// the relation has no rule of its own, so the only rule for it in the combined
-// model is the proposed one, and an escalation some declared rule is decisive for
-// is a finding the run already reports, not counted here. The decisive write is
-// read past a trailing creation (decisiveWrite), so a gate that links a created
-// object into a pre-existing one is not called safe because a setup write of the
-// creation happened to end the witness.
-func combinedEscalates(model *Model, combined *WriteModel, caveats CaveatEvaluator, positions []StartingPosition, scope map[permRef]bool, typ, relation, gate string, opts Options) (Escalation, bool, error) {
+// combinedGate runs the closure over the model that holds every proposal at once,
+// from each position the gate puts the attacker on, and returns, keyed by the
+// relation the decisive write of a raise under the gate targets, the witness of
+// that raise. A proposal for such a relation is unsafe in company: the gate is
+// safe only while the other relations stay unwritable, since the relation has no
+// rule of its own and the only rule for it in the combined model is the proposed
+// one. An escalation some declared rule is decisive for is a finding the run
+// already reports, not counted here. The decisive write is read past a trailing
+// creation (decisiveWrite), so a gate that links a created object into a
+// pre-existing one is not called safe because a setup write of the creation
+// happened to end the witness. The run does not depend on which relation is
+// asked, only on the gate's type and name, so one run serves every relation of
+// that type that proposes the gate.
+func combinedGate(model *Model, combined *WriteModel, caveats CaveatEvaluator, positions []StartingPosition, scope map[permRef]bool, k gateKey, opts Options) (map[string]Escalation, error) {
+	byRel := map[string]Escalation{}
 	for _, pos := range positions {
-		if pos.Type != typ || pos.Target != gate {
-			continue
-		}
 		escs, err := escalationsScoped(model, combined, caveats, pos.Tuples, []Object{pos.Attacker}, scope, opts)
 		if err != nil {
-			return Escalation{}, false, err
+			return nil, err
 		}
 		for _, esc := range escs {
 			dw, ok := esc.decisiveWrite()
-			if !ok || dw.Rule == nil || dw.Rule.Gate.Holds != gate {
+			if !ok || dw.Rule == nil || dw.Rule.Gate.Holds != k.target {
 				continue
 			}
-			if dw.Relationship.Resource.Type == typ && dw.Relationship.Relation == relation {
-				return esc, true, nil
+			if dw.Relationship.Resource.Type != k.typ {
+				continue
+			}
+			if _, seen := byRel[dw.Relationship.Relation]; !seen {
+				byRel[dw.Relationship.Relation] = esc
 			}
 		}
 	}
-	return Escalation{}, false, nil
+	return byRel, nil
 }
 
 // withProposals is the write model with a rule added for every gate the
