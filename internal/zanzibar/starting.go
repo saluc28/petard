@@ -46,8 +46,14 @@ func (p StartingPosition) String() string {
 // StartingPositions generates, for every relation and permission of every type,
 // the minimal starting states in which the attacker holds it on a pre-existing
 // object. A target reachable in more than one minimal way gives one position per
-// way. A recursive permission is unfolded to opts.StartingDepth, and a position
-// whose target needed more says so.
+// way.
+//
+// A chain of relations across types is followed to its end, however long, as
+// long as it does not loop: a grant that threads a platform to a role binding to
+// a role unfolds in full. opts.StartingDepth bounds only the loops, a relation or
+// permission that reaches itself, such as a workspace nested in a workspace or a
+// role that inherits a role; it is how many times such a loop is unfolded before
+// the generation stops and the position says the target reaches deeper still.
 //
 // The attacker is the subject the positions grant to, a user the analysis
 // treats as the coalition's own. A target the attacker cannot hold, one granted
@@ -59,7 +65,7 @@ func StartingPositions(model *Model, attacker Object, opts Options) []StartingPo
 		object := Object{Type: t.Name, ID: TargetID}
 		for _, name := range targetNames(t) {
 			g := &positionGen{model: model, attacker: attacker}
-			sets, truncated := g.sets(t.Name, name, object, depth, map[string]bool{})
+			sets, truncated := g.sets(t.Name, name, object, depth, map[string]bool{}, map[string]bool{t.Name + "#" + name: true})
 			for _, tuples := range dedupSets(sets) {
 				out = append(out, StartingPosition{
 					Type:      t.Name,
@@ -104,38 +110,57 @@ func (g *positionGen) fresh(typ string) Object {
 	return o
 }
 
+// cycleStep decides how a hop into (typ, name) across types affects the depth
+// budget. A hop that returns to a relation or permission already open on this
+// path closes a loop: it spends one unit of depth and leaves the path as it is,
+// so the loop may repeat only while depth lasts. A hop to one not yet open does
+// not spend any, and extends the path, so a chain that never loops unfolds in
+// full. The bool is false when a loop has no depth left, which truncates the hop.
+func cycleStep(typ, name string, depth int, onPath map[string]bool) (int, map[string]bool, bool) {
+	k := typ + "#" + name
+	if onPath[k] {
+		if depth == 0 {
+			return 0, onPath, false
+		}
+		return depth - 1, onPath, true
+	}
+	next := maps.Clone(onPath)
+	next[k] = true
+	return depth, next, true
+}
+
 // sets returns the minimal tuple sets that make the attacker hold name on obj,
-// and whether the depth bound cut a deeper unfold. seen holds the permissions
-// open on the current path, so a permission defined through itself does not
-// recurse without end.
-func (g *positionGen) sets(typ, name string, obj Object, depth int, seen map[string]bool) ([][]Relationship, bool) {
+// and whether a loop was cut for want of depth. seen holds the permissions open
+// on the current object, so a permission defined through itself on the same
+// object does not recurse without end; onPath holds the relations and
+// permissions open across the chain of objects, so a loop that reaches a fresh
+// object, a folder inside a folder, is counted against the depth budget by
+// cycleStep rather than followed forever.
+func (g *positionGen) sets(typ, name string, obj Object, depth int, seen, onPath map[string]bool) ([][]Relationship, bool) {
 	t := g.model.Type(typ)
 	if t == nil {
 		return nil, false
 	}
 	if r := t.Relation(name); r != nil {
-		return g.relationSets(r, obj, depth, seen)
+		return g.relationSets(r, obj, depth, seen, onPath)
 	}
 	p := t.Permission(name)
 	if p == nil {
 		return nil, false
 	}
-	// The cycle guard is per object: a permission defined through itself on the
-	// same object must not recurse, but an arrow reaches a fresh object, a
-	// different instance the depth bound governs instead.
 	key := obj.String() + "#" + name
 	if seen[key] {
 		return nil, true
 	}
 	next := maps.Clone(seen)
 	next[key] = true
-	return g.exprSets(typ, p.Expr, obj, depth, next)
+	return g.exprSets(typ, p.Expr, obj, depth, next, onPath)
 }
 
 // relationSets is the minimal ways to hold a relation: the attacker written
 // directly, a wildcard of the attacker's type, or the attacker reached through
 // a userset the relation allows.
-func (g *positionGen) relationSets(r *Relation, obj Object, depth int, seen map[string]bool) ([][]Relationship, bool) {
+func (g *positionGen) relationSets(r *Relation, obj Object, depth int, seen, onPath map[string]bool) ([][]Relationship, bool) {
 	var sets [][]Relationship
 	truncated := false
 	for _, a := range r.Allowed {
@@ -149,12 +174,13 @@ func (g *positionGen) relationSets(r *Relation, obj Object, depth int, seen map[
 				sets = append(sets, []Relationship{tuple(obj, r.Name, Subject{Object: g.attacker})})
 			}
 		default:
-			if depth == 0 {
+			nd, np, ok := cycleStep(a.Type, a.Relation, depth, onPath)
+			if !ok {
 				truncated = true
 				continue
 			}
 			aux := g.fresh(a.Type)
-			inner, cut := g.sets(a.Type, a.Relation, aux, depth-1, seen)
+			inner, cut := g.sets(a.Type, a.Relation, aux, nd, seen, np)
 			truncated = truncated || cut
 			link := tuple(obj, r.Name, Subject{Object: aux, Relation: a.Relation})
 			for _, set := range inner {
@@ -166,13 +192,13 @@ func (g *positionGen) relationSets(r *Relation, obj Object, depth int, seen map[
 }
 
 // exprSets is the minimal ways an expression holds for the attacker on obj.
-func (g *positionGen) exprSets(typ string, expr Expr, obj Object, depth int, seen map[string]bool) ([][]Relationship, bool) {
+func (g *positionGen) exprSets(typ string, expr Expr, obj Object, depth int, seen, onPath map[string]bool) ([][]Relationship, bool) {
 	switch e := expr.(type) {
 	case Union:
 		var sets [][]Relationship
 		truncated := false
 		for _, child := range e.Children {
-			childSets, cut := g.exprSets(typ, child, obj, depth, seen)
+			childSets, cut := g.exprSets(typ, child, obj, depth, seen, onPath)
 			sets = append(sets, childSets...)
 			truncated = truncated || cut
 		}
@@ -182,7 +208,7 @@ func (g *positionGen) exprSets(typ string, expr Expr, obj Object, depth int, see
 		sets := [][]Relationship{{}}
 		truncated := false
 		for _, child := range e.Children {
-			childSets, cut := g.exprSets(typ, child, obj, depth, seen)
+			childSets, cut := g.exprSets(typ, child, obj, depth, seen, onPath)
 			truncated = truncated || cut
 			if len(childSets) == 0 {
 				// A branch with no way to hold leaves the intersection with none.
@@ -196,13 +222,13 @@ func (g *positionGen) exprSets(typ string, expr Expr, obj Object, depth int, see
 		// The attacker holds an exclusion by holding its base and not being in
 		// what it subtracts. The minimal set is the base alone: the subtracted
 		// tuples are the ones "nothing else" leaves out.
-		return g.exprSets(typ, e.Base, obj, depth, seen)
+		return g.exprSets(typ, e.Base, obj, depth, seen, onPath)
 
 	case Computed:
-		return g.sets(typ, e.Name, obj, depth, seen)
+		return g.sets(typ, e.Name, obj, depth, seen, onPath)
 
 	case Arrow:
-		return g.arrowSets(typ, e, obj, depth, seen)
+		return g.arrowSets(typ, e, obj, depth, seen, onPath)
 
 	case Self, Nil:
 		// Self holds only for the object itself, which the attacker is not on a
@@ -216,10 +242,7 @@ func (g *positionGen) exprSets(typ string, expr Expr, obj Object, depth int, see
 // walked relation to one object on which the attacker holds the target. For an
 // all arrow one such object is still the minimal set, since nothing else is
 // present to fail the all.
-func (g *positionGen) arrowSets(typ string, a Arrow, obj Object, depth int, seen map[string]bool) ([][]Relationship, bool) {
-	if depth == 0 {
-		return nil, true
-	}
+func (g *positionGen) arrowSets(typ string, a Arrow, obj Object, depth int, seen, onPath map[string]bool) ([][]Relationship, bool) {
 	t := g.model.Type(typ)
 	if t == nil {
 		return nil, false
@@ -234,8 +257,13 @@ func (g *positionGen) arrowSets(typ string, a Arrow, obj Object, depth int, seen
 		if allowed.Wildcard {
 			continue
 		}
+		nd, np, ok := cycleStep(allowed.Type, a.Target, depth, onPath)
+		if !ok {
+			truncated = true
+			continue
+		}
 		aux := g.fresh(allowed.Type)
-		inner, cut := g.sets(allowed.Type, a.Target, aux, depth-1, seen)
+		inner, cut := g.sets(allowed.Type, a.Target, aux, nd, seen, np)
 		truncated = truncated || cut
 		link := tuple(obj, a.Through, Subject{Object: aux})
 		for _, set := range inner {

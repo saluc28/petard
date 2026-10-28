@@ -25,8 +25,9 @@ func holdsOn(t *testing.T, model *Model, tuples []Relationship, obj Object, name
 // generator, which is the test oracle for the starting states.
 func TestStartingPositionsGrantAndMinimal(t *testing.T) {
 	schemas := map[string]*Model{
-		"documents": documents(t),
-		"folders":   recursiveFolders(t),
+		"documents":  documents(t),
+		"folders":    recursiveFolders(t),
+		"deep chain": deepChain(t),
 	}
 	for name, model := range schemas {
 		t.Run(name, func(t *testing.T) {
@@ -136,6 +137,66 @@ func TestStartingPositionsDepthBound(t *testing.T) {
 	if deepest != 3 {
 		t.Errorf("deepest view set has %d tuples, want 3 (parent, parent, viewer)", deepest)
 	}
+}
+
+// A chain of relations across distinct types never loops, so it unfolds in full
+// however long it is, even at the smallest depth, where the recursive folder is
+// cut. The three-hop grant on resource reaches a user through a binding and a
+// role, and its position holds all three tuples and is not truncated.
+func TestStartingPositionsUnfoldsFiniteChain(t *testing.T) {
+	model := deepChain(t)
+	positions := StartingPositions(model, attacker, Options{StartingDepth: 1})
+
+	var access []StartingPosition
+	for _, p := range positions {
+		if p.Object.Type == "resource" && p.Target == "access" {
+			access = append(access, p)
+		}
+	}
+	if len(access) != 1 {
+		t.Fatalf("got %d resource#access positions, want 1: %v", len(access), access)
+	}
+	p := access[0]
+	if p.Truncated {
+		t.Errorf("a finite chain should not be truncated at any depth: %s", p)
+	}
+	if len(p.Tuples) != 3 {
+		t.Errorf("the three-hop grant should hold three tuples, got %d: %v", len(p.Tuples), keysOf(p.Tuples))
+	}
+	if holdsOn(t, model, p.Tuples, p.Object, p.Target) == No {
+		t.Errorf("%s does not grant its target", p)
+	}
+}
+
+// deepChain is a grant that threads three distinct types: a resource grants
+// access through a binding, which grants it through a role, which grants it to a
+// user. The chain never loops, so it is the finite case the depth bound must not
+// cut.
+func deepChain(t *testing.T) *Model {
+	t.Helper()
+	types := []*Type{
+		{Name: "user"},
+		{
+			Name:        "role",
+			Relations:   []*Relation{{Name: "grant", Allowed: []Allowed{{Type: "user"}}}},
+			Permissions: []*Permission{{Name: "access", Expr: Computed{Name: "grant"}}},
+		},
+		{
+			Name:        "binding",
+			Relations:   []*Relation{{Name: "role", Allowed: []Allowed{{Type: "role"}}}},
+			Permissions: []*Permission{{Name: "access", Expr: Arrow{Through: "role", Target: "access"}}},
+		},
+		{
+			Name:        "resource",
+			Relations:   []*Relation{{Name: "binding", Allowed: []Allowed{{Type: "binding"}}}},
+			Permissions: []*Permission{{Name: "access", Expr: Arrow{Through: "binding", Target: "access"}}},
+		},
+	}
+	m, err := NewModel(types, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
 }
 
 // A starting position is the state the closure runs from. The closure only

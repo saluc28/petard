@@ -25,6 +25,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reach the raise and who the write model lets make each, so a multi-write escalation shows its
   setup and not only the decisive write. The default report is unchanged, and a run that found
   escalations now offers -v.
+- The safe-gate proposals complete on large schemas. A type that carries many permissions, as an
+  RBAC role does, could make the proposal run of `petard analyze` and `-questions` run for minutes
+  without finishing; it now settles in seconds. The proposals are the same ones as before.
+- The starting positions a schema is analyzed from follow a chain of relations across types to its
+  end, so an escalation reachable only through a deep hierarchy, a permission a subject holds on a
+  platform through a binding and a role, is no longer missed for being too far down. Only a loop, a
+  type nested in itself such as a workspace inside a workspace, is still bounded, by the starting
+  depth.
 
 ### Fixed
 

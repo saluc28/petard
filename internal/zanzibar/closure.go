@@ -16,8 +16,10 @@ const (
 	// DefaultMaxWrites is how many writes the bounded search looks ahead.
 	DefaultMaxWrites = 4
 
-	// DefaultStartingDepth is how deep a recursive permission is unfolded when
-	// a starting position is generated from the schema.
+	// DefaultStartingDepth is how many times a loop, a relation or permission
+	// that reaches itself across objects, is unfolded when a starting position is
+	// generated from the schema. A chain that does not loop is unfolded in full
+	// whatever this is.
 	DefaultStartingDepth = 2
 
 	// DefaultCreatedCopies is how many objects a creation rule is kept at when
@@ -36,9 +38,9 @@ type Options struct {
 	// DefaultCreatedCopies.
 	CreatedCopies int
 
-	// StartingDepth is how deep a recursive permission is unfolded when a
-	// starting position is generated from the schema. Zero takes
-	// DefaultStartingDepth.
+	// StartingDepth is how many times a loop is unfolded when a starting position
+	// is generated from the schema; a chain that does not loop is unfolded in
+	// full regardless. Zero takes DefaultStartingDepth.
 	StartingDepth int
 
 	// Now is the time expirations are read at. The zero value takes the current
