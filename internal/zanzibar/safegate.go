@@ -23,6 +23,13 @@ type GateProposal struct {
 	// Unsafe are the permissions that would, each with a witness of what writing
 	// the relation under it opens.
 	Unsafe []UnsafeGate
+
+	// Raises are the permissions writing the relation could raise, as type#name,
+	// read off the schema's reachability. It tells apart a relation on a type
+	// with no permission to gate on, where Safe and Unsafe are both empty: one
+	// that raises nothing is safe to write, one that raises something escalates
+	// with no local permission to gate it.
+	Raises []string
 }
 
 // UnsafeGate is a permission that is not a safe gate for a relation, with an
@@ -107,7 +114,7 @@ func safeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, rc reach, 
 // escalate through. It reads only shared inputs it does not change, so one call
 // is independent of the next and they can run on separate workers.
 func relationGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, t *Type, r *Relation, byGate map[gateKey][]StartingPosition, rc reach, opts Options) (GateProposal, error) {
-	proposal := GateProposal{Type: t.Name, Relation: r.Name}
+	proposal := GateProposal{Type: t.Name, Relation: r.Name, Raises: raisesList(rc.index, t.Name, r.Name)}
 	for _, p := range t.Permissions {
 		esc, unsafe, err := gateEscalates(model, wm, caveats, t.Name, r, p.Name, byGate, rc, opts)
 		if err != nil {
@@ -120,6 +127,20 @@ func relationGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, t *Typ
 		}
 	}
 	return proposal, nil
+}
+
+// raisesList is the permissions writing a relation could raise, as sorted
+// type#name strings, read off the reachability index. It is empty for a relation
+// no permission reads, which is how a report tells a harmless relation on a
+// permission-less type from one that escalates across types.
+func raisesList(index map[relRef][]permRef, typ, relation string) []string {
+	refs := index[relRef{typ: typ, name: relation}]
+	out := make([]string, 0, len(refs))
+	for _, pr := range refs {
+		out = append(out, pr.typ+"#"+pr.name)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // gateKey is a starting position's type and the relation or permission the

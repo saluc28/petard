@@ -25,6 +25,57 @@ func unsafeFor(p GateProposal, permission string) (UnsafeGate, bool) {
 	return UnsafeGate{}, false
 }
 
+// A relation on a type with no permission to gate on has no gate candidate, so
+// its proposal is empty. Raises tells the two such relations apart: one no
+// permission reads raises nothing and is safe to write, while one read across
+// types raises a permission with no local gate to hold it. The report rests on
+// this to avoid claiming an escalation where none was computed.
+func TestSafeGatesRaises(t *testing.T) {
+	types := []*Type{
+		{Name: "user"},
+		{Name: "tag", Relations: []*Relation{{Name: "label", Allowed: []Allowed{{Type: "user"}}}}},
+		{Name: "group", Relations: []*Relation{{Name: "member", Allowed: []Allowed{{Type: "user"}}}}},
+		{
+			Name: "document",
+			Relations: []*Relation{
+				{Name: "owner", Allowed: []Allowed{{Type: "user"}}},
+				{Name: "viewer", Allowed: []Allowed{{Type: "user"}, {Type: "group", Relation: "member"}}},
+			},
+			Permissions: []*Permission{
+				{Name: "view", Expr: Union{Children: []Expr{Computed{Name: "viewer"}, Computed{Name: "owner"}}}},
+				{Name: "edit", Expr: Computed{Name: "owner"}},
+			},
+		},
+	}
+	model, err := NewModel(types, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposals, err := SafeGates(model, &WriteModel{}, nil, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("SafeGates: %v", err)
+	}
+
+	group, ok := gateProposalFor(proposals, "group", "member")
+	if !ok {
+		t.Fatalf("no proposal for group#member; got %+v", proposals)
+	}
+	if len(group.Safe) != 0 || len(group.Unsafe) != 0 {
+		t.Errorf("group has no permission, so group#member has no gate candidate; safe=%v unsafe=%v", group.Safe, group.Unsafe)
+	}
+	if !slices.Equal(group.Raises, []string{"document#view"}) {
+		t.Errorf("writing group#member is read by document#view across types; Raises = %v, want [document#view]", group.Raises)
+	}
+
+	tag, ok := gateProposalFor(proposals, "tag", "label")
+	if !ok {
+		t.Fatalf("no proposal for tag#label; got %+v", proposals)
+	}
+	if len(tag.Raises) != 0 {
+		t.Errorf("tag#label is read by no permission, so it raises nothing; Raises = %v", tag.Raises)
+	}
+}
+
 // owner has no write rule, so petard proposes a gate for it. edit is a safe
 // gate, since an editor who makes itself owner gains nothing it did not already
 // hold; view is not, since a viewer who makes itself owner gains edit.

@@ -123,6 +123,46 @@ func TestRunProposesSafeGatesForSpiceDB(t *testing.T) {
 	}
 }
 
+// A relation on a type with no permission to gate on has no gate to propose.
+// The report tells the harmless case from the dangerous one by what writing the
+// relation raises: tag#label is read by nothing, so it raises nothing and is
+// safe to write; group#member is read across types by document#view, so it
+// escalates with no local permission to gate it. Neither is claimed to let any
+// permission escalate, which no permission on the type was tried for.
+func TestRunProposalMessagesByReachability(t *testing.T) {
+	dir := t.TempDir()
+	schema := "definition user {}\n\n" +
+		"definition tag {\n  relation label: user\n}\n\n" +
+		"definition group {\n  relation member: user\n}\n\n" +
+		"definition document {\n" +
+		"  relation owner: user\n" +
+		"  relation viewer: user | group#member\n" +
+		"  permission view = viewer + owner\n" +
+		"  permission edit = owner\n" +
+		"}\n"
+	schemaPath := filepath.Join(dir, "schema.zed")
+	if err := os.WriteFile(schemaPath, []byte(schema), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{schemaPath}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	out := stdout.String()
+	for _, expected := range []string{
+		"no permission on group to gate on; writing it raises document#view",
+		"nothing to gate: writing it raises no permission",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the report does not say %q:\n%s", expected, out)
+		}
+	}
+	if strings.Contains(out, "any lets a coalition escalate") {
+		t.Errorf("the report still claims an escalation for a type with no permission to gate on:\n%s", out)
+	}
+}
+
 // A schema with no write model and no validation file still gets safe-gate
 // proposals: the gates rest on the positions generated from the schema, so a
 // run on a bare schema proposes the write-model skeleton to start from. This is

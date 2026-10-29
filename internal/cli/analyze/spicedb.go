@@ -207,10 +207,15 @@ func printProposals(out io.Writer, groups []schemaProposals, style render.Style)
 		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 		for _, p := range g.proposals {
 			rel := p.Type + "#" + p.Relation
-			if len(p.Safe) > 0 {
+			switch {
+			case len(p.Safe) > 0:
 				fmt.Fprintf(tw, "  %s\tsafe to gate on %s\n", rel, strings.Join(p.Safe, ", "))
-			} else {
-				fmt.Fprintf(tw, "  %s\tno safe gate: any lets a coalition escalate\n", rel)
+			case len(p.Unsafe) > 0:
+				fmt.Fprintf(tw, "  %s\tno safe gate: every permission lets a coalition escalate\n", rel)
+			case len(p.Raises) > 0:
+				fmt.Fprintf(tw, "  %s\tno permission on %s to gate on; writing it raises %s\n", rel, p.Type, strings.Join(p.Raises, ", "))
+			default:
+				fmt.Fprintf(tw, "  %s\tnothing to gate: writing it raises no permission\n", rel)
 			}
 		}
 		tw.Flush()

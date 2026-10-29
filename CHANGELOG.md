@@ -40,6 +40,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A relation whose type declares no permission to gate on is no longer reported as one every
+  permission lets a coalition escalate through, which no permission was tried for. `petard analyze`
+  and `-questions` now say what writing it raises, read off the schema: a relation no permission
+  reads raises nothing and is safe to write, while one read across types raises that permission with
+  no local gate to hold it. Before, both were printed as "no safe gate", which overstated a harmless
+  relation.
 - An escalation a coalition reaches by creating an object it controls and linking a pre-existing
   object to it through a gated write is now reported when the witness ends in one of the creation's
   own writes rather than the link. The category is read from the link, the rule write the raise

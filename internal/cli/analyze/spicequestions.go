@@ -67,8 +67,16 @@ func spiceSkeleton(groups []schemaProposals) (string, int) {
 		for _, p := range g.proposals {
 			entries++
 			if len(p.Safe) == 0 {
-				fmt.Fprintf(&b, "  # %s#%s has no safe gate: every permission on %s lets a coalition escalate.\n", p.Type, p.Relation, p.Type)
-				fmt.Fprintf(&b, "  # Leave it out, or gate it on a service no end user can drive.\n")
+				switch {
+				case len(p.Unsafe) > 0:
+					fmt.Fprintf(&b, "  # %s#%s has no safe gate: every permission on %s lets a coalition escalate.\n", p.Type, p.Relation, p.Type)
+					fmt.Fprintf(&b, "  # Leave it out, or gate it on a service no end user can drive.\n")
+				case len(p.Raises) > 0:
+					fmt.Fprintf(&b, "  # %s#%s has no permission on %s to gate on; writing it raises %s.\n", p.Type, p.Relation, p.Type, strings.Join(p.Raises, ", "))
+					fmt.Fprintf(&b, "  # Leave it out, or gate it on a service no end user can drive.\n")
+				default:
+					fmt.Fprintf(&b, "  # %s#%s raises no permission; it is safe to write and needs no gate.\n", p.Type, p.Relation)
+				}
 				continue
 			}
 			fmt.Fprintf(&b, "  - resource: %s\n", p.Type)
