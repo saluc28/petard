@@ -144,6 +144,12 @@ func escalationMatch(id string, c ClassifiedEscalation) Match {
 		Label: "raises",
 		Text:  fmt.Sprintf("%s on %s, from %s to %s", c.Permission, c.Object.Type, c.Before, c.After),
 	})
+	if c.DefeatsExpiry {
+		m.Details = append(m.Details, Detail{
+			Label: "also",
+			Text:  "defeats a time bound: the relation carries an expiration the coalition sets or omits, so a grant meant to lapse does not (stale authority, unbounded delegation)",
+		})
+	}
 	m.Details = append(m.Details, witnessDetails(c.Writes)...)
 	return m
 }

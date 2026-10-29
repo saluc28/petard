@@ -7,6 +7,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `petard analyze` marks a SpiceDB escalation that defeats a time bound. When the decisive write
+  sets a relationship the schema lets carry an expiration and the write model leaves that expiration
+  for the coalition to set or to omit, the finding carries an `also` line: the grant is renewable or
+  unbounded rather than lapsing, the stale-authority and unbounded-delegation risk of a non-human or
+  agent identity. It is an aspect shown alongside the escalation's category, not a category of its
+  own.
+
 ### Changed
 
 - `petard analyze` proposes safe gates, and `-questions` writes the write-model skeleton, for a

@@ -56,6 +56,14 @@ type ClassifiedEscalation struct {
 	// describes. A report names this write, so its heading and its "written by"
 	// line agree even when the witness order left a setup creation at the end.
 	DecisiveWrite WriteStep
+
+	// DefeatsExpiry marks a raise whose decisive write sets a relationship the
+	// schema lets carry an expiration, where the write model leaves that
+	// expiration for the coalition to set or to omit. The grant looks time
+	// bounded but the coalition renews it or writes it without a bound, so the
+	// bound does not hold. It is an aspect of the raise, true alongside any
+	// category, not a category of its own.
+	DefeatsExpiry bool
 }
 
 // Classify finds the escalations a coalition can reach and labels each by its
@@ -97,7 +105,7 @@ func classifyScoped(model *Model, wm *WriteModel, caveats CaveatEvaluator, start
 			if !seen {
 				order = append(order, key)
 			}
-			best[key] = ClassifiedEscalation{Escalation: esc, Category: category, DecisiveWrite: decisive}
+			best[key] = ClassifiedEscalation{Escalation: esc, Category: category, DecisiveWrite: decisive, DefeatsExpiry: defeatsExpiry(model, decisive)}
 		}
 	}
 
