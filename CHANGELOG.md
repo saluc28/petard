@@ -33,6 +33,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   platform through a binding and a role, is no longer missed for being too far down. Only a loop, a
   type nested in itself such as a workspace inside a workspace, is still bounded, by the starting
   depth.
+- `petard analyze` and `petard export` weigh a SpiceDB schema's findings only against the
+  permissions a write under the model could raise, not every permission its type declares. On a
+  type with many permissions this is most of them, so a findings run is markedly faster on large
+  schemas; the findings are the same ones.
 
 ### Fixed
 

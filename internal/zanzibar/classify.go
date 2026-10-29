@@ -64,7 +64,18 @@ type ClassifiedEscalation struct {
 // not returned here: a caveat context write is not one of the closure's moves,
 // and SelfAssertedExemptions reports it from the write model instead.
 func Classify(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, opts Options) ([]ClassifiedEscalation, error) {
-	escs, err := Escalations(model, wm, caveats, start, coalition, opts)
+	return classifyScoped(model, wm, caveats, start, coalition, nil, opts)
+}
+
+// classifyScoped is Classify with an optional reach scope, the set of
+// permissions a write under the model could raise. The findings path passes it
+// so a pre-existing target no write can reach is not weighed, which on a type
+// with many permissions is most of them; a nil scope weighs every target, the
+// behavior Classify keeps for its callers and the graph. The escalations found
+// are the same either way: a target outside the scope cannot rise, so it yields
+// no finding, which escalationsScoped and the SafeGates scoping rest on alike.
+func classifyScoped(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, scope map[permRef]bool, opts Options) ([]ClassifiedEscalation, error) {
+	escs, err := escalationsScoped(model, wm, caveats, start, coalition, scope, opts)
 	if err != nil {
 		return nil, err
 	}

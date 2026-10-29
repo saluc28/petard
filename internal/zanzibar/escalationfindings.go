@@ -90,10 +90,16 @@ func classifiedEscalations(s Sample, wm *WriteModel) []attackerEscalation {
 	}
 	opts := Options{Now: s.Now}
 
+	// The reach says which permissions a write under the model could raise; it is
+	// read off the model once here and scopes every classification, so a target
+	// no write can reach is not weighed, the same saving SafeGates takes. A nil
+	// scope, when the model cannot be scoped soundly, weighs every target.
+	scope := newReach(s.Model, wm).scopeOf(s.Model, wm)
+
 	seen := map[string]bool{}
 	var out []attackerEscalation
 	add := func(start []Relationship, attacker Object) {
-		classified, err := Classify(s.Model, wm, s.Caveats, start, []Object{attacker}, opts)
+		classified, err := classifyScoped(s.Model, wm, s.Caveats, start, []Object{attacker}, scope, opts)
 		if err != nil {
 			// A starting state the caveat environment cannot evaluate yields no
 			// finding from that state; another state reaches the same raise.
