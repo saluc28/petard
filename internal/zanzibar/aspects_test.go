@@ -32,6 +32,44 @@ func aspectModel(t *testing.T) *Model {
 	return m
 }
 
+// A raise reached by a single write is not a chain; one reached by several
+// carries the delegation-chain aspect in the summary, with the write count, so
+// a composed escalation reads as a chain rather than a one-step slip.
+func TestChainAspect(t *testing.T) {
+	step := WriteStep{
+		Relationship: Relationship{Resource: Object{Type: "doc", ID: "d"}, Relation: "editor", Subject: Subject{Object: Object{Type: "user", ID: "a"}}},
+		Rule:         &WriteRule{Resource: "doc", Relation: "editor", Gate: Gate{Anyone: true}},
+	}
+	build := func(n int) ClassifiedEscalation {
+		writes := make([]WriteStep, n)
+		for i := range writes {
+			writes[i] = step
+		}
+		return ClassifiedEscalation{
+			Escalation:    Escalation{Object: Object{Type: "doc", ID: "d"}, Permission: "edit", Before: No, After: Yes, Writes: writes},
+			Category:      CategoryGlobalSwitch,
+			DecisiveWrite: step,
+		}
+	}
+	for _, d := range escalationMatch("PTD-ZAN-003", build(1)).Details {
+		if strings.Contains(d.Text, "a chain of") {
+			t.Errorf("a single-write raise should not be marked a chain: %q", d.Text)
+		}
+	}
+	found := false
+	for _, d := range escalationMatch("PTD-ZAN-003", build(3)).Details {
+		if strings.Contains(d.Text, "a chain of 3 writes") {
+			found = true
+			if d.Verbose {
+				t.Error("the chain aspect should show in the summary, not only under -v")
+			}
+		}
+	}
+	if !found {
+		t.Error("a three-write raise should be marked a chain of 3 writes")
+	}
+}
+
 func docStep(relation string, subj Subject, rule *WriteRule) WriteStep {
 	return WriteStep{Relationship: Relationship{Resource: Object{Type: "doc", ID: "d"}, Relation: relation, Subject: subj}, Rule: rule}
 }

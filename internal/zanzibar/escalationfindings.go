@@ -150,6 +150,12 @@ func escalationMatch(id string, c ClassifiedEscalation) Match {
 			Text:  "defeats a time bound: the relation carries an expiration the coalition sets or omits, so a grant meant to lapse does not (stale authority, unbounded delegation)",
 		})
 	}
+	if len(c.Writes) > 1 {
+		m.Details = append(m.Details, Detail{
+			Label: "also",
+			Text:  fmt.Sprintf("a chain of %d writes reaches it, not a single step: authority accumulates across the sequence (the agent delegation-chain risk)", len(c.Writes)),
+		})
+	}
 	m.Details = append(m.Details, witnessDetails(c.Writes)...)
 	return m
 }

@@ -15,6 +15,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unbounded rather than lapsing, the stale-authority and unbounded-delegation risk of a non-human or
   agent identity. It is an aspect shown alongside the escalation's category, not a category of its
   own.
+- `petard analyze` marks a SpiceDB escalation reached through a chain of writes. When the witness is
+  more than one write, the finding carries an `also` line naming it a chain and its length: authority
+  that accumulates across a sequence, the delegation-chain risk a single misconfiguration does not
+  carry. Like the time-bound aspect, it is shown alongside the escalation's category.
 
 ### Changed
 
