@@ -70,6 +70,14 @@ linters:
           - gosec
         source: PETARD_OPA_TOKEN
 
+      # The SpiceDB counterpart of the OPA token env above, same reasoning: the
+      # value is an environment variable name, and the token is only ever read
+      # from the environment at runtime.
+      - path: internal/zanzibar/spicedb/remote\.go
+        linters:
+          - gosec
+        source: PETARD_SPICEDB_TOKEN
+
 issues:
   # Nothing is hidden. The defaults cap a repeated finding at three, which turns
   # a deprecation used in ten places into a list of three and an unfixed rest.

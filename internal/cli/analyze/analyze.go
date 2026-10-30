@@ -20,6 +20,7 @@ import (
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
+	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
 
@@ -53,7 +54,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			"Paths are Rego files, directories holding them, bundle archives such as bundle.tar.gz,\n"+
 			"or the URL of a running OPA, whose policies are read over its API; a bearer token for it\n"+
 			"is read from $"+taxonomy.TokenEnv+". SpiceDB schema files (.zed) and validation files under\n"+
-			"the paths are read as well.\n\n")
+			"the paths are read as well, and a running SpiceDB may be named as spicedb://host:port\n"+
+			"(spicedb+insecure://host:port over plaintext), its schema read over its API with a token\n"+
+			"from $"+spicedb.TokenEnv+".\n\n")
 		flags.PrintDefaults()
 	}
 
@@ -125,7 +128,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// Before the policies, so that a schema that does not compile stops the
 	// run the way a policy that does not parse does. The write-model flag feeds
 	// both engines, and spicesetup tells them apart by the kind the file declares.
-	setup, err := spicesetup.Load(paths, *writeModelPath)
+	ctx := context.Background()
+	setup, err := spicesetup.Load(ctx, paths, *writeModelPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
@@ -138,7 +142,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	pr := printing{style: style, quiet: *quiet, verbose: *verbose}
 
-	ctx := context.Background()
 	analyzed, err := taxonomy.Load(ctx, taxonomy.Inputs{
 		Paths:            setup.PolicyPaths,
 		Mode:             mode,

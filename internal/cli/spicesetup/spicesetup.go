@@ -8,6 +8,7 @@
 package spicesetup
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path"
@@ -44,14 +45,38 @@ type Found struct {
 
 // Load finds the SpiceDB files under paths and the write models beside them.
 //
+// A path may also name a running SpiceDB (spicedb://host:port, or
+// spicedb+insecure://host:port for a local development one), whose schema is
+// read over its API, read only, and compiled the way a .zed file on disk is.
+// This is the SpiceDB counterpart to naming a running OPA in place of a path,
+// and it is how a schema that lives only inside a running SpiceDB is analyzed; a
+// write model for such a schema comes from the -write-model flag, since a live
+// schema has no directory beside it to hold one. The offline default is
+// untouched: nothing here connects unless a path names an endpoint.
+//
 // The write-model flag feeds both engines, told apart by the kind the file
 // declares. A relationship-writes model named there overrides the ones found
 // beside the schemas and is kept out of the policy loader's paths; a write-paths
 // model, or no flag at all, is left for the policy engine to load.
-func Load(paths []string, writeModelPath string) (Found, error) {
-	files, err := spicedb.Find(paths)
+func Load(ctx context.Context, paths []string, writeModelPath string) (Found, error) {
+	disk, endpoints := partitionEndpoints(paths)
+	files, err := spicedb.Find(disk)
 	if err != nil {
 		return Found{}, err
+	}
+	if len(endpoints) > 0 {
+		token := os.Getenv(spicedb.TokenEnv)
+		for _, ep := range endpoints {
+			f, err := spicedb.ReadLive(ctx, ep, token)
+			if err != nil {
+				return Found{}, err
+			}
+			files = append(files, f)
+		}
+		// Find sorts what it read from disk; the live schemas are appended after,
+		// so the whole set is sorted again to keep a command reading the same
+		// inputs in the same order on every run.
+		slices.SortFunc(files, func(a, b *spicedb.File) int { return strings.Compare(a.Path, b.Path) })
 	}
 	writeModels, err := discoverWriteModels(files)
 	if err != nil {
@@ -180,6 +205,21 @@ func dirs(files []*spicedb.File) []string {
 		}
 	}
 	return out
+}
+
+// partitionEndpoints splits the paths into the ones that name a running SpiceDB
+// and the rest, so the live schemas are read over the API and the rest are read
+// from disk. A running OPA's http(s) URL is not an endpoint here and stays with
+// the rest, for the policy loader to read.
+func partitionEndpoints(paths []string) (disk []string, endpoints []spicedb.Endpoint) {
+	for _, p := range paths {
+		if ep, ok := spicedb.ParseEndpoint(p); ok {
+			endpoints = append(endpoints, ep)
+			continue
+		}
+		disk = append(disk, p)
+	}
+	return disk, endpoints
 }
 
 // nonSchemaPaths are the paths left for the policy loader once the SpiceDB

@@ -37,6 +37,7 @@ import (
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/zanzibar"
+	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 	"github.com/saluc28/petard/queries"
 )
 
@@ -75,7 +76,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			"Paths are Rego files, directories holding them, bundle archives such as bundle.tar.gz,\n"+
 			"or the URL of a running OPA, whose policies are read over its API with a token from $"+taxonomy.TokenEnv+".\n"+
 			"SpiceDB schema files (.zed) and validation files under the paths are read as well, and their\n"+
-			"escalations drawn into the same graph.\n"+
+			"escalations drawn into the same graph; a running SpiceDB may be named as spicedb://host:port\n"+
+			"(spicedb+insecure://host:port over plaintext), its schema read with a token from $"+spicedb.TokenEnv+".\n"+
 			"With -url, the BloodHound credentials are read from "+envTokenID+" and "+envTokenKey+".\n\n")
 		flags.PrintDefaults()
 	}
@@ -135,13 +137,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		mode = opaengine.ParseModeV1
 	}
 
-	setup, err := spicesetup.Load(paths, *writeModelPath)
+	ctx := context.Background()
+	setup, err := spicesetup.Load(ctx, paths, *writeModelPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard export: %v\n", err)
 		return exitFailure
 	}
 
-	ctx := context.Background()
 	payload, analysis, gaps, err := build(ctx, taxonomy.Inputs{
 		Paths:            setup.PolicyPaths,
 		Mode:             mode,

@@ -3,11 +3,13 @@ module github.com/saluc28/petard
 go 1.26.9
 
 require (
+	github.com/authzed/authzed-go v1.11.0
 	github.com/authzed/spicedb v1.57.0
 	github.com/open-policy-agent/opa v1.21.4
 	github.com/saluc28/bhgraph v0.4.0
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/sync v0.23.0
+	google.golang.org/grpc v1.83.2
 )
 
 require (
@@ -17,9 +19,9 @@ require (
 	cel.dev/expr v0.25.3 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
-	github.com/authzed/authzed-go v1.11.0 // indirect
 	github.com/authzed/cel-go v0.32.0 // indirect
 	github.com/ccoveille/go-safecast/v2 v2.0.1 // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
@@ -58,6 +60,5 @@ require (
 	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260831171406-18b4a7587f8a // indirect
-	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )

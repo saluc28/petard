@@ -1,15 +1,59 @@
 package spicesetup
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 )
 
 // rel names a path under the repository root, three levels up from this package.
 func rel(parts ...string) string {
 	return filepath.Join(append([]string{"..", "..", ".."}, parts...)...)
+}
+
+func TestPartitionEndpoints(t *testing.T) {
+	disk, endpoints := partitionEndpoints([]string{
+		"spicedb://localhost:50051",
+		"schema.zed",
+		"http://localhost:8181",
+		"spicedb+insecure://127.0.0.1:50051",
+		"./policies",
+	})
+
+	wantDisk := []string{"schema.zed", "http://localhost:8181", "./policies"}
+	if len(disk) != len(wantDisk) {
+		t.Fatalf("disk paths = %v, want %v", disk, wantDisk)
+	}
+	for i, p := range wantDisk {
+		if disk[i] != p {
+			t.Errorf("disk[%d] = %q, want %q", i, disk[i], p)
+		}
+	}
+
+	// The OPA URL stays on the disk side, for the policy loader, and never
+	// becomes a SpiceDB endpoint.
+	for _, p := range disk {
+		if _, ok := spicedb.ParseEndpoint(p); ok {
+			t.Errorf("disk path %q was taken for a SpiceDB endpoint", p)
+		}
+	}
+
+	want := []spicedb.Endpoint{
+		{Address: "localhost:50051", Raw: "spicedb://localhost:50051"},
+		{Address: "127.0.0.1:50051", Insecure: true, Raw: "spicedb+insecure://127.0.0.1:50051"},
+	}
+	if len(endpoints) != len(want) {
+		t.Fatalf("endpoints = %+v, want %+v", endpoints, want)
+	}
+	for i, ep := range want {
+		if endpoints[i] != ep {
+			t.Errorf("endpoints[%d] = %+v, want %+v", i, endpoints[i], ep)
+		}
+	}
 }
 
 // writeFile writes a SpiceDB input into a test directory.
@@ -26,7 +70,7 @@ func writeFile(t *testing.T, dir, name, content string) {
 func TestLoadDiscoversTheWriteModelBesideTheSchema(t *testing.T) {
 	dir := rel("fixtures", "vulnerable-spicedb")
 
-	found, err := Load([]string{dir}, "")
+	found, err := Load(context.Background(), []string{dir}, "")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -69,7 +113,7 @@ func TestAnalysesChoosesWhatEachSchemaIsRunWith(t *testing.T) {
 		"    subject: [user]\n"
 
 	t.Run("a validation file brings its own relationships", func(t *testing.T) {
-		found, err := Load([]string{rel("fixtures", "vulnerable-spicedb")}, "")
+		found, err := Load(context.Background(), []string{rel("fixtures", "vulnerable-spicedb")}, "")
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
@@ -93,7 +137,7 @@ func TestAnalysesChoosesWhatEachSchemaIsRunWith(t *testing.T) {
 		writeFile(t, dir, "schema.zed", schema)
 		writeFile(t, dir, "writes.yaml", writeModel)
 
-		found, err := Load([]string{dir}, "")
+		found, err := Load(context.Background(), []string{dir}, "")
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
@@ -116,7 +160,7 @@ func TestAnalysesChoosesWhatEachSchemaIsRunWith(t *testing.T) {
 		dir := t.TempDir()
 		writeFile(t, dir, "schema.zed", schema)
 
-		found, err := Load([]string{dir}, "")
+		found, err := Load(context.Background(), []string{dir}, "")
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
@@ -149,7 +193,7 @@ func TestLoadRoutesTheWriteModelFlagByKind(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			found, err := Load([]string{spiceDir}, tt.flag)
+			found, err := Load(context.Background(), []string{spiceDir}, tt.flag)
 			if err != nil {
 				t.Fatalf("Load: %v", err)
 			}

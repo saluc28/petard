@@ -50,6 +50,29 @@ Caveats are evaluated with SpiceDB's own caveat package, in the CEL environment 
 `ipaddress` and `in_cidr` behave as they do there. A parameter the context leaves out stays
 unknown, and a caveat that depends on it is conditional.
 
+## A running SpiceDB
+
+A running SpiceDB can be named in place of a path, as `spicedb://host:port`, or
+`spicedb+insecure://host:port` over plaintext for a local development server without a certificate.
+Petard reads the schema over the API, read only, and analyzes it the way it analyzes a `.zed` file
+on disk. It also reads a bounded sample of the relationships, so a finding can rest on what the store
+holds and not only on the positions the schema generates. It never asks the server to check
+anything, and the offline default is untouched: nothing connects unless a path names an endpoint.
+
+```
+petard analyze spicedb://localhost:50051
+```
+
+This is how a schema that lives only inside a running SpiceDB is analyzed. A schema written from
+code, a Go or TypeScript builder, or one assembled at runtime, has no `.zed` file to point at. The
+server returns the canonical `.zed` whatever the schema was written as, so petard reads that text and
+never parses the host language. A bearer token the server needs is read from `$PETARD_SPICEDB_TOKEN`,
+and the insecure scheme also lets that token reach a local server over plaintext.
+
+A live schema has no directory beside it to hold a `writes.yaml`, so a write model for it comes from
+`-write-model`. Without one the schema is read as one with no evidence, the same as a bare `.zed`,
+and petard proposes the safe gates to start a write model from.
+
 ## A run
 
 `fixtures/vulnerable-spicedb` holds a schema of a documents service and a validation file for it,

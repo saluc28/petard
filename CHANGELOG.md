@@ -1,10 +1,5 @@
 # Changelog
 
-All notable changes to this project are documented here.
-
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
-adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
 ## [Unreleased]
 
 ### Added
@@ -19,6 +14,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   more than one write, the finding carries an `also` line naming it a chain and its length: authority
   that accumulates across a sequence, the delegation-chain risk a single misconfiguration does not
   carry. Like the time-bound aspect, it is shown alongside the escalation's category.
+- `petard analyze` and `petard export` read the schema from a running SpiceDB, named in place of a
+  path as `spicedb://host:port`, or `spicedb+insecure://host:port` over plaintext for a local
+  development server. The schema is read over the API, read only, and analyzed the way a `.zed` file
+  is, so a schema that lives only inside a running SpiceDB, written from code in any language, is
+  analyzed without a file. A bounded sample of the relationships is read too, so a finding can rest
+  on what the store holds and not only on the positions the schema generates. A bearer token the
+  server needs is read from `$PETARD_SPICEDB_TOKEN`, and a write model for such a schema comes from
+  `-write-model`.
 
 ### Changed
 
