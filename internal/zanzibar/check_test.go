@@ -269,6 +269,102 @@ func TestCheckWithoutACaveatEvaluator(t *testing.T) {
 	}
 }
 
+// A loop cut under an exclusion proves nothing: the No a cut answers with is
+// provisional, and negating it would grant on the strength of a question still
+// being asked. A subtracted side that grants anyway decides without the loop, and
+// a loop in a union keeps what the rest of the union grants.
+func TestCheckALoopUnderAnExclusion(t *testing.T) {
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "direct", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "restricted", Allowed: []Allowed{{Type: "user"}, {Type: "document", Relation: "viewer"}}},
+			{Name: "parent", Allowed: []Allowed{{Type: "document"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "viewer", Expr: Exclusion{Base: Computed{Name: "direct"}, Subtracted: []Expr{Computed{Name: "restricted"}}}},
+			{Name: "inherited", Expr: Union{Children: []Expr{Computed{Name: "direct"}, Arrow{Through: "parent", Target: "inherited"}}}},
+			{Name: "cleared", Expr: Exclusion{Base: Computed{Name: "direct"}, Subtracted: []Expr{Arrow{Through: "parent", Target: "inherited"}}}},
+		},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		tuples    []Relationship
+		ask       string
+		want      Level
+		wantCycle bool
+	}{
+		{
+			name: "the subtracted side comes back to the permission",
+			tuples: []Relationship{
+				rel("document:1", "direct", "user:jon"),
+				rel("document:1", "restricted", "document:1#viewer"),
+			},
+			ask:       "viewer",
+			want:      No,
+			wantCycle: true,
+		},
+		{
+			name: "the subtracted side grants before the loop matters",
+			tuples: []Relationship{
+				rel("document:1", "direct", "user:jon"),
+				rel("document:1", "restricted", "user:jon"),
+				rel("document:1", "restricted", "document:1#viewer"),
+			},
+			ask:  "viewer",
+			want: No,
+		},
+		{
+			name: "a loop of objects on the subtracted side",
+			tuples: []Relationship{
+				rel("document:1", "direct", "user:jon"),
+				rel("document:1", "parent", "document:2"),
+				rel("document:2", "parent", "document:3"),
+				rel("document:3", "parent", "document:2"),
+			},
+			ask:       "cleared",
+			want:      No,
+			wantCycle: true,
+		},
+		{
+			name: "no loop on the subtracted side",
+			tuples: []Relationship{
+				rel("document:1", "direct", "user:jon"),
+				rel("document:1", "parent", "document:2"),
+			},
+			ask:  "cleared",
+			want: Yes,
+		},
+		{
+			name: "a loop in a union still finds what grants",
+			tuples: []Relationship{
+				rel("document:1", "parent", "document:1"),
+				rel("document:1", "parent", "document:2"),
+				rel("document:2", "direct", "user:jon"),
+			},
+			ask:       "inherited",
+			want:      Yes,
+			wantCycle: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewChecker(model, tt.tuples, nil, time.Unix(0, 0)).Check(object("document:1"), tt.ask, subjectOf("user:jon"), nil)
+			if err != nil {
+				t.Fatalf("Check: %v", err)
+			}
+			if got.Level != tt.want || got.Cycle != tt.wantCycle {
+				t.Errorf("Check() = %s (cycle %v), want %s (cycle %v)", got.Level, got.Cycle, tt.want, tt.wantCycle)
+			}
+		})
+	}
+}
+
 // A name that is both a relation and a permission answers as the permission,
 // and the permission reads what is stored under the name through Stored. A
 // userset that names it holds the whole permission, computed arms included, not

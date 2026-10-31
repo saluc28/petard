@@ -104,9 +104,10 @@ type Result struct {
 
 	// Cycle is true when answering went through a loop in the relationships,
 	// a folder inside itself, and cut it. The level is then the least one the
-	// relationships support, which is what the engine reasons with. SpiceDB
-	// does not cut loops: it follows them to its dispatch depth limit and
-	// fails, unless another way already granted.
+	// relationships support, which is what the engine reasons with, and No
+	// where an exclusion subtracts what cut the loop. SpiceDB does not cut
+	// loops: it follows them to its dispatch depth limit and fails, unless
+	// another way already granted.
 	Cycle bool
 }
 
@@ -324,7 +325,16 @@ func (c *Checker) eval(resource Object, expr Expr, subject Subject) (Level, bool
 			if err != nil {
 				return No, false, err
 			}
-			level, cycle = and(level, not(got)), cycle || cut
+			// A subtracted side that cut a loop has not shown the subject out of
+			// it: its No is the provisional one a cut answers with, which proves
+			// nothing once it is negated. So the exclusion grants nothing, which
+			// is the answer OpenFGA gives (internal/graph/check.go:358-360 at
+			// fb8e7df8). SpiceDB fails such a check at its depth limit instead,
+			// which grants nothing either.
+			if cut {
+				return No, true, nil
+			}
+			level = and(level, not(got))
 			if level == No {
 				break
 			}

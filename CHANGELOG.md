@@ -69,6 +69,9 @@
   read it the same way, so a gate is no longer called safe when the raise it would allow ends the
   witness with a setup write. This is the role-binding RBAC self-escalation, where holding the
   permission to manage policies is enough to bind oneself to a stronger role.
+- A permission is no longer read as held when the side an exclusion subtracts comes back to itself
+  through a loop of relationships. SpiceDB fails that check at its depth limit, and OpenFGA answers
+  no.
 - A deny lifted by deleting a relationship was missed when the relation reached the exclusion through
   a userset that names a permission: `banned` admitting `group#membership`, with `membership` reading
   `member`. `member` was taken to occur only positively, so deleting it was never tried, and the run
