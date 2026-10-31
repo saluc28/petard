@@ -217,6 +217,65 @@ func TestClosureDeletesLiftADeny(t *testing.T) {
 	assertSaturated(t, model, wm, nil, start, []Object{mallory}, reach)
 }
 
+// A ban can reach its relation through a userset of a permission: banned admits
+// group#membership, and membership reads member. Deleting oneself from member
+// lifts the ban, so member occurs negatively in view even though no permission
+// names it directly. It also occurs positively in membership, which makes it
+// mixed: the run says it is not exact, and the raise is still found.
+func TestClosureDeletesADenyThroughAUsersetOfAPermission(t *testing.T) {
+	group := &Type{
+		Name:        "group",
+		Relations:   []*Relation{{Name: "member", Allowed: []Allowed{{Type: "user"}}}},
+		Permissions: []*Permission{{Name: "membership", Expr: Computed{Name: "member"}}},
+	}
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "banned", Allowed: []Allowed{{Type: "group", Relation: "membership"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "view", Expr: Exclusion{Base: Computed{Name: "viewer"}, Subtracted: []Expr{Computed{Name: "banned"}}}},
+		},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, group, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "group", Relation: "member", Operations: []Operation{Delete}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+	}}
+	start := []Relationship{
+		rel("document:roadmap", "viewer", "user:mallory"),
+		rel("document:roadmap", "banned", "group:trolls#membership"),
+		rel("group:trolls", "member", "user:mallory"),
+	}
+	mallory := object("user:mallory")
+
+	exact, mixed := CheckE1(model, wm)
+	if exact {
+		t.Errorf("CheckE1 holds, but deleting group#member both lowers membership and lifts the ban on view")
+	}
+	if len(mixed) != 1 || mixed[0].Relation != "member" {
+		t.Errorf("CheckE1 names %v, want group#member", mixed)
+	}
+
+	reach, err := Closure(model, wm, nil, start, []Object{mallory}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Closure: %v", err)
+	}
+	if reach.Exact {
+		t.Error("the closure called itself exact over a mixed relation")
+	}
+	view, err := reach.Holds(object("document:roadmap"), "view")
+	if err != nil {
+		t.Fatalf("Holds view: %v", err)
+	}
+	if view != Yes {
+		t.Errorf("coalition view = %s, want yes once the ban is lifted", view)
+	}
+}
+
 // A relation that occurs in both polarities is mixed, so E1 fails: adding
 // editor raises edit but lowers flagged, and no single state holds both at
 // once. The closure then searches up to the bound and reports each raise it can

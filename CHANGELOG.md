@@ -69,6 +69,11 @@
   read it the same way, so a gate is no longer called safe when the raise it would allow ends the
   witness with a setup write. This is the role-binding RBAC self-escalation, where holding the
   permission to manage policies is enough to bind oneself to a stronger role.
+- A deny lifted by deleting a relationship was missed when the relation reached the exclusion through
+  a userset that names a permission: `banned` admitting `group#membership`, with `membership` reading
+  `member`. `member` was taken to occur only positively, so deleting it was never tried, and the run
+  called itself exact over a relation that both raises `membership` and lowers what the ban guards. It
+  is now named as mixed, and the raise is reported within the search bound.
 
 ## [0.6.0] - 2026-10-23
 

@@ -178,9 +178,12 @@ func (p *polarities) resolve(typ, name string, pol polarity) {
 
 // markRelation records a relation at a polarity, then follows the usersets it
 // grants to: the members of a userset a relation admits are granted that
-// relation, so they occur at the same polarity. An arrow does not propagate
-// this way, since it ignores the subject relation of the tuples it walks
-// (section 2.2 of the definitions), so only a direct reference comes here.
+// relation, so they occur at the same polarity. A userset can name a permission
+// as well as a relation, group#membership as well as group#member, and what the
+// permission reads occurs at that polarity too, so the name is resolved rather
+// than taken for a relation. An arrow does not propagate this way, since it
+// ignores the subject relation of the tuples it walks (section 2.2 of the
+// definitions), so only a direct reference comes here.
 func (p *polarities) markRelation(typ, name string, pol polarity) {
 	p.mark(relKey{Type: typ, Relation: name}, pol, false)
 	key := visitKey{Type: typ, Name: name, pol: pol}
@@ -198,7 +201,7 @@ func (p *polarities) markRelation(typ, name string, pol polarity) {
 	}
 	for _, a := range r.Allowed {
 		if a.Relation != "" {
-			p.markRelation(a.Type, a.Relation, pol)
+			p.resolve(a.Type, a.Relation, pol)
 		}
 	}
 }
