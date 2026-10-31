@@ -53,12 +53,12 @@ func relationExpires(r *Relation, subj Subject) bool {
 			continue
 		}
 		if a.Wildcard {
-			if subj.Object.ID == WildcardID && subj.Object.Type == a.Type {
+			if subj.ID == WildcardID && subj.Type == a.Type {
 				return true
 			}
 			continue
 		}
-		if a.Type == subj.Object.Type && a.Relation == subj.Relation {
+		if a.Type == subj.Type && a.Relation == subj.Relation {
 			return true
 		}
 	}
