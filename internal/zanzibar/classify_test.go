@@ -313,3 +313,22 @@ func TestClassifyLinksThroughATrailingCreation(t *testing.T) {
 		t.Fatal("no TRANSITIVE-GRANT escalation on org:o#update to inspect")
 	}
 }
+
+// The categories read a written relation against what a schema names: joining
+// group#member, the relation behind a permission of that name, is joining the
+// userset the document grants to. A name a front end made up for the relation
+// would never match the allowed userset, and this would read as a plain write.
+func TestClassifyJoinsAUsersetBehindASharedName(t *testing.T) {
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "group", Relation: "member", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+	}}
+	start := []Relationship{rel("document:d", "viewer", "group:g#member")}
+
+	cs, err := Classify(sharedNames(t), wm, nil, start, []Object{object("user:mallory")}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Classify: %v", err)
+	}
+	if cats := categoriesOn(cs, object("document:d"), "viewer"); !slices.Contains(cats, CategoryAssumableIdentity) {
+		t.Errorf("document:d#viewer categories = %v, want %s", cats, CategoryAssumableIdentity)
+	}
+}

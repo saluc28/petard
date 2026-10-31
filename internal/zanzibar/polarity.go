@@ -65,11 +65,14 @@ type polarities struct {
 }
 
 // visitKey stops the walk from looping on a recursive permission or an arrow
-// that comes back to a type it already passed at the same polarity.
+// that comes back to a type it already passed at the same polarity. A relation
+// and a permission can share a name, and walking one does not walk the other, so
+// relation keeps them apart.
 type visitKey struct {
-	Type string
-	Name string
-	pol  polarity
+	Type     string
+	Name     string
+	pol      polarity
+	relation bool
 }
 
 // analyzePolarities walks every permission of the schema, and every gate of the
@@ -148,24 +151,26 @@ func (p *polarities) walk(typ string, expr Expr, pol polarity) {
 		p.resolve(typ, e.Name, pol)
 	case Arrow:
 		p.arrow(typ, e, pol)
+	case Stored:
+		p.markRelation(typ, e.Name, pol)
 	case Self, Nil:
 	}
 }
 
-// resolve records a relation, or walks into a permission of the same object. A
-// permission already walked at this polarity is not walked again, which bounds
-// recursion on a permission defined through itself.
+// resolve walks into a permission of the same object, or records a relation. A
+// name that is both answers as the permission, which reads the relation with
+// Stored. A permission already walked at this polarity is not walked again,
+// which bounds recursion on a permission defined through itself.
 func (p *polarities) resolve(typ, name string, pol polarity) {
 	t := p.model.Type(typ)
 	if t == nil {
 		return
 	}
-	if t.Relation(name) != nil {
-		p.markRelation(typ, name, pol)
-		return
-	}
 	perm := t.Permission(name)
 	if perm == nil {
+		if t.Relation(name) != nil {
+			p.markRelation(typ, name, pol)
+		}
 		return
 	}
 	key := visitKey{Type: typ, Name: name, pol: pol}
@@ -186,7 +191,7 @@ func (p *polarities) resolve(typ, name string, pol polarity) {
 // definitions), so only a direct reference comes here.
 func (p *polarities) markRelation(typ, name string, pol polarity) {
 	p.mark(relKey{Type: typ, Relation: name}, pol, false)
-	key := visitKey{Type: typ, Name: name, pol: pol}
+	key := visitKey{Type: typ, Name: name, pol: pol, relation: true}
 	if p.visited[key] {
 		return
 	}
@@ -295,6 +300,28 @@ func positivePermissions(model *Model, typ, relation string) []string {
 		pol.walk(typ, p.Expr, positive)
 		if pol.at(relKey{Type: typ, Relation: relation}).pos {
 			out = append(out, p.Name)
+		}
+	}
+	return out
+}
+
+// RelationRef names a relation of a type.
+type RelationRef struct {
+	Type     string
+	Relation string
+}
+
+// SubtractedOnly is every relation a model reads only to subtract it: a ban, a
+// suspension. Holding one opens nothing, so a front end for a product that keeps
+// one name for what is written and what is asked reads it here to tell an input
+// from an access, and lowers it to a relation alone rather than to a permission
+// nobody means to raise. A relation read positively anywhere is not one, and
+// neither is one nothing reads, which only the application can be asking about.
+func SubtractedOnly(model *Model) map[RelationRef]bool {
+	out := map[RelationRef]bool{}
+	for k, o := range analyzePolarities(model, nil).rel {
+		if o.neg && !o.pos && !o.mixedAll {
+			out[RelationRef(k)] = true
 		}
 	}
 	return out

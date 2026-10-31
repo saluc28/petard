@@ -137,3 +137,82 @@ func TestCheckE1(t *testing.T) {
 		})
 	}
 }
+
+// What a permission reads with Stored occurs at the polarity of the permission,
+// and a name that is both a relation and a permission is walked as the
+// permission, so its computed arms and the usersets of its relation are both
+// followed. A relation and a permission of one name are walked apart: having
+// walked one must not stop the other. team#lead reaches the ban only through the
+// userset of group#member, the relation behind a permission of that name.
+func TestPolaritiesOfASharedName(t *testing.T) {
+	p := analyzePolarities(sharedNames(t), nil)
+
+	tests := []struct {
+		typ, relation string
+		pos, neg      bool
+	}{
+		{"document", "viewer", true, false},
+		{"document", "owner", true, false},
+		{"document", "parent", true, false},
+		{"document", "banned", false, true},
+		{"folder", "viewer", true, false},
+		{"group", "member", true, true},
+		{"group", "admin", true, true},
+		{"team", "lead", true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.typ+"#"+tt.relation, func(t *testing.T) {
+			o := p.at(relKey{Type: tt.typ, Relation: tt.relation})
+			if o.pos != tt.pos || o.neg != tt.neg {
+				t.Errorf("occurrence = %+v, want pos=%v neg=%v", o, tt.pos, tt.neg)
+			}
+		})
+	}
+}
+
+// positivePermissions ties a write to the access it opens, and Stored is how a
+// permission reads the relation of its own name.
+func TestPositivePermissionsOfASharedName(t *testing.T) {
+	got := positivePermissions(sharedNames(t), "document", "viewer")
+	if !slices.Contains(got, "viewer") {
+		t.Errorf("positivePermissions(document, viewer) = %v, want viewer among them", got)
+	}
+}
+
+// SubtractedOnly is what a front end reads to tell an input from an access: a
+// relation read only to subtract it holds nothing worth raising. One that is also
+// read positively, or not read at all, is not among them.
+func TestSubtractedOnly(t *testing.T) {
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "banned", Allowed: []Allowed{{Type: "user"}, {Type: "team", Relation: "lead"}}},
+			{Name: "flagged", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "unread", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "view", Expr: Exclusion{Base: Computed{Name: "viewer"}, Subtracted: []Expr{Computed{Name: "banned"}, Computed{Name: "flagged"}}}},
+			{Name: "audit", Expr: Computed{Name: "flagged"}},
+		},
+	}
+	team := &Type{Name: "team", Relations: []*Relation{{Name: "lead", Allowed: []Allowed{{Type: "user"}}}}}
+	m, err := NewModel([]*Type{{Name: "user"}, team, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := SubtractedOnly(m)
+	want := map[RelationRef]bool{
+		{Type: "document", Relation: "banned"}: true,
+		{Type: "team", Relation: "lead"}:       true,
+	}
+	if len(got) != len(want) {
+		t.Errorf("SubtractedOnly = %v, want %v", got, want)
+	}
+	for ref := range want {
+		if !got[ref] {
+			t.Errorf("SubtractedOnly misses %s#%s", ref.Type, ref.Relation)
+		}
+	}
+}

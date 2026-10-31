@@ -514,3 +514,55 @@ func keysOf(rels []Relationship) []string {
 	}
 	return out
 }
+
+// A write to the relation behind a shared name raises the permission of that
+// name, and a delete lifts a ban read through it. Both are held to brute force.
+func TestClosureOverASharedName(t *testing.T) {
+	model := sharedNames(t)
+	mallory := object("user:mallory")
+
+	tests := []struct {
+		name   string
+		writes []*WriteRule
+		start  []Relationship
+	}{
+		{
+			name: "a write under the name",
+			writes: []*WriteRule{
+				{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+			},
+			start: []Relationship{rel("document:d", "owner", "user:alice")},
+		},
+		{
+			name: "a gate on a shared name",
+			writes: []*WriteRule{
+				{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Holds: "owner"}, Subject: SubjectSpec{Self: true}},
+			},
+			start: []Relationship{rel("document:d", "owner", "user:mallory")},
+		},
+		{
+			name: "a ban lifted by deleting it",
+			writes: []*WriteRule{
+				{Resource: "document", Relation: "banned", Operations: []Operation{Delete}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}},
+			},
+			start: []Relationship{
+				rel("document:d", "viewer", "user:mallory"),
+				rel("document:d", "banned", "group:g#member"),
+				rel("group:g", "member", "user:mallory"),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: tt.writes}
+			reach, err := Closure(model, wm, nil, tt.start, []Object{mallory}, Options{Now: time.Unix(0, 0)})
+			if err != nil {
+				t.Fatalf("Closure: %v", err)
+			}
+			if !reach.Exact {
+				t.Fatalf("E1 holds for these writes, so the closure should be exact; mixed: %v", reach.Mixed)
+			}
+			assertSaturated(t, model, wm, nil, tt.start, []Object{mallory}, reach)
+		})
+	}
+}

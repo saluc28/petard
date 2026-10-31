@@ -337,6 +337,9 @@ func (c *Checker) eval(resource Object, expr Expr, subject Subject) (Level, bool
 	case Arrow:
 		return c.arrow(resource, e, subject)
 
+	case Stored:
+		return c.direct(resource, e.Name, subject)
+
 	case Self:
 		if subject.Relation == "" && subject.Object == resource {
 			return Yes, false, nil

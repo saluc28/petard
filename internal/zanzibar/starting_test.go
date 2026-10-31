@@ -2,6 +2,7 @@ package zanzibar
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,9 +26,10 @@ func holdsOn(t *testing.T, model *Model, tuples []Relationship, obj Object, name
 // generator, which is the test oracle for the starting states.
 func TestStartingPositionsGrantAndMinimal(t *testing.T) {
 	schemas := map[string]*Model{
-		"documents":  documents(t),
-		"folders":    recursiveFolders(t),
-		"deep chain": deepChain(t),
+		"documents":    documents(t),
+		"folders":      recursiveFolders(t),
+		"deep chain":   deepChain(t),
+		"shared names": sharedNames(t),
 	}
 	for name, model := range schemas {
 		t.Run(name, func(t *testing.T) {
@@ -267,4 +269,36 @@ func sameSets(got, want [][]string) bool {
 		}
 	}
 	return true
+}
+
+// A name that is both a relation and a permission is one target, generated from
+// the permission so that every way of holding it is a position: one through what
+// is stored under it, others through its computed arms.
+func TestStartingPositionsOfASharedName(t *testing.T) {
+	var viewer []string
+	for _, p := range StartingPositions(sharedNames(t), attacker, Options{}) {
+		if p.Type == "document" && p.Target == "viewer" {
+			viewer = append(viewer, keysOf(p.Tuples)...)
+		}
+	}
+	for _, want := range []string{
+		"document:target#viewer@user:attacker",
+		"document:target#viewer@user:*",
+		"document:target#owner@user:attacker",
+	} {
+		if !slices.Contains(viewer, want) {
+			t.Errorf("no starting position of document#viewer writes %s, got %v", want, viewer)
+		}
+	}
+	if !slices.ContainsFunc(viewer, func(k string) bool { return strings.HasPrefix(k, "document:target#parent@folder:") }) {
+		t.Errorf("no starting position of document#viewer walks parent, got %v", viewer)
+	}
+
+	seen := map[string]bool{}
+	for _, name := range targetNames(sharedNames(t).Type("document")) {
+		if seen[name] {
+			t.Errorf("%s is listed twice as a target", name)
+		}
+		seen[name] = true
+	}
 }

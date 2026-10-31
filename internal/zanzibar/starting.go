@@ -83,14 +83,16 @@ func StartingPositions(model *Model, attacker Object, opts Options) []StartingPo
 }
 
 // targetNames is every relation and permission of a type, the targets a starting
-// position can be about, in a stable order.
+// position can be about, in a stable order. A name that is both is one target.
 func targetNames(t *Type) []string {
 	names := make([]string, 0, len(t.Relations)+len(t.Permissions))
 	for _, r := range t.Relations {
 		names = append(names, r.Name)
 	}
 	for _, p := range t.Permissions {
-		names = append(names, p.Name)
+		if t.Relation(p.Name) == nil {
+			names = append(names, p.Name)
+		}
 	}
 	return names
 }
@@ -141,11 +143,11 @@ func (g *positionGen) sets(typ, name string, obj Object, depth int, seen, onPath
 	if t == nil {
 		return nil, false
 	}
-	if r := t.Relation(name); r != nil {
-		return g.relationSets(r, obj, depth, seen, onPath)
-	}
 	p := t.Permission(name)
 	if p == nil {
+		if r := t.Relation(name); r != nil {
+			return g.relationSets(r, obj, depth, seen, onPath)
+		}
 		return nil, false
 	}
 	key := obj.String() + "#" + name
@@ -229,6 +231,9 @@ func (g *positionGen) exprSets(typ string, expr Expr, obj Object, depth int, see
 
 	case Arrow:
 		return g.arrowSets(typ, e, obj, depth, seen, onPath)
+
+	case Stored:
+		return g.relationSets(g.model.Type(typ).Relation(e.Name), obj, depth, seen, onPath)
 
 	case Self, Nil:
 		// Self holds only for the object itself, which the attacker is not on a

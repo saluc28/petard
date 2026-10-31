@@ -90,6 +90,7 @@ func TestSafeGatesScopingMatchesUnscoped(t *testing.T) {
 		{"documents", documents(t)},
 		{"role-binding RBAC", rolebindingRBAC(t)},
 		{"many flat permissions", wideFlatModel(t, 12)},
+		{"shared names", sharedNames(t)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -148,4 +149,35 @@ func proposalsDigest(proposals []GateProposal) string {
 		fmt.Fprintf(&b, "%s#%s safe=[%s] unsafe=[%s]\n", p.Type, p.Relation, strings.Join(safe, ","), strings.Join(unsafe, ","))
 	}
 	return b.String()
+}
+
+// A write to a relation behind a shared name can raise that permission, and
+// whatever reads it through a userset or a computed arm.
+func TestRaisableIndexFollowsASharedName(t *testing.T) {
+	index := raisableIndex(sharedNames(t))
+	viewer := permRef{typ: "document", name: "viewer"}
+	member := permRef{typ: "group", name: "member"}
+
+	tests := []struct {
+		typ, relation string
+		want          permRef
+	}{
+		{"document", "viewer", viewer},
+		{"document", "owner", viewer},
+		{"document", "parent", viewer},
+		{"document", "banned", viewer},
+		{"folder", "viewer", viewer},
+		{"group", "member", member},
+		{"group", "admin", member},
+		{"group", "admin", viewer},
+		{"team", "lead", member},
+		{"team", "lead", viewer},
+	}
+	for _, tt := range tests {
+		t.Run(tt.typ+"#"+tt.relation+" raises "+tt.want.typ+"#"+tt.want.name, func(t *testing.T) {
+			if !raisesOf(index, tt.typ, tt.relation)[tt.want] {
+				t.Errorf("writing %s#%s should be able to raise %s#%s", tt.typ, tt.relation, tt.want.typ, tt.want.name)
+			}
+		})
+	}
 }

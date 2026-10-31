@@ -90,19 +90,18 @@ func collectReads(model *Model, typ string, expr Expr, reads map[relRef]bool, se
 				}
 			}
 		}
+	case Stored:
+		collectRelation(model, typ, e.Name, reads, seen)
 	case Self, Nil:
 	}
 }
 
-// collectName resolves a name on a type as either a relation, which it records
-// and whose usersets it follows, or a permission, which it walks.
+// collectName resolves a name on a type as either a permission, which it walks,
+// or a relation, which it records and whose usersets it follows. A name that is
+// both answers as the permission, which reads the relation with Stored.
 func collectName(model *Model, typ, name string, reads map[relRef]bool, seen map[string]bool) {
 	t := model.Type(typ)
 	if t == nil {
-		return
-	}
-	if t.Relation(name) != nil {
-		collectRelation(model, typ, name, reads, seen)
 		return
 	}
 	if p := t.Permission(name); p != nil {
@@ -112,6 +111,10 @@ func collectName(model *Model, typ, name string, reads map[relRef]bool, seen map
 		}
 		seen[key] = true
 		collectReads(model, typ, p.Expr, reads, seen)
+		return
+	}
+	if t.Relation(name) != nil {
+		collectRelation(model, typ, name, reads, seen)
 	}
 }
 

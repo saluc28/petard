@@ -268,3 +268,96 @@ func TestCheckWithoutACaveatEvaluator(t *testing.T) {
 		t.Errorf("Check() error = %v, want one saying nothing evaluates caveats", err)
 	}
 }
+
+// A name that is both a relation and a permission answers as the permission,
+// and the permission reads what is stored under the name through Stored. A
+// userset that names it holds the whole permission, computed arms included, not
+// only the tuples stored under it.
+func TestCheckASharedName(t *testing.T) {
+	doc := object("document:d")
+	tests := []struct {
+		name    string
+		tuples  []Relationship
+		ask     string
+		subject string
+		want    Level
+	}{
+		{name: "nothing stored", ask: "viewer", subject: "user:alice", want: No},
+		{
+			name:    "stored under the name",
+			tuples:  []Relationship{rel("document:d", "viewer", "user:alice")},
+			ask:     "viewer",
+			subject: "user:alice",
+			want:    Yes,
+		},
+		{
+			name:    "a computed arm",
+			tuples:  []Relationship{rel("document:d", "owner", "user:alice")},
+			ask:     "viewer",
+			subject: "user:alice",
+			want:    Yes,
+		},
+		{
+			name: "an arrow whose target shares its name",
+			tuples: []Relationship{
+				rel("document:d", "parent", "folder:f"),
+				rel("folder:f", "viewer", "user:alice"),
+			},
+			ask:     "viewer",
+			subject: "user:alice",
+			want:    Yes,
+		},
+		{
+			name:    "a wildcard stored under the name",
+			tuples:  []Relationship{rel("document:d", "viewer", "user:*")},
+			ask:     "viewer",
+			subject: "user:bob",
+			want:    Yes,
+		},
+		{
+			name: "a userset holds the computed arm of what it names",
+			tuples: []Relationship{
+				rel("document:d", "viewer", "group:g#member"),
+				rel("group:g", "admin", "user:carol"),
+			},
+			ask:     "viewer",
+			subject: "user:carol",
+			want:    Yes,
+		},
+		{
+			name: "a ban reached through the computed arm of a userset",
+			tuples: []Relationship{
+				rel("document:d", "viewer", "user:carol"),
+				rel("document:d", "banned", "group:g#member"),
+				rel("group:g", "admin", "user:carol"),
+			},
+			ask:     "viewer",
+			subject: "user:carol",
+			want:    No,
+		},
+		{
+			name:    "a userset holds itself",
+			ask:     "viewer",
+			subject: "document:d#viewer",
+			want:    Yes,
+		},
+		{
+			name:    "a relation alone answers from what is stored",
+			tuples:  []Relationship{rel("document:d", "parent", "folder:f")},
+			ask:     "parent",
+			subject: "folder:f",
+			want:    Yes,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewChecker(sharedNames(t), tt.tuples, nil, time.Unix(0, 0)).Check(doc, tt.ask, subjectOf(tt.subject), nil)
+			if err != nil {
+				t.Fatalf("Check: %v", err)
+			}
+			if got.Level != tt.want {
+				t.Errorf("Check(%s, %s) = %s, want %s", tt.ask, tt.subject, got.Level, tt.want)
+			}
+		})
+	}
+}

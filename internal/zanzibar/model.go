@@ -10,6 +10,7 @@ package zanzibar
 
 import (
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -67,17 +68,26 @@ type Type struct {
 	permissions map[string]*Permission
 }
 
+// index builds the lookups by name. A relation and a permission may share a name
+// only when the permission reads that relation with Stored: the relation is what
+// is written under the name, and the permission what the name answers.
 func (t *Type) index() error {
 	t.relations = make(map[string]*Relation, len(t.Relations))
 	t.permissions = make(map[string]*Permission, len(t.Permissions))
 	for _, r := range t.Relations {
-		if t.Declares(r.Name) {
+		if t.relations[r.Name] != nil {
 			return fmt.Errorf("zanzibar: %s#%s declared twice", t.Name, r.Name)
 		}
 		t.relations[r.Name] = r
 	}
 	for _, p := range t.Permissions {
-		if t.Declares(p.Name) {
+		stored := storedNames(p.Expr)
+		for _, name := range stored {
+			if t.relations[name] == nil {
+				return fmt.Errorf("zanzibar: %s#%s reads %s#%s as stored, and no relation of that name is declared", t.Name, p.Name, t.Name, name)
+			}
+		}
+		if t.permissions[p.Name] != nil || (t.relations[p.Name] != nil && !slices.Contains(stored, p.Name)) {
 			return fmt.Errorf("zanzibar: %s#%s declared twice", t.Name, p.Name)
 		}
 		t.permissions[p.Name] = p
@@ -85,16 +95,40 @@ func (t *Type) index() error {
 	return nil
 }
 
+// storedNames is every relation an expression reads with Stored.
+func storedNames(expr Expr) []string {
+	var out []string
+	switch e := expr.(type) {
+	case Stored:
+		out = append(out, e.Name)
+	case Union:
+		for _, child := range e.Children {
+			out = append(out, storedNames(child)...)
+		}
+	case Intersection:
+		for _, child := range e.Children {
+			out = append(out, storedNames(child)...)
+		}
+	case Exclusion:
+		out = append(out, storedNames(e.Base)...)
+		for _, child := range e.Subtracted {
+			out = append(out, storedNames(child)...)
+		}
+	}
+	return out
+}
+
 // Declares says whether the type has a relation or a permission of that name.
 func (t *Type) Declares(name string) bool {
 	return t.relations[name] != nil || t.permissions[name] != nil
 }
 
-// Relation returns the relation of that name, or nil. A permission of that
-// name is not a relation.
+// Relation returns the relation of that name, or nil: what a write changes. A
+// permission of that name is not a relation.
 func (t *Type) Relation(name string) *Relation { return t.relations[name] }
 
-// Permission returns the permission of that name, or nil.
+// Permission returns the permission of that name, or nil: what a check of that
+// name answers from, when there is one.
 func (t *Type) Permission(name string) *Permission { return t.permissions[name] }
 
 // Relation is what relationships are stored against, such as the viewer of a
@@ -140,7 +174,7 @@ type Permission struct {
 }
 
 // Expr is the expression of a permission: a Union, an Intersection, an
-// Exclusion, a Computed, an Arrow, Self or Nil.
+// Exclusion, a Computed, an Arrow, Stored, Self or Nil.
 type Expr interface{ isExpr() }
 
 // Union holds when any child holds.
@@ -172,6 +206,16 @@ type Arrow struct {
 	Position
 }
 
+// Stored is what is written under a relation of the same object, the _this of
+// the Zanzibar paper. A product that keeps one name for what is written and what
+// is asked, as OpenFGA does with define viewer: [user] or editor, lowers it to a
+// relation and a permission of that name, and the permission reads the relation
+// with Stored: a Computed of that name would ask the permission again. A product
+// that keeps the two apart has no use for it.
+type Stored struct {
+	Name string
+}
+
 // Self holds for the object itself, asked as a subject.
 type Self struct{}
 
@@ -183,6 +227,7 @@ func (Intersection) isExpr() {}
 func (Exclusion) isExpr()    {}
 func (Computed) isExpr()     {}
 func (Arrow) isExpr()        {}
+func (Stored) isExpr()       {}
 func (Self) isExpr()         {}
 func (Nil) isExpr()          {}
 
