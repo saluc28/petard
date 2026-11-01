@@ -20,6 +20,7 @@ import (
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
+	"github.com/saluc28/petard/internal/zanzibar/openfga"
 	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
@@ -56,7 +57,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			"is read from $"+taxonomy.TokenEnv+". SpiceDB schema files (.zed) and validation files under\n"+
 			"the paths are read as well, and a running SpiceDB may be named as spicedb://host:port\n"+
 			"(spicedb+insecure://host:port over plaintext), its schema read over its API with a token\n"+
-			"from $"+spicedb.TokenEnv+".\n\n")
+			"from $"+spicedb.TokenEnv+". So are OpenFGA models (.fga, fga.mod, a model in JSON) and store\n"+
+			"files (.fga.yaml), and a store of a running OpenFGA may be named as openfga://host:port/store\n"+
+			"(openfga+insecure://host:port/store over plaintext, /model after the store for a model other\n"+
+			"than the latest), read over its gRPC API with a token from $"+openfga.TokenEnv+".\n\n")
 		flags.PrintDefaults()
 	}
 

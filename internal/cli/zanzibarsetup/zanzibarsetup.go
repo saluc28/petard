@@ -19,14 +19,20 @@ import (
 
 	"github.com/saluc28/petard/internal/writemodel"
 	"github.com/saluc28/petard/internal/zanzibar"
+	"github.com/saluc28/petard/internal/zanzibar/openfga"
 	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 )
 
 // Product is the product a file was written for, as a report names it.
 type Product string
 
-// SpiceDB is the product of a .zed schema and of a validation file.
-const SpiceDB Product = "SpiceDB"
+const (
+	// SpiceDB is the product of a .zed schema and of a validation file.
+	SpiceDB Product = "SpiceDB"
+
+	// OpenFGA is the product of a model and of a store file.
+	OpenFGA Product = "OpenFGA"
+)
 
 // File is one input of a Zanzibar product, in the terms the engine and a report
 // read it in: a schema, or a file that holds or names one with the relationships
@@ -46,8 +52,12 @@ type File struct {
 	Caveats zanzibar.CaveatEvaluator
 
 	// Holds is true for a file that brings relationships or checks of its own, a
-	// validation file among them, as against a bare schema.
+	// validation file or a store file, as against a bare schema.
 	Holds bool
+
+	// Test names the test of a store file this is read with, when the test brings
+	// tuples of its own.
+	Test string
 
 	Relationships []zanzibar.Relationship
 
@@ -84,6 +94,21 @@ func fromSpiceDB(f *spicedb.File) *File {
 	}
 }
 
+// fromOpenFGA is an OpenFGA file in the terms of this package.
+func fromOpenFGA(f *openfga.File) *File {
+	return &File{
+		Product:       OpenFGA,
+		Path:          f.Path,
+		SchemaPath:    f.SchemaPath,
+		Model:         f.Schema.Model,
+		Caveats:       f.Schema,
+		Holds:         f.Store,
+		Test:          f.Test,
+		Relationships: f.Relationships,
+		Assertions:    f.Assertions,
+	}
+}
+
 // Found is the Zanzibar side of a command's inputs.
 type Found struct {
 	// Files are the schemas and the files that hold one, found under the paths.
@@ -105,40 +130,53 @@ type Found struct {
 	PolicyWriteModel string
 }
 
-// Load finds the SpiceDB files under paths and the write models beside them.
+// Load finds the files of the Zanzibar products under paths and the write models
+// beside them.
 //
-// A path may also name a running SpiceDB (spicedb://host:port, or
-// spicedb+insecure://host:port for a local development one), whose schema is
-// read over its API, read only, and compiled the way a .zed file on disk is.
-// This is the SpiceDB counterpart to naming a running OPA in place of a path,
-// and it is how a schema that lives only inside a running SpiceDB is analyzed; a
-// write model for such a schema comes from the -write-model flag, since a live
-// schema has no directory beside it to hold one. The offline default is
-// untouched: nothing here connects unless a path names an endpoint.
+// A path may also name a running server: SpiceDB (spicedb://host:port, or
+// spicedb+insecure://host:port for a local development one), or a store of OpenFGA
+// (openfga://host:port/store, or openfga+insecure://host:port/store). Its schema is
+// read over its API, read only, and compiled the way a file on disk is. This is the
+// counterpart to naming a running OPA in place of a path, and it is how a schema that
+// lives only inside a running server is analyzed; a write model for such a schema
+// comes from the -write-model flag, since a live schema has no directory beside it to
+// hold one. The offline default is untouched: nothing here connects unless a path
+// names an endpoint.
 //
 // The write-model flag feeds both engines, told apart by the kind the file
 // declares. A relationship-writes model named there overrides the ones found
 // beside the schemas and is kept out of the policy loader's paths; a write-paths
 // model, or no flag at all, is left for the policy engine to load.
 func Load(ctx context.Context, paths []string, writeModelPath string) (Found, error) {
-	disk, endpoints := partitionEndpoints(paths)
+	disk, spiceEndpoints, fgaEndpoints := partitionEndpoints(paths)
 	spice, err := spicedb.Find(disk)
 	if err != nil {
 		return Found{}, err
 	}
-	files := make([]*File, 0, len(spice))
+	fga, err := openfga.Find(disk)
+	if err != nil {
+		return Found{}, err
+	}
+	files := make([]*File, 0, len(spice)+len(fga))
 	for _, f := range spice {
 		files = append(files, fromSpiceDB(f))
 	}
-	if len(endpoints) > 0 {
-		token := os.Getenv(spicedb.TokenEnv)
-		for _, ep := range endpoints {
-			f, err := spicedb.ReadLive(ctx, ep, token)
-			if err != nil {
-				return Found{}, err
-			}
-			files = append(files, fromSpiceDB(f))
+	for _, f := range fga {
+		files = append(files, fromOpenFGA(f))
+	}
+	for _, ep := range spiceEndpoints {
+		f, err := spicedb.ReadLive(ctx, ep, os.Getenv(spicedb.TokenEnv))
+		if err != nil {
+			return Found{}, err
 		}
+		files = append(files, fromSpiceDB(f))
+	}
+	for _, ep := range fgaEndpoints {
+		f, err := openfga.ReadLive(ctx, ep, os.Getenv(openfga.TokenEnv))
+		if err != nil {
+			return Found{}, err
+		}
+		files = append(files, fromOpenFGA(f))
 	}
 	// Each source sorts what it read from disk, and the live schemas come after,
 	// so the whole set is sorted to keep a command reading the same inputs in the
@@ -192,12 +230,12 @@ type Analysis struct {
 // it says who writes its relations: the patterns start from the positions the
 // schema generates, which is what lets a schema be validated without a
 // validation file written by hand. A schema with neither is left out of the
-// first value and named in the second, for the caller to report as lacking
+// first value and returned in the second, for the caller to report as lacking
 // evidence rather than read as clean.
 //
 // The entries come in the order the files sort, so a command reads the same
 // inputs the same way on every run.
-func (f Found) Analyses(now time.Time) (run []Analysis, noEvidence []string) {
+func (f Found) Analyses(now time.Time) (run []Analysis, noEvidence []*File) {
 	heldByAFile := map[string]bool{}
 	for _, file := range f.Files {
 		if file.Holds {
@@ -218,7 +256,7 @@ func (f Found) Analyses(now time.Time) (run []Analysis, noEvidence []string) {
 		}
 		seen[file.SchemaPath] = true
 		if wm == nil {
-			noEvidence = append(noEvidence, file.Path)
+			noEvidence = append(noEvidence, file)
 			continue
 		}
 		run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm})
@@ -272,19 +310,23 @@ func dirs(files []*File) []string {
 	return out
 }
 
-// partitionEndpoints splits the paths into the ones that name a running SpiceDB
-// and the rest, so the live schemas are read over the API and the rest are read
-// from disk. A running OPA's http(s) URL is not an endpoint here and stays with
-// the rest, for the policy loader to read.
-func partitionEndpoints(paths []string) (disk []string, endpoints []spicedb.Endpoint) {
+// partitionEndpoints splits the paths into the ones that name a running server and
+// the rest, so the live schemas are read over the API and the rest are read from
+// disk. A running OPA's http(s) URL is not an endpoint here and stays with the rest,
+// for the policy loader to read.
+func partitionEndpoints(paths []string) (disk []string, spice []spicedb.Endpoint, fga []openfga.Endpoint) {
 	for _, p := range paths {
 		if ep, ok := spicedb.ParseEndpoint(p); ok {
-			endpoints = append(endpoints, ep)
+			spice = append(spice, ep)
+			continue
+		}
+		if ep, ok := openfga.ParseEndpoint(p); ok {
+			fga = append(fga, ep)
 			continue
 		}
 		disk = append(disk, p)
 	}
-	return disk, endpoints
+	return disk, spice, fga
 }
 
 // nonSchemaPaths are the paths left for the policy loader once the schema files

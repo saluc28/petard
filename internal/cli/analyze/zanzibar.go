@@ -21,12 +21,12 @@ type zanzibarRun struct {
 	files   []*zanzibarsetup.File
 	matches []zanzibar.Match
 
-	// unread are the schema files that no validation file reads and that have no
-	// write model beside them, so the patterns have no rule for who writes their
-	// relations and no relationship or check to take as evidence. A schema with a
-	// write model is analyzed from the positions generated from it instead, and
-	// does not appear here.
-	unread []string
+	// unread are the schema files that no validation file or store file reads and
+	// that have no write model beside them, so the patterns have no rule for who
+	// writes their relations and no relationship or check to take as evidence. A
+	// schema with a write model is analyzed from the positions generated from it
+	// instead, and does not appear here.
+	unread []*zanzibarsetup.File
 
 	// proposals are, per schema, the safe gates for the relations its write model
 	// leaves without a rule, or every writable relation when it has no write
@@ -38,6 +38,7 @@ type zanzibarRun struct {
 // schemaProposals are the safe-gate proposals for one schema, with the model
 // the skeleton reads each relation's allowed subjects and caveats from.
 type schemaProposals struct {
+	product   zanzibarsetup.Product
 	schema    string
 	model     *zanzibar.Model
 	proposals []zanzibar.GateProposal
@@ -109,7 +110,7 @@ func proposalsOf(files []*zanzibarsetup.File, writeModels map[string]*zanzibar.W
 			return nil, err
 		}
 		if len(gates) > 0 {
-			out = append(out, schemaProposals{schema: f.SchemaPath, model: f.Model, proposals: gates})
+			out = append(out, schemaProposals{product: f.Product, schema: f.SchemaPath, model: f.Model, proposals: gates})
 		}
 	}
 	return out, nil
@@ -180,10 +181,10 @@ func printZanzibar(out io.Writer, r zanzibarRun, patterns []taxonomy.Pattern, p 
 		return
 	}
 	printProposals(out, r.proposals, style)
-	for _, path := range r.unread {
+	for _, f := range r.unread {
 		fmt.Fprintln(out)
-		render.Print(out, path+" has no write model and is read by no validation file under the paths, "+
-			"so the patterns had no rule for who writes its relations and no relationship or check to take as evidence.", "")
+		render.Print(out, f.Path+" has no write model and is read by no "+holderOf(f)+" under the paths, "+
+			"so the patterns had no rule for who writes its relations and no "+relationshipOf(f)+" or check to take as evidence.", "")
 	}
 }
 
@@ -198,7 +199,13 @@ func printFiles(out io.Writer, files []*zanzibarsetup.File, style render.Style) 
 	slices.Sort(products)
 	for _, product := range products {
 		of := slices.DeleteFunc(slices.Clone(files), func(f *zanzibarsetup.File) bool { return f.Product != product })
-		fmt.Fprintln(out, style.Bold(render.Count(len(of), string(product)+" file")))
+		// A store file whose tests bring tuples of their own is read once for each
+		// of them, and it is one file.
+		paths := map[string]bool{}
+		for _, f := range of {
+			paths[f.Path] = true
+		}
+		fmt.Fprintln(out, style.Bold(render.Count(len(paths), string(product)+" file")))
 		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 		for _, f := range of {
 			fmt.Fprintf(tw, "  %s\t%s\n", f.Path, describeFile(f))
@@ -261,7 +268,26 @@ func printMatch(out io.Writer, m zanzibar.Match, style render.Style, verbose boo
 	}
 }
 
+// relationshipOf is the word for what is stored against a schema of the product of f.
+func relationshipOf(f *zanzibarsetup.File) string {
+	if f.Product == zanzibarsetup.OpenFGA {
+		return "tuple"
+	}
+	return "relationship"
+}
+
+// holderOf is the word for a file that holds a schema of the product of f.
+func holderOf(f *zanzibarsetup.File) string {
+	if f.Product == zanzibarsetup.OpenFGA {
+		return "store file"
+	}
+	return "validation file"
+}
+
 func describeFile(f *zanzibarsetup.File) string {
+	if f.Product == zanzibarsetup.OpenFGA {
+		return describeOpenFGA(f)
+	}
 	m := f.Model
 	relations, permissions := 0, 0
 	for _, t := range m.Types {
@@ -286,4 +312,36 @@ func describeFile(f *zanzibarsetup.File) string {
 		return fmt.Sprintf("validation file of %s, %s", f.SchemaPath, strings.Join(holds, ", "))
 	}
 	return fmt.Sprintf("validation file, %s; %s", strings.Join(holds, ", "), declares)
+}
+
+// describeOpenFGA says what an OpenFGA file declares and holds, in the words of the
+// product. A name that is written and asked counts once.
+func describeOpenFGA(f *zanzibarsetup.File) string {
+	m := f.Model
+	relations := 0
+	for _, t := range m.Types {
+		relations += len(t.Relations)
+		for _, p := range t.Permissions {
+			if t.Relation(p.Name) == nil {
+				relations++
+			}
+		}
+	}
+	declares := strings.Join([]string{
+		render.Count(len(m.Types), "type"),
+		render.Count(relations, "relation"),
+		render.Count(len(m.Caveats), "condition"),
+	}, ", ")
+	if !f.Holds {
+		return declares
+	}
+
+	holds := []string{render.Count(len(f.Relationships), "tuple"), render.Count(len(f.Assertions), "check")}
+	if f.Test != "" {
+		holds = append([]string{"test " + f.Test}, holds...)
+	}
+	if f.SchemaPath != f.Path {
+		return fmt.Sprintf("store file of %s, %s", f.SchemaPath, strings.Join(holds, ", "))
+	}
+	return fmt.Sprintf("store file, %s; %s", strings.Join(holds, ", "), declares)
 }

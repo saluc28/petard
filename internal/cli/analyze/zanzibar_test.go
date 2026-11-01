@@ -402,3 +402,170 @@ func TestRunStopsOnABrokenSpiceDBFile(t *testing.T) {
 		t.Errorf("stderr does not name the file:\n%s", stderr.String())
 	}
 }
+
+const (
+	openFGAModel = `model
+  schema 1.1
+type user
+type team
+  relations
+    define member: [user]
+type document
+  relations
+    define owner: [user]
+    define banned: [user]
+    define viewer: ([user with within, team#member] or owner) but not banned
+condition within(cidr: string, user_ip: string) {
+  user_ip == cidr
+}
+`
+	openFGAWrites = `schema_version: 1
+model: relationship-writes
+writes:
+  - resource: document
+    relation: viewer
+    operations: [create]
+    gate: anyone
+    subject: [user, "team#member"]
+    caveat:
+      - name: within
+        parameters:
+          cidr: writer
+          user_ip: application
+    via: POST /documents/viewers
+  - resource: team
+    relation: member
+    operations: [create]
+    gate: anyone
+    subject: self
+    via: POST /teams/join
+  - resource: document
+    relation: banned
+    operations: [delete]
+    gate: anyone
+    subject: self
+    via: DELETE /documents/bans
+`
+	openFGAStore = `model_file: model.fga
+tuples:
+  - {user: user:anne, relation: owner, object: document:1}
+  - {user: "team:eng#member", relation: viewer, object: document:1}
+tests:
+  - name: reads
+    check:
+      - {user: user:anne, object: document:1, assertions: {viewer: true}}
+  - name: joined
+    tuples:
+      - {user: user:bob, relation: member, object: team:eng}
+    check:
+      - {user: user:bob, object: document:1, assertions: {viewer: true}}
+`
+)
+
+func writeOpenFGA(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// An OpenFGA model with a write model beside it gets the patterns of the engine, in
+// the words of the product, and its exit code as a SpiceDB schema does.
+func TestRunReportsOpenFGAFindings(t *testing.T) {
+	dir := writeOpenFGA(t, map[string]string{"model.fga": openFGAModel, "writes.yaml": openFGAWrites, "store.fga.yaml": openFGAStore})
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-no-color", dir}, &stdout, &stderr); code != exitFound {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFound, stderr.String())
+	}
+	out := stdout.String()
+	for _, expected := range []string{
+		"2 OpenFGA files",
+		"3 types, 4 relations, 1 condition",
+		"store file of",
+		"test joined, 3 tuples, 1 check",
+		"(PTD-ZAN-001)",
+		"(PTD-ZAN-002)",
+		"(PTD-ZAN-005)",
+		"(PTD-ZAN-008)",
+		"user_ip of condition within",
+		"which the writer may set on the tuple instead",
+		"model.fga:11:",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the report does not say %q:\n%s", expected, out)
+		}
+	}
+	for _, unwanted := range []string{"SpiceDB", "of caveat", "on the relationship"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("the report says %q:\n%s", unwanted, out)
+		}
+	}
+}
+
+// With no write model and no store file, a model is reported as having no evidence,
+// in the words of the product, and not read as clean. A relation with no rule still
+// gets a gate proposed.
+func TestRunSaysAnOpenFGAModelHasNoEvidence(t *testing.T) {
+	dir := writeOpenFGA(t, map[string]string{"model.fga": openFGAModel})
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-no-color", dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	out := strings.Join(strings.Fields(stdout.String()), " ")
+	for _, expected := range []string{
+		"1 OpenFGA file",
+		"is read by no store file",
+		"no tuple or check to take as evidence",
+		"Relations with no write rule",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the report does not say %q:\n%s", expected, stdout.String())
+		}
+	}
+}
+
+// The skeleton -questions writes for an OpenFGA model holds writes the product has, and
+// reads back as a write model the next run takes.
+func TestRunWritesAnOpenFGAWriteModel(t *testing.T) {
+	dir := writeOpenFGA(t, map[string]string{"model.fga": openFGAModel})
+	skeleton := filepath.Join(t.TempDir(), "writes.yaml")
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-no-color", "-questions", skeleton, dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	content, err := os.ReadFile(skeleton)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "operations: [create]") || strings.Contains(string(content), "touch") {
+		t.Errorf("the skeleton does not propose the writes OpenFGA has:\n%s", content)
+	}
+	if _, err := zanzibar.LoadWriteModel(skeleton); err != nil {
+		t.Errorf("the skeleton does not read back: %v\n%s", err, content)
+	}
+}
+
+// A directory holding both products reports both, each under its own heading.
+func TestRunReportsBothProducts(t *testing.T) {
+	dir := writeOpenFGA(t, map[string]string{
+		"model.fga":  openFGAModel,
+		"schema.zed": "definition user {}\n",
+	})
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-no-color", dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	out := stdout.String()
+	openFGA, spiceDB := strings.Index(out, "1 OpenFGA file"), strings.Index(out, "1 SpiceDB file")
+	if openFGA < 0 || spiceDB < 0 || openFGA > spiceDB {
+		t.Errorf("want a heading for each product, in order:\n%s", out)
+	}
+}

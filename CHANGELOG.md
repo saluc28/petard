@@ -4,6 +4,14 @@
 
 ### Added
 
+- `petard analyze` and `petard export` read OpenFGA models: `.fga` files, modular models (`fga.mod`
+  and the modules it lists), models in JSON, and store files (`.fga.yaml`) with their tuples and
+  checks. A store of a running OpenFGA can be named in place of a path as `openfga://host:port/store`,
+  or `openfga+insecure://host:port/store` over plaintext for a local development server, with
+  `/model` after the store to read a model other than the latest. The model and a bounded sample of
+  the tuples are read over the gRPC API, read only, with a bearer token from `$PETARD_OPENFGA_TOKEN`.
+  The write model and the patterns are the ones a SpiceDB schema gets, and the engine's answers are
+  held to OpenFGA's own `Check`.
 - `petard analyze` marks a SpiceDB escalation that defeats a time bound. When the decisive write
   sets a relationship the schema lets carry an expiration and the write model leaves that expiration
   for the coalition to set or to omit, the finding carries an `also` line: the grant is renewable or

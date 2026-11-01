@@ -718,3 +718,33 @@ func TestRunRefusesADecisionToDenyThatNamesNothing(t *testing.T) {
 		t.Errorf("stderr does not name the declaration: %s", stderr.String())
 	}
 }
+
+// The export draws the escalations of an OpenFGA model into the same graph, under the
+// same kinds a SpiceDB schema gets.
+func TestRunExportsTheOpenFGAEscalations(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"model.fga": "model\n  schema 1.1\ntype user\ntype team\n  relations\n    define member: [user]\n" +
+			"type document\n  relations\n    define viewer: [team#member]\n",
+		"writes.yaml": "schema_version: 1\nmodel: relationship-writes\nwrites:\n" +
+			"  - {resource: team, relation: member, operations: [create], gate: anyone, subject: self, via: POST /join}\n",
+		"store.fga.yaml": "model_file: model.fga\ntuples:\n  - {user: \"team:eng#member\", relation: viewer, object: document:1}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "petard.json")
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-out", path, dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the payload: %v", err)
+	}
+	if !strings.Contains(string(content), "PTD_Attribute") || !strings.Contains(strings.ToUpper(string(content)), "DOCUMENT") {
+		t.Errorf("the payload holds no escalation of the model:\n%s", content)
+	}
+}

@@ -37,6 +37,7 @@ import (
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/zanzibar"
+	"github.com/saluc28/petard/internal/zanzibar/openfga"
 	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 	"github.com/saluc28/petard/queries"
 )
@@ -78,6 +79,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			"SpiceDB schema files (.zed) and validation files under the paths are read as well, and their\n"+
 			"escalations drawn into the same graph; a running SpiceDB may be named as spicedb://host:port\n"+
 			"(spicedb+insecure://host:port over plaintext), its schema read with a token from $"+spicedb.TokenEnv+".\n"+
+			"So are OpenFGA models (.fga, fga.mod, a model in JSON) and store files (.fga.yaml); a store of a\n"+
+			"running OpenFGA may be named as openfga://host:port/store (openfga+insecure://host:port/store over\n"+
+			"plaintext), read with a token from $"+openfga.TokenEnv+".\n"+
 			"With -url, the BloodHound credentials are read from "+envTokenID+" and "+envTokenKey+".\n\n")
 		flags.PrintDefaults()
 	}
@@ -212,7 +216,7 @@ type remote struct {
 // would accept.
 //
 // It merges two engines into one graph: the OPA taxonomy, and the Zanzibar
-// escalations of whatever SpiceDB files the paths held. An id one engine used
+// escalations of whatever schema files the paths held. An id one engine used
 // under a kind the other gives it is a bug the graph refuses with
 // ErrKindConflict rather than merging two unrelated things.
 //
@@ -254,7 +258,7 @@ func build(ctx context.Context, inputs taxonomy.Inputs, schemas zanzibarsetup.Fo
 }
 
 // policyGraph runs the OPA analysis and assembles its graph. A set of paths that
-// holds SpiceDB files but no Rego is not the empty bundle that is an error: it
+// holds schema files but no Rego is not the empty bundle that is an error: it
 // returns an empty graph for the Zanzibar side to fill.
 func policyGraph(ctx context.Context, inputs taxonomy.Inputs, haveSchemas bool) (*graph.Graph, taxonomy.Analysis, taxonomy.Gaps, error) {
 	analysis, err := taxonomy.Load(ctx, inputs)

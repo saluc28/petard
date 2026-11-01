@@ -2,10 +2,18 @@ package zanzibarsetup
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/language/pkg/go/transformer"
+	"github.com/openfga/openfga/pkg/server"
+	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/typesystem"
+	"google.golang.org/grpc"
 
 	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 )
@@ -16,13 +24,18 @@ func rel(parts ...string) string {
 }
 
 func TestPartitionEndpoints(t *testing.T) {
-	disk, endpoints := partitionEndpoints([]string{
+	disk, endpoints, fga := partitionEndpoints([]string{
 		"spicedb://localhost:50051",
 		"schema.zed",
 		"http://localhost:8181",
 		"spicedb+insecure://127.0.0.1:50051",
+		"openfga://fga:8081/store",
 		"./policies",
 	})
+
+	if len(fga) != 1 || fga[0].Store != "store" {
+		t.Errorf("OpenFGA endpoints = %+v, want the one store", fga)
+	}
 
 	wantDisk := []string{"schema.zed", "http://localhost:8181", "./policies"}
 	if len(disk) != len(wantDisk) {
@@ -201,5 +214,102 @@ func TestLoadRoutesTheWriteModelFlagByKind(t *testing.T) {
 				t.Errorf("policy write model = %q, want %q", found.PolicyWriteModel, tt.wantPolicyModel)
 			}
 		})
+	}
+}
+
+// A directory is read for both products, each file kept to its own, and the write
+// model beside the schemas reaches both. A store file whose test brings tuples is
+// analyzed once for each state, under the one schema it reads.
+func TestLoadReadsBothProducts(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "schema.zed", "definition user {}\ndefinition doc {\n  relation viewer: user\n  permission view = viewer\n}\n")
+	writeFile(t, dir, "model.fga", "model\n  schema 1.1\ntype user\ntype doc\n  relations\n    define viewer: [user]\n")
+	writeFile(t, dir, "store.fga.yaml", "model_file: model.fga\n"+
+		"tuples:\n  - {user: user:anne, relation: viewer, object: doc:1}\n"+
+		"tests:\n  - name: own\n    tuples:\n      - {user: user:bob, relation: viewer, object: doc:1}\n")
+	writeFile(t, dir, "writes.yaml", "schema_version: 1\nmodel: relationship-writes\nwrites: []\n")
+
+	found, err := Load(t.Context(), []string{dir}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	products := map[Product]int{}
+	for _, f := range found.Files {
+		products[f.Product]++
+	}
+	if products[SpiceDB] != 1 || products[OpenFGA] != 3 {
+		t.Errorf("files by product = %v, want 1 of SpiceDB and 3 of OpenFGA", products)
+	}
+	if len(found.WriteModels) != 1 {
+		t.Errorf("write models = %v, want the one beside the schemas", found.WriteModels)
+	}
+	if got := len(found.PolicyPaths); got != 1 {
+		t.Errorf("policy paths = %v, want the directory, for the loader to take the Rego of", found.PolicyPaths)
+	}
+
+	run, noEvidence := found.Analyses(time.Now())
+	if len(noEvidence) != 0 {
+		t.Errorf("no-evidence = %v, want none", noEvidence)
+	}
+	byState := map[int]int{}
+	for _, a := range run {
+		if a.Sample.Model.Type("doc").Permission("view") == nil {
+			byState[len(a.Sample.Relationships)]++
+		}
+	}
+	if byState[1] != 1 || byState[2] != 1 || len(run) != 3 {
+		t.Errorf("analyses = %d, OpenFGA by tuples = %v, want the shared state and the test's", len(run), byState)
+	}
+}
+
+// A file named one by one is not left for the policy loader, whichever product it
+// belongs to, and a running store is read over its API with a write model from the
+// flag.
+func TestLoadReadsARunningOpenFGA(t *testing.T) {
+	ctx := t.Context()
+	s, err := server.NewServerWithOpts(server.WithDatastore(memory.New()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := grpc.NewServer()
+	openfgav1.RegisterOpenFGAServiceServer(srv, s)
+	go func() { _ = srv.Serve(listener) }()
+	t.Cleanup(srv.Stop)
+
+	store, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "live"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := transformer.TransformDSLToProto("model\n  schema 1.1\ntype user\ntype doc\n  relations\n    define viewer: [user]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: store.GetId(), SchemaVersion: typesystem.SchemaVersion1_1, TypeDefinitions: model.GetTypeDefinitions(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	writeFile(t, dir, "writes.yaml", "schema_version: 1\nmodel: relationship-writes\nwrites: []\n")
+	endpoint := "openfga+insecure://" + listener.Addr().String() + "/" + store.GetId()
+	found, err := Load(ctx, []string{endpoint}, filepath.Join(dir, "writes.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Files) != 1 || found.Files[0].Product != OpenFGA || found.Files[0].Path != endpoint {
+		t.Fatalf("files = %+v, want the running store", found.Files)
+	}
+	if len(found.PolicyPaths) != 0 {
+		t.Errorf("policy paths = %v, want none", found.PolicyPaths)
+	}
+	run, _ := found.Analyses(time.Now())
+	if len(run) != 1 || run[0].WriteModel == nil {
+		t.Errorf("analyses = %+v, want the store under the write model of the flag", run)
 	}
 }

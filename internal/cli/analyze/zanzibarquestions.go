@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/saluc28/petard/internal/cli/zanzibarsetup"
 	"github.com/saluc28/petard/internal/zanzibar"
 )
 
@@ -81,7 +82,7 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 			}
 			fmt.Fprintf(&b, "  - resource: %s\n", p.Type)
 			fmt.Fprintf(&b, "    relation: %s\n", p.Relation)
-			b.WriteString("    operations: [create, touch]\n")
+			b.WriteString(operationsLine(g.product))
 			fmt.Fprintf(&b, "    gate: { holds: %s }   # safe gate", p.Safe[0])
 			if len(p.Safe) > 1 {
 				fmt.Fprintf(&b, "; also %s", strings.Join(p.Safe[1:], ", "))
@@ -92,6 +93,16 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 		}
 	}
 	return b.String(), entries
+}
+
+// operationsLine is the writes a skeleton proposes. OpenFGA has no write that also
+// sets a new condition on a tuple already written: a tuple written twice is an error
+// or is ignored (pkg/server/commands/write.go:58-66 at v1.22.1).
+func operationsLine(product zanzibarsetup.Product) string {
+	if product == zanzibarsetup.OpenFGA {
+		return "    operations: [create]\n"
+	}
+	return "    operations: [create, touch]\n"
 }
 
 // relationOf looks a relation up in a model, nil when the model or the type is
