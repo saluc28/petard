@@ -23,7 +23,7 @@ import (
 // from. It is the SpiceDB counterpart to the running OPA's token env, so the two
 // live sources are reached the same way: a token the server needs, named once in
 // the environment rather than on the command line where a shell would record it.
-const TokenEnv = "PETARD_SPICEDB_TOKEN"
+const TokenEnv = "PETARD_SPICEDB_TOKEN" // #nosec G101 -- the name of an environment variable, not a credential
 
 // The schemes a running SpiceDB is named with, in place of a path. The address
 // after the scheme is the gRPC host:port the server listens on.

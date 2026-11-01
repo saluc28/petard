@@ -238,8 +238,8 @@ func (at origin) position(pos *core.SourcePosition) zanzibar.Position {
 	}
 	return zanzibar.Position{
 		File:   at.file,
-		Line:   at.line + int(pos.GetZeroIndexedLineNumber()), //nolint:gosec // a line of a schema file fits in an int
-		Column: int(pos.GetZeroIndexedColumnPosition()) + 1,   //nolint:gosec // a column of a schema file fits in an int
+		Line:   at.line + int(pos.GetZeroIndexedLineNumber()), // #nosec G115 -- a line of a schema file fits in an int
+		Column: int(pos.GetZeroIndexedColumnPosition()) + 1,   // #nosec G115 -- a column of a schema file fits in an int
 	}
 }
 
