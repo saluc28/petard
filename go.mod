@@ -6,7 +6,7 @@ require (
 	github.com/authzed/spicedb v1.57.0
 	github.com/open-policy-agent/opa v1.21.4
 	github.com/saluc28/bhgraph v0.4.0
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 )
 
 require (
