@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +12,7 @@ import (
 	yaml "go.yaml.in/yaml/v3"
 
 	"github.com/saluc28/petard/internal/zanzibar"
+	"github.com/saluc28/petard/internal/zanzibar/zanzibartest"
 )
 
 // zedEnv names the zed binary the oracle runs, and corpusEnv a directory of
@@ -24,10 +24,6 @@ const (
 	zedEnv    = "PETARD_ZED"
 	corpusEnv = "PETARD_ZANZIBAR_CORPUS"
 )
-
-// unlistedID names an object no relationship mentions, so that every type has
-// one object only a wildcard or nothing at all can grant to.
-const unlistedID = "petard-unlisted"
 
 // The engine against SpiceDB itself. For every validation file, those of
 // testdata, the SpiceDB fixture the demo carries and the corpus, every check
@@ -101,11 +97,12 @@ func oracleFile(t *testing.T, path string) (string, int, int) {
 
 	asserted := map[zanzibar.Level][]string{}
 	count, skipped := 0, 0
-	subjects := subjectsOf(f)
+	objects := zanzibartest.Objects(f.Schema.Model, f.Relationships)
+	subjects := zanzibartest.Subjects(f.Schema.Model, f.Relationships)
 	for _, context := range contextsOf(t, f) {
-		for _, resource := range objectsOf(f) {
+		for _, resource := range objects {
 			typ := f.Schema.Model.Type(resource.Type)
-			for _, name := range namesOf(typ) {
+			for _, name := range zanzibartest.Names(typ) {
 				for _, subject := range subjects {
 					check := zanzibar.Assertion{Resource: resource, Name: name, Subject: subject, Context: context}
 					got, err := checker.Check(resource, name, subject, context)
@@ -143,28 +140,6 @@ func oracleFile(t *testing.T, path string) (string, int, int) {
 	return generated, count, skipped
 }
 
-// objectsOf is every object the relationships of f mention, and one more per
-// type that none of them mentions.
-func objectsOf(f *File) []zanzibar.Object {
-	seen := map[zanzibar.Object]bool{}
-	var out []zanzibar.Object
-	add := func(o zanzibar.Object) {
-		if o.ID == zanzibar.WildcardID || seen[o] || f.Schema.Model.Type(o.Type) == nil {
-			return
-		}
-		seen[o] = true
-		out = append(out, o)
-	}
-	for _, r := range f.Relationships {
-		add(r.Resource)
-		add(r.Subject.Object)
-	}
-	for _, typ := range f.Schema.Model.Types {
-		add(zanzibar.Object{Type: typ.Name, ID: unlistedID})
-	}
-	return out
-}
-
 // contextsOf is no context, then every distinct context the file's
 // assertions supply.
 func contextsOf(t *testing.T, f *File) []map[string]any {
@@ -184,69 +159,6 @@ func contextsOf(t *testing.T, f *File) []map[string]any {
 			seen[string(key)] = true
 			out = append(out, a.Context)
 		}
-	}
-	return out
-}
-
-// subjectsOf is every subject that can be asked about: the objects of a type
-// some relation allows as a subject, and of every type when a permission uses
-// self, and the usersets a relation allows, on every object of their type.
-func subjectsOf(f *File) []zanzibar.Subject {
-	allowed := map[string]bool{}
-	usersets := map[string][]string{}
-	for _, typ := range f.Schema.Model.Types {
-		for _, r := range typ.Relations {
-			for _, a := range r.Allowed {
-				if a.Relation != "" {
-					if !slices.Contains(usersets[a.Type], a.Relation) {
-						usersets[a.Type] = append(usersets[a.Type], a.Relation)
-					}
-					continue
-				}
-				allowed[a.Type] = true
-			}
-		}
-		for _, p := range typ.Permissions {
-			if usesSelf(p.Expr) {
-				for _, every := range f.Schema.Model.Types {
-					allowed[every.Name] = true
-				}
-			}
-		}
-	}
-	var out []zanzibar.Subject
-	for _, o := range objectsOf(f) {
-		if allowed[o.Type] {
-			out = append(out, zanzibar.Subject{Object: o})
-		}
-		for _, relation := range usersets[o.Type] {
-			out = append(out, zanzibar.Subject{Object: o, Relation: relation})
-		}
-	}
-	return out
-}
-
-func usesSelf(expr zanzibar.Expr) bool {
-	switch e := expr.(type) {
-	case zanzibar.Self:
-		return true
-	case zanzibar.Union:
-		return slices.ContainsFunc(e.Children, usesSelf)
-	case zanzibar.Intersection:
-		return slices.ContainsFunc(e.Children, usesSelf)
-	case zanzibar.Exclusion:
-		return usesSelf(e.Base) || slices.ContainsFunc(e.Subtracted, usesSelf)
-	}
-	return false
-}
-
-func namesOf(typ *zanzibar.Type) []string {
-	var out []string
-	for _, r := range typ.Relations {
-		out = append(out, r.Name)
-	}
-	for _, p := range typ.Permissions {
-		out = append(out, p.Name)
 	}
 	return out
 }
