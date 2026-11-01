@@ -365,6 +365,178 @@ func TestCheckALoopUnderAnExclusion(t *testing.T) {
 	}
 }
 
+// A product's walk decides what a loop on the subtracted side comes to. A loop it walks
+// to a fixpoint, or leaves behind a caveat that fails, is no reason to refuse: the
+// exclusion reads the real answer. A loop behind a caveat nothing decides stays open,
+// since the product meets it only if the caveat holds. And with no walk said, as in
+// TestCheckALoopUnderAnExclusion, the product meets every loop.
+func TestCheckALoopAccordingToTheWalk(t *testing.T) {
+	groups := &Type{
+		Name: "group",
+		Relations: []*Relation{
+			{Name: "member", Allowed: []Allowed{{Type: "user"}, {Type: "group", Relation: "member"}}},
+			{Name: "parent", Allowed: []Allowed{{Type: "group", Caveat: "network"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "inherited", Expr: Union{Children: []Expr{Computed{Name: "member"}, Arrow{Through: "parent", Target: "inherited"}}}},
+		},
+	}
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "direct", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "banned", Allowed: []Allowed{{Type: "group", Relation: "member"}, {Type: "group", Relation: "member", Caveat: "network"}}},
+			{Name: "parent", Allowed: []Allowed{{Type: "group", Caveat: "network"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "viewer", Expr: Exclusion{Base: Computed{Name: "direct"}, Subtracted: []Expr{Computed{Name: "banned"}}}},
+			{Name: "open", Expr: Exclusion{Base: Computed{Name: "direct"}, Subtracted: []Expr{Arrow{Through: "parent", Target: "inherited"}}}},
+		},
+	}
+	build := func(walk Walk) *Model {
+		m, err := NewModel([]*Type{{Name: "user"}, groups, document}, []*Caveat{{Name: "network"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.Walk = walk
+		return m
+	}
+	jon := subjectOf("user:jon")
+	direct := rel("document:1", "direct", "user:jon")
+	loop := []Relationship{rel("group:a", "member", "group:b#member"), rel("group:b", "member", "group:a#member")}
+	caveated := func(r Relationship) Relationship {
+		r.Caveat = &CaveatUse{Name: "network"}
+		return r
+	}
+	banned := rel("document:1", "banned", "group:a#member")
+	walkedLoop := []Relationship{caveated(rel("group:a", "parent", "group:b")), caveated(rel("group:b", "parent", "group:a"))}
+	inside, outside := map[string]any{"address": "inside"}, map[string]any{"address": "outside"}
+	fixpoint := map[FixpointWalk]bool{{Type: "group", Name: "member", SubjectType: "user"}: true}
+
+	tests := []struct {
+		name      string
+		walk      Walk
+		tuples    []Relationship
+		ask       string
+		subject   Subject
+		context   map[string]any
+		want      Level
+		wantCycle bool
+	}{
+		{
+			name:      "no walk said: the loop is met",
+			tuples:    append([]Relationship{direct, banned}, loop...),
+			ask:       "viewer",
+			subject:   jon,
+			want:      No,
+			wantCycle: true,
+		},
+		{
+			name:      "a relation walked to a fixpoint: the loop is not met",
+			walk:      Walk{Fixpoint: fixpoint},
+			tuples:    append([]Relationship{direct, banned}, loop...),
+			ask:       "viewer",
+			subject:   jon,
+			want:      Yes,
+			wantCycle: true,
+		},
+		{
+			name:    "a walk to a fixpoint still finds who is in it",
+			walk:    Walk{Fixpoint: fixpoint},
+			tuples:  append([]Relationship{direct, banned, rel("group:b", "member", "user:jon")}, loop...),
+			ask:     "viewer",
+			subject: jon,
+			want:    No,
+		},
+		{
+			name:      "a walk to a fixpoint is not what a userset gets",
+			walk:      Walk{Fixpoint: map[FixpointWalk]bool{{Type: "group", Name: "member", SubjectType: "group"}: true}},
+			tuples:    append([]Relationship{rel("document:1", "direct", "group:z#member"), banned}, loop...),
+			ask:       "viewer",
+			subject:   subjectOf("group:z#member"),
+			want:      No,
+			wantCycle: true,
+		},
+		{
+			name:      "a walk to a fixpoint of another subject type",
+			walk:      Walk{Fixpoint: map[FixpointWalk]bool{{Type: "group", Name: "member", SubjectType: "robot"}: true}},
+			tuples:    append([]Relationship{direct, banned}, loop...),
+			ask:       "viewer",
+			subject:   jon,
+			want:      No,
+			wantCycle: true,
+		},
+		{
+			name:      "a caveat that fails hides the loop from a product that stops at it",
+			walk:      Walk{StopsAtFailedCaveat: true},
+			tuples:    append([]Relationship{direct, caveated(banned)}, loop...),
+			ask:       "viewer",
+			subject:   jon,
+			context:   outside,
+			want:      Yes,
+			wantCycle: false,
+		},
+		{
+			name:      "a caveat that fails does not hide it from a product that follows anyway",
+			tuples:    append([]Relationship{direct, caveated(banned)}, loop...),
+			ask:       "viewer",
+			subject:   jon,
+			context:   outside,
+			want:      No,
+			wantCycle: true,
+		},
+		{
+			name:      "a caveat that holds leaves the loop met",
+			walk:      Walk{StopsAtFailedCaveat: true},
+			tuples:    append([]Relationship{direct, caveated(banned)}, loop...),
+			ask:       "viewer",
+			subject:   jon,
+			context:   inside,
+			want:      No,
+			wantCycle: true,
+		},
+		{
+			name:      "a caveat nothing decides leaves the exclusion open",
+			walk:      Walk{StopsAtFailedCaveat: true},
+			tuples:    append([]Relationship{direct, caveated(banned)}, loop...),
+			ask:       "viewer",
+			subject:   jon,
+			want:      Conditional,
+			wantCycle: true,
+		},
+		{
+			name:      "a walked relationship with a caveat that fails hides the loop",
+			walk:      Walk{StopsAtFailedCaveat: true},
+			tuples:    append([]Relationship{direct, caveated(rel("document:1", "parent", "group:a"))}, walkedLoop...),
+			ask:       "open",
+			subject:   jon,
+			context:   outside,
+			want:      Yes,
+			wantCycle: false,
+		},
+		{
+			name:      "a walked relationship with a caveat nothing decides leaves it open",
+			walk:      Walk{StopsAtFailedCaveat: true},
+			tuples:    append([]Relationship{direct, caveated(rel("document:1", "parent", "group:a"))}, walkedLoop...),
+			ask:       "open",
+			subject:   jon,
+			want:      Conditional,
+			wantCycle: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewChecker(build(tt.walk), tt.tuples, insideOnly{}, time.Unix(0, 0)).Check(object("document:1"), tt.ask, tt.subject, tt.context)
+			if err != nil {
+				t.Fatalf("Check: %v", err)
+			}
+			if got.Level != tt.want || got.Cycle != tt.wantCycle {
+				t.Errorf("Check() = %s (cycle %v), want %s (cycle %v)", got.Level, got.Cycle, tt.want, tt.wantCycle)
+			}
+		})
+	}
+}
+
 // A name that is both a relation and a permission answers as the permission,
 // and the permission reads what is stored under the name through Stored. A
 // userset that names it holds the whole permission, computed arms included, not

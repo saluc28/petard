@@ -138,7 +138,44 @@ func lower(file string, model *openfgav1.AuthorizationModel, at map[string]zanzi
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", ErrModel, file, err)
 	}
+	m.Walk = walkOf(types, model)
 	return &Schema{Model: m, types: types}, nil
+}
+
+// walkOf is how a check of OpenFGA follows the tuples of a model. It reads a tuple's
+// condition before it follows the tuple, and leaves it behind when the condition does
+// not hold (internal/checkutil/checkutil.go:85-91, internal/graph/check.go:909-915).
+// And a relation that only reaches itself it can walk with a set of what it has seen,
+// for a subject that is not a userset, which meets no loop
+// (internal/graph/check.go:664-723, :925-932, internal/graph/recursive_resolver.go:277-300).
+// It chooses that walk or dispatching each step, which meets the loop, by how fast
+// each has been (internal/planner/plan.go:47), and starts out expecting the walk to be
+// faster (internal/graph/recursive_resolver.go:28-30, internal/graph/default_resolver.go:34-37).
+func walkOf(types *typesystem.TypeSystem, model *openfgav1.AuthorizationModel) zanzibar.Walk {
+	walk := zanzibar.Walk{StopsAtFailedCaveat: true, Fixpoint: map[zanzibar.FixpointWalk]bool{}}
+	for _, def := range model.GetTypeDefinitions() {
+		for name, rewrite := range def.GetRelations() {
+			for _, subject := range model.GetTypeDefinitions() {
+				if walksToFixpoint(types, def.GetType(), name, subject.GetType(), rewrite) {
+					walk.Fixpoint[zanzibar.FixpointWalk{Type: def.GetType(), Name: name, SubjectType: subject.GetType()}] = true
+				}
+			}
+		}
+	}
+	return walk
+}
+
+func walksToFixpoint(types *typesystem.TypeSystem, typ, name, subject string, rewrite *openfgav1.Userset) bool {
+	if types.UsersetUseRecursiveResolver(typ, name, subject) {
+		return true
+	}
+	found, err := typesystem.WalkUsersetRewrite(rewrite, func(r *openfgav1.Userset) any {
+		if ttu := r.GetTupleToUserset(); ttu != nil && types.TTUUseRecursiveResolver(typ, name, subject, ttu) {
+			return true
+		}
+		return nil
+	})
+	return err == nil && found != nil
 }
 
 // directRelation is a relation that is nothing but _this and no arrow walks,

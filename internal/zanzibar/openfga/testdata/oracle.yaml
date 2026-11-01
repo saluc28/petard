@@ -453,6 +453,101 @@ tests:
           - {user: "group:a#member", relation: member, object: "group:b"}
           - {user: "group:b#member", relation: member, object: "group:a"}
 
+  - name: loop_reached_through_an_alias_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#member]
+              define reader: member
+          type document
+            relations
+              define banned: [group#reader]
+              define viewer: [user] but not banned
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1"}
+          - {user: "group:a#reader", relation: banned, object: "document:1"}
+          - {user: "group:b#member", relation: member, object: "group:a"}
+          - {user: "group:a#member", relation: member, object: "group:b"}
+
+  - name: loop_of_arrows_with_an_alias_beside_them_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define parent: [folder]
+              define editor: [user]
+              define viewer: editor or viewer from parent
+              define unread: editor but not viewer
+          type document
+            relations
+              define parent: [folder]
+              define owner: [user]
+              define reader: owner but not viewer from parent
+        tuples:
+          - {user: "user:anne", relation: editor, object: "folder:a"}
+          - {user: "folder:b", relation: parent, object: "folder:a"}
+          - {user: "folder:a", relation: parent, object: "folder:b"}
+          - {user: "folder:a", relation: parent, object: "document:1"}
+          - {user: "user:bob", relation: owner, object: "document:1"}
+          - {user: "user:anne", relation: owner, object: "document:1"}
+
+  - name: relation_that_reaches_itself_with_an_exclusion_of_its_own
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define banned: [user]
+              define member: [user, group#member] but not banned
+        tuples:
+          - {user: "user:anne", relation: member, object: "group:c"}
+          - {user: "group:c#member", relation: member, object: "group:b"}
+          - {user: "group:b#member", relation: member, object: "group:a"}
+          - {user: "group:a#member", relation: member, object: "group:c"}
+          - {user: "user:anne", relation: banned, object: "group:b"}
+
+  - name: relation_that_reaches_itself_with_an_intersection_of_its_own
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define allowed: [user]
+              define member: [user, group#member] and allowed
+        tuples:
+          - {user: "user:anne", relation: member, object: "group:b"}
+          - {user: "group:b#member", relation: member, object: "group:a"}
+          - {user: "group:a#member", relation: member, object: "group:b"}
+          - {user: "user:anne", relation: allowed, object: "group:b"}
+
+  - name: arrows_that_reach_themselves_with_an_exclusion_of_their_own
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define parent: [folder]
+              define banned: [user]
+              define viewer: ([user] or viewer from parent) but not banned
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "folder:b"}
+          - {user: "folder:b", relation: parent, object: "folder:a"}
+          - {user: "folder:a", relation: parent, object: "folder:b"}
+          - {user: "user:anne", relation: banned, object: "folder:a"}
+
   - name: loop_of_usersets_asked_by_a_userset_under_exclusion
     stages:
       - model: |
@@ -468,6 +563,26 @@ tests:
               define viewer: [user, group#member] but not banned
         tuples:
           - {user: "group:z#member", relation: viewer, object: "document:1"}
+          - {user: "group:a#member", relation: banned, object: "document:1"}
+          - {user: "group:a#member", relation: member, object: "group:b"}
+          - {user: "group:b#member", relation: member, object: "group:a"}
+
+  - name: loop_of_usersets_asked_by_an_object_and_a_userset_of_one_type_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group, group#member]
+          type document
+            relations
+              define banned: [group#member]
+              define viewer: [user, group, group#member] but not banned
+        tuples:
+          - {user: "group:z", relation: viewer, object: "document:1"}
+          - {user: "group:y#member", relation: viewer, object: "document:1"}
           - {user: "group:a#member", relation: banned, object: "document:1"}
           - {user: "group:a#member", relation: member, object: "group:b"}
           - {user: "group:b#member", relation: member, object: "group:a"}

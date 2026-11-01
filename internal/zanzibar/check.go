@@ -105,11 +105,27 @@ type Result struct {
 	// Cycle is true when answering went through a loop in the relationships,
 	// a folder inside itself, and cut it. The level is then the least one the
 	// relationships support, which is what the engine reasons with, and No
-	// where an exclusion subtracts what cut the loop. SpiceDB does not cut
-	// loops: it follows them to its dispatch depth limit and fails, unless
-	// another way already granted.
+	// where an exclusion subtracts a loop the product meets (Model.Walk). SpiceDB
+	// does not cut loops: it follows them to its dispatch depth limit and fails,
+	// unless another way already granted.
 	Cycle bool
 }
+
+// cuts is what answering a question found of the loops on its way.
+type cuts uint8
+
+const (
+	// cutLoop is a loop cut on the way: the answer rests on the provisional No a
+	// cut answers with, and is not remembered.
+	cutLoop cuts = 1 << iota
+
+	// cutMet is a loop the product meets as well.
+	cutMet
+
+	// cutMetIfCaveat is a loop the product meets only if a caveat it stops at, and
+	// that nothing decides yet, holds.
+	cutMetIfCaveat
+)
 
 // Checker answers checks over a fixed set of relationships. It remembers what
 // it answered, and is not safe for concurrent use.
@@ -180,44 +196,47 @@ func (c *Checker) Check(resource Object, name string, subject Subject, context m
 	}
 	c.request, c.requestKey = context, string(key)
 	level, cycle, err := c.check(resource, name, subject)
-	return Result{Level: level, Cycle: cycle}, err
+	return Result{Level: level, Cycle: cycle != 0}, err
 }
 
-// check answers one question and says whether it cut a loop on the way.
+// check answers one question and says what it found of the loops on the way.
 //
 // A question already being answered higher up is answered No: a proof that
 // needs itself is no proof, and any proof that exists has one without the
 // loop, so the least level is still found. What was computed while a loop was
 // cut is not remembered, because it rests on that provisional No.
-func (c *Checker) check(resource Object, name string, subject Subject) (Level, bool, error) {
+func (c *Checker) check(resource Object, name string, subject Subject) (Level, cuts, error) {
 	key := checkKey{resource: resource, name: name, subject: subject, request: c.requestKey}
 	if level, ok := c.settled[key]; ok {
-		return level, false, nil
+		return level, 0, nil
 	}
 	if c.inProgress[key] {
-		return No, true, nil
+		if c.model.Walk.meetsLoopAt(resource.Type, name, subject) {
+			return No, cutLoop | cutMet, nil
+		}
+		return No, cutLoop, nil
 	}
 
 	t := c.model.Type(resource.Type)
 	if t == nil || !t.Declares(name) {
 		// An arrow reaching an object of a type without its target: SpiceDB
 		// dispatches nothing to it, and it grants nothing.
-		return No, false, nil
+		return No, 0, nil
 	}
 	if subject.Relation == name && subject.Object == resource {
 		// The members of a relation of an object are members of it, whatever
 		// is stored (internal/graph/check.go:765-779 at v1.56.2).
-		return Yes, false, nil
+		return Yes, 0, nil
 	}
 	if len(c.inProgress) >= maxDepth {
-		return No, false, fmt.Errorf("%w: more than %d levels below %s#%s", ErrTooDeep, maxDepth, resource, name)
+		return No, 0, fmt.Errorf("%w: more than %d levels below %s#%s", ErrTooDeep, maxDepth, resource, name)
 	}
 	c.inProgress[key] = true
 	defer delete(c.inProgress, key)
 
 	var (
 		level Level
-		cycle bool
+		cycle cuts
 		err   error
 	)
 	if p := t.Permission(name); p != nil {
@@ -226,29 +245,42 @@ func (c *Checker) check(resource Object, name string, subject Subject) (Level, b
 		level, cycle, err = c.direct(resource, name, subject)
 	}
 	if err != nil {
-		return No, false, err
+		return No, 0, err
 	}
-	if !cycle {
+	if cycle == 0 {
 		c.settled[key] = level
 	}
 	return level, cycle, nil
 }
 
 // direct answers a relation from the relationships stored against it.
-func (c *Checker) direct(resource Object, relation string, subject Subject) (Level, bool, error) {
-	level, cycle := No, false
+func (c *Checker) direct(resource Object, relation string, subject Subject) (Level, cuts, error) {
+	level, cycle := No, cuts(0)
 	for _, r := range c.stored[storedKey{resource: resource, relation: relation}] {
+		if r.Subject.Relation != "" {
+			stops, err := c.stopsAt(r)
+			if err != nil {
+				return No, 0, err
+			}
+			if stops {
+				continue
+			}
+		}
 		got, cut, err := c.holds(r.Subject, subject)
 		if err != nil {
-			return No, false, err
+			return No, 0, err
 		}
-		cycle = cycle || cut
+		cut, err = c.pastCaveat(r, cut)
+		if err != nil {
+			return No, 0, err
+		}
+		cycle |= cut
 		if got == No {
 			continue
 		}
 		carried, err := c.carried(r)
 		if err != nil {
-			return No, false, err
+			return No, 0, err
 		}
 		level = or(level, and(got, carried))
 		if level == Yes {
@@ -259,20 +291,44 @@ func (c *Checker) direct(resource Object, relation string, subject Subject) (Lev
 }
 
 // holds says whether the subject a relationship names includes subject.
-func (c *Checker) holds(stored, subject Subject) (Level, bool, error) {
+func (c *Checker) holds(stored, subject Subject) (Level, cuts, error) {
 	switch {
 	case stored == subject:
-		return Yes, false, nil
+		return Yes, 0, nil
 	case stored.ID == WildcardID && stored.Relation == "":
 		// A wildcard stands for objects, not for usersets.
 		if subject.Type == stored.Type && subject.Relation == "" && subject.ID != WildcardID {
-			return Yes, false, nil
+			return Yes, 0, nil
 		}
-		return No, false, nil
+		return No, 0, nil
 	case stored.Relation != "":
 		return c.check(stored.Object, stored.Relation, subject)
 	}
-	return No, false, nil
+	return No, 0, nil
+}
+
+// stopsAt says whether the product leaves a relationship unfollowed because its
+// caveat does not hold.
+func (c *Checker) stopsAt(r Relationship) (bool, error) {
+	if !c.model.Walk.StopsAtFailedCaveat || r.Caveat == nil {
+		return false, nil
+	}
+	carried, err := c.carried(r)
+	return carried == No, err
+}
+
+// pastCaveat is what a loop cut past a relationship comes to. A product that stops at
+// a caveat that fails meets that loop only if the caveat holds, so while nothing
+// decides the caveat it may not meet it at all.
+func (c *Checker) pastCaveat(r Relationship, cut cuts) (cuts, error) {
+	if cut&cutMet == 0 || !c.model.Walk.StopsAtFailedCaveat || r.Caveat == nil {
+		return cut, nil
+	}
+	carried, err := c.carried(r)
+	if err != nil || carried != Conditional {
+		return cut, err
+	}
+	return cut&^cutMet | cutMetIfCaveat, nil
 }
 
 // carried is the level the caveat of a relationship allows, Yes when it
@@ -307,7 +363,7 @@ func (c *Checker) carried(r Relationship) (Level, error) {
 }
 
 // eval answers a permission expression on resource.
-func (c *Checker) eval(resource Object, expr Expr, subject Subject) (Level, bool, error) {
+func (c *Checker) eval(resource Object, expr Expr, subject Subject) (Level, cuts, error) {
 	switch e := expr.(type) {
 	case Union:
 		return c.combine(resource, e.Children, subject, anyOf)
@@ -323,16 +379,22 @@ func (c *Checker) eval(resource Object, expr Expr, subject Subject) (Level, bool
 		for _, child := range e.Subtracted {
 			got, cut, err := c.eval(resource, child, subject)
 			if err != nil {
-				return No, false, err
+				return No, 0, err
 			}
-			// A subtracted side that cut a loop has not shown the subject out of
+			cycle |= cut
+			// A subtracted side that met a loop has not shown the subject out of
 			// it: its No is the provisional one a cut answers with, which proves
 			// nothing once it is negated. So the exclusion grants nothing, which
 			// is the answer OpenFGA gives when it meets the loop
 			// (internal/graph/check.go:358-360 at v1.22.1). SpiceDB fails such a
 			// check at its depth limit instead, which grants nothing either.
-			if cut {
-				return No, true, nil
+			if cut&cutMet != 0 {
+				return No, cycle, nil
+			}
+			// One it meets only if a caveat holds may or may not prove nothing,
+			// which is what conditional says.
+			if cut&cutMetIfCaveat != 0 {
+				got = or(got, Conditional)
 			}
 			level = and(level, not(got))
 			if level == No {
@@ -352,26 +414,26 @@ func (c *Checker) eval(resource Object, expr Expr, subject Subject) (Level, bool
 
 	case Self:
 		if subject.Relation == "" && subject.Object == resource {
-			return Yes, false, nil
+			return Yes, 0, nil
 		}
-		return No, false, nil
+		return No, 0, nil
 
 	case Nil:
-		return No, false, nil
+		return No, 0, nil
 	}
-	return No, false, fmt.Errorf("zanzibar: expression %T", expr)
+	return No, 0, fmt.Errorf("zanzibar: expression %T", expr)
 }
 
 // combine evaluates expressions in order and combines their levels, stopping
 // once the rest cannot change the result.
-func (c *Checker) combine(resource Object, children []Expr, subject Subject, how connective) (Level, bool, error) {
-	level, cycle := how.start, false
+func (c *Checker) combine(resource Object, children []Expr, subject Subject, how connective) (Level, cuts, error) {
+	level, cycle := how.start, cuts(0)
 	for _, child := range children {
 		got, cut, err := c.eval(resource, child, subject)
 		if err != nil {
-			return No, false, err
+			return No, 0, err
 		}
-		level, cycle = how.combine(level, got), cycle || cut
+		level, cycle = how.combine(level, got), cycle|cut
 		if level == how.decided {
 			break
 		}
@@ -379,37 +441,54 @@ func (c *Checker) combine(resource Object, children []Expr, subject Subject, how
 	return level, cycle, nil
 }
 
-// arrow walks a relation and asks the target on every object it reaches. A
-// relationship walked with a caveat passes the caveat on.
-func (c *Checker) arrow(resource Object, a Arrow, subject Subject) (Level, bool, error) {
+// arrow walks a relation and asks the target on every object it reaches.
+func (c *Checker) arrow(resource Object, a Arrow, subject Subject) (Level, cuts, error) {
 	walked := c.stored[storedKey{resource: resource, relation: a.Through}]
 	how := anyOf
 	if a.All {
 		if len(walked) == 0 {
 			// internal/graph/check.go:842-844 at v1.56.2: nothing to walk is
 			// nobody, unlike an every over an empty domain in Rego.
-			return No, false, nil
+			return No, 0, nil
 		}
 		how = allOf
 	}
 
-	level, cycle := how.start, false
+	level, cycle := how.start, cuts(0)
 	for _, r := range walked {
-		got, cut, err := c.check(r.Subject.Object, a.Target, subject)
+		got, cut, err := c.across(r, a.Target, subject)
 		if err != nil {
-			return No, false, err
+			return No, 0, err
 		}
-		if got != No {
-			carried, err := c.carried(r)
-			if err != nil {
-				return No, false, err
-			}
-			got = and(got, carried)
-		}
-		level, cycle = how.combine(level, got), cycle || cut
+		level, cycle = how.combine(level, got), cycle|cut
 		if level == how.decided {
 			break
 		}
 	}
 	return level, cycle, nil
+}
+
+// across asks the target of an arrow on the object a walked relationship reaches. A
+// relationship walked with a caveat passes the caveat on.
+func (c *Checker) across(r Relationship, target string, subject Subject) (Level, cuts, error) {
+	stops, err := c.stopsAt(r)
+	if stops || err != nil {
+		return No, 0, err
+	}
+	got, cut, err := c.check(r.Subject.Object, target, subject)
+	if err != nil {
+		return No, 0, err
+	}
+	cut, err = c.pastCaveat(r, cut)
+	if err != nil {
+		return No, 0, err
+	}
+	if got != No {
+		carried, err := c.carried(r)
+		if err != nil {
+			return No, 0, err
+		}
+		got = and(got, carried)
+	}
+	return got, cut, nil
 }

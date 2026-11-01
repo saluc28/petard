@@ -20,8 +20,37 @@ type Model struct {
 	Types   []*Type
 	Caveats []*Caveat
 
+	// Walk is how the product follows relationships to answer a check.
+	Walk Walk
+
 	types   map[string]*Type
 	caveats map[string]*Caveat
+}
+
+// Walk is how a product follows relationships to answer a check, where products
+// differ on what a loop of relationships does to the answer. A loop the product meets
+// on the side an exclusion subtracts grants nothing, and one it never meets is no
+// reason to refuse. The zero value follows every relationship and meets every loop.
+type Walk struct {
+	// StopsAtFailedCaveat is true when the product does not follow a relationship
+	// whose caveat does not hold, so a loop behind it is never met.
+	StopsAtFailedCaveat bool
+
+	// Fixpoint is what the product walks to a fixpoint, with a set of what it has
+	// seen, so a loop there is never met.
+	Fixpoint map[FixpointWalk]bool
+}
+
+// FixpointWalk is a relation or permission of a type, asked by objects of a type. A
+// userset asking meets every loop.
+type FixpointWalk struct {
+	Type, Name, SubjectType string
+}
+
+// meetsLoopAt says whether the product meets a loop that comes back to name on an
+// object of typ, with subject asking.
+func (w Walk) meetsLoopAt(typ, name string, subject Subject) bool {
+	return subject.Relation != "" || !w.Fixpoint[FixpointWalk{Type: typ, Name: name, SubjectType: subject.Type}]
 }
 
 // NewModel builds a model and indexes it by name. A name declared twice is an

@@ -151,6 +151,43 @@ type document
 
 // Every form a type restriction can take reaches the relation, the condition on the
 // form that carries it and on no other.
+// A model says which relations OpenFGA can walk to a fixpoint: one that only reaches
+// itself, through a userset or an arrow, for the subjects that can hold it. A relation
+// in a loop with another has to meet that loop.
+func TestCompileSaysHowOpenFGAWalks(t *testing.T) {
+	const model = `model
+  schema 1.1
+type user
+type robot
+type group
+  relations
+    define member: [user, group#member]
+    define reader: member
+type folder
+  relations
+    define parent: [folder]
+    define viewer: [user] or viewer from parent
+type team
+  relations
+    define member: [user, team#admin]
+    define admin: [user, team#member]
+type document
+  relations
+    define viewer: [user, robot]`
+
+	walk := compile(t, model).Model.Walk
+	if !walk.StopsAtFailedCaveat {
+		t.Error("StopsAtFailedCaveat = false, OpenFGA reads a tuple's condition before following it")
+	}
+	want := map[zanzibar.FixpointWalk]bool{
+		{Type: "group", Name: "member", SubjectType: "user"}:  true,
+		{Type: "folder", Name: "viewer", SubjectType: "user"}: true,
+	}
+	if !reflect.DeepEqual(walk.Fixpoint, want) {
+		t.Errorf("Fixpoint = %v, want %v", walk.Fixpoint, want)
+	}
+}
+
 func TestCompileLowersTypeRestrictions(t *testing.T) {
 	s := compile(t, `model
   schema 1.1

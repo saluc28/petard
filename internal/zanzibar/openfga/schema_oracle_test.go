@@ -30,7 +30,7 @@ const oracleWriteChunk = 40
 
 // oracleCount is what a run of the oracle found.
 type oracleCount struct {
-	agreed, undecided, settled, dropped, loops, inline, depth int
+	agreed, undecided, settled, dropped, dispatched, inline, depth int
 }
 
 // The engine against OpenFGA itself. For every stage of every test, those of testdata
@@ -66,8 +66,8 @@ func TestOracle(t *testing.T) {
 			oracleTest(t, s, test, &total)
 		})
 	}
-	t.Logf("OpenFGA agrees on %d checks. Of those it refuses, %d read as conditional and %d are settled here whatever the condition says. %d more it answers by dropping a tuple it cannot decide, and %d without meeting a loop cut here. Left out: %d on an inline condition, %d past its depth",
-		total.agreed, total.undecided, total.settled, total.dropped, total.loops, total.inline, total.depth)
+	t.Logf("OpenFGA agrees on %d checks. Of those it refuses, %d read as conditional and %d are settled here whatever the condition says. %d more it answers by dropping a tuple it cannot decide, and %d by dispatching where it could walk to a fixpoint. Left out: %d on an inline condition, %d past its depth",
+		total.agreed, total.undecided, total.settled, total.dropped, total.dispatched, total.inline, total.depth)
 }
 
 func oracleTest(t *testing.T, s *server.Server, test corpusTest, total *oracleCount) {
@@ -189,8 +189,9 @@ func (m oracleModel) check(ctx context.Context, t *testing.T, c zanzibar.Asserti
 // when another in the same read passes, so it answers without it, and a conditional fits
 // what it answers.
 //
-// A no that cut a loop can also meet an allowed from OpenFGA, where OpenFGA never met
-// that loop: see readsPastTheLoop.
+// A yes that cut a loop can also meet a not allowed, where the relation is one OpenFGA
+// can walk to a fixpoint and it chose to dispatch each step instead (see walkOf), which
+// meets the loop and fails the exclusion above it.
 func compareOracle(schema *Schema, stored []zanzibar.Relationship, c zanzibar.Assertion, got zanzibar.Result, allowed bool, refusal error, total *oracleCount) string {
 	code := int(status.Code(refusal))
 	switch {
@@ -202,14 +203,16 @@ func compareOracle(schema *Schema, stored []zanzibar.Relationship, c zanzibar.As
 		return fmt.Sprintf("OpenFGA fails it (%v), this says %s", refusal, got.Level)
 	case refusal != nil && got.Level == zanzibar.Conditional:
 		total.undecided++
-	case refusal != nil && anyCondition(schema, stored, c.Context, zanzibar.Conditional):
+	case refusal != nil && slices.ContainsFunc(stored, func(r zanzibar.Relationship) bool {
+		return conditionLevel(schema, r, c.Context) == zanzibar.Conditional
+	}):
 		total.settled++
 	case refusal != nil:
 		return fmt.Sprintf("OpenFGA refuses it (%v) with every condition decided, this says %s", refusal, got.Level)
 	case got.Level == zanzibar.Conditional && droppedBesideAnother(schema, stored, c):
 		total.dropped++
-	case got.Level == zanzibar.No && got.Cycle && allowed && readsPastTheLoop(schema, stored, c):
-		total.loops++
+	case got.Level == zanzibar.Yes && got.Cycle && !allowed && walksAnythingToFixpoint(schema, c.Subject):
+		total.dispatched++
 	case got.Level == zanzibar.Conditional || (got.Level == zanzibar.Yes) != allowed:
 		return fmt.Sprintf("OpenFGA says %v, this says %s (cycle %v)", allowed, got.Level, got.Cycle)
 	default:
@@ -253,49 +256,18 @@ func namesSubject(stored, subject zanzibar.Subject) bool {
 	return stored == subject || (stored.ID == zanzibar.WildcardID && stored.Type == subject.Type)
 }
 
-// readsPastTheLoop says whether OpenFGA can answer a check without meeting a loop the
-// engine cut. It does not follow a tuple whose condition does not hold. And for a
-// subject that is not a userset, a relation that only reaches itself it can walk with
-// a set of what it has seen (internal/graph/check.go:664-723,
-// internal/graph/recursive_resolver.go:277-300), where a loop is nothing to report.
-func readsPastTheLoop(schema *Schema, stored []zanzibar.Relationship, c zanzibar.Assertion) bool {
-	if anyCondition(schema, stored, c.Context, zanzibar.No) {
-		return true
-	}
-	if c.Subject.Relation != "" {
+// walksAnythingToFixpoint says whether the model has a relation OpenFGA can walk to a
+// fixpoint when subject asks.
+func walksAnythingToFixpoint(schema *Schema, subject zanzibar.Subject) bool {
+	if subject.Relation != "" {
 		return false
 	}
-	for _, typ := range schema.Model.Types {
-		for _, name := range zanzibartest.Names(typ) {
-			if walkedBreadthFirst(schema.types, typ.Name, name, c.Subject.Type) {
-				return true
-			}
+	for walk := range schema.Model.Walk.Fixpoint {
+		if walk.SubjectType == subject.Type {
+			return true
 		}
 	}
 	return false
-}
-
-func walkedBreadthFirst(types *typesystem.TypeSystem, typ, name, subjectType string) bool {
-	if types.UsersetUseRecursiveResolver(typ, name, subjectType) {
-		return true
-	}
-	relation, err := types.GetRelation(typ, name)
-	if err != nil {
-		return false
-	}
-	found, err := typesystem.WalkUsersetRewrite(relation.GetRewrite(), func(r *openfgav1.Userset) any {
-		if ttu := r.GetTupleToUserset(); ttu != nil && types.TTUUseRecursiveResolver(typ, name, subjectType, ttu) {
-			return true
-		}
-		return nil
-	})
-	return err == nil && found != nil
-}
-
-func anyCondition(schema *Schema, stored []zanzibar.Relationship, values map[string]any, level zanzibar.Level) bool {
-	return slices.ContainsFunc(stored, func(r zanzibar.Relationship) bool {
-		return r.Caveat != nil && conditionLevel(schema, r, values) == level
-	})
 }
 
 // conditionLevel is what the condition of a tuple says with the context of a check,
