@@ -90,7 +90,7 @@ func writerSetParameter(s Sample, t *Type, r *Relation, c *Caveat, p string) (Ma
 	m := Match{
 		PatternID: SelfAssertedExemptionID,
 		Verdict:   Candidate,
-		Subject:   fmt.Sprintf("%s#%s, %s of caveat %s", t.Name, r.Name, p, c.Name),
+		Subject:   fmt.Sprintf("%s#%s, %s of %s %s", t.Name, r.Name, p, s.Model.Terms.caveat(), c.Name),
 	}
 	m.Details = append(m.Details, Detail{
 		Label:    "written on",
@@ -106,14 +106,14 @@ func writerSetParameter(s Sample, t *Type, r *Relation, c *Caveat, p string) (Ma
 	} else {
 		m.Details = append(m.Details, Detail{
 			Label:    "left by",
-			Text:     fmt.Sprintf("%s of the relation, which leave it to the check, the first at %s", count(len(left), "relationship"), s.Relationships[left[0]].Position),
+			Text:     fmt.Sprintf("%s of the relation, which leave it to the check, the first at %s", count(len(left), s.Model.Terms.relationship()), s.Relationships[left[0]].Position),
 			Position: s.Relationships[left[0]].Position,
 		})
 	}
 	if written > 0 {
 		m.Details = append(m.Details, Detail{
 			Label: "written by",
-			Text:  count(written, "relationship") + " of the relation already",
+			Text:  count(written, s.Model.Terms.relationship()) + " of the relation already",
 		})
 	}
 
@@ -127,7 +127,7 @@ func writerSetParameter(s Sample, t *Type, r *Relation, c *Caveat, p string) (Ma
 	} else {
 		m.Details = append(m.Details, Detail{
 			Label: "shown by",
-			Text:  "no check of the file, with the values its checks supply written on a relationship that leaves the parameter out",
+			Text:  "no check of the file, with the values its checks supply written on a " + s.Model.Terms.relationship() + " that leaves the parameter out",
 		})
 	}
 	return m, true

@@ -157,7 +157,7 @@ func checkAssertion(t *testing.T, schema *Schema, stored []zanzibar.Relationship
 	t.Helper()
 
 	asked := LowerTuple(zanzibar.Position{}, &openfgav1.TupleKey{User: a.Tuple.User, Relation: a.Tuple.Relation, Object: a.Tuple.Object})
-	refusal := requestRefusal(schema, asked)
+	refusal := schema.admitCheck(asked)
 
 	tuples := stored
 	for _, contextual := range a.ContextualTuples {
@@ -204,27 +204,6 @@ func checkAssertion(t *testing.T, schema *Schema, stored []zanzibar.Relationship
 	default:
 		total.agreed++
 	}
-}
-
-// requestRefusal is what OpenFGA checks of a request before it answers
-// (internal/validation/validation.go:19-33, :389-482 at v1.22.1), which the engine
-// has no reason to: nothing it asks names what the model does not declare.
-func requestRefusal(schema *Schema, asked zanzibar.Relationship) error {
-	t := schema.Model.Type(asked.Resource.Type)
-	switch {
-	case t == nil:
-		return fmt.Errorf("type %s is not declared", asked.Resource.Type)
-	case !t.Declares(asked.Relation):
-		return fmt.Errorf("%s#%s is not declared", asked.Resource.Type, asked.Relation)
-	}
-	subject := schema.Model.Type(asked.Subject.Type)
-	switch {
-	case subject == nil:
-		return fmt.Errorf("type %s is not declared", asked.Subject.Type)
-	case asked.Subject.Relation != "" && !subject.Declares(asked.Subject.Relation):
-		return fmt.Errorf("%s#%s is not declared", asked.Subject.Type, asked.Subject.Relation)
-	}
-	return nil
 }
 
 func restsOnInline(tuples []zanzibar.Relationship) bool {

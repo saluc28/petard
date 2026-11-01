@@ -225,7 +225,7 @@ func (r reader) readValidation(rel string) (*File, error) {
 		}
 	} else {
 		f.SchemaPath = name
-		if f.Schema, err = Compile(name, r.imports(rel), contentLine(v.Schema), v.Schema.Value); err != nil {
+		if f.Schema, err = Compile(name, r.imports(rel), schemafiles.ContentLine(v.Schema), v.Schema.Value); err != nil {
 			return nil, err
 		}
 	}
@@ -234,7 +234,7 @@ func (r reader) readValidation(rel string) (*File, error) {
 		if v.Relationships.Kind != yaml.ScalarNode {
 			return nil, fmt.Errorf("%w: %s:%d: relationships is not a string", ErrValidationFile, name, v.Relationships.Line)
 		}
-		f.Relationships, err = ParseRelationships(name, contentLine(v.Relationships), v.Relationships.Value)
+		f.Relationships, err = ParseRelationships(name, schemafiles.ContentLine(v.Relationships), v.Relationships.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -289,14 +289,4 @@ func looksLikeValidation(raw []byte) bool {
 	schema, inline := top["schema"]
 	_, named := top["schemaFile"]
 	return named || (inline && schema.Kind == yaml.ScalarNode)
-}
-
-// contentLine is the line of the file the text of a scalar starts on: the line
-// after the indicator for a block scalar, schema: |, and the line of the value
-// otherwise.
-func contentLine(node yaml.Node) int {
-	if node.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
-		return node.Line + 1
-	}
-	return node.Line
 }

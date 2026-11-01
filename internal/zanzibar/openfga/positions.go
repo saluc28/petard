@@ -56,13 +56,16 @@ func (l *positionListener) position(token antlr.Token) zanzibar.Position {
 	return zanzibar.Position{File: l.file, Line: token.GetLine(), Column: token.GetColumn() + 1}
 }
 
-// EnterTypeDef records a type and remembers it for the relations inside it.
+// EnterTypeDef records a type and remembers it for the relations inside it. A module
+// that extends a type adds relations to it and does not declare it.
 func (l *positionListener) EnterTypeDef(ctx *parser.TypeDefContext) {
 	if ctx.GetTypeName() == nil {
 		return
 	}
 	l.typeName = ctx.GetTypeName().GetText()
-	l.at[l.typeName] = l.position(ctx.GetTypeName().GetStart())
+	if ctx.EXTEND() == nil {
+		l.at[l.typeName] = l.position(ctx.GetTypeName().GetStart())
+	}
 }
 
 // EnterRelationDeclaration records a relation of the type being read.

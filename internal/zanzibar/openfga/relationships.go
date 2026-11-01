@@ -104,6 +104,27 @@ func (s *Schema) Admit(r zanzibar.Relationship) error {
 	return nil
 }
 
+// admitCheck says whether a check names what the model declares, which OpenFGA asks of
+// a request before it answers (internal/validation/validation.go:19-33, :389-482). The
+// engine has no reason to: nothing it asks names what the model does not declare.
+func (s *Schema) admitCheck(asked zanzibar.Relationship) error {
+	t := s.Model.Type(asked.Resource.Type)
+	switch {
+	case t == nil:
+		return fmt.Errorf("type %s is not declared", asked.Resource.Type)
+	case !t.Declares(asked.Relation):
+		return fmt.Errorf("%s#%s is not declared", asked.Resource.Type, asked.Relation)
+	}
+	subject := s.Model.Type(asked.Subject.Type)
+	switch {
+	case subject == nil:
+		return fmt.Errorf("type %s is not declared", asked.Subject.Type)
+	case asked.Subject.Relation != "" && !subject.Declares(asked.Subject.Relation):
+		return fmt.Errorf("%s#%s is not declared", asked.Subject.Type, asked.Subject.Relation)
+	}
+	return nil
+}
+
 func admitsSubject(a zanzibar.Allowed, s zanzibar.Subject) bool {
 	switch {
 	case a.Type != s.Type:

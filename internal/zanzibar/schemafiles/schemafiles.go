@@ -13,6 +13,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	yaml "go.yaml.in/yaml/v3"
 )
 
 // Dir is one directory the files of a schema are read from. Paths given to it are
@@ -104,4 +106,14 @@ func (d *Dir) Named(rel, named string) (string, error) {
 		return "", fmt.Errorf("leads out of %s, the directory analyzed", d.name)
 	}
 	return joined, nil
+}
+
+// ContentLine is the line of the file the text of a YAML scalar starts on: the line
+// after the indicator for a block scalar, schema: |, and the line of the value
+// otherwise.
+func ContentLine(node yaml.Node) int {
+	if node.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
+		return node.Line + 1
+	}
+	return node.Line
 }

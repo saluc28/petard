@@ -23,8 +23,31 @@ type Model struct {
 	// Walk is how the product follows relationships to answer a check.
 	Walk Walk
 
+	// Terms are the words the product has for what a report names.
+	Terms Terms
+
 	types   map[string]*Type
 	caveats map[string]*Caveat
+}
+
+// Terms are the words a product has for a caveat and a relationship, so that a report
+// reads in the words of the model it is about. The zero value is the engine's own.
+type Terms struct {
+	Caveat, Relationship string
+}
+
+func (t Terms) caveat() string {
+	if t.Caveat == "" {
+		return "caveat"
+	}
+	return t.Caveat
+}
+
+func (t Terms) relationship() string {
+	if t.Relationship == "" {
+		return "relationship"
+	}
+	return t.Relationship
 }
 
 // Walk is how a product follows relationships to answer a check, where products

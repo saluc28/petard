@@ -69,7 +69,7 @@ func SelfAssertedExemptions(model *Model, wm *WriteModel, opts Options) []Match 
 				if !gateReachable(w.Gate, w.Resource, positions) {
 					continue
 				}
-				out = append(out, exemptionMatch(w, r.Position, cw.Name, param.Name, perms))
+				out = append(out, exemptionMatch(model.Terms, w, r.Position, cw.Name, param.Name, perms))
 			}
 		}
 	}
@@ -136,11 +136,11 @@ func gateReachable(gate Gate, resource string, positions []StartingPosition) boo
 }
 
 // exemptionMatch builds the finding for a self-asserted exemption.
-func exemptionMatch(w *WriteRule, at Position, caveat, parameter string, perms []string) Match {
+func exemptionMatch(terms Terms, w *WriteRule, at Position, caveat, parameter string, perms []string) Match {
 	m := Match{
 		PatternID: SelfAssertedExemptionID,
 		Verdict:   Finding,
-		Subject:   fmt.Sprintf("%s#%s, %s of caveat %s", w.Resource, w.Relation, parameter, caveat),
+		Subject:   fmt.Sprintf("%s#%s, %s of %s %s", w.Resource, w.Relation, parameter, terms.caveat(), caveat),
 	}
 	via := w.Via
 	if via == "" {
@@ -154,7 +154,7 @@ func exemptionMatch(w *WriteRule, at Position, caveat, parameter string, perms [
 		},
 		Detail{
 			Label: "the check brings",
-			Text:  fmt.Sprintf("%s, which the writer may set on the relationship instead, fixing it for every check that goes through", parameter),
+			Text:  fmt.Sprintf("%s, which the writer may set on the %s instead, fixing it for every check that goes through", parameter, terms.relationship()),
 		},
 		Detail{
 			Label: "raises",

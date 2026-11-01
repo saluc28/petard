@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -49,21 +50,87 @@ type Schema struct {
 // Compile compiles a model written in the DSL. file is the name positions are
 // reported against.
 func Compile(file, text string) (*Schema, error) {
-	model, err := transformer.TransformDSLToProto(text)
+	return compileAt(file, 1, text)
+}
+
+// compileAt compiles a model in the DSL whose text starts at a line of file, a model
+// written inside a store file among them.
+func compileAt(file string, line int, text string) (*Schema, error) {
+	return guarded(file, func() (*Schema, error) {
+		model, err := transformer.TransformDSLToProto(text)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s: %w", ErrModel, file, err)
+		}
+		at := dslPositions(file, text)
+		for key, pos := range at {
+			pos.Line += line - 1
+			at[key] = pos
+		}
+		return lower(file, model, at)
+	})
+}
+
+// guarded runs a compilation of something read from a file. OpenFGA's language package
+// panics on some of what it is handed, a module that declares a condition under no
+// module header among them (pkg/go/transformer/module-to-model.go:151 at language
+// v0.3.2), and a file in a repository that is not the user's own is no reason for a
+// run to crash: it is a model that does not compile.
+func guarded[T any](file string, compile func() (T, error)) (out T, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("%w: %s: %v", ErrModel, file, recovered)
+		}
+	}()
+	return compile()
+}
+
+// Module is one file of a modular model: where it was read and what it holds.
+type Module struct {
+	File, Text string
+}
+
+// parseMod reads an fga.mod: the schema version it declares and the modules it lists.
+func parseMod(file, text string) (string, []string, error) {
+	mod, err := guarded(file, func() (*transformer.ModFile, error) { return transformer.TransformModFile(text) })
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s: %w", ErrModel, file, err)
+		return "", nil, fmt.Errorf("%w: %s: %w", ErrModel, file, err)
 	}
-	return lower(file, model, dslPositions(file, text))
+	names := make([]string, 0, len(mod.Contents.Value))
+	for _, entry := range mod.Contents.Value {
+		names = append(names, entry.Value)
+	}
+	return mod.Schema.Value, names, nil
+}
+
+// CompileModules compiles a modular model, the modules an fga.mod lists. file is the
+// name the model as a whole is reported against, and what a module declares is
+// reported against that module.
+func CompileModules(file, schemaVersion string, modules []Module) (*Schema, error) {
+	return guarded(file, func() (*Schema, error) {
+		files := make([]transformer.ModuleFile, 0, len(modules))
+		at := map[string]zanzibar.Position{}
+		for _, module := range modules {
+			files = append(files, transformer.ModuleFile{Name: module.File, Contents: module.Text})
+			maps.Copy(at, dslPositions(module.File, module.Text))
+		}
+		model, err := transformer.TransformModuleFilesToModel(files, schemaVersion)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s: %w", ErrModel, file, err)
+		}
+		return lower(file, model, at)
+	})
 }
 
 // CompileJSON compiles a model in the JSON form the OpenFGA API takes. That form
 // holds no positions, so everything in it is reported against the file alone.
 func CompileJSON(file, text string) (*Schema, error) {
-	model, err := transformer.LoadJSONStringToProto(text)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %s: %w", ErrModel, file, err)
-	}
-	return lower(file, model, nil)
+	return guarded(file, func() (*Schema, error) {
+		model, err := transformer.LoadJSONStringToProto(text)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s: %w", ErrModel, file, err)
+		}
+		return lower(file, model, nil)
+	})
 }
 
 // lower validates a compiled model and lowers it into the engine's model.
@@ -139,6 +206,7 @@ func lower(file string, model *openfgav1.AuthorizationModel, at map[string]zanzi
 		return nil, fmt.Errorf("%w: %s: %w", ErrModel, file, err)
 	}
 	m.Walk = walkOf(types, model)
+	m.Terms = zanzibar.Terms{Caveat: "condition", Relationship: "tuple"}
 	return &Schema{Model: m, types: types}, nil
 }
 
