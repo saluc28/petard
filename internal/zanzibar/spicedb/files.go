@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -17,6 +16,7 @@ import (
 	yaml "go.yaml.in/yaml/v3"
 
 	"github.com/saluc28/petard/internal/zanzibar"
+	"github.com/saluc28/petard/internal/zanzibar/schemafiles"
 )
 
 // ErrValidationFile is returned for a validation file that does not hold
@@ -78,45 +78,25 @@ var validationKeys = map[string]bool{
 // Find reads the SpiceDB inputs under paths: files ending in .zed, and YAML
 // files shaped like a validation file. Anything else is skipped, so that a
 // directory holding a policy bundle as well is read for what it holds of each.
-// Directories whose name starts with a dot are not entered.
-//
-// Nothing outside the paths is read. A validation file names its schema with a
-// path of its own choosing, and a repository is not always somebody's own; the
-// files are opened through an os.Root, so a schemaFile or a link that leads out
-// of the directory is refused rather than followed.
+// Directories whose name starts with a dot are not entered, and nothing outside
+// the paths is read (package schemafiles).
 func Find(paths []string) ([]*File, error) {
 	var found []*File
-	for _, p := range paths {
-		// What is read under p goes through the os.Root of findUnder.
-		info, err := os.Stat(p) //nolint:gosec // G703: p is a path the user named on the command line
-		if err != nil {
-			// A URL or a bundle archive is not a SpiceDB input, and the
-			// command that was handed it says what it is.
-			continue
-		}
-		dir, only := p, ""
-		if !info.IsDir() {
-			dir, only = filepath.Dir(p), filepath.Base(p)
-		}
-		files, err := findUnder(dir, only)
-		if err != nil {
-			return nil, err
-		}
+	err := schemafiles.Each(paths, func(d *schemafiles.Dir, only string) error {
+		files, err := findUnder(d, only)
 		found = append(found, files...)
+		return err
+	})
+	if err != nil {
+		return nil, err
 	}
 	sort.Slice(found, func(i, j int) bool { return found[i].Path < found[j].Path })
 	return found, nil
 }
 
-// findUnder reads the inputs under dir, or the one file named only in it.
-func findUnder(dir, only string) (_ []*File, err error) {
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return nil, fmt.Errorf("spicedb: %w", err)
-	}
-	defer func() { err = errors.Join(err, root.Close()) }()
-	r := reader{root: root, dir: dir}
-
+// findUnder reads the inputs under a directory, or the one file named only in it.
+func findUnder(d *schemafiles.Dir, only string) ([]*File, error) {
+	r := reader{d}
 	if only != "" {
 		f, err := r.read(only)
 		if err != nil || f == nil {
@@ -126,16 +106,7 @@ func findUnder(dir, only string) (_ []*File, err error) {
 	}
 
 	var found []*File
-	err = fs.WalkDir(root.FS(), ".", func(rel string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if rel != "." && strings.HasPrefix(d.Name(), ".") {
-				return fs.SkipDir
-			}
-			return nil
-		}
+	err := d.Walk(func(rel string) error {
 		f, err := r.read(rel)
 		if err != nil {
 			return err
@@ -151,32 +122,15 @@ func findUnder(dir, only string) (_ []*File, err error) {
 	return found, nil
 }
 
-// reader reads the files under one directory and nowhere else. Paths given to
-// it are relative to the directory, with forward slashes.
+// reader reads the files under one directory and nowhere else.
 type reader struct {
-	root *os.Root
-	dir  string
-}
-
-// display is the path a report prints for a file of the directory. It has
-// forward slashes on every system, so a report reads the same on Windows and
-// names a schema the way it names a policy beside it.
-func (r reader) display(rel string) string {
-	return filepath.ToSlash(filepath.Join(r.dir, filepath.FromSlash(rel)))
-}
-
-func (r reader) readFile(rel string) ([]byte, error) {
-	return r.root.ReadFile(filepath.FromSlash(rel))
+	*schemafiles.Dir
 }
 
 // imports is where a schema at rel reads the files it imports from: its own
 // directory, inside the root.
 func (r reader) imports(rel string) fs.FS {
-	sub, err := fs.Sub(r.root.FS(), path.Dir(rel))
-	if err != nil {
-		return nil
-	}
-	return sub
+	return r.Sub(rel)
 }
 
 // read returns the input a file holds, or nil when it holds none.
@@ -184,8 +138,8 @@ func (r reader) read(rel string) (*File, error) {
 	rel = filepath.ToSlash(rel)
 	switch strings.ToLower(path.Ext(rel)) {
 	case ".zed":
-		name := r.display(rel)
-		text, err := r.readFile(rel)
+		name := r.Display(rel)
+		text, err := r.Read(rel)
 		if err != nil {
 			return nil, fmt.Errorf("spicedb: reading %s: %w", name, err)
 		}
@@ -214,8 +168,8 @@ type validationFile struct {
 }
 
 func (r reader) readValidation(rel string) (*File, error) {
-	name := r.display(rel)
-	raw, err := r.readFile(rel)
+	name := r.Display(rel)
+	raw, err := r.Read(rel)
 	if err != nil {
 		return nil, fmt.Errorf("spicedb: reading %s: %w", name, err)
 	}
@@ -256,12 +210,13 @@ func (r reader) readValidation(rel string) (*File, error) {
 	}
 
 	if v.SchemaFile != "" {
-		schemaRel, err := r.schemaFile(rel, v.SchemaFile)
+		// As SpiceDB resolves it (pkg/validationfile/loader.go:153-158 at v1.56.2).
+		schemaRel, err := r.Named(rel, v.SchemaFile)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: schemaFile %s: %w", ErrValidationFile, name, v.SchemaFile, err)
 		}
-		f.SchemaPath = r.display(schemaRel)
-		text, err := r.readFile(schemaRel)
+		f.SchemaPath = r.Display(schemaRel)
+		text, err := r.Read(schemaRel)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: schemaFile %s: %w", ErrValidationFile, name, v.SchemaFile, err)
 		}
@@ -314,23 +269,6 @@ func parseAssertion(file string, node yaml.Node, level zanzibar.Level) (zanzibar
 		}
 	}
 	return a, nil
-}
-
-// schemaFile resolves the schemaFile of the validation file at rel against the
-// directory of the validation file, as SpiceDB does
-// (pkg/validationfile/loader.go:153-158 at v1.56.2). A path that is absolute,
-// or that climbs out of the directory analyzed, is refused here with a reason;
-// the os.Root behind every read refuses the links that would.
-func (r reader) schemaFile(rel, named string) (string, error) {
-	slashed := filepath.ToSlash(named)
-	if path.IsAbs(slashed) || filepath.IsAbs(named) || filepath.VolumeName(named) != "" {
-		return "", errors.New("is absolute: it has to name a file under the directory analyzed")
-	}
-	joined := path.Join(path.Dir(rel), slashed)
-	if joined == ".." || strings.HasPrefix(joined, "../") {
-		return "", fmt.Errorf("leads out of %s, the directory analyzed", r.dir)
-	}
-	return joined, nil
 }
 
 // looksLikeValidation says whether a YAML document is a mapping whose keys
