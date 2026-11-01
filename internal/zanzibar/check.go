@@ -328,9 +328,9 @@ func (c *Checker) eval(resource Object, expr Expr, subject Subject) (Level, bool
 			// A subtracted side that cut a loop has not shown the subject out of
 			// it: its No is the provisional one a cut answers with, which proves
 			// nothing once it is negated. So the exclusion grants nothing, which
-			// is the answer OpenFGA gives (internal/graph/check.go:358-360 at
-			// v1.22.1). SpiceDB fails such a check at its depth limit instead,
-			// which grants nothing either.
+			// is the answer OpenFGA gives when it meets the loop
+			// (internal/graph/check.go:358-360 at v1.22.1). SpiceDB fails such a
+			// check at its depth limit instead, which grants nothing either.
 			if cut {
 				return No, true, nil
 			}

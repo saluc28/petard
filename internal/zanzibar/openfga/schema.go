@@ -302,8 +302,11 @@ func parameterType(ref *openfgav1.ConditionParamTypeRef) string {
 // branch, even where the parameters given already settle the expression
 // (internal/condition/eval/eval.go:125-138), and the refusal only stands if no other
 // branch grants (internal/graph/check.go:197-200). Conditional is what stands in for
-// that refusal here: the engine's three valued logic gives the same answer. SpiceDB,
-// by contrast, decides on what partial evaluation can settle.
+// that refusal here, and the engine's three valued logic answers from what the tuples
+// say: a condition that cannot change the result does not hold it back, where OpenFGA
+// refuses on any it reads, and a tuple it cannot decide stays open, where OpenFGA drops
+// it when another in the same read passes, which the oracle test verifies against the
+// real server. SpiceDB, by contrast, decides on what partial evaluation can settle.
 //
 // An inline condition, which OpenFGA takes only behind the inline_expressions
 // experimental flag (pkg/server/write.go:58-66), is read as Conditional: its
