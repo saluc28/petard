@@ -119,6 +119,48 @@ func TestSafeGates(t *testing.T) {
 	}
 }
 
+// A raise the declared rules reach on their own is a finding against them, and says
+// nothing about the gate being weighed. Anyone may write reader, so a holder of admin
+// can raise read whatever owner is gated on, and admin stays a safe gate for owner. A
+// holder of read who makes itself owner gains admin, through the proposed rule, so
+// read is not.
+func TestSafeGatesLeaveARaiseTheDeclaredRulesReachAlone(t *testing.T) {
+	doc := &Type{
+		Name: "doc",
+		Relations: []*Relation{
+			{Name: "reader", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "owner", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "read", Expr: Computed{Name: "reader"}},
+			{Name: "admin", Expr: Computed{Name: "owner"}},
+		},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, doc}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "doc", Relation: "reader", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Types: []string{"user"}}},
+	}}
+
+	proposals, err := SafeGates(model, wm, nil, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("SafeGates: %v", err)
+	}
+	owner, ok := gateProposalFor(proposals, "doc", "owner")
+	if !ok {
+		t.Fatalf("no proposal for doc#owner; got %+v", proposals)
+	}
+	if !slices.Equal(owner.Safe, []string{"admin"}) {
+		t.Errorf("admin alone is a safe gate for owner, safe = %v, unsafe = %+v", owner.Safe, owner.Unsafe)
+	}
+	unsafe, ok := unsafeFor(owner, "read")
+	if !ok || unsafe.Escalation.Permission != "admin" {
+		t.Errorf("the read gate should open an escalation to admin, got %+v", owner.Unsafe)
+	}
+}
+
 // Two relations without a rule can each be a safe gate alone yet unsafe once both
 // are writable. p needs both a and b, so gating a on `gate` raises nothing while b
 // stays unwritable, and the same for b; but a holder of `gate` that can write both

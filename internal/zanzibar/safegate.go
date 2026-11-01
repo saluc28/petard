@@ -46,9 +46,10 @@ type UnsafeGate struct {
 // the closure over the starting positions (section 6 of the definitions).
 //
 // Each gate is tried on top of the write model as it stands, so a proposal is
-// weighed together with the rules already declared. A relation whose every
-// permission is unsafe has no safe gate, and the run says so rather than
-// proposing one.
+// weighed together with the rules already declared. A raise those rules reach
+// without the proposal is a finding the run reports against them, and does not
+// count against the gate. A relation whose every permission is unsafe has no safe
+// gate, and the run says so rather than proposing one.
 func SafeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, opts Options) ([]GateProposal, error) {
 	// Each gate check need only weigh the permissions a write to the relation
 	// under it could reach; the rest cannot change and would read the same every
@@ -301,20 +302,24 @@ func hasWriteRule(wm *WriteModel, resource, relation string) bool {
 // gateEscalates reports whether letting holders of permission gate write
 // relation r of type typ lets a coalition escalate, with a witness when it does.
 // It adds the proposed rule to the write model and runs the escalation search
-// from every starting position in which the attacker holds the gate.
+// from every starting position in which the attacker holds the gate. Only a
+// witness that uses the proposed rule counts: every witness is a shortest one, and
+// the search keeps one per decisive write, so a raise that needs the rule has one
+// that uses it, and one that does not use it is reached without the rule.
 func gateEscalates(model *Model, wm *WriteModel, caveats CaveatEvaluator, typ string, r *Relation, gate string, byGate map[gateKey][]StartingPosition, rc reach, opts Options) (Escalation, bool, error) {
+	rule := &WriteRule{
+		Resource:   typ,
+		Relation:   r.Name,
+		Operations: []Operation{Create, Touch},
+		Gate:       Gate{Holds: gate},
+		Subject:    SubjectSpec{Any: true},
+		Wildcard:   allowsWildcard(r),
+	}
 	proposed := &WriteModel{
 		SchemaVersion: wm.SchemaVersion,
 		Kind:          wm.Kind,
-		Writes: append(slices.Clone(wm.Writes), &WriteRule{
-			Resource:   typ,
-			Relation:   r.Name,
-			Operations: []Operation{Create, Touch},
-			Gate:       Gate{Holds: gate},
-			Subject:    SubjectSpec{Any: true},
-			Wildcard:   allowsWildcard(r),
-		}),
-		Creates: wm.Creates,
+		Writes:        append(slices.Clone(wm.Writes), rule),
+		Creates:       wm.Creates,
 	}
 	scope := rc.scopeOf(model, proposed)
 
@@ -323,8 +328,10 @@ func gateEscalates(model *Model, wm *WriteModel, caveats CaveatEvaluator, typ st
 		if err != nil {
 			return Escalation{}, false, err
 		}
-		if len(escs) > 0 {
-			return escs[0], true, nil
+		for _, esc := range escs {
+			if slices.ContainsFunc(esc.Writes, func(s WriteStep) bool { return s.Rule == rule }) {
+				return esc, true, nil
+			}
 		}
 	}
 	return Escalation{}, false, nil
