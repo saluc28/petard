@@ -17,14 +17,14 @@ import (
 
 // corpusEnv names the directory of OpenFGA's own check tests, assets/tests in a
 // checkout of OpenFGA, which hold models, tuples and the answers OpenFGA's suite
-// holds OpenFGA to (tests/check/check.go:63-91 at fb8e7df8):
+// holds OpenFGA to (tests/check/check.go:63-91 at v1.22.1):
 //
 //	PETARD_OPENFGA_CORPUS="$(go list -m -f '{{.Dir}}' github.com/openfga/openfga)/assets/tests" go test ./internal/zanzibar/openfga -run TestCorpus -v
 const corpusEnv = "PETARD_OPENFGA_CORPUS"
 
 // The codes of OpenFGA's refusals that this tells apart. validationErrorCode is the
 // first of the validation codes (pkg/server/errors/encoded_errors.go:16 at
-// fb8e7df8): a request it does not take, or a condition it cannot decide, a parameter
+// v1.22.1): a request it does not take, or a condition it cannot decide, a parameter
 // missing from the context among them. depthErrorCode is a check past its resolution
 // depth, availability and not an answer (section 1 of the definitions).
 const (
@@ -214,7 +214,7 @@ func checkAssertion(t *testing.T, schema *Schema, stored []zanzibar.Relationship
 }
 
 // requestRefusal is what OpenFGA checks of a request before it answers
-// (internal/validation/validation.go:19-33, :389-482 at fb8e7df8), which the engine
+// (internal/validation/validation.go:19-33, :389-482 at v1.22.1), which the engine
 // has no reason to: nothing it asks names what the model does not declare.
 func requestRefusal(schema *Schema, asked zanzibar.Relationship) error {
 	t := schema.Model.Type(asked.Resource.Type)

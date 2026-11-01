@@ -5,7 +5,7 @@
 //
 // It is the one package of petard that imports OpenFGA, so that what the engine
 // knows about a model is what this package chose to tell it. Every OpenFGA line
-// cited in this package was read at fb8e7df8 (v1.22.0+2).
+// cited in this package was read at v1.22.1.
 package openfga
 
 import (

@@ -216,7 +216,7 @@ references:
       parameter. Any declared parameter passes.
   - title: openfga/openfga, the context a condition is run on
     note: >
-      At fb8e7df8, `internal/condition/condition.go:197-222` and
+      At v1.22.1, `internal/condition/condition.go:197-222` and
       `internal/condition/eval/eval.go:112-123`: the context of the request comes first and the
       context of the tuple is merged after it, and the last one wins. What a write may carry was
       not checked, which is why `front_ends` names SpiceDB alone.
