@@ -3,24 +3,21 @@ package openfga
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/assets"
 	yaml "go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/saluc28/petard/internal/zanzibar"
 )
 
-// corpusEnv names the directory of OpenFGA's own check tests, assets/tests in a
-// checkout of OpenFGA, which hold models, tuples and the answers OpenFGA's suite
-// holds OpenFGA to (tests/check/check.go:63-91 at v1.22.1):
-//
-//	PETARD_OPENFGA_CORPUS="$(go list -m -f '{{.Dir}}' github.com/openfga/openfga)/assets/tests" go test ./internal/zanzibar/openfga -run TestCorpus -v
-const corpusEnv = "PETARD_OPENFGA_CORPUS"
+// corpusFiles are OpenFGA's own check tests, which ship in the module and hold models,
+// tuples and the answers OpenFGA's suite holds OpenFGA to (tests/check/check.go:63-91
+// at v1.22.1).
+var corpusFiles = []string{"tests/consolidated_1_1_tests.yaml", "tests/abac_tests.yaml"}
 
 // The codes of OpenFGA's refusals that this tells apart. validationErrorCode is the
 // first of the validation codes (pkg/server/errors/encoded_errors.go:16 at
@@ -97,36 +94,32 @@ type corpusCount struct {
 // as a subject, which OpenFGA answers and the engine has no reason to ask; and a check
 // past OpenFGA's resolution depth, which section 1 of the definitions leaves out.
 func TestCorpus(t *testing.T) {
-	dir := os.Getenv(corpusEnv)
-	if dir == "" {
-		t.Skipf("%s is not set: this runs over OpenFGA's own check tests", corpusEnv)
-	}
-	paths, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(paths) == 0 {
-		t.Fatalf("%s=%s holds no test file", corpusEnv, dir)
-	}
-
 	var total corpusCount
-	for _, path := range paths {
-		raw, err := os.ReadFile(path)
+	for _, test := range corpusTests(t) {
+		t.Run(test.Name, func(t *testing.T) {
+			runCorpusTest(t, test, &total)
+		})
+	}
+	t.Logf("OpenFGA's suite agrees on %d answers and %d refusals, and %d conditions it cannot decide read as open; left out: %d on an inline condition, %d asking for a wildcard, %d past its depth",
+		total.agreed, total.refused, total.undecided, total.inline, total.wildcard, total.depth)
+}
+
+// corpusTests reads OpenFGA's own check tests.
+func corpusTests(t *testing.T) []corpusTest {
+	t.Helper()
+	var tests []corpusTest
+	for _, name := range corpusFiles {
+		raw, err := assets.EmbedTests.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		var file corpusFile
 		if err := yaml.Unmarshal(raw, &file); err != nil {
-			t.Fatalf("%s: %v", path, err)
+			t.Fatalf("%s: %v", name, err)
 		}
-		for _, test := range file.Tests {
-			t.Run(filepath.Base(path)+"/"+test.Name, func(t *testing.T) {
-				runCorpusTest(t, test, &total)
-			})
-		}
+		tests = append(tests, file.Tests...)
 	}
-	t.Logf("OpenFGA's suite agrees on %d answers and %d refusals, and %d conditions it cannot decide read as open; left out: %d on an inline condition, %d asking for a wildcard, %d past its depth",
-		total.agreed, total.refused, total.undecided, total.inline, total.wildcard, total.depth)
+	return tests
 }
 
 func runCorpusTest(t *testing.T, test corpusTest, total *corpusCount) {

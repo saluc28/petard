@@ -85,11 +85,3 @@ jobs:
           export PETARD_ZED="$PWD/zed"
           export PETARD_ZANZIBAR_CORPUS="$(go list -m -f '{{.Dir}}' github.com/authzed/spicedb)/internal/services/integrationtesting/testconfigs"
           go test -run TestOracle -v ./internal/zanzibar/spicedb
-
-      # The check tests OpenFGA holds itself to, which it ships in the module
-      # petard already requires: their models, their tuples and their answers.
-      - name: Hold the OpenFGA front end to OpenFGA's own check tests
-        run: |
-          go mod download github.com/openfga/openfga
-          export PETARD_OPENFGA_CORPUS="$(go list -m -f '{{.Dir}}' github.com/openfga/openfga)/assets/tests"
-          go test -run 'TestCorpus$' -v ./internal/zanzibar/openfga

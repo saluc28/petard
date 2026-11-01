@@ -1,0 +1,580 @@
+# Models the oracle holds against OpenFGA besides OpenFGA's own check tests: the
+# shapes the lowering treats apart, and conditions and loops where they interact. The
+# stages are read the way OpenFGA's tests are, and the oracle takes from checkAssertions
+# only the contexts to ask with: it works out every check there is by itself.
+tests:
+  - name: relation_and_permission_share_a_name
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define editor: [user]
+              define viewer: [user] or editor
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1"}
+          - {user: "user:bob", relation: editor, object: "document:1"}
+
+  - name: relation_read_only_to_subtract
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define banned: [user]
+              define viewer: [user] but not banned
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1"}
+          - {user: "user:bob", relation: viewer, object: "document:1"}
+          - {user: "user:bob", relation: banned, object: "document:1"}
+          - {user: "user:carol", relation: banned, object: "document:1"}
+
+  - name: relation_subtracted_and_read
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define banned: [user]
+              define viewer: [user] but not banned
+              define audit: banned
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1"}
+          - {user: "user:bob", relation: banned, object: "document:1"}
+
+  - name: relation_an_arrow_walks
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define parent: [folder]
+              define viewer: viewer from parent
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "folder:a"}
+          - {user: "folder:a", relation: parent, object: "document:1"}
+          - {user: "folder:b", relation: parent, object: "document:2"}
+
+  - name: usersets_inside_usersets
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#member]
+          type document
+            relations
+              define viewer: [group#member]
+        tuples:
+          - {user: "user:anne", relation: member, object: "group:inner"}
+          - {user: "group:inner#member", relation: member, object: "group:outer"}
+          - {user: "group:outer#member", relation: viewer, object: "document:1"}
+
+  - name: userset_asked_of_itself
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+              define reader: member
+          type document
+            relations
+              define viewer: [group#member]
+        tuples:
+          - {user: "user:anne", relation: member, object: "group:1"}
+          - {user: "group:1#member", relation: viewer, object: "document:1"}
+
+  - name: wildcard_grants_objects_and_not_usersets
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+            relations
+              define friend: [user]
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define viewer: [user:*, group#member, user#friend]
+              define blocked: [user:*]
+              define reader: viewer but not blocked
+        tuples:
+          - {user: "user:*", relation: viewer, object: "document:1"}
+          - {user: "group:1#member", relation: viewer, object: "document:2"}
+          - {user: "user:anne", relation: member, object: "group:1"}
+          - {user: "user:*", relation: blocked, object: "document:2"}
+          - {user: "user:anne", relation: friend, object: "user:bob"}
+          - {user: "user:bob#friend", relation: viewer, object: "document:3"}
+
+  - name: intersection_and_exclusion_nest
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define a: [user]
+              define b: [user]
+              define c: [user]
+              define both: a and b
+              define only_a: a but not b
+              define nested: a but not (b but not c)
+              define mixed: (a or b) and c
+        tuples:
+          - {user: "user:anne", relation: a, object: "document:1"}
+          - {user: "user:anne", relation: b, object: "document:1"}
+          - {user: "user:bob", relation: a, object: "document:1"}
+          - {user: "user:carol", relation: a, object: "document:1"}
+          - {user: "user:carol", relation: b, object: "document:1"}
+          - {user: "user:carol", relation: c, object: "document:1"}
+
+  - name: condition_on_a_user
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define viewer: [user with before, user]
+              define banned: [user with before]
+              define reader: viewer but not banned
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1", condition: {name: before}}
+          - {user: "user:bob", relation: viewer, object: "document:1"}
+          - {user: "user:bob", relation: banned, object: "document:1", condition: {name: before}}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+          - context: {ts: "not a timestamp"}
+          - context: {other: "ignored"}
+
+  - name: condition_on_a_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define viewer: [user:* with before]
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:*", relation: viewer, object: "document:1", condition: {name: before}}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+
+  - name: condition_on_a_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define viewer: [group#member with before]
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: member, object: "group:1"}
+          - {user: "group:1#member", relation: viewer, object: "document:1", condition: {name: before}}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+
+  - name: condition_on_a_walked_tuple
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define parent: [folder with before]
+              define viewer: viewer from parent
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "folder:a"}
+          - {user: "folder:a", relation: parent, object: "document:1", condition: {name: before}}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+
+  - name: condition_context_written_on_the_tuple
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define viewer: [user with within]
+          condition within(limit: int, value: int) {
+            value < limit
+          }
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1", condition: {name: within, context: {limit: 10}}}
+          - {user: "user:bob", relation: viewer, object: "document:1", condition: {name: within, context: {limit: 10, value: 20}}}
+        checkAssertions:
+          - context: {value: 5}
+          - context: {value: 15}
+          - context: {limit: 100, value: 15}
+
+  - name: undecidable_tuple_not_needed
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define viewer: [group#member with before]
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: member, object: "group:1"}
+          - {user: "group:1#member", relation: viewer, object: "document:1", condition: {name: before}}
+
+  - name: undecidable_tuple_not_needed_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define banned: [group#member with before]
+              define viewer: [user] but not banned
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1"}
+          - {user: "user:bob", relation: member, object: "group:1"}
+          - {user: "group:1#member", relation: banned, object: "document:1", condition: {name: before}}
+
+  - name: undecidable_tuple_read_beside_a_passing_one
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user]
+          type document
+            relations
+              define viewer: [group#member with before, group#member]
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: member, object: "group:a"}
+          - {user: "user:bob", relation: member, object: "group:b"}
+          - {user: "group:a#member", relation: viewer, object: "document:1", condition: {name: before}}
+          - {user: "group:b#member", relation: viewer, object: "document:1"}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+
+  - name: undecidable_walked_tuple_read_beside_a_passing_one
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define viewer: [user]
+          type document
+            relations
+              define parent: [folder with before, folder]
+              define viewer: viewer from parent
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "folder:a"}
+          - {user: "folder:a", relation: parent, object: "document:1", condition: {name: before}}
+          - {user: "folder:b", relation: parent, object: "document:1"}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+
+  - name: undecidable_membership_read_beside_a_passing_one
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user with before, user]
+          type document
+            relations
+              define viewer: [group#member]
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: member, object: "group:a", condition: {name: before}}
+          - {user: "user:anne", relation: member, object: "group:b"}
+          - {user: "group:a#member", relation: viewer, object: "document:1"}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+
+  - name: undecidable_membership_in_a_relation_that_reaches_itself
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user with before, user, group#member]
+          type document
+            relations
+              define viewer: [group#member]
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: member, object: "group:a", condition: {name: before}}
+          - {user: "user:anne", relation: member, object: "group:c"}
+          - {user: "group:a#member", relation: member, object: "group:b"}
+          - {user: "group:b#member", relation: viewer, object: "document:1"}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+
+  - name: loop_of_arrows
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define parent: [folder]
+              define viewer: [user] or viewer from parent
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "folder:b"}
+          - {user: "folder:b", relation: parent, object: "folder:a"}
+          - {user: "folder:a", relation: parent, object: "folder:b"}
+
+  - name: loop_of_usersets
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#member]
+        tuples:
+          - {user: "user:anne", relation: member, object: "group:a"}
+          - {user: "group:a#member", relation: member, object: "group:b"}
+          - {user: "group:b#member", relation: member, object: "group:a"}
+
+  - name: loop_of_arrows_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define parent: [folder]
+              define blocked: [user] or blocked from parent
+              define viewer: [user] but not blocked
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "folder:a"}
+          - {user: "folder:b", relation: parent, object: "folder:a"}
+          - {user: "folder:a", relation: parent, object: "folder:b"}
+
+  - name: loop_of_usersets_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#member]
+          type document
+            relations
+              define banned: [group#member]
+              define viewer: [user] but not banned
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1"}
+          - {user: "group:a#member", relation: banned, object: "document:1"}
+          - {user: "group:a#member", relation: member, object: "group:b"}
+          - {user: "group:b#member", relation: member, object: "group:a"}
+
+  - name: loop_of_usersets_asked_by_a_userset_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#member]
+          type document
+            relations
+              define banned: [group#member]
+              define viewer: [user, group#member] but not banned
+        tuples:
+          - {user: "group:z#member", relation: viewer, object: "document:1"}
+          - {user: "group:a#member", relation: banned, object: "document:1"}
+          - {user: "group:a#member", relation: member, object: "group:b"}
+          - {user: "group:b#member", relation: member, object: "group:a"}
+
+  - name: loop_across_two_relations_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#admin]
+              define admin: [user, group#member]
+          type document
+            relations
+              define banned: [group#member]
+              define viewer: [user] but not banned
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1"}
+          - {user: "group:a#member", relation: banned, object: "document:1"}
+          - {user: "group:b#admin", relation: member, object: "group:a"}
+          - {user: "group:a#member", relation: admin, object: "group:b"}
+
+  - name: loop_across_two_relations_behind_a_condition_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#admin]
+              define admin: [user, group#member]
+          type document
+            relations
+              define banned: [group#member with before]
+              define viewer: [user] but not banned
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1"}
+          - {user: "group:a#member", relation: banned, object: "document:1", condition: {name: before}}
+          - {user: "group:b#admin", relation: member, object: "group:a"}
+          - {user: "group:a#member", relation: admin, object: "group:b"}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+
+  - name: loop_behind_a_condition_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group
+            relations
+              define member: [user, group#member]
+          type document
+            relations
+              define banned: [group#member with before]
+              define viewer: [user] but not banned
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1"}
+          - {user: "group:a#member", relation: banned, object: "document:1", condition: {name: before}}
+          - {user: "group:a#member", relation: member, object: "group:b"}
+          - {user: "group:b#member", relation: member, object: "group:a"}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+
+  - name: loop_behind_a_condition_on_a_walked_tuple_under_exclusion
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define parent: [folder with before]
+              define blocked: [user] or blocked from parent
+              define viewer: [user] but not blocked
+          condition before(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "folder:a"}
+          - {user: "folder:b", relation: parent, object: "folder:a", condition: {name: before}}
+          - {user: "folder:a", relation: parent, object: "folder:b", condition: {name: before}}
+        checkAssertions:
+          - context: {ts: "2023-10-11T09:00:00.000Z"}
+          - context: {ts: "2023-10-11T11:00:00.000Z"}
+
+  - name: inline_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define viewer: [user with $expression, user]
+              define reader: viewer
+        tuples:
+          - {user: "user:anne", relation: viewer, object: "document:1", condition: {name: $expression, context: {expression: "true"}}}
+          - {user: "user:bob", relation: viewer, object: "document:1"}
