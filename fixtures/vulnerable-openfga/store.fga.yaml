@@ -1,0 +1,66 @@
+name: quill-documents
+model_file: model.fga
+tuples:
+  # Olivia owns the roadmap. Erin edits it until the first of November, and Vic views
+  # it from the office network only.
+  - user: user:olivia
+    relation: owner
+    object: document:roadmap
+  - user: user:erin
+    relation: editor
+    object: document:roadmap
+    condition:
+      name: not_expired
+      context:
+        until: "2026-11-01T00:00:00Z"
+  - user: user:vic
+    relation: viewer
+    object: document:roadmap
+    condition:
+      name: ip_allowlist
+      context:
+        cidr: 10.0.0.0/8
+
+  # The design team views it from anywhere.
+  - user: team:design#member
+    relation: viewer
+    object: document:roadmap
+  - user: user:dana
+    relation: member
+    object: team:design
+tests:
+  - name: the roadmap
+    check:
+      - user: user:vic
+        object: document:roadmap
+        context:
+          user_ip: 10.1.2.3
+        assertions:
+          view: true
+      - user: user:erin
+        object: document:roadmap
+        context:
+          now: "2026-10-20T00:00:00Z"
+        assertions:
+          edit: true
+      - user: user:dana
+        object: document:roadmap
+        assertions:
+          view: true
+          edit: false
+      - user: user:olivia
+        object: document:roadmap
+        assertions:
+          edit: true
+      - user: user:vic
+        object: document:roadmap
+        context:
+          user_ip: 192.168.0.1
+        assertions:
+          view: false
+      - user: user:erin
+        object: document:roadmap
+        context:
+          now: "2026-12-01T00:00:00Z"
+        assertions:
+          edit: false

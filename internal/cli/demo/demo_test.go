@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,6 +27,9 @@ func TestDemoAnalyzesTheFixturesInTheBinary(t *testing.T) {
 		"PUT /api/v1/users/{id}/roles",
 		"2 SpiceDB files",
 		"document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)",
+		"2 OpenFGA files",
+		"document#viewer, user_ip of condition ip_allowlist  (PTD-ZAN-001)",
+		"That was the policy, the SpiceDB schema and the OpenFGA model of the demo",
 		"petard demo -extract",
 	} {
 		if !strings.Contains(out, want) {
@@ -44,7 +48,8 @@ func TestDemoAnalyzesOneFixtureByName(t *testing.T) {
 		want, unwanted string
 	}{
 		{name: "opa", args: []string{"opa"}, fixture: "opa", want: "carol -> alice", unwanted: "SpiceDB file"},
-		{name: "spicedb", args: []string{"spicedb"}, fixture: "spicedb", want: "(PTD-ZAN-001)", unwanted: "parsed as rego"},
+		{name: "spicedb", args: []string{"spicedb"}, fixture: "spicedb", want: "(PTD-ZAN-001)", unwanted: "OpenFGA file"},
+		{name: "openfga", args: []string{"openfga"}, fixture: "openfga", want: "of condition ip_allowlist  (PTD-ZAN-001)", unwanted: "SpiceDB file"},
 		{name: "a flag after the name", args: []string{"spicedb", "-v"}, fixture: "spicedb", want: "(PTD-ZAN-001)", unwanted: "parsed as rego"},
 		{name: "a flag before the name", args: []string{"-v", "opa"}, fixture: "opa", want: "PTD-OPA-006 finding", unwanted: "SpiceDB file"},
 	}
@@ -60,6 +65,10 @@ func TestDemoAnalyzesOneFixtureByName(t *testing.T) {
 			}
 			if !strings.Contains(out, "petard demo -extract <dir> "+tt.fixture) {
 				t.Errorf("the closing line does not offer to extract %s:\n%s", tt.fixture, out)
+			}
+			chosen, _ := choose(tt.fixture)
+			if closing := "That was " + chosen[0].what + " of the demo"; !strings.Contains(out, closing) {
+				t.Errorf("the closing line does not say %q:\n%s", closing, out)
 			}
 		})
 	}
@@ -81,6 +90,7 @@ func TestDemoShowsTheEvidenceWhenAsked(t *testing.T) {
 		// the same slashes for a schema as for a policy.
 		"vulnerable-bundle/policy-v1/authz.rego:",
 		"vulnerable-spicedb/schema.zed:33:3",
+		"vulnerable-openfga/model.fga:24:12",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the detailed demo does not say %q:\n%s", want, out)
@@ -138,13 +148,20 @@ func TestExtractWritesTheFixturesAndStops(t *testing.T) {
 		filepath.Join("vulnerable-spicedb", "validation.yaml"),
 		filepath.Join("vulnerable-spicedb", "EXPECTED.md"),
 	}
+	model := []string{
+		filepath.Join("vulnerable-openfga", "model.fga"),
+		filepath.Join("vulnerable-openfga", "store.fga.yaml"),
+		filepath.Join("vulnerable-openfga", "writes.yaml"),
+		filepath.Join("vulnerable-openfga", "EXPECTED.md"),
+	}
 	tests := []struct {
 		name            string
 		args            []string
 		want, unwritten []string
 	}{
-		{name: "all of them", want: append(bundle, schema...)},
-		{name: "by name", args: []string{"spicedb"}, want: schema, unwritten: []string{"vulnerable-bundle"}},
+		{name: "all of them", want: slices.Concat(bundle, schema, model)},
+		{name: "by name", args: []string{"spicedb"}, want: schema, unwritten: []string{"vulnerable-bundle", "vulnerable-openfga"}},
+		{name: "the model by name", args: []string{"openfga"}, want: model, unwritten: []string{"vulnerable-bundle", "vulnerable-spicedb"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -163,7 +180,7 @@ func TestExtractWritesTheFixturesAndStops(t *testing.T) {
 					t.Errorf("%s was written, and the name asked for another fixture", name)
 				}
 			}
-			if out := stdout.String(); strings.Contains(out, "decisions") || strings.Contains(out, "SpiceDB file") {
+			if out := stdout.String(); strings.Contains(out, "decisions") || strings.Contains(out, "SpiceDB file") || strings.Contains(out, "OpenFGA file") {
 				t.Errorf("extracting also ran the analysis:\n%s", out)
 			}
 		})
@@ -247,7 +264,7 @@ func TestDemoRefusesWhatIsNotTheNameOfAFixture(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "a path", args: []string{"some/policy"}, want: "opa and spicedb; run petard analyze"},
+		{name: "a path", args: []string{"some/policy"}, want: "opa, spicedb and openfga; run petard analyze"},
 		{name: "two names", args: []string{"opa", "spicedb"}, want: "one name at most"},
 	}
 	for _, tt := range tests {

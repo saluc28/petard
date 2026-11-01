@@ -33,8 +33,8 @@ type oracleCount struct {
 	agreed, undecided, settled, dropped, dispatched, inline, depth int
 }
 
-// The engine against OpenFGA itself. For every stage of every test, those of testdata
-// and OpenFGA's own, every check the stage's objects allow is answered by the engine
+// The engine against OpenFGA itself. For every stage of every test, those of testdata,
+// the fixture and OpenFGA's own, every check the stage's objects allow is answered by the engine
 // and by Check of a real server in this process, over the same model and the same
 // tuples. The subjects are the objects and the usersets the model allows, and each
 // check is asked with no context and with every context the stage's assertions supply.
@@ -61,7 +61,7 @@ func TestOracle(t *testing.T) {
 	}
 
 	var total oracleCount
-	for _, test := range append(own.Tests, corpusTests(t)...) {
+	for _, test := range slices.Concat(own.Tests, []corpusTest{fixtureOracleTest(t)}, corpusTests(t)) {
 		t.Run(test.Name, func(t *testing.T) {
 			oracleTest(t, s, test, &total)
 		})

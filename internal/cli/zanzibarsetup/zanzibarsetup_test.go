@@ -2,9 +2,11 @@ package zanzibarsetup
 
 import (
 	"context"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,13 +16,61 @@ import (
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/saluc28/petard/internal/zanzibar"
 	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 )
 
 // rel names a path under the repository root, three levels up from this package.
 func rel(parts ...string) string {
 	return filepath.Join(append([]string{"..", "..", ".."}, parts...)...)
+}
+
+// The two fixtures model one service, so the engine has to read them alike. Every match
+// on the SpiceDB fixture is a match on the OpenFGA fixture, in the words of its product.
+// What the OpenFGA fixture adds is a raise of a relation, which a check of OpenFGA can ask
+// and a check of SpiceDB cannot.
+func TestTheFixturesOfBothProductsReadAlike(t *testing.T) {
+	matches := func(dir string) (map[string]bool, *zanzibar.Model) {
+		t.Helper()
+		found, err := Load(context.Background(), []string{rel("fixtures", dir)}, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		analyses, _ := found.Analyses(time.Now())
+		if len(analyses) != 1 {
+			t.Fatalf("%s reads as %d analyses, want 1", dir, len(analyses))
+		}
+		out := map[string]bool{}
+		for _, m := range zanzibar.Run(analyses[0].Sample, analyses[0].WriteModel) {
+			out[m.PatternID+" "+strings.Replace(m.Subject, " of condition ", " of caveat ", 1)] = true
+		}
+		return out, analyses[0].Sample.Model
+	}
+
+	spice, spiceModel := matches("vulnerable-spicedb")
+	fga, _ := matches("vulnerable-openfga")
+	if len(spice) == 0 {
+		t.Fatal("no match on the SpiceDB fixture")
+	}
+	for match := range spice {
+		if !fga[match] {
+			t.Errorf("the OpenFGA fixture has no %q", match)
+		}
+	}
+	for match := range fga {
+		if spice[match] {
+			continue
+		}
+		_, subject, _ := strings.Cut(match, " ")
+		named, _, _ := strings.Cut(subject, ",")
+		typ, name, _ := strings.Cut(named, "#")
+		declared := spiceModel.Type(typ)
+		if declared == nil || declared.Relation(name) == nil || declared.Permission(name) != nil {
+			t.Errorf("the OpenFGA fixture adds %q, which is no relation SpiceDB cannot ask", match)
+		}
+	}
 }
 
 func TestPartitionEndpoints(t *testing.T) {
@@ -267,6 +317,30 @@ func TestLoadReadsBothProducts(t *testing.T) {
 // flag.
 func TestLoadReadsARunningOpenFGA(t *testing.T) {
 	ctx := t.Context()
+	_, _, _, endpoint := runningStore(t, "model\n  schema 1.1\ntype user\ntype doc\n  relations\n    define viewer: [user]\n")
+
+	dir := t.TempDir()
+	writeFile(t, dir, "writes.yaml", "schema_version: 1\nmodel: relationship-writes\nwrites: []\n")
+	found, err := Load(ctx, []string{endpoint}, filepath.Join(dir, "writes.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Files) != 1 || found.Files[0].Product != OpenFGA || found.Files[0].Path != endpoint {
+		t.Fatalf("files = %+v, want the running store", found.Files)
+	}
+	if len(found.PolicyPaths) != 0 {
+		t.Errorf("policy paths = %v, want none", found.PolicyPaths)
+	}
+	run, _ := found.Analyses(time.Now())
+	if len(run) != 1 || run[0].WriteModel == nil {
+		t.Errorf("analyses = %+v, want the store under the write model of the flag", run)
+	}
+}
+
+// runningStore starts a server of OpenFGA on this machine, and returns it with a store
+// that holds the model, the model's id, and the endpoint that names the store.
+func runningStore(t *testing.T, text string) (s *server.Server, storeID, modelID, endpoint string) {
+	t.Helper()
 	s, err := server.NewServerWithOpts(server.WithDatastore(memory.New()))
 	if err != nil {
 		t.Fatal(err)
@@ -281,35 +355,92 @@ func TestLoadReadsARunningOpenFGA(t *testing.T) {
 	go func() { _ = srv.Serve(listener) }()
 	t.Cleanup(srv.Stop)
 
-	store, err := s.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "live"})
+	store, err := s.CreateStore(t.Context(), &openfgav1.CreateStoreRequest{Name: "live"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := transformer.TransformDSLToProto("model\n  schema 1.1\ntype user\ntype doc\n  relations\n    define viewer: [user]\n")
+	model, err := transformer.TransformDSLToProto(text)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-		StoreId: store.GetId(), SchemaVersion: typesystem.SchemaVersion1_1, TypeDefinitions: model.GetTypeDefinitions(),
+	written, err := s.WriteAuthorizationModel(t.Context(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         store.GetId(),
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s, store.GetId(), written.GetAuthorizationModelId(), "openfga+insecure://" + listener.Addr().String() + "/" + store.GetId()
+}
+
+// A model and tuples that live in a running store are analyzed as the same model and
+// tuples on disk are, under the same write model. The fixture's tuples, written to a
+// store over Write, give every match the fixture's files give.
+func TestARunningStoreReadsLikeTheFixture(t *testing.T) {
+	ctx := t.Context()
+	writes := rel("fixtures", "vulnerable-openfga", "writes.yaml")
+	subjects := func(found Found) map[string]bool {
+		t.Helper()
+		analyses, _ := found.Analyses(time.Now())
+		if len(analyses) != 1 || analyses[0].WriteModel == nil {
+			t.Fatalf("analyses = %+v, want one under the write model", analyses)
+		}
+		out := map[string]bool{}
+		for _, m := range zanzibar.Run(analyses[0].Sample, analyses[0].WriteModel) {
+			out[m.PatternID+" "+m.Subject] = true
+		}
+		return out
+	}
+
+	files, err := Load(ctx, []string{rel("fixtures", "vulnerable-openfga")}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	onDisk := subjects(files)
+	if len(onDisk) == 0 {
+		t.Fatal("no match on the fixture's files")
+	}
+
+	text, err := os.ReadFile(rel("fixtures", "vulnerable-openfga", "model.fga"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, storeID, modelID, endpoint := runningStore(t, string(text))
+	var keys []*openfgav1.TupleKey
+	for _, f := range files.Files {
+		for _, r := range f.Relationships {
+			key := &openfgav1.TupleKey{User: r.Subject.String(), Relation: r.Relation, Object: r.Resource.String()}
+			if r.Caveat != nil {
+				values, err := structpb.NewStruct(r.Caveat.Context)
+				if err != nil {
+					t.Fatal(err)
+				}
+				key.Condition = &openfgav1.RelationshipCondition{Name: r.Caveat.Name, Context: values}
+			}
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		t.Fatal("the fixture's files hold no tuple")
+	}
+	if _, err := s.Write(ctx, &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Writes:               &openfgav1.WriteRequestWrites{TupleKeys: keys},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	dir := t.TempDir()
-	writeFile(t, dir, "writes.yaml", "schema_version: 1\nmodel: relationship-writes\nwrites: []\n")
-	endpoint := "openfga+insecure://" + listener.Addr().String() + "/" + store.GetId()
-	found, err := Load(ctx, []string{endpoint}, filepath.Join(dir, "writes.yaml"))
+	live, err := Load(ctx, []string{endpoint}, writes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(found.Files) != 1 || found.Files[0].Product != OpenFGA || found.Files[0].Path != endpoint {
-		t.Fatalf("files = %+v, want the running store", found.Files)
+	if len(live.Files) != 1 || len(live.Files[0].Relationships) != len(keys) {
+		t.Fatalf("files = %+v, want the running store with its %d tuples", live.Files, len(keys))
 	}
-	if len(found.PolicyPaths) != 0 {
-		t.Errorf("policy paths = %v, want none", found.PolicyPaths)
-	}
-	run, _ := found.Analyses(time.Now())
-	if len(run) != 1 || run[0].WriteModel == nil {
-		t.Errorf("analyses = %+v, want the store under the write model of the flag", run)
+	if got := subjects(live); !maps.Equal(got, onDisk) {
+		t.Errorf("the running store reports\n%v\nand the files\n%v", got, onDisk)
 	}
 }

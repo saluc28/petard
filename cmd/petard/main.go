@@ -1,6 +1,6 @@
-// Command petard reads Rego policies and SpiceDB schemas, works out what their
-// decisions depend on, and applies the taxonomy of escalation patterns to what
-// it finds. The analysis of a policy goes to BloodHound as a structured
+// Command petard reads Rego policies, SpiceDB schemas and OpenFGA models, works
+// out what their decisions depend on, and applies the taxonomy of escalation
+// patterns to what it finds. The analysis goes to BloodHound as a structured
 // OpenGraph.
 //
 // It is one binary with subcommands, the way opa and regal are, because a
@@ -11,9 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"runtime/debug"
-	"slices"
 	"strings"
 
 	"github.com/saluc28/petard/internal/cli/analyze"
@@ -82,7 +80,7 @@ type command struct {
 }
 
 var commands = []command{
-	{"analyze", "read policies and SpiceDB schemas and report what their decisions depend on", analyze.Run},
+	{"analyze", "read policies, schemas and models and report what their decisions depend on", analyze.Run},
 	{"explain", "print what one pattern looks for, and what it will not report", explain.Run},
 	{"patterns", "list the patterns this binary carries", patterns.Run},
 	{"export", "send the analysis of a policy to BloodHound as an OpenGraph payload", export.Run},
@@ -92,10 +90,10 @@ var commands = []command{
 
 // about is what the program is for, in the lines somebody reads before they
 // know any of its commands.
-const about = "Petard reads Rego (OPA) policies and SpiceDB schemas, and reports where a decision\n" +
-	"rests on something somebody else controls: data a principal can write, a part of the\n" +
-	"request the caller sets, the context written on a relationship, an identity somebody can\n" +
-	"assume. What it finds in a policy goes to BloodHound as a graph.\n"
+const about = "Petard reads Rego (OPA) policies, SpiceDB schemas and OpenFGA models, and reports where\n" +
+	"a decision rests on something somebody else controls: data a principal can write, a part\n" +
+	"of the request the caller sets, the context written on a relationship, an identity somebody\n" +
+	"can assume. What it finds goes to BloodHound as a graph.\n"
 
 func usage(out io.Writer) {
 	fmt.Fprint(out, about+"\nusage: petard <command> [flags] <path>...\n\nCommands:\n")
@@ -123,19 +121,23 @@ func helpFor(name string, stdout, stderr io.Writer) int {
 	return exitUsage
 }
 
-// reported are the dependencies whose version changes what an analysis says.
+// reported are the dependencies whose version changes what an analysis says, by
+// the name a line of the build gives each.
 //
 // OPA is the parser and the evaluator, so the answer to "why does this bundle
 // report differently than it did last month" is usually which one is linked in.
 // SpiceDB plays the same part for a schema: its compiler reads it, and its CEL
-// environment is the one caveats are evaluated in. bhgraph decides what
-// BloodHound is asked to accept. They are compiled in, not called, so nobody can swap them without a
-// new binary, and a report is only reproducible next to the versions that
-// produced it.
-var reported = []string{
-	"github.com/authzed/spicedb",
-	"github.com/open-policy-agent/opa",
-	"github.com/saluc28/bhgraph",
+// environment is the one caveats are evaluated in. For a model of OpenFGA the
+// language module is the compiler, and the server module validates the model and
+// evaluates its conditions. bhgraph decides what BloodHound is asked to accept.
+// They are compiled in, not called, so nobody can swap them without a new binary,
+// and a report is only reproducible next to the versions that produced it.
+var reported = map[string]string{
+	"github.com/authzed/spicedb":         "spicedb",
+	"github.com/open-policy-agent/opa":   "opa",
+	"github.com/openfga/language/pkg/go": "openfga-language",
+	"github.com/openfga/openfga":         "openfga",
+	"github.com/saluc28/bhgraph":         "bhgraph",
 }
 
 // buildLines describe the binary: what it is, and what it carries.
@@ -147,15 +149,16 @@ func buildLines() []string {
 		return lines
 	}
 	for _, dep := range info.Deps {
-		if !slices.Contains(reported, dep.Path) {
+		name, ok := reported[dep.Path]
+		if !ok {
 			continue
 		}
 		if dep.Replace != nil {
 			lines = append(lines, fmt.Sprintf("%s %s, replaced by %s %s",
-				path.Base(dep.Path), dep.Version, dep.Replace.Path, dep.Replace.Version))
+				name, dep.Version, dep.Replace.Path, dep.Replace.Version))
 			continue
 		}
-		lines = append(lines, path.Base(dep.Path)+" "+dep.Version)
+		lines = append(lines, name+" "+dep.Version)
 	}
 	return lines
 }

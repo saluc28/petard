@@ -61,6 +61,12 @@ var demoFixtures = []fixture{
 		dir:   fixtures.SpiceDBDir,
 		paths: func(root string) []string { return []string{root} },
 	},
+	{
+		name:  "openfga",
+		what:  "the OpenFGA model",
+		dir:   fixtures.OpenFGADir,
+		paths: func(root string) []string { return []string{root} },
+	},
 }
 
 // Run unpacks the fixtures and analyzes them, or writes them where the caller
@@ -76,7 +82,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	flags.Usage = func() {
 		fmt.Fprintf(stderr, "usage: petard demo [-v] [-extract <dir>] [%s]\n\n"+
 			"Analyzes the fixtures built into this binary, written by hand with defects in them:\n"+
-			"opa, a Rego policy, and spicedb, a SpiceDB schema. A name picks one of them.\n\n",
+			"opa, a Rego policy, spicedb, a SpiceDB schema, and openfga, an OpenFGA model.\n"+
+			"A name picks one of them.\n\n",
 			strings.Join(names(), " | "))
 		flags.PrintDefaults()
 	}
@@ -102,7 +109,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if !ok {
 		fmt.Fprintf(stderr, "petard demo: %q names no fixture of the demo, which has %s; "+
 			"run petard analyze to analyze a policy or a schema of your own\n",
-			name, strings.Join(names(), " and "))
+			name, inWords(names()))
 		return exitUsage
 	}
 
@@ -117,7 +124,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			}
 			return exitFailure
 		}
-		fmt.Fprintf(stdout, "%s written to %s\n", strings.Join(dirs(chosen), " and "), *extract)
+		fmt.Fprintf(stdout, "%s written to %s\n", inWords(dirs(chosen)), *extract)
 		fmt.Fprintf(stdout, "analyze %s with: petard analyze %s\n",
 			pronoun(chosen), strings.Join(arguments(*extract, chosen), " "))
 		return exitOK
@@ -171,7 +178,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// The command on a line of its own, so that wrapping never splits it.
 	render.Print(stdout, fmt.Sprintf("That was %s of the demo, written by hand with defects in %s.\n"+
 		"Run %s to get the files, edit them, and analyze them again.",
-		strings.Join(collect(chosen, func(f fixture) string { return f.what }), " and "), pronoun(chosen), extractCommand), "")
+		inWords(collect(chosen, func(f fixture) string { return f.what })), pronoun(chosen), extractCommand), "")
 	return exitOK
 }
 
@@ -200,6 +207,15 @@ func collect(chosen []fixture, of func(fixture) string) []string {
 		out = append(out, of(f))
 	}
 	return out
+}
+
+// inWords lists names the way a sentence does: a, b and c.
+func inWords(names []string) string {
+	last := len(names) - 1
+	if last < 1 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:last], ", ") + " and " + names[last]
 }
 
 func pronoun(chosen []fixture) string {

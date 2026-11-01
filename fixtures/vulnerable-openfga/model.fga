@@ -1,0 +1,40 @@
+# The OpenFGA model of Quill, the documents service of the OPA fixture, with defects
+# built into it on purpose. EXPECTED.md says what the analysis has to find in it, and
+# what it must not.
+model
+  schema 1.1
+
+type user
+
+type team
+  relations
+    define member: [user]
+
+type folder
+  relations
+    define parent: [folder]
+    define viewer: [user]
+    define view: viewer or view from parent
+
+type document
+  relations
+    define parent: [folder]
+    define owner: [user]
+    define editor: [user, user with not_expired]
+    define viewer: [user, user:*, team#member, user with ip_allowlist]
+    define banned: [user]
+    define edit: owner or editor
+    define view: viewer or edit or view from parent
+    define access: view but not banned
+
+# A viewer may be held to a network. The network is written when the document is
+# shared; the address is the caller's, and the check is meant to supply it.
+condition ip_allowlist(user_ip: ipaddress, cidr: string) {
+  user_ip.in_cidr(cidr)
+}
+
+# An editor may be held to a date. The date is written when the editor is added; the
+# time is the request's, and the check is meant to supply it.
+condition not_expired(now: timestamp, until: timestamp) {
+  now < until
+}

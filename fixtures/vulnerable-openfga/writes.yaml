@@ -1,0 +1,104 @@
+# Who can write each tuple of Quill's documents model, and who can make a new account
+# or folder.
+#
+# It is the one part of the fixture that is NOT in the model: OpenFGA says which tuples
+# are well formed, this says which of them the application lets an end user bring
+# about. Here it is declared by hand, the way it will have to be in the general case.
+# Each rule carries a defect on purpose; EXPECTED.md says which finding it opens.
+schema_version: 1
+model: relationship-writes
+
+writes:
+  # ---------------------------------------------------------------------
+  # Anyone may share a document: add a viewer, a person, a team, or everyone.
+  # The defect is the open gate, which lets a coalition write itself, a sybil,
+  # or a wildcard in. The network a viewer is held to is chosen when the share
+  # is made; the caller's address comes with the check.
+  - resource: document
+    relation: viewer
+    operations: [create]
+    gate: anyone
+    subject: [user, "team#member"]
+    wildcard: true
+    caveat:
+      - name: ip_allowlist
+        parameters:
+          cidr: writer
+          user_ip: application
+    via: "POST /api/v1/documents/{id}/viewers"
+
+  # ---------------------------------------------------------------------
+  # Whoever can view a document may add editors. The defect is that view, the
+  # weakest relation, gates writing editor, the stronger one. The date an editor
+  # is held to is chosen when the editor is added; the time comes with the check.
+  - resource: document
+    relation: editor
+    operations: [create]
+    gate: { holds: view }
+    subject: [user]
+    caveat:
+      - name: not_expired
+        parameters:
+          until: writer
+          now: application
+    via: "POST /api/v1/documents/{id}/editors"
+
+  # ---------------------------------------------------------------------
+  # Anyone may move a document into a folder, which grants it the view of that
+  # folder. A coalition that controls a folder links a document it does not own
+  # to it.
+  - resource: document
+    relation: parent
+    operations: [create]
+    gate: anyone
+    subject: [folder]
+    via: "POST /api/v1/documents/{id}/move"
+
+  # ---------------------------------------------------------------------
+  # Anyone may lift a ban, their own included, which an exclusion reads.
+  - resource: document
+    relation: banned
+    operations: [delete]
+    gate: anyone
+    subject: [user]
+    via: "DELETE /api/v1/documents/{id}/bans/{user}"
+
+  # ---------------------------------------------------------------------
+  # Anyone may join any team, and a document a team can view is then viewable by
+  # whoever joined.
+  - resource: team
+    relation: member
+    operations: [create]
+    gate: anyone
+    subject: [user]
+    via: "POST /api/v1/teams/{id}/members"
+
+creates:
+  # ---------------------------------------------------------------------
+  # Sign-up. Anybody can make an account, which is what puts sybil subjects in
+  # a coalition.
+  - creates: user
+    gate: anyone
+    via: "POST /api/v1/users"
+
+  # ---------------------------------------------------------------------
+  # Anyone can make a folder and is its viewer, so a coalition controls a folder
+  # to move documents into.
+  - creates: folder
+    gate: anyone
+    writes:
+      - resource: "{created}"
+        relation: viewer
+        subject: "{creator}"
+    via: "POST /api/v1/folders"
+
+# ---------------------------------------------------------------------------
+# Not declared, and so not writable by a coalition (section 4.3 of the
+# definitions): what is left out is a missed write, never an invented one.
+#
+#   document#owner  <- set when a document is created, by a service. Whoever
+#                      could write it would own any document, so it has no rule
+#                      here and the run reports it as a relation to find a safe
+#                      gate for.
+#   folder#parent, folder#viewer  <- a folder's own structure, managed by the
+#                      service that creates folders.

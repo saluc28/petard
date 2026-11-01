@@ -17,7 +17,7 @@ import (
 // Embedded holds the fixtures, each under the directory it has in the
 // repository.
 //
-//go:embed vulnerable-bundle vulnerable-spicedb
+//go:embed vulnerable-bundle vulnerable-spicedb vulnerable-openfga
 var Embedded embed.FS
 
 const (
@@ -32,6 +32,12 @@ const (
 	// case for each Zanzibar pattern. `fixtures/vulnerable-spicedb/EXPECTED.md`
 	// declares what an analysis has to find in it.
 	SpiceDBDir = "vulnerable-spicedb"
+
+	// OpenFGADir is the OpenFGA model of the same documents service, with a store
+	// file whose tuples and checks hold a case and a counter case for each
+	// Zanzibar pattern. `fixtures/vulnerable-openfga/EXPECTED.md` declares what an
+	// analysis has to find in it.
+	OpenFGADir = "vulnerable-openfga"
 )
 
 // ExistsError is returned when the directory a fixture unpacks into is already
@@ -44,8 +50,8 @@ type ExistsError struct {
 // Error names the directory that is in the way.
 func (e *ExistsError) Error() string { return e.Path + " is already there" }
 
-// Unpack writes the fixtures named by their directory, BundleDir or
-// SpiceDBDir, under dir, creating dir if it is not there.
+// Unpack writes the fixtures named by their directory, BundleDir, SpiceDBDir or
+// OpenFGADir, under dir, creating dir if it is not there.
 //
 // Nothing is written when the directory of one of them is already under dir.
 // The files are written through an os.Root, so a link under dir cannot lead a

@@ -20,6 +20,16 @@ func TestUnpackWritesTheFixturesNamed(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, BundleDir)); err == nil {
 		t.Error("the bundle was written, and only the SpiceDB fixture was named")
 	}
+	if _, err := os.Stat(filepath.Join(dir, OpenFGADir)); err == nil {
+		t.Error("the OpenFGA fixture was written, and only the SpiceDB fixture was named")
+	}
+
+	if err := Unpack(dir, OpenFGADir); err != nil {
+		t.Fatalf("Unpack() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, OpenFGADir, "store.fga.yaml")); err != nil {
+		t.Errorf("the OpenFGA fixture is not there: %v", err)
+	}
 }
 
 // A fixture already under the directory, edited perhaps, is not written over,

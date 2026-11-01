@@ -77,6 +77,11 @@ func TestVersionSaysWhichBuild(t *testing.T) {
 		if !strings.Contains(out, "\nspicedb v") {
 			t.Errorf("%s does not say which SpiceDB is compiled in:\n%s", name, out)
 		}
+		for _, line := range []string{"\nopenfga v", "\nopenfga-language v"} {
+			if !strings.Contains(out, line) {
+				t.Errorf("%s does not say which OpenFGA is compiled in, no %q:\n%s", name, line, out)
+			}
+		}
 	}
 }
 
@@ -117,7 +122,7 @@ func TestHelpGoesToStdout(t *testing.T) {
 	}
 	// Somebody who has only the binary learns here what it is for and where to
 	// start.
-	for _, want := range []string{"Petard reads Rego (OPA) policies and SpiceDB schemas", `Start with "petard demo"`} {
+	for _, want := range []string{"Petard reads Rego (OPA) policies, SpiceDB schemas and OpenFGA models", `Start with "petard demo"`} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("the help does not say %q:\n%s", want, stdout.String())
 		}
