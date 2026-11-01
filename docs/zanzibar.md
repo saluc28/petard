@@ -1,9 +1,9 @@
 # Zanzibar models (ReBAC)
 
 How Petard reads a relationship-based model: what the engine holds of a schema, how it answers a
-check, how those answers are held to SpiceDB, and the patterns it applies.
-[spicedb.md](spicedb.md) has the files Petard reads from SpiceDB and what a run on them prints, and
-[concepts.md](concepts.md) what every engine shares.
+check, how those answers are held to SpiceDB and OpenFGA, and the patterns it applies.
+[spicedb.md](spicedb.md) and [openfga.md](openfga.md) have the files Petard reads from each product
+and what a run on them prints, and [concepts.md](concepts.md) what every engine shares.
 
 ## The model
 
@@ -12,7 +12,9 @@ and permissions computed from them. SpiceDB compiles its schema language into th
 userset rewrites of the Zanzibar paper (`pkg/schemadsl/compiler/compiler.go:36-42` at v1.56.2),
 and Petard reads the compiled form rather than the text. The front end in
 `internal/zanzibar/spicedb` compiles a schema with SpiceDB's own compiler and lowers what it
-returns into the model of `internal/zanzibar`, which imports nothing from SpiceDB.
+returns into the model of `internal/zanzibar`, which imports nothing from SpiceDB. OpenFGA compiles
+its language into the same rewrites (`pkg/typesystem/typesystem.go:1005-1124` at v1.22.1), and the
+front end in `internal/zanzibar/openfga` lowers them into the same model.
 
 A relation lists the subjects a relationship of it may hold:
 
@@ -22,22 +24,36 @@ A relation lists the subjects a relationship of it may hold:
 - any of them with a caveat, `user with ip_allowlist`, or with an expiration,
   `user with expiration`.
 
+OpenFGA writes the same list in brackets, `[user, group#member, user:*, user with ip_allowlist]`,
+and its tuples carry no expiration (`openfga/v1/openfga.proto:161-199` in openfga/api at
+f153694bfc20).
+
 A permission is an expression over the relations and permissions of the same object:
 
-| Written | Holds when |
-|---|---|
-| `a + b` | either holds |
-| `a & b` | both hold |
-| `a - b` | `a` holds and `b` does not |
-| `parent->view`, `parent.any(view)` | `view` holds on any object `parent` reaches |
-| `parent.all(view)` | `view` holds on every object `parent` reaches, and `parent` reaches one |
-| `self` | the subject is the object itself |
-| `nil` | never |
+| SpiceDB | OpenFGA | Holds when |
+|---|---|---|
+| `a + b` | `a or b` | either holds |
+| `a & b` | `a and b` | both hold |
+| `a - b` | `a but not b` | `a` holds and `b` does not |
+| `parent->view`, `parent.any(view)` | `view from parent` | `view` holds on any object `parent` reaches |
+| `parent.all(view)` | | `view` holds on every object `parent` reaches, and `parent` reaches one |
+| `self` | | the subject is the object itself |
+| `nil` | | never |
+
+SpiceDB declares a relation, what is written, apart from a permission, what is asked. OpenFGA keeps
+both under one name: `define viewer: [user] or editor` stores tuples under `viewer`, and a check of
+`viewer` also reads `editor`. The engine holds that as a
+relation and a permission of one name, the permission reading the relation through the expression
+`Stored`, the `_this` of the Zanzibar paper. So a relation of an OpenFGA model can be asked and can
+be raised, except for two kinds that stay relations alone: one an arrow walks, which OpenFGA holds
+to be direct (`pkg/typesystem/typesystem.go:1349-1353` at v1.22.1), and one read only to subtract
+it, where holding it opens nothing.
 
 A caveat is a condition a relationship can carry: a CEL expression over typed parameters, such as
-`user_ip.in_cidr(cidr)`. The engine never reads the expression. The front end evaluates it in
-SpiceDB's own CEL environment, so the types SpiceDB adds, `ipaddress` among them, behave as they
-do there.
+`user_ip.in_cidr(cidr)`. The engine never reads the expression. The front end evaluates it in the
+product's own CEL environment, so the types the product adds, `ipaddress` among them, behave as they
+do there. OpenFGA calls a caveat a condition and a relationship a tuple, and a report on an OpenFGA
+model uses those words.
 
 ## How a check is answered
 
@@ -46,9 +62,11 @@ answers: no, yes, or conditional. Conditional is yes if a caveat on the way turn
 the check leaves open when it does not supply every value the caveat reads. Combined, `+` takes
 the higher of two answers and `&` the lower. `a - b` is no where `b` is yes, and conditional
 where `b` is conditional and `a` holds at all. That is the three-valued logic SpiceDB applies to
-caveats it cannot settle (`internal/caveats/run.go:274-357` at v1.56.2).
+caveats it cannot settle (`internal/caveats/run.go:274-357` at v1.56.2). OpenFGA has no conditional
+answer: a check that stops on a condition it cannot decide is refused, and the engine reads that as
+conditional.
 
-The rest follows SpiceDB, at v1.56.2:
+For a SpiceDB schema the rest follows SpiceDB, at v1.56.2:
 
 - A caveat is evaluated on the context the check supplies, with the context written on the
   relationship copied over it, so a value the relationship carries wins
@@ -69,6 +87,28 @@ default (`pkg/cmd/server/server.go:100`), and the check then fails with an error
 (`internal/dispatch/dispatch.go:133-135`). Petard stops at ten thousand nested checks, so a chain
 of relationships long enough to exhaust the stack ends in an error rather than a crash.
 
+For an OpenFGA model the rest follows OpenFGA, at v1.22.1:
+
+- A condition is evaluated on the context the check supplies, with the context written on the tuple
+  merged over it, so a value the tuple carries wins (`internal/condition/eval/eval.go:112-123`,
+  `internal/condition/condition.go:218-223`). `PTD-ZAN-001` rests on this as it does on SpiceDB.
+- A condition evaluated without a parameter it reads is an error
+  (`internal/condition/eval/eval.go:131-137`), and a check that stops on it is refused with a
+  validation error.
+- A tuple whose condition does not hold is not followed (`internal/checkutil/checkutil.go:85-91`,
+  `internal/graph/check.go:909-915`), so a loop behind it is never met.
+- A userset asked as a subject holds its own relation (`internal/graph/check.go:434-438`).
+- A wildcard can be the subject of a check, as OpenFGA's own suite asks
+  (`assets/tests/consolidated_1_1_tests.yaml:2972-2976`). The engine has no question that stands for
+  it, and leaves such a check out.
+
+A relation that only reaches itself OpenFGA can walk with a set of what it has seen, which meets no
+loop (`internal/graph/recursive_resolver.go:277-300`). Otherwise it dispatches each step, and a loop
+it meets on the side an exclusion subtracts means the exclusion is not allowed
+(`internal/graph/check.go:358-360`). The front end tells the engine which loops a check meets, in
+`Model.Walk`. Past its resolution depth, 25 by default (`pkg/server/config/config.go:25`), a check
+fails with an error (`internal/graph/check.go:415-416`).
+
 ## Held to SpiceDB
 
 The engine's answers are held to SpiceDB's own in CI. For every validation file of Petard's tests,
@@ -85,6 +125,28 @@ answering. To run it with a zed binary of your own:
 ```
 PETARD_ZED=zed PETARD_ZANZIBAR_CORPUS="$(go list -m -f '{{.Dir}}' github.com/authzed/spicedb)/internal/services/integrationtesting/testconfigs" go test ./internal/zanzibar/spicedb -run TestOracle
 ```
+
+## Held to OpenFGA
+
+The engine's answers are held to OpenFGA's own `Check` on every `go test`, with nothing to install
+and nothing reached over a network. A server from `pkg/server` of OpenFGA v1.22.1 runs in the test
+process, as it ships, with its in-memory store. For every stage of Petard's test models, the OpenFGA
+fixture `petard demo` carries and the check tests OpenFGA ships (`assets/tests`), the engine answers
+every check the objects of the stage allow, with objects and usersets as subjects, with no context
+and with each context the stage's assertions supply, and the server is asked the same.
+
+It agrees on more than 20,000 checks. On about 210 more the two fit without being equal, all of them
+on a condition the check leaves undecided: OpenFGA has no conditional answer, and `compareOracle` in
+the test says what fits and why. Left out are 57 on an inline condition, which the engine reads as
+conditional and does not evaluate, and about 15 past OpenFGA's resolution depth. The counts move by a
+few from one run to the next, and the test holds on each. To run it:
+
+```
+go test ./internal/zanzibar/openfga -run 'TestOracle|TestCorpus' -v
+```
+
+`TestCorpus` reads the answers OpenFGA's own suite asserts, 454 answers and 13 refusals, and the
+engine agrees with them.
 
 ## The patterns
 
@@ -104,16 +166,17 @@ in `taxonomy-registry/zanzibar/` are the source of truth.
 
 `PTD-ZAN-001` reads, for every parameter of every caveat a relation allows, whether the parameter
 is meant for the check and who writes the relation. A write may set any parameter of the caveat
-(`internal/relationships/validation.go:248-262` at v1.56.2), so the writer can fix such a
-parameter once, for every check to come. In the fixture those parameters are the caller's address
+(`internal/relationships/validation.go:248-262` at SpiceDB v1.56.2,
+`internal/validation/validation.go:284-309` at OpenFGA v1.22.1), so the writer can fix such a
+parameter once, for every check to come. In the fixtures those parameters are the caller's address
 and the time of the request.
 
 With a write model the match is a finding: the model marks the parameter the application's and
 names the gate that says who writes the relation, which petard confirms a coalition can reach
-from a starting position. Without one, the validation file is the evidence of a candidate: an
-assertion supplies the parameter after `with`, or the relationships of the relation leave it out
-and none writes it, and the candidate carries a check of the file whose answer rises once a
-relationship fixes the value.
+from a starting position. Without one, the validation file or the store file is the evidence of a
+candidate: a check supplies the parameter, after `with` in an assertion or under `context` in a
+test, or the relationships of the relation leave it out and none writes it, and the candidate
+carries a check of the file whose answer rises once a relationship fixes the value.
 
 A parameter every relationship writes and no check supplies, the network an allowlist holds a
 viewer to, is the writer's by design, and the pattern leaves it alone.
@@ -121,7 +184,7 @@ viewer to, is the writer's by design, and the pattern leaves it alone.
 `PTD-ZAN-002` through `PTD-ZAN-008` ask a different question, the one the definitions open with:
 can a coalition, writing only what the write model allows, raise a permission it did not hold on an
 object that was there before it started. The engine runs a closure from the starting states, the
-relationships of the validation file and the positions generated from the schema, and labels each
+relationships of the validation file or the store file and the positions generated from the schema, and labels each
 escalation it finds by its decisive write, the write after which the permission rises (section 7.1
 of the definitions): a delete under an exclusion, a wildcard subject, an arrow link to a controlled
 object, a userset join, a grant written for another, and a self-write behind a permission or an
@@ -135,14 +198,14 @@ The categories of the registry with no Zanzibar instance, and why, are in sectio
 
 ## What a match rests on
 
-Who writes a relation, and with which context, is decided by the application that writes to
-SpiceDB, and no schema says it. A `relationship-writes` write model beside the schema does: it
+Who writes a relation, and with which context, is decided by the application that writes to the
+product, and no schema says it. A `relationship-writes` write model beside the schema does: it
 names who writes each relation and, per caveat parameter, whether the writer or the application
 fills it. With one, a match is a finding; without one, a candidate, and `-fail-on any` is what
 fails a run on a candidate. A schema a write model stands beside is analyzed even with no
-validation file: the escalation patterns run from the positions generated from the schema, so
-findings surface without a validation file written by hand. A schema with neither a write model
-nor a validation file has nothing to run from, and the report names it as one with no evidence.
+validation file or store file: the escalation patterns run from the positions generated from the
+schema, so findings surface without such a file written by hand. A schema with neither a write
+model nor such a file has nothing to run from, and the report names it as one with no evidence.
 `petard export` reads the schemas the same way, and draws the escalations it finds as a BloodHound
 OpenGraph.
 
@@ -152,7 +215,8 @@ The write model is a YAML file that declares `model: relationship-writes`, the s
 the OPA write model (`model: write-paths`); the kind tells the two apart. `petard analyze` reads
 one found beside a schema, and the `-write-model` flag passes one by path. A relation with no rule
 is not writable by a coalition, so what is left out is a missed write, never an invented one.
-`fixtures/vulnerable-spicedb/writes.yaml` is a worked example.
+`fixtures/vulnerable-spicedb/writes.yaml` and `fixtures/vulnerable-openfga/writes.yaml` are worked
+examples.
 
 A `writes` entry is a rule for one relation:
 

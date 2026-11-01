@@ -7,7 +7,7 @@ behind it.
 
 ## Scope
 
-Petard reads Rego policies and SpiceDB schemas, works out what their decisions
+Petard reads Rego policies, SpiceDB schemas and OpenFGA models, works out what their decisions
 depend on, applies the patterns in `taxonomy-registry/`, and exports the analysis
 of a policy as a BloodHound OpenGraph. It is not a linter, not a policy engine,
 and not a general BloodHound client.
@@ -19,10 +19,11 @@ conditions enter as strings that are already serialized. That constraint is what
 lets a second policy engine reuse the model instead of forcing a rewrite of it,
 and it is cheap to keep only as long as nobody breaks it once.
 
-The engine in `internal/zanzibar` imports nothing from SpiceDB. The front end in
-`internal/zanzibar/spicedb` compiles a schema and lowers it into the engine's
-model, and it is the one package that knows which product a model came from.
-Where the products differ, the front end says so in what it builds.
+The engine in `internal/zanzibar` imports nothing from SpiceDB or OpenFGA. The
+front ends in `internal/zanzibar/spicedb` and `internal/zanzibar/openfga` compile
+a schema or a model and lower it into the engine's model, and the engine does not
+know which product a model came from. Where the products differ, the front end
+says so in what it builds.
 
 Analyzing a policy never calls the endpoints written in it. Partial evaluation
 can be told to evaluate nondeterministic builtins, and it is not: a run of the
@@ -69,7 +70,7 @@ queries. `fixtures/vulnerable-bundle/EXPECTED.md` declares what the engine has
 to find and what it must not, and it was written before the engine: changing it
 to match a new result turns the criterion into a description of whatever the
 code happens to do. `fixtures/vulnerable-spicedb/EXPECTED.md` is the same for the
-SpiceDB schema.
+SpiceDB schema, and `fixtures/vulnerable-openfga/EXPECTED.md` for the OpenFGA model.
 
 The Zanzibar engine is held to SpiceDB by `TestOracle` in
 `internal/zanzibar/spicedb`. It answers every check the objects of each
@@ -81,6 +82,13 @@ the engine has to keep SpiceDB agreeing:
 ```
 PETARD_ZED=zed PETARD_ZANZIBAR_CORPUS="$(go list -m -f '{{.Dir}}' github.com/authzed/spicedb)/internal/services/integrationtesting/testconfigs" go test ./internal/zanzibar/spicedb -run TestOracle
 ```
+
+It is held to OpenFGA by `TestOracle` in `internal/zanzibar/openfga`, which needs
+nothing installed and runs with every `go test`. It starts a server from
+`pkg/server` of OpenFGA v1.22.1 in the test process, and asks it every check the
+objects of `testdata`, the OpenFGA fixture and the test suite OpenFGA ships allow.
+`TestFixtureWitnessesHoldOnCheck` makes the writes of every escalation found on the
+fixture on a real store, and asks `Check` before and after.
 
 A block of output in a Markdown file, marked with `<!-- output of: petard ... -->`
 on the line before its fence, is checked against what the command prints by
@@ -125,6 +133,7 @@ internal/opaengine         everything that knows what Rego is
 internal/taxonomy          the registry reader and the patterns for policies
 internal/zanzibar          the engine for Zanzibar models and its patterns, which knows no product
 internal/zanzibar/spicedb  the SpiceDB front end, the one package that imports SpiceDB
+internal/zanzibar/openfga  the OpenFGA front end, the one package that imports OpenFGA
 internal/graph             the engine-neutral model of the exported graph
 internal/opengraph         the adapter to what BloodHound ingests, over bhgraph
 internal/writemodel        who can write which path, declared rather than inferred
@@ -134,7 +143,7 @@ queries/                   the saved Cypher queries, one file each
 taxonomy-registry/         the patterns as versioned data, one directory per engine
 pep-registry/              the enforcement points as versioned data, embedded for -pep
 schema/                    the extension definition schema, generated from the model
-fixtures/                  the policy and the SpiceDB schema written by hand, embedded for demo
+fixtures/                  the policy, the SpiceDB schema and the OpenFGA model written by hand, embedded for demo
 ```
 
 ## Reporting a security issue

@@ -5,12 +5,12 @@
 [![Security](https://github.com/saluc28/petard/actions/workflows/security.yml/badge.svg)](https://github.com/saluc28/petard/actions/workflows/security.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/saluc28/petard.svg)](https://pkg.go.dev/github.com/saluc28/petard)
 
-An authorization system answers who has access now: OPA evaluates a decision, SpiceDB answers a
-check. Petard asks who can change that answer without changing the policy: by writing the data a
-decision reads, by setting a part of the request it trusts, or by writing a relationship with the
-context its caveat reads already filled in. It reads Rego (OPA) policies and SpiceDB schemas,
-applies a registry of escalation patterns kept as data, and reports each match with what it rests
-on and, where it finds one, a request or a check that shows it.
+An authorization system answers who has access now: OPA evaluates a decision, SpiceDB and OpenFGA
+answer a check. Petard asks who can change that answer without changing the policy: by writing the
+data a decision reads, by setting a part of the request it trusts, or by writing a relationship
+with the context its caveat reads already filled in. It reads Rego (OPA) policies, SpiceDB schemas
+and OpenFGA models, applies a registry of escalation patterns kept as data, and reports each match
+with what it rests on and, where it finds one, a request or a check that shows it.
 
 A linter sees one file. Petard is built to see the policy, what it decides on and who can write
 that, together, because that is where the interesting failures live: the ones that cross the line
@@ -25,12 +25,12 @@ an admission controller or a configuration check, and the report says so when th
 | Engine | Reads | Patterns | Answers held to |
 |---|---|---|---|
 | [OPA](docs/opa.md) | Rego policies in either syntax, directories and bundle archives, a running OPA over its API, and the data beside them | 13, `PTD-OPA-001` to `PTD-OPA-013` | OPA v1.21.4, compiled in, which Petard asks by partial evaluation what is left of each decision |
-| [Zanzibar](docs/zanzibar.md) | [SpiceDB](docs/spicedb.md) schemas (`.zed`) and the validation files `zed validate` reads | 8, `PTD-ZAN-001` to `PTD-ZAN-008` | SpiceDB v1.57.0, whose compiler and caveats are compiled in, and `zed validate`, which agrees with the engine on 26,543 checks in CI |
+| [Zanzibar](docs/zanzibar.md) | [SpiceDB](docs/spicedb.md) schemas (`.zed`) and the validation files `zed validate` reads, [OpenFGA](docs/openfga.md) models (`.fga`, `fga.mod`, JSON) and the store files `fga model test` reads | 8, `PTD-ZAN-001` to `PTD-ZAN-008` | SpiceDB v1.57.0, whose compiler and caveats are compiled in, and `zed validate`, which agrees with the engine on 26,543 checks in CI. OpenFGA v1.22.1, whose type system and conditions are compiled in, and `Check` of a server in the test process, which agrees with the engine on more than 20,000 checks |
 
 On a policy, a match becomes a finding once what it rests on is known: the policy alone, or a
-write model and an enforcement point you declare. On a SpiceDB schema it becomes a finding once a
-`relationship-writes` write model names who writes the relationship, a `writes.yaml` beside the
-schema or one given with `-write-model`, and stays a candidate without one.
+write model and an enforcement point you declare. On a SpiceDB schema or an OpenFGA model it
+becomes a finding once a `relationship-writes` write model names who writes the relationship, a
+`writes.yaml` beside the schema or one given with `-write-model`, and stays a candidate without one.
 [docs/concepts.md](docs/concepts.md) is what the two engines share.
 
 ## Quickstart
@@ -44,12 +44,13 @@ petard analyze path/to/policy-or-schema
 ```
 
 Without Go, [Install](#install) has a binary for Linux, macOS and Windows, and a container image.
-Analyzing a policy never calls the endpoints written in it, and analyzing a schema never connects
-to SpiceDB.
+Analyzing a policy never calls the endpoints written in it, and analyzing a schema or a model
+connects to a server only when a path names one.
 
-`demo` analyzes a policy and a SpiceDB schema carried inside the binary, written by hand with
-defects in them, so there is something to look at before you point the tool at your own.
-`petard demo opa` and `petard demo spicedb` take one of them alone. For the policy it leads with
+`demo` analyzes a policy, a SpiceDB schema and an OpenFGA model carried inside the binary, written
+by hand with defects in them, so there is something to look at before you point the tool at your
+own. `petard demo opa`, `petard demo spicedb` and `petard demo openfga` take one of them alone. For
+the policy it leads with
 who can take whose place:
 
 <!-- output of: petard demo opa -->
@@ -90,11 +91,13 @@ writes for itself or another.
 application was meant to supply, and `raises` the permissions the exemption lifts from conditional
 to unconditional. Without a write model the same shape is a candidate. Around these the demo counts
 the matches by pattern, and for the policy says how much to trust them. `-v` adds the evidence
-behind the policy: every read with its file and line, and every place to look.
+behind the policy: every read with its file and line, and every place to look. The OpenFGA model is
+the same service in the words of its product, a condition on a tuple rather than a caveat on a
+relationship.
 
 `analyze` needs no flags to start. Where a policy annotates no entrypoint it takes the rules no
-other rule uses as the decisions, it reads the data the bundle carries and the SpiceDB files under
-the paths, and it lists what only you can answer as questions.
+other rule uses as the decisions, it reads the data the bundle carries and the SpiceDB and OpenFGA
+files under the paths, and it lists what only you can answer as questions.
 [docs/ten-minutes.md](docs/ten-minutes.md) takes a public policy and a public schema from that
 first run to an answer.
 
@@ -131,13 +134,13 @@ Invoke-WebRequest -Uri "https://github.com/saluc28/petard/releases/latest/downlo
 
 In a pipeline, `ghcr.io/saluc28/petard:latest`, or pin the version.
 
-`petard version` says which build it is and which OPA and SpiceDB are compiled into it, which is
-what an analysis depends on.
+`petard version` says which build it is and which OPA, SpiceDB and OpenFGA are compiled into it,
+which is what an analysis depends on.
 
 ## BloodHound
 
-The escalations Petard finds, in a policy or a SpiceDB schema, go to BloodHound CE as an
-OpenGraph, where they are edges pathfinding walks. `petard export` writes the payload or uploads
+The escalations Petard finds, in a policy, a SpiceDB schema or an OpenFGA model, go to BloodHound
+CE as an OpenGraph, where they are edges pathfinding walks. `petard export` writes the payload or uploads
 it, installs the extension schema and 48 saved queries, and with `-verify` asks the server for a
 path along every escalation, and fails if it will not walk one.
 
@@ -160,7 +163,8 @@ petard analyze -quiet -fail-on findings -write-model write-model.yaml -data data
 | 3 | matches above the threshold |
 
 `-fail-on findings` is the default and counts findings; `any` counts candidates as well, which is
-what fails a run on a SpiceDB schema, and `none` reports and exits 0 whatever it finds. Exit 3
+what fails a run on a schema or a model with no write model, and `none` reports and exits 0 whatever
+it finds. Exit 3
 means the analysis ran and found something, exit 1 means it could not run, and a pipeline needs
 to tell those apart.
 
@@ -176,11 +180,11 @@ It does not decide whether a finding is a problem in your system. A position in 
 target rather than a defect, and the report says who can take it and leaves the judgment to you.
 
 It does not know who writes what in your deployment unless you say so. A match that rests on who
-writes a path of a policy or a relation of a SpiceDB schema stays a candidate until a write model
-names the writer.
+writes a path of a policy, or a relation of a SpiceDB schema or an OpenFGA model, stays a candidate
+until a write model names the writer.
 
-It reads files, and a running OPA over its API, read only. It never asks the server to decide
-anything, and it never connects to SpiceDB.
+It reads files, and a running OPA, SpiceDB or OpenFGA over its API when a path names one, read only.
+It never asks the server to decide anything.
 
 ## Documentation
 
@@ -190,15 +194,18 @@ anything, and it never connects to SpiceDB.
 - [docs/opa.md](docs/opa.md): how a Rego policy is read, the patterns, the flags for a policy of
   your own, BloodHound, and how each claim is checked
 - [docs/zanzibar.md](docs/zanzibar.md): how a Zanzibar model is read and a check answered, how the
-  answers are held to SpiceDB, and the patterns
+  answers are held to SpiceDB and OpenFGA, and the patterns
 - [docs/spicedb.md](docs/spicedb.md): the SpiceDB files Petard reads, and what a run on them
+  prints
+- [docs/openfga.md](docs/openfga.md): the OpenFGA files Petard reads, and what a run on them
   prints
 - [taxonomy-registry/README.md](taxonomy-registry/README.md): the format of a pattern file and
   what `verified` means
 - [pep-registry/README.md](pep-registry/README.md): the format of an enforcement point
   declaration, and the ones the binary carries
-- [fixtures/vulnerable-bundle/EXPECTED.md](fixtures/vulnerable-bundle/EXPECTED.md) and
-  [fixtures/vulnerable-spicedb/EXPECTED.md](fixtures/vulnerable-spicedb/EXPECTED.md): what the
+- [fixtures/vulnerable-bundle/EXPECTED.md](fixtures/vulnerable-bundle/EXPECTED.md),
+  [fixtures/vulnerable-spicedb/EXPECTED.md](fixtures/vulnerable-spicedb/EXPECTED.md) and
+  [fixtures/vulnerable-openfga/EXPECTED.md](fixtures/vulnerable-openfga/EXPECTED.md): what the
   analysis has to find in the demo fixtures, and what it must not
 - [queries/README.md](queries/README.md): the saved queries, and what the BloodHound backend
   will and will not run

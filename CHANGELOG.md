@@ -12,6 +12,9 @@
   the tuples are read over the gRPC API, read only, with a bearer token from `$PETARD_OPENFGA_TOKEN`.
   The write model and the patterns are the ones a SpiceDB schema gets, and the engine's answers are
   held to OpenFGA's own `Check`.
+- `petard demo openfga` analyzes an OpenFGA model carried inside the binary, the service of the
+  SpiceDB fixture, and `petard demo` analyzes it beside the others. `petard version` names the
+  OpenFGA and the OpenFGA language compiled in.
 - `petard analyze` marks a SpiceDB escalation that defeats a time bound. When the decisive write
   sets a relationship the schema lets carry an expiration and the write model leaves that expiration
   for the coalition to set or to omit, the finding carries an `also` line: the grant is renewable or
@@ -33,6 +36,8 @@
 
 ### Changed
 
+- `PTD-ZAN-001` is titled "A relationship fixes a condition value the check was meant to supply",
+  so that it reads for a SpiceDB caveat and for an OpenFGA condition.
 - `petard analyze` proposes safe gates, and `-questions` writes the write-model skeleton, for a
   SpiceDB schema with no write model and no validation file. The gates rest on the positions
   generated from the schema, so pointing petard at a schema alone yields the skeleton to confirm,
@@ -64,6 +69,9 @@
 
 ### Fixed
 
+- The safe gates proposed for a schema no longer call a permission unsafe for an escalation the
+  declared write rules reach on their own. That escalation is reported against those rules, and a
+  relation could read as having no safe gate when one existed.
 - A relation whose type declares no permission to gate on is no longer reported as one every
   permission lets a coalition escalate through, which no permission was tried for. `petard analyze`
   and `-questions` now say what writing it raises, read off the schema: a relation no permission

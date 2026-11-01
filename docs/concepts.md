@@ -7,8 +7,8 @@ match is reported and shown, and where the patterns live. [opa.md](opa.md) and
 ## The question
 
 An authorization system answers who has access now. OPA evaluates a decision against a request
-and the data it holds, and SpiceDB answers a check against the relationships it stores. Petard
-reads the same policy or schema and asks who can change that answer without touching the policy
+and the data it holds, and SpiceDB and OpenFGA answer a check against the relationships they store.
+Petard reads the same policy, schema or model and asks who can change that answer without touching the policy
 itself. The answer can change while the policy stays the same, so Petard reads the policy together
 with what it decides on:
 
@@ -16,8 +16,9 @@ with what it decides on:
   group, the owner of a document;
 - the parts of the request a decision trusts, and who sets them: a flag that says the request is
   exempt, a header the caller writes, a group name an identity provider copies;
-- the relationships a check goes through, and what they carry: in a SpiceDB schema, the context
-  a caveat reads, which whoever writes the relationship can fill in.
+- the relationships a check goes through, and what they carry: in a SpiceDB schema or an OpenFGA
+  model, the context a caveat or a condition reads, which whoever writes the relationship can fill
+  in.
 
 A policy that judges the object it is handed and reads nothing stored, an admission controller or
 a configuration check, gives the question little to work on, and the report says so.
@@ -25,14 +26,15 @@ a configuration check, gives the question little to work on, and the report says
 ## Decisions and subjects
 
 A decision is what an enforcement point asks for: a rule of a Rego policy, or a permission of a
-SpiceDB schema checked on an object. The subject is who asks: the part of the request that names
-the requester in Rego, the subject of the check in SpiceDB.
+SpiceDB schema or a relation of an OpenFGA model, checked on an object. The subject is who asks: the
+part of the request that names the requester in Rego, the subject of the check in the other two.
 
 Rego has no fixed place for either. Petard takes the rules a policy annotates as entrypoints or
 the ones named on the command line, and otherwise the rules no other rule uses. It recognizes the
 subject from the shape of the request unless it is declared, at a level of confidence the report
 prints. A SpiceDB schema declares its permissions and the subjects each relation allows, and a
-validation file holds the checks asked of them.
+validation file holds the checks asked of them. An OpenFGA model does the same, with a store file
+for the checks.
 
 ## What no policy says
 
@@ -46,17 +48,18 @@ Three facts a claim can rest on are in no policy:
   asks for: the identity model, declared next to the enforcement point.
 
 For a Rego policy each is a file Petard reads, given with `-write-model` and `-pep`.
-[opa.md](opa.md#what-holds-a-claim-up) has the details. For a SpiceDB schema, who writes a
-relation and with which context is decided by the application that writes to SpiceDB, which a
-`relationship-writes` write model declares: a `writes.yaml` beside the schema, or one given with
-`-write-model`. [spicedb.md](spicedb.md#a-run) has the details.
+[opa.md](opa.md#what-holds-a-claim-up) has the details. For a SpiceDB schema or an OpenFGA model,
+who writes a relation and with which context is decided by the application that writes to the
+product, which a `relationship-writes` write model declares: a `writes.yaml` beside the schema, or
+one given with `-write-model`. [spicedb.md](spicedb.md#a-run) and [openfga.md](openfga.md#a-run) have
+the details.
 
 ## Findings and candidates
 
 A match is a finding when everything it rests on is known: the policy itself, or a declaration
 that names who writes or who sets. Otherwise it is a candidate. A candidate that rests on who
 writes a path of a policy names the path, the report lists it as a question, and `-questions`
-writes those questions as a write model to fill in. A match on a SpiceDB schema is a finding when
+writes those questions as a write model to fill in. A match on a SpiceDB schema or an OpenFGA model is a finding when
 a `relationship-writes` write model beside it names who writes the relation, and a candidate
 otherwise, for the reason above.
 
@@ -72,8 +75,9 @@ with the product's own tools.
   as an opa test that fails while the escalation is open.
 - A caveat parameter of a schema, matched as a candidate, is `shown by` a check of the validation
   file: the check goes from no to yes once a relationship carries the value. Written into the file
-  that way, `zed validate` fails on the assertion the check came from. A finding, which rests on a
-  write model, names who writes the relation and the permission it raises instead.
+  that way, `zed validate` fails on the assertion the check came from. On an OpenFGA model the check
+  comes from the store file. A finding, which rests on a write model, names who writes the relation
+  and the permission it raises instead.
 
 ## The registry
 
@@ -84,7 +88,7 @@ its verdict from there, and runs the case of each declared false positive in the
 
 A pattern is one instance of a category that does not depend on the engine.
 SELF-ASSERTED-EXEMPTION, whoever is checked supplies the value that lifts the check, is
-`PTD-OPA-009` in Rego, where a request says it is exempt, and `PTD-ZAN-001` in a SpiceDB schema,
+`PTD-OPA-009` in Rego, where a request says it is exempt, and `PTD-ZAN-001` in a Zanzibar model,
 where a relationship carries the value the check was meant to bring. A category with no instance
 in an engine is declared there, with the reason.
 
@@ -100,7 +104,7 @@ petard explain PTD-ZAN-001
 
 ## The graph
 
-The escalations Petard finds, in a policy or a SpiceDB schema, leave it as a BloodHound OpenGraph,
+The escalations Petard finds, in a policy, a SpiceDB schema or an OpenFGA model, leave it as a BloodHound OpenGraph,
 over [bhgraph](https://github.com/saluc28/bhgraph): five node kinds and five relationship kinds,
 declared in `internal/graph`.
 
@@ -122,7 +126,7 @@ the model and the schema is generated from it, so the two cannot drift apart.
 
 The kind names and the property keys are a contract. They end up in ingested data and in saved
 queries, so renaming one means re-ingesting every graph and rewriting every query that mentions
-it. `petard export` reads both a policy and the SpiceDB schemas under its paths, and draws the
+it. `petard export` reads a policy and the SpiceDB schemas and OpenFGA models under its paths, and draws the
 escalations of each into the one graph. A `PTD_CanEscalateTo` from a policy ends at the principal
 whose position is taken; one from a schema ends at the resource a permission is raised on, with
 the permission carried on the edge.
@@ -132,7 +136,8 @@ the permission carried on the edge.
 Each engine is checked against something outside its own code. For a policy that is OPA itself,
 asked by partial evaluation what is left of a decision once the data is known, a fixture written
 by hand with a case and a counter case for each pattern, and worlds generated from a seed with
-the truth about each stated beside it. For a Zanzibar model it is SpiceDB itself: the engine's
+the truth about each stated beside it. For a Zanzibar model it is the product itself. The engine's
 answers to every check of a validation file are written as assertions, and `zed validate` says
-whether SpiceDB gives the same. [opa.md](opa.md#how-the-claims-are-checked) and
-[zanzibar.md](zanzibar.md#held-to-spicedb) have the details.
+whether SpiceDB gives the same. The checks of a store file are asked of `Check`, from an OpenFGA
+server running in the test process. [opa.md](opa.md#how-the-claims-are-checked) has the details for a
+policy, and [zanzibar.md](zanzibar.md#held-to-spicedb) for a model.
