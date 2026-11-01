@@ -1,11 +1,11 @@
-// Package spicesetup finds the SpiceDB side of a command's inputs: the schema
-// and validation files under the paths, the write model beside each schema, and
-// the paths left for the policy loader once those files are taken out.
+// Package zanzibarsetup finds the Zanzibar side of a command's inputs: the schemas
+// and the files that hold one under the paths, the write model beside each schema,
+// and the paths left for the policy loader once those files are taken out.
 //
 // The analyze and export commands both start from it, so the two read the same
 // files the same way and the write-model flag is told apart between the engines
 // in one place rather than in each command.
-package spicesetup
+package zanzibarsetup
 
 import (
 	"context"
@@ -22,16 +22,78 @@ import (
 	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 )
 
-// Found is the SpiceDB side of a command's inputs.
+// Product is the product a file was written for, as a report names it.
+type Product string
+
+// SpiceDB is the product of a .zed schema and of a validation file.
+const SpiceDB Product = "SpiceDB"
+
+// File is one input of a Zanzibar product, in the terms the engine and a report
+// read it in: a schema, or a file that holds or names one with the relationships
+// written against it, on disk or read from a running server.
+type File struct {
+	Product Product
+
+	// Path is where the file was found, written with forward slashes on every
+	// system, as the files of a policy are.
+	Path string
+
+	// SchemaPath is the file the schema was read from: Path itself, or the one the
+	// file names.
+	SchemaPath string
+
+	Model   *zanzibar.Model
+	Caveats zanzibar.CaveatEvaluator
+
+	// Holds is true for a file that brings relationships or checks of its own, a
+	// validation file among them, as against a bare schema.
+	Holds bool
+
+	Relationships []zanzibar.Relationship
+
+	// Assertions are the checks the file asserts, and ExpectedRelations counts the
+	// relations whose subjects it lists.
+	Assertions        []zanzibar.Assertion
+	ExpectedRelations int
+}
+
+// Sample is what the file holds about its schema, for the patterns of the engine
+// to read. now is when expirations are read.
+func (f *File) Sample(now time.Time) zanzibar.Sample {
+	return zanzibar.Sample{
+		Model:         f.Model,
+		Relationships: f.Relationships,
+		Assertions:    f.Assertions,
+		Caveats:       f.Caveats,
+		Now:           now,
+	}
+}
+
+// fromSpiceDB is a SpiceDB file in the terms of this package.
+func fromSpiceDB(f *spicedb.File) *File {
+	return &File{
+		Product:           SpiceDB,
+		Path:              f.Path,
+		SchemaPath:        f.SchemaPath,
+		Model:             f.Schema.Model,
+		Caveats:           f.Schema,
+		Holds:             f.Validation,
+		Relationships:     f.Relationships,
+		Assertions:        f.Assertions,
+		ExpectedRelations: f.ExpectedRelations,
+	}
+}
+
+// Found is the Zanzibar side of a command's inputs.
 type Found struct {
-	// Files are the schema and validation files found under the paths.
-	Files []*spicedb.File
+	// Files are the schemas and the files that hold one, found under the paths.
+	Files []*File
 
 	// WriteModels is the relationship-writes write model for each schema's
 	// directory, keyed by that directory, for the directories that have one.
 	WriteModels map[string]*zanzibar.WriteModel
 
-	// PolicyPaths are the paths with the SpiceDB files named one by one taken
+	// PolicyPaths are the paths with the schema files named one by one taken
 	// out, for the policy loader: a schema named on the command line is not a
 	// Rego file, and the loader reads every file it is handed as one. A directory
 	// stays, since the loader takes only the Rego files under it.
@@ -60,9 +122,13 @@ type Found struct {
 // model, or no flag at all, is left for the policy engine to load.
 func Load(ctx context.Context, paths []string, writeModelPath string) (Found, error) {
 	disk, endpoints := partitionEndpoints(paths)
-	files, err := spicedb.Find(disk)
+	spice, err := spicedb.Find(disk)
 	if err != nil {
 		return Found{}, err
+	}
+	files := make([]*File, 0, len(spice))
+	for _, f := range spice {
+		files = append(files, fromSpiceDB(f))
 	}
 	if len(endpoints) > 0 {
 		token := os.Getenv(spicedb.TokenEnv)
@@ -71,13 +137,13 @@ func Load(ctx context.Context, paths []string, writeModelPath string) (Found, er
 			if err != nil {
 				return Found{}, err
 			}
-			files = append(files, f)
+			files = append(files, fromSpiceDB(f))
 		}
-		// Find sorts what it read from disk; the live schemas are appended after,
-		// so the whole set is sorted again to keep a command reading the same
-		// inputs in the same order on every run.
-		slices.SortFunc(files, func(a, b *spicedb.File) int { return strings.Compare(a.Path, b.Path) })
 	}
+	// Each source sorts what it read from disk, and the live schemas come after,
+	// so the whole set is sorted to keep a command reading the same inputs in the
+	// same order on every run.
+	slices.SortStableFunc(files, func(a, b *File) int { return strings.Compare(a.Path, b.Path) })
 	writeModels, err := discoverWriteModels(files)
 	if err != nil {
 		return Found{}, err
@@ -132,22 +198,22 @@ type Analysis struct {
 // The entries come in the order the files sort, so a command reads the same
 // inputs the same way on every run.
 func (f Found) Analyses(now time.Time) (run []Analysis, noEvidence []string) {
-	readByValidation := map[string]bool{}
+	heldByAFile := map[string]bool{}
 	for _, file := range f.Files {
-		if file.Validation {
-			readByValidation[file.SchemaPath] = true
+		if file.Holds {
+			heldByAFile[file.SchemaPath] = true
 		}
 	}
 	seen := map[string]bool{}
 	for _, file := range f.Files {
 		wm := f.WriteModels[path.Dir(file.SchemaPath)]
-		if file.Validation {
+		if file.Holds {
 			run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm})
 			continue
 		}
 		// A schema a validation file reads is analyzed with that file above; a bare
 		// schema named more than once is analyzed once.
-		if readByValidation[file.SchemaPath] || seen[file.SchemaPath] {
+		if heldByAFile[file.SchemaPath] || seen[file.SchemaPath] {
 			continue
 		}
 		seen[file.SchemaPath] = true
@@ -161,12 +227,11 @@ func (f Found) Analyses(now time.Time) (run []Analysis, noEvidence []string) {
 }
 
 // discoverWriteModels reads a relationship-writes write model from the
-// directory of each schema the SpiceDB files name, so that a schema with a
-// write model beside it is analyzed with one and its matches become findings.
-// A YAML that is not a write model, a validation file among them, is left
-// alone; a write model that does not hold together is an error named to the
-// user.
-func discoverWriteModels(files []*spicedb.File) (map[string]*zanzibar.WriteModel, error) {
+// directory of each schema the files name, so that a schema with a write model
+// beside it is analyzed with one and its matches become findings. A YAML that is
+// not a write model, a validation file among them, is left alone; a write model
+// that does not hold together is an error named to the user.
+func discoverWriteModels(files []*File) (map[string]*zanzibar.WriteModel, error) {
 	models := map[string]*zanzibar.WriteModel{}
 	for _, dir := range dirs(files) {
 		entries, err := os.ReadDir(dir)
@@ -196,7 +261,7 @@ func discoverWriteModels(files []*spicedb.File) (map[string]*zanzibar.WriteModel
 }
 
 // dirs is the distinct directories the schemas live in, in a stable order.
-func dirs(files []*spicedb.File) []string {
+func dirs(files []*File) []string {
 	var out []string
 	for _, f := range files {
 		dir := path.Dir(f.SchemaPath)
@@ -222,9 +287,9 @@ func partitionEndpoints(paths []string) (disk []string, endpoints []spicedb.Endp
 	return disk, endpoints
 }
 
-// nonSchemaPaths are the paths left for the policy loader once the SpiceDB
-// files named one by one are taken out.
-func nonSchemaPaths(paths []string, files []*spicedb.File) []string {
+// nonSchemaPaths are the paths left for the policy loader once the schema files
+// named one by one are taken out.
+func nonSchemaPaths(paths []string, files []*File) []string {
 	named := map[string]bool{}
 	for _, f := range files {
 		named[filepath.Clean(f.Path)] = true

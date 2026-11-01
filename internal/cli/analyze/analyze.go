@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/saluc28/petard/internal/cli/render"
-	"github.com/saluc28/petard/internal/cli/spicesetup"
+	"github.com/saluc28/petard/internal/cli/zanzibarsetup"
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
@@ -127,15 +127,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	// Before the policies, so that a schema that does not compile stops the
 	// run the way a policy that does not parse does. The write-model flag feeds
-	// both engines, and spicesetup tells them apart by the kind the file declares.
+	// both engines, and zanzibarsetup tells them apart by the kind the file declares.
 	ctx := context.Background()
-	setup, err := spicesetup.Load(ctx, paths, *writeModelPath)
+	setup, err := zanzibarsetup.Load(ctx, paths, *writeModelPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
 	style := render.StyleFor(stdout, *noColor)
-	spice, err := runSpiceDB(setup, time.Now(), !*quiet || *questionsPath != "")
+	schemas, err := runZanzibar(setup, time.Now(), !*quiet || *questionsPath != "")
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
@@ -161,9 +161,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		},
 	})
 	if errors.Is(err, opaengine.ErrNoModules) && len(setup.Files) > 0 {
-		printSpiceDB(stdout, spice, patterns, pr)
+		printZanzibar(stdout, schemas, patterns, pr)
 		if *questionsPath != "" {
-			written, err := writeSpiceQuestions(*questionsPath, spice.proposals)
+			written, err := writeSchemaQuestions(*questionsPath, schemas.proposals)
 			if err != nil {
 				fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 				return exitFailure
@@ -172,8 +172,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 				reportEntriesWritten(stdout, written, *questionsPath)
 			}
 		}
-		printFooter(stdout, pr, false, spice.hasEvidence())
-		return spice.exitCode(*failOn)
+		printFooter(stdout, pr, false, schemas.hasEvidence())
+		return schemas.exitCode(*failOn)
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
@@ -195,11 +195,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	printSummary(stdout, analyzed, found, coverage, pr)
 	// The SpiceDB files are summed up beside the policies, ahead of the
 	// evidence -v adds for the policies, so the first screen holds both.
-	if len(setup.Files) > 0 && (!*quiet || len(spice.matches) > 0) {
+	if len(setup.Files) > 0 && (!*quiet || len(schemas.matches) > 0) {
 		fmt.Fprintln(stdout)
-		printSpiceDB(stdout, spice, patterns, pr)
+		printZanzibar(stdout, schemas, patterns, pr)
 	}
-	printFooter(stdout, pr, true, spice.hasEvidence())
+	printFooter(stdout, pr, true, schemas.hasEvidence())
 
 	if *verbose {
 		fmt.Fprintln(stdout)
@@ -245,7 +245,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			reportEntriesWritten(stdout, written, *questionsPath)
 		}
 	}
-	return max(exitCode(found, *failOn), spice.exitCode(*failOn))
+	return max(exitCode(found, *failOn), schemas.exitCode(*failOn))
 }
 
 // reportEntriesWritten says how many write-model entries were written and where,

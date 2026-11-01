@@ -10,16 +10,15 @@ import (
 	"time"
 
 	"github.com/saluc28/petard/internal/cli/render"
-	"github.com/saluc28/petard/internal/cli/spicesetup"
+	"github.com/saluc28/petard/internal/cli/zanzibarsetup"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/zanzibar"
-	"github.com/saluc28/petard/internal/zanzibar/spicedb"
 )
 
-// spiceDBRun is what the patterns of the Zanzibar engine made of the SpiceDB
-// files under the analyzed paths.
-type spiceDBRun struct {
-	files   []*spicedb.File
+// zanzibarRun is what the patterns of the Zanzibar engine made of the schema files
+// under the analyzed paths.
+type zanzibarRun struct {
+	files   []*zanzibarsetup.File
 	matches []zanzibar.Match
 
 	// unread are the schema files that no validation file reads and that have no
@@ -44,7 +43,7 @@ type schemaProposals struct {
 	proposals []zanzibar.GateProposal
 }
 
-// runSpiceDB applies the patterns of the Zanzibar engine to the SpiceDB files
+// runZanzibar applies the patterns of the Zanzibar engine to the schema files
 // found. A schema a validation file reads is analyzed with that file; a schema
 // no validation file reads is analyzed from the positions generated from it
 // when a write model stands beside it, so findings surface without a validation
@@ -54,8 +53,8 @@ type schemaProposals struct {
 // A schema read by two validation files is one schema, and a fact about it is
 // reported once: the first file that shows it, in the order the files sort,
 // is the one the report cites.
-func runSpiceDB(found spicesetup.Found, now time.Time, propose bool) (spiceDBRun, error) {
-	run := spiceDBRun{files: found.Files}
+func runZanzibar(found zanzibarsetup.Found, now time.Time, propose bool) (zanzibarRun, error) {
+	run := zanzibarRun{files: found.Files}
 	analyses, noEvidence := found.Analyses(now)
 	run.unread = noEvidence
 
@@ -75,23 +74,23 @@ func runSpiceDB(found spicesetup.Found, now time.Time, propose bool) (spiceDBRun
 	// closure they run is skipped when a quiet run will neither show nor
 	// serialize them, so a pipeline run does not pay for them.
 	if propose {
-		props, err := spiceProposals(found.Files, found.WriteModels)
+		props, err := proposalsOf(found.Files, found.WriteModels)
 		if err != nil {
-			return spiceDBRun{}, err
+			return zanzibarRun{}, err
 		}
 		run.proposals = props
 	}
 	return run, nil
 }
 
-// spiceProposals are, per schema among the files, the safe gates SafeGates finds
+// proposalsOf are, per schema among the files, the safe gates SafeGates finds
 // for the relations its write model leaves without a rule. The gates rest on the
 // positions generated from the schema, so a schema with no write model yields a
 // skeleton for every writable relation, and one needs no validation file. A
 // schema whose write model already rules every relation leaves nothing to
 // propose and does not appear. One entry per schema, in the order the files
 // sort, so the same inputs print the same bytes.
-func spiceProposals(files []*spicedb.File, writeModels map[string]*zanzibar.WriteModel) ([]schemaProposals, error) {
+func proposalsOf(files []*zanzibarsetup.File, writeModels map[string]*zanzibar.WriteModel) ([]schemaProposals, error) {
 	var out []schemaProposals
 	done := map[string]bool{}
 	for _, f := range files {
@@ -105,12 +104,12 @@ func spiceProposals(files []*spicedb.File, writeModels map[string]*zanzibar.Writ
 			// skeleton the author starts from, rather than nothing.
 			wm = &zanzibar.WriteModel{}
 		}
-		gates, err := zanzibar.SafeGates(f.Schema.Model, wm, f.Schema, zanzibar.Options{})
+		gates, err := zanzibar.SafeGates(f.Model, wm, f.Caveats, zanzibar.Options{})
 		if err != nil {
 			return nil, err
 		}
 		if len(gates) > 0 {
-			out = append(out, schemaProposals{schema: f.SchemaPath, model: f.Schema.Model, proposals: gates})
+			out = append(out, schemaProposals{schema: f.SchemaPath, model: f.Model, proposals: gates})
 		}
 	}
 	return out, nil
@@ -118,7 +117,7 @@ func spiceProposals(files []*spicedb.File, writeModels map[string]*zanzibar.Writ
 
 // counts are the matches by pattern, the way the summary of a policy counts
 // its findings.
-func (r spiceDBRun) counts(patterns []taxonomy.Pattern) []patternCount {
+func (r zanzibarRun) counts(patterns []taxonomy.Pattern) []patternCount {
 	byID := map[string]*patternCount{}
 	for _, m := range r.matches {
 		c, ok := byID[m.PatternID]
@@ -142,13 +141,13 @@ func (r spiceDBRun) counts(patterns []taxonomy.Pattern) []patternCount {
 
 // exitCode is the exit code the matches alone ask for, decided by the rule the
 // findings of a policy are decided by.
-func (r spiceDBRun) exitCode(failOn string) int {
+func (r zanzibarRun) exitCode(failOn string) int {
 	return exitCode(summary{byPattern: r.counts(nil)}, failOn)
 }
 
 // hasEvidence reports whether any match carries a line -v would add, so the
 // footer offers -v only where it shows something the first screen did not.
-func (r spiceDBRun) hasEvidence() bool {
+func (r zanzibarRun) hasEvidence() bool {
 	for _, m := range r.matches {
 		for _, d := range m.Details {
 			if d.Verbose {
@@ -159,20 +158,15 @@ func (r spiceDBRun) hasEvidence() bool {
 	return false
 }
 
-// printSpiceDB says what the SpiceDB files declare and what the patterns found
-// in them. Quiet, it prints the matches alone, and nothing when there are none.
-func printSpiceDB(out io.Writer, r spiceDBRun, patterns []taxonomy.Pattern, p printing) {
+// printZanzibar says what the schema files declare and what the patterns found in
+// them. Quiet, it prints the matches alone, and nothing when there are none.
+func printZanzibar(out io.Writer, r zanzibarRun, patterns []taxonomy.Pattern, p printing) {
 	style := p.style
 	if p.quiet && len(r.matches) == 0 {
 		return
 	}
 	if !p.quiet {
-		fmt.Fprintln(out, style.Bold(render.Count(len(r.files), "SpiceDB file")))
-		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-		for _, f := range r.files {
-			fmt.Fprintf(tw, "  %s\t%s\n", f.Path, describeSpiceDB(f))
-		}
-		tw.Flush()
+		printFiles(out, r.files, style)
 	}
 
 	counts := r.counts(patterns)
@@ -190,6 +184,26 @@ func printSpiceDB(out io.Writer, r spiceDBRun, patterns []taxonomy.Pattern, p pr
 		fmt.Fprintln(out)
 		render.Print(out, path+" has no write model and is read by no validation file under the paths, "+
 			"so the patterns had no rule for who writes its relations and no relationship or check to take as evidence.", "")
+	}
+}
+
+// printFiles lists the files of each product under a heading of its own.
+func printFiles(out io.Writer, files []*zanzibarsetup.File, style render.Style) {
+	var products []zanzibarsetup.Product
+	for _, f := range files {
+		if !slices.Contains(products, f.Product) {
+			products = append(products, f.Product)
+		}
+	}
+	slices.Sort(products)
+	for _, product := range products {
+		of := slices.DeleteFunc(slices.Clone(files), func(f *zanzibarsetup.File) bool { return f.Product != product })
+		fmt.Fprintln(out, style.Bold(render.Count(len(of), string(product)+" file")))
+		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+		for _, f := range of {
+			fmt.Fprintf(tw, "  %s\t%s\n", f.Path, describeFile(f))
+		}
+		tw.Flush()
 	}
 }
 
@@ -247,8 +261,8 @@ func printMatch(out io.Writer, m zanzibar.Match, style render.Style, verbose boo
 	}
 }
 
-func describeSpiceDB(f *spicedb.File) string {
-	m := f.Schema.Model
+func describeFile(f *zanzibarsetup.File) string {
+	m := f.Model
 	relations, permissions := 0, 0
 	for _, t := range m.Types {
 		relations += len(t.Relations)
@@ -260,7 +274,7 @@ func describeSpiceDB(f *spicedb.File) string {
 		render.Count(permissions, "permission"),
 		render.Count(len(m.Caveats), "caveat"),
 	}, ", ")
-	if !f.Validation {
+	if !f.Holds {
 		return declares
 	}
 

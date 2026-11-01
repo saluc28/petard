@@ -18,9 +18,9 @@ import (
 // It refuses to overwrite an existing file, since a write model somebody has
 // already filled in is the last thing to clobber.
 
-// writeSpiceQuestions writes the skeleton to path and returns how many entries it
+// writeSchemaQuestions writes the skeleton to path and returns how many entries it
 // holds. It refuses a path that already exists.
-func writeSpiceQuestions(path string, groups []schemaProposals) (int, error) {
+func writeSchemaQuestions(path string, groups []schemaProposals) (int, error) {
 	if _, err := os.Stat(path); err == nil {
 		return 0, fmt.Errorf("%s already exists, and a write model is not something to overwrite", path)
 	} else if !os.IsNotExist(err) {
@@ -32,20 +32,20 @@ func writeSpiceQuestions(path string, groups []schemaProposals) (int, error) {
 			return 0, fmt.Errorf("creating %s: %w", dir, err)
 		}
 	}
-	content, entries := spiceSkeleton(groups)
+	content, entries := schemaSkeleton(groups)
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		return 0, fmt.Errorf("writing the write model: %w", err)
 	}
 	return entries, nil
 }
 
-// spiceSkeleton renders the write model: a header that says what to do with it,
+// schemaSkeleton renders the write model: a header that says what to do with it,
 // then one entry per relation without a rule, with the subjects the schema
 // allows, the wildcard and the caveats it admits filled in, and a safe
 // permission petard proposes as the gate. The author confirms the gate, narrows
 // the subjects, and fills the via. A relation with no safe gate is written as a
 // comment, since proposing an unsafe gate would be wrong.
-func spiceSkeleton(groups []schemaProposals) (string, int) {
+func schemaSkeleton(groups []schemaProposals) (string, int) {
 	var b strings.Builder
 	b.WriteString("# Write model skeleton written by petard analyze -questions.\n")
 	b.WriteString("#\n")

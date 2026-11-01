@@ -1,4 +1,4 @@
-package spicesetup
+package zanzibarsetup
 
 import (
 	"context"

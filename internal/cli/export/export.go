@@ -31,7 +31,7 @@ import (
 	"github.com/saluc28/bhgraph/client"
 
 	"github.com/saluc28/petard/internal/cli/render"
-	"github.com/saluc28/petard/internal/cli/spicesetup"
+	"github.com/saluc28/petard/internal/cli/zanzibarsetup"
 	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
@@ -138,7 +138,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	ctx := context.Background()
-	setup, err := spicesetup.Load(ctx, paths, *writeModelPath)
+	setup, err := zanzibarsetup.Load(ctx, paths, *writeModelPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "petard export: %v\n", err)
 		return exitFailure
@@ -225,15 +225,15 @@ type remote struct {
 // The analysis comes back with the payload, so that the run can say what the
 // graph rests on, the decisions above all, and so do the gaps, which are what
 // the analysis knows and the graph could not hold.
-func build(ctx context.Context, inputs taxonomy.Inputs, spice spicesetup.Found) (bhgraph.Graph, taxonomy.Analysis, taxonomy.Gaps, error) {
-	g, analysis, gaps, err := policyGraph(ctx, inputs, len(spice.Files) > 0)
+func build(ctx context.Context, inputs taxonomy.Inputs, schemas zanzibarsetup.Found) (bhgraph.Graph, taxonomy.Analysis, taxonomy.Gaps, error) {
+	g, analysis, gaps, err := policyGraph(ctx, inputs, len(schemas.Files) > 0)
 	if err != nil {
 		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
 	}
 
-	if len(spice.Files) > 0 {
+	if len(schemas.Files) > 0 {
 		var graphInputs []zanzibar.GraphInput
-		analyses, _ := spice.Analyses(time.Now())
+		analyses, _ := schemas.Analyses(time.Now())
 		for _, a := range analyses {
 			graphInputs = append(graphInputs, zanzibar.GraphInput{
 				Sample:     a.Sample,
@@ -256,9 +256,9 @@ func build(ctx context.Context, inputs taxonomy.Inputs, spice spicesetup.Found) 
 // policyGraph runs the OPA analysis and assembles its graph. A set of paths that
 // holds SpiceDB files but no Rego is not the empty bundle that is an error: it
 // returns an empty graph for the Zanzibar side to fill.
-func policyGraph(ctx context.Context, inputs taxonomy.Inputs, haveSpiceDB bool) (*graph.Graph, taxonomy.Analysis, taxonomy.Gaps, error) {
+func policyGraph(ctx context.Context, inputs taxonomy.Inputs, haveSchemas bool) (*graph.Graph, taxonomy.Analysis, taxonomy.Gaps, error) {
 	analysis, err := taxonomy.Load(ctx, inputs)
-	if errors.Is(err, opaengine.ErrNoModules) && haveSpiceDB {
+	if errors.Is(err, opaengine.ErrNoModules) && haveSchemas {
 		return graph.New(), taxonomy.Analysis{}, taxonomy.Gaps{}, nil
 	}
 	if err != nil {
