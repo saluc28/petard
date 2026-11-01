@@ -159,7 +159,7 @@ Findings
   nothing
 
 Candidates, which match a pattern and are not proven
-    1  PTD-ZAN-001  A relationship fixes a caveat value the check was meant to supply
+    1  PTD-ZAN-001  A relationship fixes a condition value the check was meant to supply
 
   document#viewer, user_ip of caveat is_valid_ip  (PTD-ZAN-001)
     written on   document#viewer at caveatip.yaml:10:2, and whoever writes it chooses the context of

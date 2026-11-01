@@ -23,7 +23,7 @@ func TestExplainSpeaksTheEngineOfThePattern(t *testing.T) {
 		"Engine    zanzibar",
 		"is not in the schema",
 		"The registry carries a validation file that realizes this",
-		"Neither the schema nor the validation file holds",
+		"Neither the schema nor a validation file or a store file holds",
 		"taxonomy-registry/zanzibar/PTD-ZAN-001-writer-set-check-parameter.yaml",
 	} {
 		if !strings.Contains(out, want) {

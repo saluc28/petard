@@ -2,12 +2,12 @@ schema_version: 2
 
 id: PTD-ZAN-001
 name: writer-set-check-parameter
-title: A relationship fixes a caveat value the check was meant to supply
+title: A relationship fixes a condition value the check was meant to supply
 closes: >
   Refusing, on the path that writes the relationship, a context that sets a parameter the check
-  supplies closes it: SpiceDB itself accepts any parameter of the caveat.
+  supplies closes it: neither SpiceDB nor OpenFGA refuses a parameter the condition declares.
 engine: zanzibar
-front_ends: [spicedb]
+front_ends: [spicedb, openfga]
 status: implemented
 
 category:
@@ -32,13 +32,15 @@ summary: >
   In the fixture, a viewer of the roadmap is held to the office network, and the caller's address
   comes with the check; an editor is held to a date, and the time comes with the check. Written
   with an address inside the network, the viewer is let in from anywhere. Written with a time
-  before the date, the editor never expires.
+  before the date, the editor never expires. OpenFGA calls a caveat a condition and a relationship
+  a tuple, and the pattern reads the same on both.
 
 preconditions:
   - capability: The principal can write a relationship of the relation, with its caveat and a context of its choosing
     note: >
-      Which context reaches SpiceDB is decided by the application that writes the relationship.
-      SpiceDB checks the keys against the parameters of the caveat and nothing else.
+      Which context reaches the product is decided by the application that writes the
+      relationship. SpiceDB and OpenFGA check the context against the parameters of the caveat and
+      nothing else.
 
 mechanism:
   description: >
@@ -84,9 +86,9 @@ detection:
     the application's, so who writes the relation and that the parameter is the check's are
     declared rather than guessed. `relationships` and `assertions` for signal 2, the evidence of
     which parameters the check is meant to supply, and `caveat-evaluation` for signal 3, which
-    asks SpiceDB's own environment whether a check changes its answer; both feed the candidate a
-    run without a write model falls back to. A schema with no write model and no validation file
-    holds neither, and the pattern says nothing about it.
+    asks the product's own environment whether a check changes its answer; both feed the candidate
+    a run without a write model falls back to. A schema with no write model and no validation file
+    or store file holds neither, and the pattern says nothing about it.
   signals:
     - order: 1
       check: >
@@ -95,8 +97,9 @@ detection:
         A write may set any declared parameter of the caveat
         (`internal/relationships/validation.go:248-262` at v1.56.2), and the context of the
         relationship is copied over the one the check supplies
-        (`internal/caveats/run.go:222-230`). Every parameter of a caveat on a relation is
-        therefore one its writers can fix.
+        (`internal/caveats/run.go:222-230`). OpenFGA does the same at v1.22.1
+        (`internal/validation/validation.go:284-309`, `internal/condition/eval/eval.go:112-123`). Every
+        parameter of a caveat on a relation is therefore one its writers can fix.
     - order: 2
       check: >
         The sample says the parameter is meant for the check: an assertion supplies it after
@@ -113,14 +116,14 @@ detection:
         it out, and the checks of the file are asked again. A check whose answer rises is the
         witness, before and after.
       rationale: >
-        It shows what the write does to a check the file already asks, in SpiceDB's own CEL
+        It shows what the write does to a check the file already asks, in the product's own CEL
         environment. The match is reported with or without one: a file whose checks do not reach
         the relationship shows nothing, and the parameter is still the writer's.
   requires_write_model: true
   requires_write_model_note: >
     For the finding. The write model says who writes the relation and, per parameter, who fills
-    it: a parameter marked the application's is one the writer can set anyway, since SpiceDB
-    accepts any parameter of the caveat. petard confirms the writer can reach the write, through a
+    it: a parameter marked the application's is one the writer can set anyway, since neither product
+    refuses a parameter the caveat declares. petard confirms the writer can reach the write, through a
     starting position that puts the coalition where the gate holds, and that the relation feeds a
     permission. Without a write model the pattern reads the same shape off the relationships and
     the assertions and emits a candidate.
@@ -165,6 +168,43 @@ false_positives:
         assertions:
           assertFalse:
             - 'document:roadmap#view@user:vic with {"user_ip": "192.168.0.1"}'
+      store: |
+        model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define viewer: [user with ip_allowlist]
+              define view: viewer
+          condition ip_allowlist(user_ip: ipaddress, cidr: string) {
+            user_ip.in_cidr(cidr)
+          }
+        tuples:
+          - user: user:vic
+            relation: viewer
+            object: document:roadmap
+            condition:
+              name: ip_allowlist
+              context:
+                cidr: 10.0.0.0/8
+          - user: user:backup
+            relation: viewer
+            object: document:roadmap
+            condition:
+              name: ip_allowlist
+              context:
+                cidr: 10.0.0.0/8
+                user_ip: 10.9.9.9
+        tests:
+          - name: the check from outside
+            check:
+              - user: user:vic
+                object: document:roadmap
+                context:
+                  user_ip: 192.168.0.1
+                assertions:
+                  view: false
       reports: true
       note: >
         The address is reported, with one relationship of the relation that writes it already and
@@ -189,9 +229,13 @@ not_a_lint_rule: >
   asserts, which stay right: a check that supplies the address gets the answer it expects until
   somebody writes the address on a relationship. Which parameters are meant for the check is in the
   checks and the relationships, not in the schema.
+  OpenFGA's validation of a model reads the model alone as well
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  in the same way.
 
 fixture:
   validation: fixtures/vulnerable-spicedb/validation.yaml
+  store: fixtures/vulnerable-openfga/store.fga.yaml
   case: >
     `document#viewer` carries `ip_allowlist`, whose `user_ip` the checks supply, and
     `document#editor` carries `not_expired`, whose `now` the checks supply.
@@ -218,23 +262,31 @@ references:
     note: >
       At v1.22.1, `internal/condition/condition.go:197-222` and
       `internal/condition/eval/eval.go:112-123`: the context of the request comes first and the
-      context of the tuple is merged after it, and the last one wins. What a write may carry was
-      not checked, which is why `front_ends` names SpiceDB alone.
+      context of the tuple is merged after it, and the last one wins.
+  - title: openfga/openfga, the context a write may carry
+    note: >
+      At v1.22.1, `internal/validation/validation.go:284-309`: a write with a condition has its
+      context cast to the parameters of the condition, refusing a key that names no parameter. Any
+      declared parameter passes.
   - title: CWE-807, Reliance on Untrusted Inputs in a Security Decision
     note: >
       A protection an untrusted actor bypasses by changing an input. Here the input is written
       ahead of the decision, on the relationship, rather than sent with it.
 
 verified:
-  date: 2026-10-19
-  tool_version: spicedb 1.56.2, zed 1.2.1
+  date: 2026-11-01
+  tool_version: spicedb 1.56.2, zed 1.2.1, openfga 1.22.1
   how: >
     With the fixture's write model the engine reports two findings, on `user_ip` of
     `document#viewer` and `now` of `document#editor`, each naming who writes the relation and the
     permission it raises, and nothing on `cidr` or `until`. Without a write model it reports the
     same two as candidates. Both were held against SpiceDB with zed v1.2.1: with the relationship
     written as the finding says, the check from outside the network and the check after the date
-    are granted. The case of the first declared false positive runs as part of the test suite.
+    are granted. The case of the first declared false positive runs as part of the test suite, as a
+    validation file and as a store file. On `fixtures/vulnerable-openfga` the engine reports the same
+    two, and the test suite holds them to OpenFGA v1.22.1: with the tuple written as the finding says,
+    `Check` of a server in process allows the check from outside the network and the check after the
+    date, and a check that supplies nothing.
 
 related:
   - id: PTD-OPA-009
@@ -252,3 +304,8 @@ notes:
     `user | user with ip_allowlist`, lets whoever writes the relationship leave the condition out.
     That is a choice the schema offers the writer, not a value meant for the check. The parameters
     of the caveat are reported on such a relation as on any other.
+  - >
+    In OpenFGA a condition evaluated without a parameter it reads is an error
+    (`internal/condition/eval/eval.go:131-137` at v1.22.1), and a check that stops on it is refused
+    with a validation error, where SpiceDB answers that it is caveated. So a store file has nothing
+    to match `assertCaveated`. The engine reads both as conditional.

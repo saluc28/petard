@@ -255,7 +255,7 @@ func wordingFor(engine string) wording {
 	if engine == "zanzibar" {
 		return wording{
 			model:     "the schema",
-			sample:    "the validation file",
+			sample:    "a validation file or a store file",
 			aCase:     "a validation file",
 			whoWrites: "who writes the relation, and with what context, is not in the schema",
 		}

@@ -8,7 +8,7 @@ closes: >
   one, grants to the subjects it names and no more. The wildcard flag on the write rule is what
   opens it, so a relation written without it closes the pattern.
 engine: zanzibar
-front_ends: [spicedb]
+front_ends: [spicedb, openfga]
 status: implemented
 
 category:
@@ -133,9 +133,13 @@ not_a_lint_rule: >
   flag a relation that admits a wildcard, which is a declared, supported subject form. `zed validate`
   confirms that a written wildcard grants to everyone, which is what it is meant to do. That a
   coalition can write it is in the write model, not the schema.
+  OpenFGA's validation of a model reads the model alone as well
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  in the same way.
 
 fixture:
   validation: fixtures/vulnerable-spicedb/validation.yaml
+  store: fixtures/vulnerable-openfga/store.fga.yaml
   case: >
     `document#viewer` admits `user:*`, and the write model's rule for it sets the wildcard flag, so
     a coalition writes `document#viewer@user:*` and every subject, itself included, becomes a viewer.
@@ -158,8 +162,8 @@ references:
       so the wildcard is written and read through concrete subjects, not queried as one.
 
 verified:
-  date: 2026-10-21
-  tool_version: spicedb 1.56.2, zed 1.2.1
+  date: 2026-11-01
+  tool_version: spicedb 1.56.2, zed 1.2.1, openfga 1.22.1
   how: >
     Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-003` on
     `document#view` and `document#access`: the wildcard flag on the viewer rule lets the coalition
@@ -167,9 +171,24 @@ verified:
     was held with zed v1.2.1 on the example above, a written wildcard granting `view` to a user no
     relationship names, and the engine's answers agree with SpiceDB's on the whole corpus the
     oracle runs.
+    On `fixtures/vulnerable-openfga` the engine reports the same finding, and the test suite holds
+    its witnesses to OpenFGA v1.22.1: `Check` of a server in process does not allow the permission
+    before the writes of the witness, and allows it after them. `TestOracle` holds the engine's
+    answers to the same server over the fixture and OpenFGA's own test suite.
 
 related:
   - id: PTD-OPA-008
     note: >
       The same category in Rego, a document every request shares. There one document decides for
       principals it never names; here one wildcard subject grants to every object of a type.
+
+notes:
+  - >
+    In OpenFGA a relation admits a wildcard as `define viewer: [user:*]`, and a stored `user:*` tuple
+    answers for every user of the type (`internal/graph/check.go:490-545` at v1.22.1). OpenFGA also
+    takes a check whose user is the wildcard, where SpiceDB refuses one: its own suite asks it
+    (`assets/tests/consolidated_1_1_tests.yaml:2972-2976`). The engine has no question that stands
+    for it, so such a check of a store file is left out.
+  - >
+    Every relation of OpenFGA can be asked by a check, so on the fixture the report also names
+    `document#viewer`, which a stored wildcard raises as it raises `document#view`.

@@ -64,7 +64,7 @@ func TestRunReportsSpiceDBFindings(t *testing.T) {
 	out := stdout.String()
 	for _, expected := range []string{
 		"Findings",
-		"2  PTD-ZAN-001  A relationship fixes a caveat value the check was meant to supply",
+		"2  PTD-ZAN-001  A relationship fixes a condition value the check was meant to supply",
 		"document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)",
 		"document#editor, now of caveat not_expired  (PTD-ZAN-001)",
 		"from conditional to unconditional",

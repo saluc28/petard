@@ -147,7 +147,7 @@ func CompileJSON(file, text string) (*Schema, error) {
 // permission reading itself, which is what a raise is measured on. Two kinds are
 // left as relations alone, which is what a schema that separates the two would
 // declare: one an arrow walks, whose tuples link objects and which OpenFGA holds to
-// be direct (pkg/typesystem/typesystem.go:1347-1352), and one read only to subtract
+// be direct (pkg/typesystem/typesystem.go:1349-1353), and one read only to subtract
 // it, a ban, where holding it opens nothing and adding a permission would read every
 // exclusion as a relation that both raises and lowers.
 func lower(file string, model *openfgav1.AuthorizationModel, at map[string]zanzibar.Position) (*Schema, error) {

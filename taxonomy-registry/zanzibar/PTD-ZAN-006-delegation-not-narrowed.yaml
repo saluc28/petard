@@ -8,7 +8,7 @@ closes: >
   gets the grant. A rule gated on a permission but free to name any subject is what lets the writer
   hand the grant to someone who never passed the gate, so a self-only subject closes the pattern.
 engine: zanzibar
-front_ends: [spicedb]
+front_ends: [spicedb, openfga]
 status: implemented
 
 category:
@@ -124,7 +124,7 @@ false_positives:
     measurement: out-of-band
   - condition: >
       The subject written for another must itself already hold the gated permission, enforced
-      outside SpiceDB before the write is accepted.
+      outside the product before the write is accepted.
     discriminator: >
       Whether the application narrows the subject to gate-holders is in the application, not the
       schema or the write model as declared. A write model that marks the subject `holds: p` carries
@@ -136,9 +136,13 @@ not_a_lint_rule: >
   schema says only that a relation exists, not who may write it or for whom. `zed validate` confirms
   a written editor grants edit to its subject, which is correct. That the gate bounds the writer and
   not the subject is in the write model, which SpiceDB does not read.
+  OpenFGA's validation of a model reads the model alone as well
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  in the same way.
 
 fixture:
   validation: fixtures/vulnerable-spicedb/validation.yaml
+  store: fixtures/vulnerable-openfga/store.fga.yaml
   case: >
     `document#editor` is gated `holds: view` and its subject is `[user]`, not `self`. A coalition
     member becomes a viewer, then writes `editor` for a sybil that never held view, and the sybil
@@ -160,14 +164,18 @@ references:
       implies is not enforced unless the subject carries it too.
 
 verified:
-  date: 2026-10-21
-  tool_version: spicedb 1.56.2, zed 1.2.1
+  date: 2026-11-01
+  tool_version: spicedb 1.56.2, zed 1.2.1, openfga 1.22.1
   how: >
     Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-006` on
     `document#edit`: a coalition member holds `view`, writes `editor` for a second subject it
     controls that never held `view`, and that subject gains `edit`, which the writer did not hold
     before the write. The SpiceDB effect of the written editor was held with zed v1.2.1 on the
     example above, and the engine's answers agree with SpiceDB's on the whole corpus the oracle runs.
+    On `fixtures/vulnerable-openfga` the engine reports the same finding, and the test suite holds
+    its witnesses to OpenFGA v1.22.1: `Check` of a server in process does not allow the permission
+    before the writes of the witness, and allows it after them. `TestOracle` holds the engine's
+    answers to the same server over the fixture and OpenFGA's own test suite.
 
 related:
   - id: PTD-OPA-013
@@ -180,3 +188,9 @@ related:
       The same rule's self-write is the split grant: there the gate-holder writes the relation for
       itself, and the raise is the weaker permission gating the stronger. Here the subject is
       another, and the raise is a grant the writer never held passed on.
+
+notes:
+  - >
+    The gate and the free subject are in the write model, so the pattern reads the same on OpenFGA.
+    Every relation of OpenFGA can be asked by a check, so on the fixture the report also names the
+    relations written for another: `document#editor`, `document#viewer` and `team#member`.

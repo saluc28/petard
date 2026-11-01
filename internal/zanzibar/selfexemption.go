@@ -16,10 +16,11 @@ const SelfAssertedExemptionID = "PTD-ZAN-001"
 // can write with a caveat whose check-supplied parameter it can set itself.
 // SpiceDB lets a write carry any declared parameter of the caveat
 // (internal/relationships/validation.go:248-262 at v1.56.2), and the written
-// context wins over the check's (internal/caveats/run.go:222-230), so a
-// parameter the write model marks as the application's is the writer's to fix.
-// Fixing it raises the permissions the relation feeds from conditional to
-// unconditional.
+// context wins over the check's (internal/caveats/run.go:222-230), and OpenFGA
+// does the same (internal/validation/validation.go:284-309,
+// internal/condition/eval/eval.go:112-123 at v1.22.1), so a parameter the write
+// model marks as the application's is the writer's to fix. Fixing it raises the
+// permissions the relation feeds from conditional to unconditional.
 //
 // It is the write-model form of the pattern: who writes the relation, and that
 // the parameter is the check's, are declared, so the match is a finding. Where
@@ -49,7 +50,7 @@ func SelfAssertedExemptions(model *Model, wm *WriteModel, opts Options) []Match 
 		for _, cw := range w.Caveats {
 			if !relationAllowsCaveat(r, cw.Name) {
 				// The write model attaches a caveat the relation does not carry;
-				// SpiceDB would refuse the write, so it opens nothing.
+				// the product would refuse the write, so it opens nothing.
 				continue
 			}
 			cav := model.Caveat(cw.Name)

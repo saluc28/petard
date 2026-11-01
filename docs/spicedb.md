@@ -87,7 +87,7 @@ written by hand with the case and the counter case of `PTD-ZAN-001` in them, and
   fixtures/vulnerable-spicedb/validation.yaml  validation file of fixtures/vulnerable-spicedb/schema.zed, 5 relationships, 9 assertions
 
 Findings
-    2  PTD-ZAN-001  A relationship fixes a caveat value the check was meant to supply
+    2  PTD-ZAN-001  A relationship fixes a condition value the check was meant to supply
     1  PTD-ZAN-002  Deleting a tuple an exclusion reads lifts the deny
     2  PTD-ZAN-003  A wildcard subject grants a relation to every object of a type
     2  PTD-ZAN-004  An arrow links an object to one the coalition controls

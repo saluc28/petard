@@ -8,7 +8,7 @@ closes: >
   on the userset's relation, open to a coalition subject, is what lets it in, so a userset with no
   such rule closes the pattern.
 engine: zanzibar
-front_ends: [spicedb]
+front_ends: [spicedb, openfga]
 status: implemented
 
 category:
@@ -79,7 +79,8 @@ detection:
   requires_note: >
     `relationships` for the grant to the userset, which the starting state holds; `write-model` for
     the finding, a write rule on the userset's own relation that lets the coalition join. The
-    pre-existing grant to the userset comes from the validation file, one of the two starting states.
+    pre-existing grant to the userset comes from the validation file or the store file, one of the
+    two starting states.
   signals:
     - order: 1
       check: >
@@ -137,9 +138,13 @@ not_a_lint_rule: >
   that grants to a userset is a supported, recommended construct. `zed validate` confirms the
   members of the userset hold the grant, which is what it is for. Who can become a member of the
   userset is in the write model, not the schema.
+  OpenFGA's validation of a model reads the model alone as well
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  in the same way.
 
 fixture:
   validation: fixtures/vulnerable-spicedb/validation.yaml
+  store: fixtures/vulnerable-openfga/store.fga.yaml
   case: >
     The roadmap grants `viewer` to `team:design#member`, and the write model lets anyone join any
     team. The coalition joins the design team and reaches `view` of the roadmap.
@@ -158,8 +163,8 @@ references:
       `team#member` grants to whoever is a member of the team.
 
 verified:
-  date: 2026-10-21
-  tool_version: spicedb 1.56.2, zed 1.2.1
+  date: 2026-11-01
+  tool_version: spicedb 1.56.2, zed 1.2.1, openfga 1.22.1
   how: >
     Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-005` on
     `document#view` and `document#access`: the roadmap grants `viewer` to the design team, the write
@@ -167,6 +172,10 @@ verified:
     was held with zed v1.2.1 on the example above, a team member holding the view the document
     grants to the team, and the engine's answers agree with SpiceDB's on the whole corpus the oracle
     runs.
+    On `fixtures/vulnerable-openfga` the engine reports the same finding, and the test suite holds
+    its witnesses to OpenFGA v1.22.1: `Check` of a server in process does not allow the permission
+    before the writes of the witness, and allows it after them. `TestOracle` holds the engine's
+    answers to the same server over the fixture and OpenFGA's own test suite.
 
 related:
   - id: PTD-OPA-011
@@ -174,3 +183,11 @@ related:
       The same category in Rego, a grant on a runtime identity an enforcement point proves. There
       the identity is assumed in a layer the policy does not see; here it is a userset the write
       model lets the coalition join.
+
+notes:
+  - >
+    In OpenFGA the userset is written `define viewer: [team#member]`, and a check follows a userset
+    tuple to the relation it names (`internal/graph/check.go:648-792` at v1.22.1).
+  - >
+    Every relation of OpenFGA can be asked by a check, so on the fixture the report also names
+    `document#viewer`, which the join raises as it raises `document#view`.

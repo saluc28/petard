@@ -8,7 +8,7 @@ closes: >
   the writer already holds what the write would give. A gate weaker than what the write grants is
   what splits them, so a gate no weaker than the raise closes the pattern.
 engine: zanzibar
-front_ends: [spicedb]
+front_ends: [spicedb, openfga]
 status: implemented
 
 category:
@@ -139,9 +139,13 @@ not_a_lint_rule: >
   edit. That holding the weaker permission lets a subject write itself the stronger is in the write
   model, which SpiceDB does not read, so no check on the schema can see the two permissions gate each
   other the wrong way round.
+  OpenFGA's validation of a model reads the model alone as well
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  in the same way.
 
 fixture:
   validation: fixtures/vulnerable-spicedb/validation.yaml
+  store: fixtures/vulnerable-openfga/store.fga.yaml
   case: >
     `document#editor` is gated `holds: view` with a `self` subject, and `editor` feeds `edit`, which
     `view` does not reach. A viewer writes itself an editor and gains `edit`.
@@ -165,14 +169,18 @@ references:
       write is one decision, what the write grants is another.
 
 verified:
-  date: 2026-10-21
-  tool_version: spicedb 1.56.2, zed 1.2.1
+  date: 2026-11-01
+  tool_version: spicedb 1.56.2, zed 1.2.1, openfga 1.22.1
   how: >
     Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-007` on
     `document#edit`: from a position where the coalition holds `view`, writing itself an editor
     behind the `holds: view` gate raises `edit` from no to yes. The SpiceDB effect of the editor was
     held with zed v1.2.1 on the example above, and the engine's answers agree with SpiceDB's on the
     whole corpus the oracle runs.
+    On `fixtures/vulnerable-openfga` the engine reports the same finding, and the test suite holds
+    its witnesses to OpenFGA v1.22.1: `Check` of a server in process does not allow the permission
+    before the writes of the witness, and allows it after them. `TestOracle` holds the engine's
+    answers to the same server over the fixture and OpenFGA's own test suite.
 
 related:
   - id: PTD-OPA-006
@@ -184,3 +192,9 @@ related:
     note: >
       Where the gate needs no permission at all, the self-write is the attribute self-write instead:
       there is only one decision, not two, so there is nothing to split.
+
+notes:
+  - >
+    The gate and the self-write are in the write model, so the pattern reads the same on OpenFGA.
+    Every relation of OpenFGA can be asked by a check, so on the fixture the report also names
+    `document#editor`, which the write raises as it raises `document#edit`.

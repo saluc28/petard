@@ -146,12 +146,12 @@ Most fields mean the same thing whatever the engine. These do not, and say so pe
 
 | Field | `opa` | `zanzibar` |
 |---|---|---|
-| `front_ends` | absent | the products the instance applies to, as `[spicedb]`; how they differ goes in `notes` |
+| `front_ends` | absent | the products the instance applies to, as `[spicedb, openfga]`; how they differ goes in `notes` |
 | `mechanism.example` | Rego that compiles | a validation file that `zed validate` accepts: `schema`, `relationships` and `assertions` |
 | `detection.ast_source`, `detection.confidence` | as above | absent: the schema declares its subjects, and there is no AST to choose between |
-| `detection.requires` | `binding-resolution`, `rule-graph`, `concrete-data`, `taint`, `enforcement-point` | `relationships`, the relationships of a validation file; `assertions`, the checks it asserts with the context they supply; `caveat-evaluation`, the caveats evaluated in the product's own environment; `write-model`, who writes which relation |
-| `fixture` | `bundle`, `scenario`, `pep`, `case`, `counter_case`, `expected` | `validation`, the validation file, then `case`, `counter_case`, `expected` |
-| `false_positives[].case` | `policy`, `data`, `write_model` | `validation`, a validation file written inline, holding the condition and nothing else |
+| `detection.requires` | `binding-resolution`, `rule-graph`, `concrete-data`, `taint`, `enforcement-point` | `relationships`, the relationships of a validation file or the tuples of a store file; `assertions`, the checks it asserts with the context they supply; `caveat-evaluation`, the caveats evaluated in the product's own environment; `write-model`, who writes which relation |
+| `fixture` | `bundle`, `scenario`, `pep`, `case`, `counter_case`, `expected` | `validation`, the validation file, `store`, the store file of OpenFGA, then `case`, `counter_case`, `expected` |
+| `false_positives[].case` | `policy`, `data`, `write_model` | `validation`, a validation file written inline, and `store`, a store file written inline, each holding the condition and nothing else |
 
 `reports` and `note` of a case mean the same for every engine.
 

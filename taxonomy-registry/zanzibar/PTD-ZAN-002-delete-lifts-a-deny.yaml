@@ -8,7 +8,7 @@ closes: >
   the exclusion holds as long as the tuple it reads is there. A delete rule on that relation is
   what opens it, so a relation with no delete rule closes the pattern.
 engine: zanzibar
-front_ends: [spicedb]
+front_ends: [spicedb, openfga]
 status: implemented
 
 category:
@@ -140,9 +140,13 @@ not_a_lint_rule: >
   exclusion is a correct construct they do not flag. `zed validate` confirms that a banned viewer
   is denied, which stays true until the ban is deleted. Who may delete the ban is in the write
   model, not the schema, so neither check can see the deny is one relationship away from gone.
+  OpenFGA's validation of a model reads the model alone as well
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  in the same way.
 
 fixture:
   validation: fixtures/vulnerable-spicedb/validation.yaml
+  store: fixtures/vulnerable-openfga/store.fga.yaml
   case: >
     `access = view - banned`, and the write model lets anyone delete `document#banned`. A viewer of
     a document who is banned deletes its own ban and reaches `access`.
@@ -166,8 +170,8 @@ references:
       `every` does in Rego. The Zanzibar fail-open is the delete of a present tuple.
 
 verified:
-  date: 2026-10-21
-  tool_version: spicedb 1.56.2, zed 1.2.1
+  date: 2026-11-01
+  tool_version: spicedb 1.56.2, zed 1.2.1, openfga 1.22.1
   how: >
     Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-002` on
     `document#access`: from a position where the attacker is a banned viewer, deleting the ban the
@@ -175,6 +179,10 @@ verified:
     zed v1.2.1 on the example above, a banned viewer denied `access` and granted it once the ban
     relationship is gone, and the engine's answers agree with SpiceDB's on the whole corpus the
     oracle runs.
+    On `fixtures/vulnerable-openfga` the engine reports the same finding, and the test suite holds
+    its witnesses to OpenFGA v1.22.1: `Check` of a server in process does not allow the permission
+    before the writes of the witness, and allows it after them. `TestOracle` holds the engine's
+    answers to the same server over the fixture and OpenFGA's own test suite.
 
 related:
   - id: PTD-OPA-002
@@ -185,3 +193,11 @@ related:
     note: >
       The transient form of the category in Rego, an absence from the network. The Zanzibar instance
       has only the persistent form, a relationship removed from the state.
+
+notes:
+  - >
+    In OpenFGA the exclusion is written `define access: view but not banned`. A check resolves both
+    sides and allows where the base answers true and the subtracted side answers false
+    (`internal/graph/check.go:295-373` at v1.22.1), so deleting the tuple lifts the deny in the same
+    way. A relation read only to subtract it stays a relation for the engine, so `document#banned`
+    is not reported as raised.

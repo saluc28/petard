@@ -8,7 +8,7 @@ closes: >
   this pattern: the grant is bounded by the gate or goes to another. An open gate with a `self`
   subject is what lets a subject grant itself, so a gated write closes the pattern.
 engine: zanzibar
-front_ends: [spicedb]
+front_ends: [spicedb, openfga]
 status: implemented
 
 category:
@@ -131,9 +131,13 @@ not_a_lint_rule: >
   relation feeding a permission is the ordinary shape of a model. `zed validate` confirms a viewer
   holds view. That the subject being checked can write the viewer for itself, with no permission
   asked first, is in the write model, which SpiceDB does not read.
+  OpenFGA's validation of a model reads the model alone as well
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  in the same way.
 
 fixture:
   validation: fixtures/vulnerable-spicedb/validation.yaml
+  store: fixtures/vulnerable-openfga/store.fga.yaml
   case: >
     `document#viewer` has an `anyone` gate, and its subject includes the writer. A coalition subject
     writes itself a viewer and holds `view`, with nothing on the document asked first.
@@ -153,14 +157,18 @@ references:
       permission, and the delegation, whose subject is another.
 
 verified:
-  date: 2026-10-21
-  tool_version: spicedb 1.56.2, zed 1.2.1
+  date: 2026-11-01
+  tool_version: spicedb 1.56.2, zed 1.2.1, openfga 1.22.1
   how: >
     Over the fixture, with its write model, the engine reports a finding of `PTD-ZAN-008` on
     `document#view` and `document#access`: from a position where the coalition holds neither, writing
     itself a viewer behind the open gate raises both from no to yes. The SpiceDB effect of the viewer
     was held with zed v1.2.1 on the example above, and the engine's answers agree with SpiceDB's on
     the whole corpus the oracle runs.
+    On `fixtures/vulnerable-openfga` the engine reports the same finding, and the test suite holds
+    its witnesses to OpenFGA v1.22.1: `Check` of a server in process does not allow the permission
+    before the writes of the witness, and allows it after them. `TestOracle` holds the engine's
+    answers to the same server over the fixture and OpenFGA's own test suite.
 
 related:
   - id: PTD-OPA-001
@@ -171,3 +179,9 @@ related:
     note: >
       Where the gate is a permission rather than open, the same self-write is the split grant: the
       gate bounds who may write, and the raise is the gap between it and what the write feeds.
+
+notes:
+  - >
+    The open gate and the self-write are in the write model, so the pattern reads the same on
+    OpenFGA. Every relation of OpenFGA can be asked by a check, so on the fixture the report also
+    names the relations written: `document#viewer` and `team#member`.

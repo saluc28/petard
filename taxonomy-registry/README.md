@@ -1,7 +1,7 @@
 # Taxonomy registry
 
-> The taxonomy of abuse patterns. This is the project. Reading a Rego policy or a SpiceDB schema
-> is largely solved by the products' own libraries, which Petard compiles in; the part that is not
+> The taxonomy of abuse patterns. This is the project. Reading a Rego policy, a SpiceDB schema or
+> an OpenFGA model is largely solved by the products' own libraries, which Petard compiles in; the part that is not
 > solved is which of the things a decision depends on somebody else can change, and that is what
 > these files say.
 >
@@ -38,14 +38,20 @@ permission is recommended. `zed validate` checks that the answers a validation f
 the answers SpiceDB gives, and those stay right until somebody writes a relationship differently.
 Neither asks who can write a relationship, or with which context.
 
+For an OpenFGA model, the validation OpenFGA runs when a model is written reads the model alone
+(`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1): names, type restrictions, rewrites and
+conditions. The tests of a store file check the answers the file asserts, and those stay right until
+somebody writes a tuple differently. Neither asks who can write a tuple, or with which context.
+
 That is what this registry is for, in both engines.
 
 ---
 
 ## 2. The rule that decides what goes in: the linter test
 
-> If the linter of its language can find it by reading a file, `regal` for Rego or SpiceDB's
-> warnings for a schema, it is not a pattern of this registry. It is a lint rule.
+> If the linter of its language can find it by reading a file, `regal` for Rego, SpiceDB's
+> warnings for a schema or OpenFGA's validation for a model, it is not a pattern of this registry.
+> It is a lint rule.
 
 This is not a rule of taste. It is what keeps the project from becoming a worse version of a
 linter that already exists. regal's `bugs` category holds, among others, `impossible-not`,
@@ -81,7 +87,8 @@ a hole.
 
 ### The Zanzibar engine
 
-The schemas of SpiceDB, read by the engine in `internal/zanzibar`, have eight instances:
+The schemas of SpiceDB and the models of OpenFGA, read by the engine in `internal/zanzibar`, have
+eight instances, the same eight on both:
 `PTD-ZAN-001` in SELF-ASSERTED-EXEMPTION, and `PTD-ZAN-002` through `PTD-ZAN-008`, one for each
 kind of decisive write a coalition can make against a write model (section 7.1 of the
 definitions). Two categories still have none, for a reason in how a Zanzibar model works:
@@ -436,11 +443,11 @@ the loose-match builtins off the policy and needs no enforcement point at all, a
 granting decision whether it bounds a requested authority by the delegated one, needing the
 enforcement point and, where the decision reads any, the concrete data.
 
-`PTD-ZAN-001` reads the relationships and the assertions of a validation file, and evaluates
-caveats in SpiceDB's own environment. `PTD-ZAN-002` through `PTD-ZAN-008` read the write model and
-run the closure from the two starting states the definitions name, the relationships of the
-validation file and the positions generated from the schema, then classify each escalation by its
-decisive write.
+`PTD-ZAN-001` reads the relationships and the assertions of a validation file, or the tuples and
+the checks of a store file, and evaluates caveats in the product's own environment. `PTD-ZAN-002`
+through `PTD-ZAN-008` read the write model and run the closure from the two starting states the
+definitions name, the relationships of that file and the positions generated from the schema, then
+classify each escalation by its decisive write.
 
 `partial-eval` is not among the capabilities a pattern requires. Partial evaluation is the tool
 the engine measures with, and in 002 it is how the fixture checks the consequence of a
