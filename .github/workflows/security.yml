@@ -51,25 +51,37 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # gosec loads packages through the go command, and when that cannot load
+      # the module gosec checks nothing, writes an empty SARIF and exits zero. Its
+      # action runs in an image with a Go of its own and GOTOOLCHAIN=local, so a
+      # go.mod newer than that Go leaves it looking at nothing. Here it runs under
+      # the Go go.mod names.
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
       # This reads files whose paths somebody else chose and builds
       # authenticated HTTP requests to an instance somebody else runs, so a SAST
       # pass over the file and network code earns its slot here.
-      # Pinned to a patch version, unlike every other action here: securego/gosec
-      # publishes no floating v2 tag, so @v2 does not resolve at all. Dependabot
-      # bumps it weekly.
+      # Pinned to a patch version, which moves by hand: Dependabot does not read
+      # a go run.
       # The exclusions are the ones .golangci.yml already carries, with the
       # reasoning written there. gosec does not read that file, and without them
       # the Security tab fills with twelve findings this repository does not
-      # treat as defects, which is how a tab becomes one nobody opens.
-      # No quotes and no path-scoped rule in here on purpose: the action's
-      # entrypoint expands its arguments unquoted, so a quoted value arrives at
-      # the binary with the quotes still on it and matches nothing. G104 is
+      # treat as defects, which is how a tab becomes one nobody opens. G104 is
       # errcheck's beat anyway, and errcheck runs over the whole tree in the
       # lint workflow with a rule gosec cannot express.
+      # The SARIF goes to code scanning, and the same results as JSON to the next
+      # step.
       - name: gosec
-        uses: securego/gosec@v2.29.0
-        with:
-          args: -no-fail -exclude=G104,G304,G404 -fmt sarif -out gosec-results.sarif ./...
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -no-fail -exclude=G104,G304,G404 -fmt sarif -out gosec-results.sarif -stdout -verbose json ./... > gosec-results.json
+
+      # -no-fail keeps findings out of the job's result, and a run that checked
+      # nothing looks the same. This fails when no file was checked, or when a file
+      # lost its types, which silences the rules that need them.
+      - name: Check that gosec read the code
+        run: jq -e '.Stats.files > 0 and ((."Golang errors" // {}) | length == 0)' gosec-results.json
 
       - name: Upload gosec results
         if: always()
