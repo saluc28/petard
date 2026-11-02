@@ -788,3 +788,52 @@ func TestRunSaysWhereTheAnalysisStoppedShort(t *testing.T) {
 		t.Errorf("the run does not say the search stopped:\n%s", stdout.String())
 	}
 }
+
+// BloodHound keeps one edge of a kind between two nodes, so a payload that holds two would
+// lose one at the ingest without a word. The fixture has both ways of reaching a document
+// and rules that read one attribute twice.
+func TestRunUploadsOneEdgeOfAKindBetweenTwoNodes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "petard.json")
+	var stdout, stderr bytes.Buffer
+	if code := Run(analysisArgs("-pep", fixture("pep.yaml"), "-granted", fixture(filepath.Join("inputs", "granted-download.json")), "-out", path), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Graph struct {
+			Edges []struct {
+				Kind  string `json:"kind"`
+				Start struct {
+					Value string `json:"value"`
+				} `json:"start"`
+				End struct {
+					Value string `json:"value"`
+				} `json:"end"`
+				Properties map[string]any `json:"properties"`
+			} `json:"edges"`
+		} `json:"graph"`
+	}
+	if err := json.Unmarshal(content, &payload); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	foldedKinds := map[string]bool{}
+	for _, edge := range payload.Graph.Edges {
+		key := edge.Kind + " " + edge.Start.Value + " " + edge.End.Value
+		if seen[key] {
+			t.Errorf("two edges would meet at the ingest: %s", key)
+		}
+		seen[key] = true
+		if _, found := edge.Properties["also"]; found {
+			foldedKinds[edge.Kind] = true
+		}
+	}
+	for _, kind := range []string{"PTD_CanPerform", "PTD_Reads", "PTD_TaintedBy"} {
+		if !foldedKinds[kind] {
+			t.Errorf("no %s says what else it stands for, and the fixture has some: %v", kind, foldedKinds)
+		}
+	}
+}

@@ -1,6 +1,8 @@
 package opengraph
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"os"
 	"path/filepath"
@@ -185,5 +187,71 @@ func TestCommittedSchemaMatchesTheModel(t *testing.T) {
 	}
 	if string(committed) != string(generated) {
 		t.Errorf("%s is not what the model produces; run go test ./internal/opengraph -update and read the diff", path)
+	}
+}
+
+// BloodHound keeps one edge of a kind between two nodes, so two edges the graph holds
+// apart leave as one. The first speaks for it, the lists of all of them join, and what
+// each of the others says differently stays together on a line of its own.
+func TestPayloadFoldsEdgesBetweenTheSameNodes(t *testing.T) {
+	g := graph.New()
+	for _, node := range []graph.Node{
+		{ID: "alice", Kind: graph.NodeKindPrincipal},
+		{ID: "bob", Kind: graph.NodeKindPrincipal},
+		{ID: "roadmap", Kind: graph.NodeKindResource},
+	} {
+		if err := g.AddNode(node); err != nil {
+			t.Fatal(err)
+		}
+	}
+	way := func(from string, kind graph.EdgeKind, line int, properties map[string]any) {
+		t.Helper()
+		if err := g.AddEdge(graph.Edge{Kind: kind, From: from, To: "roadmap", Source: graph.Source{File: "authz.rego", Line: line}, Properties: properties}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	way("alice", graph.EdgeKindCanPerform, 10, map[string]any{graph.PropCondition: "owner", graph.PropPatterns: []string{"PTD-OPA-002"}})
+	way("alice", graph.EdgeKindCanPerform, 20, map[string]any{graph.PropCondition: "department", graph.PropAction: "read", graph.PropPatterns: []string{"PTD-OPA-001"}})
+	way("alice", graph.EdgeKindCanPerform, 20, map[string]any{graph.PropCondition: "department", graph.PropAction: "read", graph.PropPatterns: []string{"PTD-OPA-002"}})
+	way("alice", graph.EdgeKindCanPerform, 10, map[string]any{graph.PropCondition: "owner"})
+	way("bob", graph.EdgeKindCanPerform, 30, map[string]any{graph.PropCondition: "bob's"})
+	way("alice", graph.EdgeKindCanEscalateTo, 40, map[string]any{graph.PropDecision: "allow"})
+
+	payload := Payload(g)
+	if len(payload.Edges) != 3 {
+		t.Fatalf("edges = %d, want one for each kind and pair of nodes: %+v", len(payload.Edges), payload.Edges)
+	}
+	first := payload.Edges[0].Properties
+	if first[graph.PropCondition] != "owner" || first[graph.PropSourceLine] != 10 {
+		t.Errorf("the first way does not speak for the edge: %v", first)
+	}
+	if _, found := first[graph.PropAction]; found {
+		t.Errorf("the action of the second way reads as the first's: %v", first)
+	}
+	if got, want := first[graph.PropAlso], []string{"action: read, condition: department, source_line: 20"}; !slices.Equal(got.([]string), want) {
+		t.Errorf("also = %v, want %v", got, want)
+	}
+	if got, want := first[graph.PropPatterns], []string{"PTD-OPA-001", "PTD-OPA-002"}; !slices.Equal(got.([]string), want) {
+		t.Errorf("patterns = %v, want %v", got, want)
+	}
+	for _, other := range payload.Edges[1:] {
+		if _, found := other.Properties[graph.PropAlso]; found {
+			t.Errorf("an edge on its own carries also: %v", other.Properties)
+		}
+	}
+	if err := Validate(payload); err != nil {
+		t.Errorf("Validate() = %v", err)
+	}
+
+	again, err := json.Marshal(Payload(g))
+	if err != nil {
+		t.Fatal(err)
+	}
+	once, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(once, again) {
+		t.Errorf("building the payload twice gives two payloads, so the first changed the graph:\n%s\n%s", once, again)
 	}
 }

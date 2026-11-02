@@ -177,6 +177,11 @@ const (
 	// far end, and between the two the resource is the one worth walking to.
 	PropAction = "action"
 
+	// PropAlso is what the other edges of a kind between two nodes say differently from
+	// the one uploaded, a line each. BloodHound keeps one edge of a kind between two
+	// nodes, so two ways a principal gets one document leave as one edge.
+	PropAlso = "also"
+
 	// PropVia is how something is done to the world outside OPA: the endpoint,
 	// the form or the job through which a write happens. A finding without the
 	// how is not something anybody can act on.

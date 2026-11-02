@@ -333,10 +333,12 @@ func printGraph(out io.Writer, g *graph.Graph, gaps taxonomy.Gaps) {
 	for _, node := range g.Nodes() {
 		nodes[string(node.Kind)]++
 	}
+	// Counted as they leave, so these are the edges BloodHound will show.
+	uploaded := opengraph.Payload(g).Edges
 	edges, traversable := map[string]int{}, 0
-	for _, edge := range g.Edges() {
-		edges[string(edge.Kind)]++
-		if edge.Kind.IsTraversable() {
+	for _, edge := range uploaded {
+		edges[edge.Kind]++
+		if graph.EdgeKind(edge.Kind).IsTraversable() {
 			traversable++
 		}
 	}
@@ -348,7 +350,7 @@ func printGraph(out io.Writer, g *graph.Graph, gaps taxonomy.Gaps) {
 		fmt.Fprintf(table, "  %s\t%d\n", kind, nodes[kind]+edges[kind])
 	}
 	table.Flush()
-	fmt.Fprintf(out, "  %d of %d edges are traversable\n", traversable, len(g.Edges()))
+	fmt.Fprintf(out, "  %d of %d edges are traversable\n", traversable, len(uploaded))
 
 	for _, line := range gaps.Lines() {
 		fmt.Fprintf(out, "  %s\n", line)

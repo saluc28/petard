@@ -281,6 +281,48 @@ func TestAnObjectThatIsAlsoASubjectIsAPrincipal(t *testing.T) {
 
 // A node nobody names says so, and one the relationships name does not, so a query can
 // keep what is true of this store apart from what is true of any account.
+// Two witnesses can write one relation through two endpoints, and which one somebody has
+// to close is the reason to read the edge. The graph holds both, for the export to fold.
+func TestARelationWrittenThroughTwoEndpointsKeepsBoth(t *testing.T) {
+	roadmap := Object{Type: "document", ID: "roadmap"}
+	vic := Object{Type: "user", ID: "vic"}
+	escalation := func(via string, subject Subject, permission string) attackerEscalation {
+		write := WriteStep{
+			Relationship: Relationship{Resource: roadmap, Relation: "viewer", Subject: subject},
+			Rule:         &WriteRule{Resource: "document", Relation: "viewer", Via: via},
+			Writer:       Subject{Object: vic},
+		}
+		return attackerEscalation{
+			attacker:  vic,
+			patternID: "PTD-ZAN-008",
+			esc:       ClassifiedEscalation{Escalation: Escalation{Object: roadmap, Permission: permission, Writes: []WriteStep{write}}},
+		}
+	}
+	g := graph.New()
+	b := &escalationBuilder{
+		g:      g,
+		nodes:  map[string]*builderNode{},
+		writes: map[string]*writeEdge{},
+		raises: map[string]*principalEdge{},
+		holds:  map[string]*principalEdge{},
+	}
+	b.add(escalation("POST /a", Subject{Object: vic}, "view"))
+	b.add(escalation("POST /b", Subject{Object: Object{Type: "team", ID: "t"}, Relation: "member"}, "access"))
+	b.add(escalation("POST /b", Subject{Object: vic}, "edit"))
+	if err := b.flush(); err != nil {
+		t.Fatal(err)
+	}
+	var vias []string
+	for _, e := range g.Edges() {
+		if e.Kind == graph.EdgeKindWrittenBy {
+			vias = append(vias, e.Properties[graph.PropVia].(string))
+		}
+	}
+	if want := []string{"POST /a", "POST /b"}; !slices.Equal(vias, want) {
+		t.Errorf("the writes went through %v, want %v", vias, want)
+	}
+}
+
 // A graph that stopped asking who holds what says so, for the export to report.
 func TestTheGraphSaysWhatItDidNotAsk(t *testing.T) {
 	inputs := []GraphInput{{Sample: Sample{

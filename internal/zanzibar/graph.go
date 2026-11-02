@@ -41,7 +41,8 @@ func EscalationGraph(s Sample, wm *WriteModel) (*graph.Graph, error) {
 // of a kind between two nodes (the unique key of the edge table at dawgs v0.6.0,
 // drivers/pg/query/sql/schema_up.sql:146) and merges the properties of the others over
 // it, so there is one edge per principal and object, and it lists every permission
-// and every pattern.
+// and every pattern. A relation a witness writes through another endpoint is another
+// PTD_WrittenBy, which opengraph.Payload folds.
 //
 // The inputs are built together, so a raise two validation files both reach is
 // one PTD_CanEscalateTo naming every category, not one edge per file. g may
@@ -166,9 +167,10 @@ func (b *escalationBuilder) add(f attackerEscalation) {
 		// nobody names either.
 		b.node(writer.String(), graph.NodeKindPrincipal, f.hypothetical || writer != attacker)
 
-		key := attribute + "\x00" + writer.String()
+		via := writeVia(step)
+		key := attribute + "\x00" + writer.String() + "\x00" + via
 		if _, ok := b.writes[key]; !ok {
-			b.writes[key] = &writeEdge{attribute: attribute, writer: writer.String(), via: writeVia(step)}
+			b.writes[key] = &writeEdge{attribute: attribute, writer: writer.String(), via: via}
 		}
 	}
 

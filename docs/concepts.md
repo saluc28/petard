@@ -132,6 +132,11 @@ whose position is taken; one from a schema ends at the resource permissions are 
 permissions carried on the edge. A `PTD_CanPerform` from a schema says what a subject holds as the
 relationships stand, and a node no relationship names is marked `hypothetical`.
 
+BloodHound keeps one edge of a kind between two nodes (`drivers/pg/query/sql/schema_up.sql:146` at
+dawgs v0.6.0). So two ways a principal gets one document, or two places a rule reads one attribute,
+go out as one edge: the first speaks for it, the patterns of all of them are on it, and `also` holds
+a line for each of the others with what it says differently.
+
 ## How the claims are held
 
 Each engine is checked against something outside its own code. For a policy that is OPA itself,

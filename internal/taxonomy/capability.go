@@ -191,7 +191,8 @@ func grantingSide(reads *opaengine.ReadSet, decision opaengine.ReachedDecision) 
 // conditions, and merging them would leave an edge whose property is half of
 // why it exists: the fixture grants alice the same document both because she
 // owns it and because of her department, and losing either would lose the
-// reason somebody would act on.
+// reason somebody would act on. opengraph.Payload keeps both when it folds them
+// into the one edge BloodHound holds.
 func addCapabilities(g *graph.Graph, shape opaengine.Shape, principal, decision string, residuals *opaengine.ResidualSet) (int, error) {
 	if len(residuals.Conditions) == 0 {
 		return 0, nil

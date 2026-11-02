@@ -89,6 +89,9 @@
   was false. A rule that also touches or deletes still reports it.
 - In BloodHound, an attacker that could raise several permissions on one object showed only one of
   them, since BloodHound keeps one edge of a kind between two nodes. The edge now lists them all.
+- In BloodHound, two ways a principal gets one document, two places a rule reads one attribute or
+  two endpoints that write one relation showed as one, for the same reason. They now leave as one
+  edge, with the patterns of all of them and an `also` line for what each of the others says.
 - A real subject called `attacker` no longer lends what it holds to the attacker the analysis
   supposes, which hid what an account with nothing can raise.
 - The safe gates proposed for a schema no longer call a permission unsafe for an escalation the

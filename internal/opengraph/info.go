@@ -58,6 +58,12 @@ func hypotheticalLine() string {
 	return "{{ if .Properties.hypothetical }}" + hypotheticalText + "{{ end }}"
 }
 
+// alsoLine lists what the other edges of a kind between the same two nodes say, on the
+// one BloodHound keeps.
+func alsoLine() string {
+	return "{{ with .Properties.also }}**Also on this edge**\n{{ range . }}\n- `{{ . }}`{{ end }}\n{{ end }}"
+}
+
 // confidenceLine says what the level an edge carries means.
 //
 // The scale is the one internal/opaengine recognizes a request on, and a panel
@@ -181,6 +187,7 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 			"{{ with .Properties.decision }}**Decision** `{{ . }}`{{ end }}",
 			"{{ with .Properties.condition }}**What still has to hold**, as partial evaluation left it:\n\n```\n{{ . }}\n```{{ end }}",
 			"{{ with .Properties.action }}**Action** {{ . }}{{ end }}",
+			alsoLine(),
 			confidenceLine(),
 		)
 	case graph.EdgeKindReads:
@@ -193,6 +200,7 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 			patternsFound(),
 			"{{ with .Properties.uncovered_keys }}**Absent for** {{ . }}, out of {{ $.Properties.keys_checked }} documents tried.{{ end }}",
 			"{{ with .Properties.mitigation }}**When the source does not answer**, {{ . }}.{{ end }}",
+			alsoLine(),
 		)
 	case graph.EdgeKindWrittenBy:
 		return withDetails(meaning(
@@ -201,6 +209,7 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 		),
 			"{{ with .Properties.via }}Written through `{{ . }}`{{ end }}{{ with .Properties.via_write_path }}, declared as `{{ . }}`{{ end }}.",
 			"{{ with .Properties.write_confidence }}The write model says it was {{ . }}.{{ end }}",
+			alsoLine(),
 		)
 	case graph.EdgeKindCanEscalateTo:
 		return withDetails(meaning(
@@ -220,6 +229,7 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 			"{{ with .Properties.witness_request }}**Proven by** the request `{{ . }}`, which `{{ $.Properties.decision }}` "+
 				"refuses today and grants once `{{ $.Properties.witness_document }}` holds `{{ $.Properties.witness_value }}`.{{ end }}",
 			"{{ with .Properties.witness_write_request }}`{{ $.Properties.authorized_by }}` allows the write on `{{ . }}`.{{ end }}",
+			alsoLine(),
 			confidenceLine(),
 			patternsFound(),
 		)
@@ -229,6 +239,7 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 				"a capability: whoever answers decides what the value is.",
 		),
 			"{{ with .Properties.provenance_origin }}Answered to a call to `{{ . }}`{{ end }}{{ with .Properties.source_file }} at `{{ . }}:{{ $.Properties.source_line }}`{{ end }}.",
+			alsoLine(),
 		)
 	default:
 		return nil

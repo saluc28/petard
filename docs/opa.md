@@ -297,7 +297,7 @@ petard export -url https://bloodhound.example -install -upload -verify \
 ```
 
 ```
-graph: 71 nodes, 84 edges
+graph: 71 nodes, 72 edges
   3 declared writers name a rule for finding somebody, not somebody, and have no edge
   131 ways of granting depend on something an edge cannot say, and are left out
 schema installed, 3 of 5 relationship kinds are traversable

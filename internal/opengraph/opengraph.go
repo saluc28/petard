@@ -16,6 +16,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"slices"
+	"strings"
 
 	"github.com/saluc28/bhgraph"
 
@@ -153,6 +155,12 @@ func Schema() bhgraph.Extension {
 // Inside Petard, where a claim comes from is a field of its own so that nothing
 // can overwrite it by accident; on the wire everything is a property, and this
 // is the one place that knows both shapes.
+//
+// It is also where the graph holds more than BloodHound will. BloodHound keeps one edge
+// of a kind between two nodes (the unique key of the edge table at dawgs v0.6.0,
+// drivers/pg/query/sql/schema_up.sql:146), so of two edges the graph holds apart, two
+// ways a principal gets one document, only one would survive the ingest. They go out as
+// one, and the first of them speaks for it, with what the others add folded in.
 func Payload(g *graph.Graph) bhgraph.Graph {
 	var payload bhgraph.Graph
 
@@ -164,9 +172,16 @@ func Payload(g *graph.Graph) bhgraph.Graph {
 		})
 	}
 
+	folded := map[[3]string]map[string]any{}
 	for _, edge := range g.Edges() {
 		properties := edge.Source.Properties()
 		maps.Copy(properties, edge.Properties)
+		key := [3]string{string(edge.Kind), edge.From, edge.To}
+		if first, met := folded[key]; met {
+			fold(first, properties)
+			continue
+		}
+		folded[key] = properties
 		payload.AddEdge(bhgraph.Edge{
 			Kind:       string(edge.Kind),
 			Start:      bhgraph.NodeRef(edge.From),
@@ -175,6 +190,30 @@ func Payload(g *graph.Graph) bhgraph.Graph {
 		})
 	}
 	return payload
+}
+
+// fold takes what another edge between the same two nodes says into the one that goes
+// out. A list joins the list, since a pattern that reported either edge reported this
+// one. Anything else stays what the first edge says, and what the other says differently
+// goes on a line of its own under PropAlso, its properties together, so that the
+// condition of a way is not read beside the action of another.
+func fold(first, other map[string]any) {
+	var differs []string
+	for _, key := range slices.Sorted(maps.Keys(other)) {
+		if list, isList := other[key].([]string); isList {
+			held, _ := first[key].([]string)
+			first[key] = slices.Compact(slices.Sorted(slices.Values(slices.Concat(held, list))))
+			continue
+		}
+		if held, ok := first[key]; !ok || fmt.Sprint(held) != fmt.Sprint(other[key]) {
+			differs = append(differs, fmt.Sprintf("%s: %v", key, other[key]))
+		}
+	}
+	line := strings.Join(differs, ", ")
+	also, _ := first[graph.PropAlso].([]string)
+	if line != "" && !slices.Contains(also, line) {
+		first[graph.PropAlso] = append(also, line)
+	}
 }
 
 // Validate checks a payload against the schema Petard installs, and against the
