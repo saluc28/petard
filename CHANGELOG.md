@@ -44,8 +44,8 @@
   rule that opens the most first, with the permissions that rise the same way on one line. The counts
   and the exit code are the same.
 - The extension schema is `v0.4.0`. A `PTD_CanEscalateTo` of a Zanzibar model carries `permissions`,
-  a list, in place of `permission`, and nodes can carry `hypothetical`. Run `petard export -install`
-  and upload the graph again.
+  a list, in place of `permission`, nodes can carry `hypothetical`, and an edge can carry `also`. Run
+  `petard export -install` and upload the graph again.
 - The saved queries of the Zanzibar patterns name the platform `Zanzibar`, since they apply to SpiceDB
   and OpenFGA alike.
 - `PTD-ZAN-001` is titled "A relationship fixes a condition value the check was meant to supply",
@@ -82,8 +82,9 @@
 ### Fixed
 
 - The analysis of a store finishes. With a write model, a sample of about twenty objects behind an
-  open rule did not. Each object is now weighed on the tuples its checks can read. The search and the
-  work on real subjects have limits, and a run that reaches one says so.
+  open rule did not. Each object is now weighed on the tuples its checks can read, and one object of
+  each shape of a type a creation can be made on comes along. The search and the work over a store
+  have limits, and a run that reaches one says so.
 - A rule that only creates no longer lifts a conditional relationship to an unconditional one. The
   product refuses a create of a tuple that is already there, whatever its caveat, so that escalation
   was false. A rule that also touches or deletes still reports it.

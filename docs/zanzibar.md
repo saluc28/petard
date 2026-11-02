@@ -202,14 +202,18 @@ The categories of the registry with no Zanzibar instance, and why, are in sectio
 
 The search for an escalation weighs every sequence of writes up to four, and its cost grows with the
 power of how many objects a coalition can write on. To hold that down each object is weighed apart,
-on the tuples a check of it can read and those of one object of each other type, for a witness to
-link in.
-Those answer a check of it as the whole store does, so nothing found this way is false. What it gives
-up is a witness that needs more objects that already exist: another of the object's own type, or two
-of another type.
+on the tuples a check of it can read. Those answer a check of it as the whole store does, so nothing
+found this way is false.
 
-A search stops at twenty thousand states, and what it found by then holds. When one stops, the report
-says so.
+A write names as its subject only what the coalition holds, and a gate is asked of the object written,
+so a witness can use another object that already exists only by making a creation on it. Of each
+type a creation can be made on, one object of each shape comes along. What this gives up is a witness
+that needs that very object and not another of its shape, and the run says how many objects it weighed
+this way.
+
+A search stops at twenty thousand states, and what it found by then holds. The searches for an account
+with nothing, and those for the subjects the relationships name, each have a limit on the work they
+take together, spent on the smallest states first. When any of these stops short, the report says so.
 
 ## What the graph holds
 

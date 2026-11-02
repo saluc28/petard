@@ -53,6 +53,12 @@ func uniqueObjects(objects []Object) []Object {
 // through. It takes about a minute.
 const maxSubjectWork = 30000000
 
+// maxSupposedWork is how much weighing the states of a sample for an attacker the analysis
+// supposes may take, for each type of attacker, counted in the tuples of each state its
+// search goes through. It takes about a minute, and only a store of many shapes behind an
+// open rule comes near it.
+const maxSupposedWork = 30000000
+
 // maxHoldingChecks is how many checks asking what real subjects hold may take. It takes
 // a few tens of seconds, and only a wildcard or a large team on many objects comes near it.
 const maxHoldingChecks = 5000000
@@ -150,7 +156,7 @@ func subjectEscalations(s Sample, wm *WriteModel, work int) ([]attackerEscalatio
 	opts := Options{Now: s.Now, maxStates: maxSearchStates, cut: &limits.SearchesStopped, work: &work, taken: namedObjects(s)}
 	scope := newReach(s.Model, wm).scopeOf(s.Model, wm)
 
-	states := weighedStates(s)
+	states, _ := weighedStates(s, wm)
 	slices.SortStableFunc(states, func(a, b weighedState) int { return cmp.Compare(len(a.tuples), len(b.tuples)) })
 
 	var out []attackerEscalation

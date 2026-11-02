@@ -100,6 +100,14 @@ func (a attackerEscalation) key() string {
 // built from this, so a report and a graph of one sample cannot disagree about
 // what the engine found.
 func classifiedEscalations(s Sample, wm *WriteModel) ([]attackerEscalation, Limits) {
+	return classifiedWithin(s, wm, maxSupposedWork)
+}
+
+// classifiedWithin is classifiedEscalations with the work given, for each type of
+// attacker, over the states of the sample. It goes to the smallest first, where a raise
+// any account can make shows at the least cost. The positions take none of it: they are
+// few and small, and what they say holds whatever the sample holds.
+func classifiedWithin(s Sample, wm *WriteModel, work int) ([]attackerEscalation, Limits) {
 	if s.Model == nil || wm == nil {
 		return nil, Limits{}
 	}
@@ -115,7 +123,7 @@ func classifiedEscalations(s Sample, wm *WriteModel) ([]attackerEscalation, Limi
 
 	seen := map[string]bool{}
 	var out []attackerEscalation
-	add := func(start []Relationship, attacker Object, position bool) {
+	add := func(start []Relationship, attacker Object, position bool, opts Options) {
 		classified, err := classifyScoped(s.Model, wm, s.Caveats, start, []Object{attacker}, scope, opts)
 		if err != nil {
 			// A starting state the caveat environment cannot evaluate yields no
@@ -137,20 +145,30 @@ func classifiedEscalations(s Sample, wm *WriteModel) ([]attackerEscalation, Limi
 		}
 	}
 
-	states := weighedStates(s)
+	states, leftOut := weighedStates(s, wm)
+	limits.StartsLeftOut = leftOut
+	slices.SortStableFunc(states, func(a, b weighedState) int { return cmp.Compare(len(a.tuples), len(b.tuples)) })
 	for _, typ := range subjectTypes(s.Model) {
 		attacker := freeObject(named, typ, "attacker")
+		left := work
+		ofStates := opts
+		ofStates.work = &left
 		// Two states of one shape raise the same permissions of the same types, and
 		// a raise is kept once by type, so the second adds nothing.
 		shapes := map[string]bool{}
 		for _, state := range states {
-			if !shapes[state.shape] {
-				shapes[state.shape] = true
-				add(state.tuples, attacker, false)
+			if shapes[state.shape] {
+				continue
 			}
+			shapes[state.shape] = true
+			if left <= 0 {
+				limits.SupposedLeftOut++
+				continue
+			}
+			add(state.tuples, attacker, false, ofStates)
 		}
 		for _, p := range StartingPositions(s.Model, attacker, opts) {
-			add(p.Tuples, attacker, true)
+			add(p.Tuples, attacker, true, opts)
 		}
 	}
 	return out, limits

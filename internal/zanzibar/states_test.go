@@ -14,13 +14,13 @@ import (
 // A state answers a check of its object exactly as the whole sample does, so it holds
 // the tuples on the object and on everything they name, however far.
 func TestAStateHoldsWhatACheckOfItsObjectReads(t *testing.T) {
-	states := weighedStates(Sample{Relationships: []Relationship{
+	states, _ := weighedStates(Sample{Relationships: []Relationship{
 		rel("document:plan", "viewer", "user:vic"),
 		rel("document:roadmap", "parent", "folder:a"),
 		rel("folder:a", "parent", "folder:b"),
 		rel("folder:b", "viewer", "user:erin"),
 		rel("folder:unrelated", "viewer", "user:dana"),
-	}})
+	}}, nil)
 
 	var roadmap *weighedState
 	for i := range states {
@@ -41,32 +41,144 @@ func TestAStateHoldsWhatACheckOfItsObjectReads(t *testing.T) {
 			t.Errorf("the state does not hold %s#%s: %v", want[0], want[1], roadmap.tuples)
 		}
 	}
-	if has("document:plan", "viewer") {
-		t.Errorf("the state holds a tuple of another document, which no check of it reads: %v", roadmap.tuples)
+	for _, other := range [][2]string{{"document:plan", "viewer"}, {"folder:unrelated", "viewer"}} {
+		if has(other[0], other[1]) {
+			t.Errorf("the state holds %s#%s, which no check of it reads: %v", other[0], other[1], roadmap.tuples)
+		}
 	}
 }
 
-// One object of another type comes along for a witness to link in, the one that brings
-// the least, and only one. Otherwise a store's documents would all sit in each state,
-// which is what the states are there to prevent.
-func TestAStateLinksInTheSmallestObjectOfAnotherType(t *testing.T) {
-	states := weighedStates(Sample{Relationships: []Relationship{
+// What a creation can start from comes along: of its type, one object of each shape, the
+// one that brings the least, and how many others it stands for is said. A type no creation
+// starts from brings nothing, since no witness can use an object no check of it reads.
+func TestAStateBringsOneObjectOfEachShapeACreationCanStartFrom(t *testing.T) {
+	sample := Sample{Relationships: []Relationship{
 		rel("document:roadmap", "viewer", "user:vic"),
-		rel("folder:big", "parent", "folder:middle"),
-		rel("folder:middle", "viewer", "user:erin"),
-		rel("folder:a-small", "viewer", "user:dana"),
-	}})
-	if states[0].object != (Object{Type: "document", ID: "roadmap"}) {
-		t.Fatalf("the first state is for %s", states[0].object)
+		rel("folder:b-private", "viewer", "user:erin"),
+		rel("folder:c-private", "viewer", "user:dana"),
+		rel("folder:public", "viewer", "user:*"),
+		rel("team:t", "member", "user:tess"),
+		rel("document:z-holds-a-folder", "parent", "folder:c-private"),
+	}}
+	onFolder := &WriteModel{Creates: []*CreationRule{{Creates: "document", On: []OnSpec{{Type: "folder"}}}}}
+	foldersOf := func(wm *WriteModel) ([]string, int) {
+		states, leftOut := weighedStates(sample, wm)
+		if states[0].object != (Object{Type: "document", ID: "roadmap"}) {
+			t.Fatalf("the first state is for %s", states[0].object)
+		}
+		var others []string
+		for _, r := range states[0].tuples {
+			if r.Resource != states[0].object {
+				others = append(others, r.Resource.ID)
+			}
+		}
+		return others, leftOut
 	}
-	var folders []string
-	for _, r := range states[0].tuples {
-		if r.Resource.Type == "folder" {
-			folders = append(folders, r.Resource.ID)
+
+	others, leftOut := foldersOf(onFolder)
+	if want := []string{"b-private", "public"}; !slices.Equal(others, want) {
+		t.Errorf("the state brings %v, want one folder of each shape: %v", others, want)
+	}
+	if leftOut != 1 {
+		t.Errorf("it says %d folders were stood for, want 1", leftOut)
+	}
+
+	for name, wm := range map[string]*WriteModel{"no write model": nil, "no creation on an object": {Creates: []*CreationRule{{Creates: "folder"}}}} {
+		if others, leftOut := foldersOf(wm); len(others) != 0 || leftOut != 0 {
+			t.Errorf("%s: the state brings %v and says %d were stood for", name, others, leftOut)
 		}
 	}
-	if !slices.Equal(folders, []string{"a-small"}) {
-		t.Errorf("the state links in %v, want the smallest folder alone", folders)
+}
+
+// A store can name an object as a subject and hold no tuple on it, and a creation can start
+// from that too. What names it comes along, since nothing else puts it in the state, and
+// two such objects of two types have no shape to tell them apart but their type.
+func TestAnObjectWithNoTuplesComesAlongByWhatNamesIt(t *testing.T) {
+	states, _ := weighedStates(Sample{Relationships: []Relationship{
+		rel("document:a", "parent", "folder:f"),
+		rel("document:b", "owner", "org:o"),
+		rel("document:c", "viewer", "user:vic"),
+	}}, &WriteModel{Creates: []*CreationRule{
+		{Creates: "document", On: []OnSpec{{Type: "folder"}}},
+		{Creates: "document", On: []OnSpec{{Type: "org"}}},
+	}})
+	state := states[2]
+	if state.object.ID != "c" {
+		t.Fatalf("the third state is for %s", state.object)
+	}
+	var subjects []string
+	for _, r := range state.tuples {
+		subjects = append(subjects, r.Subject.Object.String())
+	}
+	slices.Sort(subjects)
+	if want := []string{"folder:f", "org:o", "user:vic"}; !slices.Equal(subjects, want) {
+		t.Errorf("the state names %v, want %v", subjects, want)
+	}
+}
+
+// A creation on an existing folder gives the coalition what that folder grants, so which
+// folder matters: the first one by name grants nothing, the public one everybody. What the
+// states find has to be what a search of the whole store finds.
+func TestAWitnessThroughAnObjectACreationStartsFromIsFound(t *testing.T) {
+	folder := &Type{
+		Name: "folder",
+		Relations: []*Relation{
+			{Name: "parent", Allowed: []Allowed{{Type: "folder"}}},
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}, {Type: "user", Wildcard: true}}},
+		},
+		Permissions: []*Permission{{Name: "view", Expr: Union{Children: []Expr{Computed{Name: "viewer"}, Arrow{Through: "parent", Target: "view"}}}}},
+	}
+	document := &Type{
+		Name:        "document",
+		Relations:   []*Relation{{Name: "parent", Allowed: []Allowed{{Type: "folder"}}}, {Name: "owner", Allowed: []Allowed{{Type: "user"}}}},
+		Permissions: []*Permission{{Name: "read", Expr: Union{Children: []Expr{Computed{Name: "owner"}, Arrow{Through: "parent", Target: "view"}}}}},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, folder, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{
+		SchemaVersion: 1,
+		Kind:          "relationship-writes",
+		Writes: []*WriteRule{
+			{Resource: "document", Relation: "parent", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}},
+		},
+		Creates: []*CreationRule{{
+			Creates: "folder",
+			Gate:    Gate{Anyone: true},
+			On:      []OnSpec{{Type: "folder", Gate: Gate{Anyone: true}}},
+			Writes:  []CreationWrite{{Resource: CreatedPlaceholder, Relation: "parent", Subject: "folder"}},
+		}},
+	}
+	sample := Sample{
+		Model: model,
+		Relationships: []Relationship{
+			rel("document:roadmap", "owner", "user:zed"),
+			rel("folder:a-private", "viewer", "user:olivia"),
+			rel("folder:public", "viewer", "user:*"),
+		},
+		Now: time.Unix(0, 0),
+	}
+
+	attacker := Object{Type: "user", ID: "attacker"}
+	whole, err := Escalations(model, wm, nil, sample.Relationships, []Object{attacker}, Options{Now: sample.Now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(whole, func(e Escalation) bool { return e.Object.ID == "roadmap" && e.Permission == "read" }) {
+		t.Fatalf("the search of the whole store does not raise read on the document: %v", whole)
+	}
+	matches, _ := RunWithLimits(sample, wm)
+	if !slices.ContainsFunc(matches, func(m Match) bool {
+		return m.Raise != nil && m.Raise.Type == "document" && m.Raise.Permission == "read"
+	}) {
+		t.Error("the search of the whole store raises read on the document, and the report does not")
+	}
+
+	// A second private folder has its shape, so the first stands for it, and the run says so.
+	sample.Relationships = append(sample.Relationships, rel("folder:b-private", "viewer", "user:erin"))
+	if _, limits := RunWithLimits(sample, wm); limits.StartsLeftOut != 1 {
+		t.Errorf("the run says %d folders were stood for, want 1", limits.StartsLeftOut)
 	}
 }
 
@@ -79,9 +191,9 @@ func TestStatesAreTheSameOnEveryRun(t *testing.T) {
 		rel("team:x", "member", "user:dana"),
 		rel("document:a", "editor", "user:dana"),
 	}}
-	first := weighedStates(sample)
+	first, _ := weighedStates(sample, nil)
 	for range 20 {
-		again := weighedStates(sample)
+		again, _ := weighedStates(sample, nil)
 		if len(again) != len(first) {
 			t.Fatalf("%d states, then %d", len(first), len(again))
 		}
@@ -399,6 +511,63 @@ func TestASampleTooLargeToSearchSaysSo(t *testing.T) {
 	}
 }
 
+// The work on what an account with nothing can raise has a limit, for a store of many shapes
+// that would take hours. It goes to the smallest state first, what it leaves out is counted,
+// and a position generated from the schema is weighed whatever is left.
+func TestTheWorkOnTheSupposedAttackerIsCounted(t *testing.T) {
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+	}}
+	sample := Sample{
+		Model: documents(t),
+		Relationships: []Relationship{
+			rel("document:a-large", "owner", "user:olivia"),
+			rel("document:a-large", "editor", "user:erin"),
+			rel("document:a-large", "editor", "user:dana"),
+			rel("document:b-small", "owner", "user:vic"),
+		},
+		Now: time.Unix(0, 0),
+	}
+	objects := func(found []attackerEscalation) []string {
+		var out []string
+		for _, f := range found {
+			if !f.position {
+				out = append(out, f.esc.Object.ID)
+			}
+		}
+		slices.Sort(out)
+		return slices.Compact(out)
+	}
+
+	all, limits := classifiedWithin(sample, wm, maxSupposedWork)
+	if limits.SupposedLeftOut != 0 {
+		t.Errorf("under the limit it leaves out %d", limits.SupposedLeftOut)
+	}
+	if got := objects(all); !slices.Equal(got, []string{"b-small"}) {
+		t.Errorf("a raise any account can make is shown on %v, want the smallest state", got)
+	}
+
+	some, limits := classifiedWithin(sample, wm, 1)
+	// The user attacker spends the work on the smaller state and leaves the larger one out.
+	// Each type has work of its own, and the team attacker raises nothing, so spends none.
+	if limits.SupposedLeftOut != 1 {
+		t.Errorf("past the limit it leaves out %d, want 1", limits.SupposedLeftOut)
+	}
+	if got := objects(some); !slices.Equal(got, []string{"b-small"}) {
+		t.Errorf("past the limit it shows %v, want the smallest state", got)
+	}
+
+	// What takes holding view shows only from a position, since an account with nothing
+	// holds no view on the objects of the store.
+	gated := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Holds: "view"}, Subject: SubjectSpec{Self: true}},
+	}}
+	fromPositions, _ := classifiedWithin(sample, gated, 0)
+	if !slices.ContainsFunc(fromPositions, func(f attackerEscalation) bool { return f.position && f.esc.Permission == "edit" }) {
+		t.Errorf("with no work left the positions are not weighed: %+v", fromPositions)
+	}
+}
+
 // A search is part of the work, so a state whose searches are large spends the limit
 // faster than one where they are small. Counting only the subjects would let a store of
 // many subjects behind an open rule take hours within it.
@@ -425,16 +594,18 @@ func TestLimitsSayWhatStoppedShort(t *testing.T) {
 	if got := (Limits{}).Lines(); len(got) != 0 {
 		t.Errorf("nothing stopped short, and it says %v", got)
 	}
-	lines := Limits{SearchesStopped: 1, SubjectsLeftOut: 3, HoldingsLeftOut: 2}.Lines()
-	if len(lines) != 3 || !strings.HasPrefix(lines[0], "1 search ") || !strings.HasPrefix(lines[1], "3 questions ") || !strings.HasPrefix(lines[2], "2 objects ") {
+	lines := Limits{SearchesStopped: 1, SubjectsLeftOut: 3, HoldingsLeftOut: 2, SupposedLeftOut: 7, StartsLeftOut: 4}.Lines()
+	if len(lines) != 5 || !strings.HasPrefix(lines[0], "1 search ") || !strings.HasPrefix(lines[1], "3 questions ") ||
+		!strings.HasPrefix(lines[2], "2 objects not asked") || !strings.HasPrefix(lines[3], "7 questions of what an account") ||
+		!strings.HasPrefix(lines[4], "4 objects a creation") {
 		t.Errorf("Lines = %v", lines)
 	}
 	if got := (Limits{SearchesStopped: 2}).Lines(); !strings.HasPrefix(got[0], "2 searches ") {
 		t.Errorf("Lines = %v", got)
 	}
 	total := Limits{SearchesStopped: 1}
-	total.Add(Limits{SearchesStopped: 2, SubjectsLeftOut: 4, HoldingsLeftOut: 5})
-	if total != (Limits{SearchesStopped: 3, SubjectsLeftOut: 4, HoldingsLeftOut: 5}) {
+	total.Add(Limits{SearchesStopped: 2, SubjectsLeftOut: 4, HoldingsLeftOut: 5, SupposedLeftOut: 7, StartsLeftOut: 6})
+	if total != (Limits{SearchesStopped: 3, SubjectsLeftOut: 4, HoldingsLeftOut: 5, SupposedLeftOut: 7, StartsLeftOut: 6}) {
 		t.Errorf("Add = %+v", total)
 	}
 }
@@ -468,9 +639,9 @@ func TestASubjectIsWeighedWhereItIsNamed(t *testing.T) {
 	}
 }
 
-// An object that comes along for a witness to link in brings its subjects into the state,
-// and they stay what they are on the object weighed: accounts like any other, and on the
-// object that came along too. Whichever object came along would otherwise decide who is
+// An object that comes along for a creation to start from brings its subjects into the
+// state, and they stay what they are on the object weighed: accounts like any other, and on
+// the object that came along too. Whichever object came along would otherwise decide who is
 // drawn, and only its subjects would be.
 func TestASubjectOfAnObjectLinkedInIsNotWeighedThere(t *testing.T) {
 	folder := &Type{
@@ -490,7 +661,7 @@ func TestASubjectOfAnObjectLinkedInIsNotWeighedThere(t *testing.T) {
 	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
 		{Resource: "folder", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
 		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
-	}}
+	}, Creates: []*CreationRule{{Creates: "document", Gate: Gate{Anyone: true}, On: []OnSpec{{Type: "folder", Gate: Gate{Anyone: true}}}}}}
 	got, _ := subjectEscalations(Sample{
 		Model: model,
 		Relationships: []Relationship{

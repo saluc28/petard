@@ -69,6 +69,14 @@ type Limits struct {
 	// HoldingsLeftOut counts the objects not asked who holds what on them once
 	// maxHoldingChecks were spent.
 	HoldingsLeftOut int
+
+	// SupposedLeftOut counts the states not weighed for an attacker the analysis
+	// supposes once maxSupposedWork was spent.
+	SupposedLeftOut int
+
+	// StartsLeftOut counts the objects a creation can start from that were weighed
+	// through another of their shape.
+	StartsLeftOut int
 }
 
 // Add sums two limits, for an analysis of several samples.
@@ -76,6 +84,8 @@ func (l *Limits) Add(other Limits) {
 	l.SearchesStopped += other.SearchesStopped
 	l.SubjectsLeftOut += other.SubjectsLeftOut
 	l.HoldingsLeftOut += other.HoldingsLeftOut
+	l.SupposedLeftOut += other.SupposedLeftOut
+	l.StartsLeftOut += other.StartsLeftOut
 }
 
 // Lines say the limits in words, none when nothing stopped short.
@@ -92,6 +102,14 @@ func (l Limits) Lines() []string {
 	if l.HoldingsLeftOut > 0 {
 		lines = append(lines, fmt.Sprintf("%d %s not asked who holds what, past the limit of the work",
 			l.HoldingsLeftOut, plural(l.HoldingsLeftOut, "object", "objects")))
+	}
+	if l.SupposedLeftOut > 0 {
+		lines = append(lines, fmt.Sprintf("%d %s of what an account with nothing can raise went unasked, past the limit of the work",
+			l.SupposedLeftOut, plural(l.SupposedLeftOut, "question", "questions")))
+	}
+	if l.StartsLeftOut > 0 {
+		lines = append(lines, fmt.Sprintf("%d %s a creation can start from weighed through another of the same shape: a witness that needs that very object is not found",
+			l.StartsLeftOut, plural(l.StartsLeftOut, "object", "objects")))
 	}
 	return lines
 }

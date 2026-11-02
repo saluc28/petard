@@ -1,6 +1,7 @@
 package zanzibar
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -9,13 +10,13 @@ import (
 )
 
 // weighedState is a part of a sample the closure runs from, for one object: the tuples
-// a check of that object can read, and those of one object of each other type.
+// a check of that object can read, and those of what a creation can start from.
 type weighedState struct {
 	object Object
 	tuples []Relationship
 
-	// reads are the objects a check of object can reach. What came along for a witness
-	// to link in is not among them, unless a check reads it too.
+	// reads are the objects a check of object can reach. What came along for a creation
+	// to start from is not among them, unless a check reads it too.
 	reads map[Object]bool
 
 	// shape is the state with the ids of its objects taken out. Two states of one
@@ -33,50 +34,89 @@ type weighedState struct {
 // answers it exactly as the whole sample does. No raise it finds is false: every object
 // in it carries all its tuples, and a witness writes only on objects in it.
 //
-// The one object of each other type is what a witness can link in. What this gives up
-// is a witness that needs more objects that already exist: another of the object's own
-// type, or two of another type.
-func weighedStates(s Sample) []weighedState {
-	byResource := positionsOf(s.Relationships)
+// A write names as its subject only what the coalition holds, and a gate is asked of the
+// object written, so a witness can use an object the check does not read only by making
+// a creation on it. What creationStarts picks comes along for that. It also says how many
+// objects it let another stand for.
+func weighedStates(s Sample, wm *WriteModel) ([]weighedState, int) {
+	tuples := s.Relationships
+	byResource := positionsOf(tuples)
 	objects := uniqueObjects(slices.Collect(maps.Keys(byResource)))
 
 	reads := make(map[Object]map[Object]bool, len(objects))
 	for _, o := range objects {
-		reads[o] = readsOf(o, s.Relationships, byResource)
+		reads[o] = readsOf(o, tuples, byResource)
 	}
-
-	// The object of a type to link in is the one that brings the fewest tuples along,
-	// and of those the first, so the state does not grow by a hub of the store and two
-	// runs pick the same one.
-	linked := map[string]Object{}
-	for _, o := range objects {
-		if current, ok := linked[o.Type]; !ok || len(reads[o]) < len(reads[current]) {
-			linked[o.Type] = o
+	held := func(of map[Object]bool) []Relationship {
+		var at []int
+		for o := range of {
+			at = append(at, byResource[o]...)
 		}
+		slices.Sort(at)
+		out := make([]Relationship, 0, len(at))
+		for _, i := range at {
+			out = append(out, tuples[i])
+		}
+		return out
 	}
 
+	starts, leftOut := creationStarts(s, wm, objects, reads, held)
 	states := make([]weighedState, 0, len(objects))
 	for _, o := range objects {
 		include := maps.Clone(reads[o])
-		for _, other := range linked {
-			if other.Type != o.Type {
-				for read := range reads[other] {
-					include[read] = true
-				}
+		for _, start := range starts {
+			maps.Copy(include, reads[start])
+		}
+		state := held(include)
+		states = append(states, weighedState{object: o, tuples: state, reads: reads[o], shape: shapeOf(state)})
+	}
+	return states, leftOut
+}
+
+// creationStarts picks what a state brings along for a creation to start from: of each
+// type a creation is made on, what it takes to hold one object of each shape, the fewest
+// tuples first so a state does not grow by a hub of the store. Two objects of one shape
+// give one witness under two names, as long as the witness does not rest on what else
+// reads them. It says how many objects of those types another stands for.
+func creationStarts(s Sample, wm *WriteModel, objects []Object, reads map[Object]map[Object]bool, held func(map[Object]bool) []Relationship) ([]Object, int) {
+	types := map[string]bool{}
+	if wm != nil {
+		for _, rule := range wm.Creates {
+			for _, on := range rule.On {
+				types[on.Type] = true
 			}
 		}
-		var at []int
-		for read := range include {
-			at = append(at, byResource[read]...)
-		}
-		slices.Sort(at)
-		tuples := make([]Relationship, 0, len(at))
-		for _, i := range at {
-			tuples = append(tuples, s.Relationships[i])
-		}
-		states = append(states, weighedState{object: o, tuples: tuples, reads: reads[o], shape: shapeOf(tuples)})
 	}
-	return states
+	if len(types) == 0 {
+		return nil, 0
+	}
+
+	bySize := slices.Clone(objects)
+	slices.SortStableFunc(bySize, func(a, b Object) int { return cmp.Compare(len(reads[a]), len(reads[b])) })
+	shapes := map[string]bool{}
+	shapeOfObject := map[Object]string{}
+	var starts []Object
+	for _, o := range bySize {
+		brings := false
+		for read := range reads[o] {
+			if !types[read.Type] {
+				continue
+			}
+			shape, known := shapeOfObject[read]
+			if !known {
+				shape = read.Type + "\x00" + shapeOf(held(reads[read]))
+				shapeOfObject[read] = shape
+			}
+			if !shapes[shape] {
+				shapes[shape] = true
+				brings = true
+			}
+		}
+		if brings {
+			starts = append(starts, o)
+		}
+	}
+	return starts, len(shapeOfObject) - len(shapes)
 }
 
 // positionsOf says where the tuples on each object sit, so a part of a sample can be
