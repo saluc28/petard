@@ -93,7 +93,9 @@
   two endpoints that write one relation showed as one, for the same reason. They now leave as one
   edge, with the patterns of all of them and an `also` line for what each of the others says.
 - A real subject called `attacker` no longer lends what it holds to the attacker the analysis
-  supposes, which hid what an account with nothing can raise.
+  supposes, which hid what an account with nothing can raise. The objects of the starting positions
+  and the objects a coalition makes take no name of the store either, so a real `document:target` no
+  longer reads as raised by what a position reached.
 - The safe gates proposed for a schema no longer call a permission unsafe for an escalation the
   declared write rules reach on their own. That escalation is reported against those rules, and a
   relation could read as having no safe gate when one existed.

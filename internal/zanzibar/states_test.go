@@ -305,6 +305,53 @@ func TestTheWorkOnSubjectsIsCounted(t *testing.T) {
 	}
 }
 
+// An object a coalition makes takes no name of the store. If it did, making a folder would
+// hand the coalition the folder of that name, its owner written on it, and with the folder
+// whatever hangs off it: a raise on the document no write could reach.
+func TestACreationDoesNotTakeAnObjectOfTheStore(t *testing.T) {
+	folder := &Type{
+		Name: "folder",
+		Relations: []*Relation{
+			{Name: "owner", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "manage", Expr: Computed{Name: "owner"}},
+			{Name: "view", Expr: Computed{Name: "viewer"}},
+		},
+	}
+	document := &Type{
+		Name:        "document",
+		Relations:   []*Relation{{Name: "parent", Allowed: []Allowed{{Type: "folder"}}}},
+		Permissions: []*Permission{{Name: "read", Expr: Arrow{Through: "parent", Target: "view"}}},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, folder, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{
+		SchemaVersion: 1,
+		Kind:          "relationship-writes",
+		Writes: []*WriteRule{
+			{Resource: "folder", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Holds: "manage"}, Subject: SubjectSpec{Self: true}},
+		},
+		Creates: []*CreationRule{{
+			Creates: "folder",
+			Gate:    Gate{Anyone: true},
+			Writes:  []CreationWrite{{Resource: CreatedPlaceholder, Relation: "owner", Subject: CreatorPlaceholder}},
+		}},
+	}
+	sample := Sample{Relationships: []Relationship{rel("document:roadmap", "parent", "folder:created-0")}}
+	attacker := Object{Type: "user", ID: "attacker"}
+	escalations, err := Escalations(model, wm, nil, sample.Relationships, []Object{attacker}, Options{Now: time.Unix(0, 0), taken: namedObjects(sample)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range escalations {
+		t.Errorf("no write opens the store's folder, and the search raises %s on %s", e.Permission, e.Object)
+	}
+}
+
 // A sample too large to search whole gives what the search found and says it stopped, and
 // the report and the graph say the same. A coalition can join any of thirty teams, and that
 // is more sets of up to four teams than the limit weighs.

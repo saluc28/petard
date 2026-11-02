@@ -422,6 +422,17 @@ func TestWhatTheAnalysisSupposesIsMarked(t *testing.T) {
 			},
 		},
 		{
+			name:          "a real object is not credited with what the object of a position reaches",
+			relationships: []Relationship{rel("document:target", "owner", "user:olivia")},
+			expected: map[string]bool{
+				"user:attacker":            true,
+				"document:target-1":        true,
+				"document:target-1#editor": true,
+				"document:target":          false,
+				"user:olivia":              false,
+			},
+		},
+		{
 			name:          "the relationships name their objects and subjects",
 			relationships: []Relationship{rel("document:roadmap", "owner", "user:olivia")},
 			expected: map[string]bool{

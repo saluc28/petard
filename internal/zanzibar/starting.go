@@ -62,9 +62,9 @@ func StartingPositions(model *Model, attacker Object, opts Options) []StartingPo
 	depth := opts.startingDepth()
 	var out []StartingPosition
 	for _, t := range model.Types {
-		object := Object{Type: t.Name, ID: TargetID}
+		object := freeObject(opts.taken, t.Name, TargetID)
 		for _, name := range targetNames(t) {
-			g := &positionGen{model: model, attacker: attacker}
+			g := &positionGen{model: model, attacker: attacker, taken: opts.taken}
 			sets, truncated := g.sets(t.Name, name, object, depth, map[string]bool{}, map[string]bool{t.Name + "#" + name: true})
 			for _, tuples := range dedupSets(sets) {
 				out = append(out, StartingPosition{
@@ -103,11 +103,12 @@ func targetNames(t *Type) []string {
 type positionGen struct {
 	model    *Model
 	attacker Object
+	taken    map[Object]bool
 	counter  int
 }
 
 func (g *positionGen) fresh(typ string) Object {
-	o := Object{Type: typ, ID: fmt.Sprintf("aux-%d", g.counter)}
+	o := freeObject(g.taken, typ, fmt.Sprintf("aux-%d", g.counter))
 	g.counter++
 	return o
 }

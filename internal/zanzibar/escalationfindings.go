@@ -104,7 +104,8 @@ func classifiedEscalations(s Sample, wm *WriteModel) ([]attackerEscalation, Limi
 		return nil, Limits{}
 	}
 	var limits Limits
-	opts := Options{Now: s.Now, maxStates: maxSearchStates, cut: &limits.SearchesStopped}
+	named := namedObjects(s)
+	opts := Options{Now: s.Now, maxStates: maxSearchStates, cut: &limits.SearchesStopped, taken: named}
 
 	// The reach says which permissions a write under the model could raise; it is
 	// read off the model once here and scopes every classification, so a target
@@ -138,7 +139,7 @@ func classifiedEscalations(s Sample, wm *WriteModel) ([]attackerEscalation, Limi
 
 	states := weighedStates(s)
 	for _, typ := range subjectTypes(s.Model) {
-		attacker := hypotheticalAttacker(s, typ)
+		attacker := freeObject(named, typ, "attacker")
 		// Two states of one shape raise the same permissions of the same types, and
 		// a raise is kept once by type, so the second adds nothing.
 		shapes := map[string]bool{}

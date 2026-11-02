@@ -302,3 +302,38 @@ func TestStartingPositionsOfASharedName(t *testing.T) {
 		seen[name] = true
 	}
 }
+
+// The objects of a position take no name of the sample, so what a position reaches is not
+// read as reached on the object of that name.
+func TestAPositionTakesNoNameOfTheSample(t *testing.T) {
+	team := &Type{Name: "team", Relations: []*Relation{{Name: "member", Allowed: []Allowed{{Type: "user"}}}}}
+	document := &Type{
+		Name:      "document",
+		Relations: []*Relation{{Name: "viewer", Allowed: []Allowed{{Type: "team", Relation: "member"}}}},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, team, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taken := map[Object]bool{{Type: "document", ID: TargetID}: true, {Type: "team", ID: "aux-0"}: true}
+	attacker := Object{Type: "user", ID: "attacker"}
+	found := false
+	for _, p := range StartingPositions(model, attacker, Options{taken: taken}) {
+		for _, r := range p.Tuples {
+			for _, o := range []Object{r.Resource, r.Subject.Object} {
+				if taken[o] {
+					t.Errorf("position %s uses %s, which the sample names", p, o)
+				}
+			}
+		}
+		if p.Target == "viewer" {
+			found = true
+			if p.Object.ID != TargetID+"-1" {
+				t.Errorf("the object of the position is %s", p.Object)
+			}
+		}
+	}
+	if !found {
+		t.Error("no position holds document#viewer")
+	}
+}

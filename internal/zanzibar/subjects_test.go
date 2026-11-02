@@ -8,7 +8,7 @@ import (
 
 // A subject that happens to be called attacker is a real subject, and the attacker the
 // analysis supposes takes another name rather than what that subject holds.
-func TestHypotheticalAttackerTakesANameNobodyUses(t *testing.T) {
+func TestASupposedObjectTakesANameNobodyUses(t *testing.T) {
 	tests := []struct {
 		name          string
 		relationships []Relationship
@@ -36,9 +36,9 @@ func TestHypotheticalAttackerTakesANameNobodyUses(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := hypotheticalAttacker(Sample{Relationships: tt.relationships}, "user")
+			got := freeObject(namedObjects(Sample{Relationships: tt.relationships}), "user", "attacker")
 			if got != (Object{Type: "user", ID: tt.expected}) {
-				t.Errorf("hypotheticalAttacker = %s, want user:%s", got, tt.expected)
+				t.Errorf("freeObject = %s, want user:%s", got, tt.expected)
 			}
 		})
 	}

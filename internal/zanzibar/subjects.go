@@ -7,21 +7,27 @@ import (
 	"slices"
 )
 
-// hypotheticalAttacker is the attacker of a type the analysis supposes, an account
-// that holds nothing it did not write. It has a name no relationship of the sample
-// uses, so a real subject that happens to be called attacker is not mistaken for it
-// and does not lend it what it holds.
-func hypotheticalAttacker(s Sample, typ string) Object {
-	named := map[Object]bool{}
+// namedObjects are the objects the relationships of a sample name.
+func namedObjects(s Sample) map[Object]bool {
+	named := make(map[Object]bool, 2*len(s.Relationships))
 	for _, r := range s.Relationships {
 		named[r.Resource] = true
 		named[r.Subject.Object] = true
 	}
-	attacker := Object{Type: typ, ID: "attacker"}
-	for n := 1; named[attacker]; n++ {
-		attacker.ID = fmt.Sprintf("attacker-%d", n)
+	return named
+}
+
+// freeObject is an object the analysis supposes: an attacker that holds nothing it did
+// not write, the object of a position, one a coalition makes. It takes a name no
+// relationship of the sample uses, with a number after it when one does, so that a real
+// object that happens to have the name lends it nothing and is not credited with what
+// the supposed one reaches.
+func freeObject(taken map[Object]bool, typ, id string) Object {
+	object := Object{Type: typ, ID: id}
+	for n := 1; taken[object]; n++ {
+		object.ID = fmt.Sprintf("%s-%d", id, n)
 	}
-	return attacker
+	return object
 }
 
 // realSubjects are the objects the relationships of a sample name as their subject,
@@ -141,7 +147,7 @@ func subjectEscalations(s Sample, wm *WriteModel, work int) ([]attackerEscalatio
 	if s.Model == nil || wm == nil {
 		return nil, limits
 	}
-	opts := Options{Now: s.Now, maxStates: maxSearchStates, cut: &limits.SearchesStopped, work: &work}
+	opts := Options{Now: s.Now, maxStates: maxSearchStates, cut: &limits.SearchesStopped, work: &work, taken: namedObjects(s)}
 	scope := newReach(s.Model, wm).scopeOf(s.Model, wm)
 
 	states := weighedStates(s)

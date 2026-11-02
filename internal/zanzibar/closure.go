@@ -56,6 +56,10 @@ type Options struct {
 	// work, when set, goes down by the tuples of each state the search weighs, for a
 	// caller that gives many searches one limit.
 	work *int
+
+	// taken are the objects a sample names, whose names nothing the analysis supposes
+	// may use.
+	taken map[Object]bool
 }
 
 // maxSearchStates is how many states one search for witnesses weighs over a sample.
@@ -508,7 +512,7 @@ func (e *engine) creations(checker *Checker, state *stateSet, objects []Object, 
 		}
 		for _, combo := range combos {
 			for n := range mode.copies {
-				created := Object{Type: rule.Creates, ID: createdID(i, combo.sig, n, mode.merged)}
+				created := freeObject(e.opts.taken, rule.Creates, createdID(i, combo.sig, n, mode.merged))
 				added := !containsObject(objects, created)
 				if added {
 					// The creation itself brings the object into the coalition.
