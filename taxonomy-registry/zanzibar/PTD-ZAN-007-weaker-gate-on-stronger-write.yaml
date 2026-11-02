@@ -110,10 +110,10 @@ graph:
     gate is in the write model, not the schema, so there is no candidate without one.
   marks:
     - kind: PTD_CanEscalateTo
-      properties: [patterns, permission]
+      properties: [patterns, permissions]
   marks_note: >
-    The escalation is a `PTD_CanEscalateTo` from the coalition to the object it raises the
-    permission on, carrying the permission and this pattern's id. The writes behind it are
+    The escalation is a `PTD_CanEscalateTo` from the coalition to the object it raises a
+    permission on, carrying the permissions and this pattern's id. The writes behind it are
     `PTD_WrittenBy` edges on the attributes the witness wrote, which the graph holds without
     tagging them with the pattern.
 
@@ -154,7 +154,8 @@ fixture:
     there are not two decisions to split. It is reported as the attribute self-write instead.
   expected: >
     A finding of `PTD-ZAN-007` on `document#edit`, its decisive write a self-written `editor` behind
-    a gate that holds `view`.
+    a gate that holds `view`, and on `document#view` and `document#access` as well: a viewer the
+    relationships hold to a network holds `view` conditionally, and the same write lifts it to yes.
 
 references:
   - title: petard, the write model format

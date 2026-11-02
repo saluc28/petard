@@ -2,7 +2,7 @@ name: "PTD-ZAN-006: permissions a gated write passes to another"
 guid: efe05f9d-c78b-45b1-80c2-e4c0afad84e2
 prebuilt: false
 platforms:
-  - SpiceDB
+  - Zanzibar
 category: Delegation not narrowed
 description: >
   The permissions a coalition raises by writing a grant for another subject, one the writer passed

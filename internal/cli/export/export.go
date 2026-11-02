@@ -244,9 +244,11 @@ func build(ctx context.Context, inputs taxonomy.Inputs, schemas zanzibarsetup.Fo
 				WriteModel: a.WriteModel,
 			})
 		}
-		if err := zanzibar.AddEscalations(g, graphInputs); err != nil {
+		limits, err := zanzibar.AddEscalations(g, graphInputs)
+		if err != nil {
 			return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
 		}
+		gaps.Other = limits.Lines()
 	}
 
 	payload := opengraph.Payload(g)

@@ -32,13 +32,23 @@ func (c Category) patternID() string {
 
 // escalationFindings are the escalations a coalition can raise over a sample,
 // each labelled with the registry id of its decisive-write category. It is
-// classifiedEscalations turned into the matches a report prints, sorted so the
-// same sample prints the same bytes on every run. Run is the one caller.
-func escalationFindings(s Sample, wm *WriteModel) []Match {
-	found := classifiedEscalations(s, wm)
+// classifiedEscalations turned into the matches a report prints, and what the real
+// subjects of the sample can raise beside them, a fact about the schema told once
+// whoever shows it. Some raises only a real subject shows: one who is both a viewer and
+// banned deletes the ban, and no account the analysis supposes holds both. They are sorted
+// so the same sample prints the same bytes on every run. Run is the one caller.
+func escalationFindings(s Sample, wm *WriteModel) ([]Match, Limits) {
+	found, limits := classifiedEscalations(s, wm)
+	subjects, subjectLimits := subjectEscalations(s, wm, maxSubjectWork)
+	limits.Add(subjectLimits)
+
+	seen := make(map[string]bool, len(found))
 	out := make([]Match, 0, len(found))
-	for _, f := range found {
-		out = append(out, escalationMatch(f.patternID, f.esc))
+	for _, f := range slices.Concat(found, subjects) {
+		if !seen[f.key()] {
+			seen[f.key()] = true
+			out = append(out, escalationMatch(f.patternID, f.esc))
+		}
 	}
 
 	// The closure visits states in an order a map decides, so the escalations
@@ -50,7 +60,7 @@ func escalationFindings(s Sample, wm *WriteModel) []Match {
 		}
 		return cmp.Compare(a.Subject, b.Subject)
 	})
-	return out
+	return out, limits
 }
 
 // attackerEscalation is one escalation the coalition can raise, paired with the
@@ -62,6 +72,11 @@ type attackerEscalation struct {
 	attacker  Object
 	esc       ClassifiedEscalation
 	patternID string
+
+	// hypothetical is true of an attacker the analysis supposes, as against a subject
+	// the relationships name, and position of a state generated from the schema, whose
+	// objects nobody names either.
+	hypothetical, position bool
 }
 
 // key is the identity a finding and the graph both deduplicate on: the
@@ -84,11 +99,12 @@ func (a attackerEscalation) key() string {
 // allows; with none it returns nothing. The findings and the graph are both
 // built from this, so a report and a graph of one sample cannot disagree about
 // what the engine found.
-func classifiedEscalations(s Sample, wm *WriteModel) []attackerEscalation {
+func classifiedEscalations(s Sample, wm *WriteModel) ([]attackerEscalation, Limits) {
 	if s.Model == nil || wm == nil {
-		return nil
+		return nil, Limits{}
 	}
-	opts := Options{Now: s.Now}
+	var limits Limits
+	opts := Options{Now: s.Now, maxStates: maxSearchStates, cut: &limits.SearchesStopped}
 
 	// The reach says which permissions a write under the model could raise; it is
 	// read off the model once here and scopes every classification, so a target
@@ -98,7 +114,7 @@ func classifiedEscalations(s Sample, wm *WriteModel) []attackerEscalation {
 
 	seen := map[string]bool{}
 	var out []attackerEscalation
-	add := func(start []Relationship, attacker Object) {
+	add := func(start []Relationship, attacker Object, position bool) {
 		classified, err := classifyScoped(s.Model, wm, s.Caveats, start, []Object{attacker}, scope, opts)
 		if err != nil {
 			// A starting state the caveat environment cannot evaluate yields no
@@ -110,7 +126,7 @@ func classifiedEscalations(s Sample, wm *WriteModel) []attackerEscalation {
 			if id == "" {
 				continue
 			}
-			ae := attackerEscalation{attacker: attacker, esc: c, patternID: id}
+			ae := attackerEscalation{attacker: attacker, esc: c, patternID: id, hypothetical: true, position: position}
 			key := ae.key()
 			if seen[key] {
 				continue
@@ -120,14 +136,23 @@ func classifiedEscalations(s Sample, wm *WriteModel) []attackerEscalation {
 		}
 	}
 
+	states := weighedStates(s)
 	for _, typ := range subjectTypes(s.Model) {
-		attacker := Object{Type: typ, ID: "attacker"}
-		add(s.Relationships, attacker)
+		attacker := hypotheticalAttacker(s, typ)
+		// Two states of one shape raise the same permissions of the same types, and
+		// a raise is kept once by type, so the second adds nothing.
+		shapes := map[string]bool{}
+		for _, state := range states {
+			if !shapes[state.shape] {
+				shapes[state.shape] = true
+				add(state.tuples, attacker, false)
+			}
+		}
 		for _, p := range StartingPositions(s.Model, attacker, opts) {
-			add(p.Tuples, attacker)
+			add(p.Tuples, attacker, true)
 		}
 	}
-	return out
+	return out, limits
 }
 
 // escalationMatch builds the finding for one classified escalation: the kind of

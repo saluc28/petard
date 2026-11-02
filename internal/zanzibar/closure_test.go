@@ -172,6 +172,80 @@ func TestClosure(t *testing.T) {
 // viewer but banned, so view does not hold; a delete rule on banned lets the
 // coalition remove its own ban, and view rises. banned occurs only negatively
 // and viewer only positively, so E1 holds and the closure is exact.
+// A subject held to a caveat cannot write the same tuple without it under a rule that
+// only creates: the product refuses a create of a tuple that is there already, whatever
+// the caveat on it. A touch overwrites it, and a delete makes room, so either of those
+// lifts the condition.
+func TestAWriteOverATupleNeedsARuleThatReplaces(t *testing.T) {
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}, {Type: "user", Caveat: "held"}}},
+		},
+		Permissions: []*Permission{{Name: "view", Expr: Computed{Name: "viewer"}}},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, document}, []*Caveat{{Name: "held"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := rel("document:roadmap", "viewer", "user:vic")
+	held.Caveat = &CaveatUse{Name: "held"}
+	vic := Object{Type: "user", ID: "vic"}
+
+	tests := []struct {
+		name       string
+		operations []Operation
+		raises     bool
+	}{
+		{name: "create alone", operations: []Operation{Create}, raises: false},
+		{name: "create and touch", operations: []Operation{Create, Touch}, raises: true},
+		{name: "touch alone", operations: []Operation{Touch}, raises: true},
+		{name: "create and delete", operations: []Operation{Create, Delete}, raises: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+				{Resource: "document", Relation: "viewer", Operations: tt.operations, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+			}}
+			escalations, err := Escalations(model, wm, stubCaveats{}, []Relationship{held}, []Object{vic}, Options{Now: time.Unix(0, 0)})
+			if err != nil {
+				t.Fatalf("Escalations: %v", err)
+			}
+			if got := len(escalations) > 0; got != tt.raises {
+				t.Errorf("raises = %v, want %v: %+v", got, tt.raises, escalations)
+			}
+		})
+	}
+}
+
+// A create is still free to write a tuple that is not there. What it cannot do is land on
+// one that is, so another subject's conditional tuple stops nobody.
+func TestACreateIsHeldBackOnlyByTheSameTuple(t *testing.T) {
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}, {Type: "user", Caveat: "held"}}},
+		},
+		Permissions: []*Permission{{Name: "view", Expr: Computed{Name: "viewer"}}},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, document}, []*Caveat{{Name: "held"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := rel("document:roadmap", "viewer", "user:vic")
+	held.Caveat = &CaveatUse{Name: "held"}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+	}}
+	escalations, err := Escalations(model, wm, stubCaveats{}, []Relationship{held}, []Object{{Type: "user", ID: "mallory"}}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Escalations: %v", err)
+	}
+	if len(escalations) == 0 {
+		t.Error("another subject's conditional tuple stopped a create of a tuple that is not there")
+	}
+}
+
 func TestClosureDeletesLiftADeny(t *testing.T) {
 	document := &Type{
 		Name: "document",

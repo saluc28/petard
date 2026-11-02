@@ -2,7 +2,7 @@ name: "PTD-ZAN-002: permissions a delete can lift"
 guid: 80b6298e-2a64-4ccc-aa50-2d768420278e
 prebuilt: false
 platforms:
-  - SpiceDB
+  - Zanzibar
 category: Fail-open on absence
 description: >
   The permissions a coalition raises by deleting a relation an exclusion reads, so the deny the

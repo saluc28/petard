@@ -2,6 +2,7 @@ package zanzibar
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 	"time"
 )
@@ -29,9 +30,15 @@ type Sample struct {
 // A finding and the candidate of the same relation and parameter are the same
 // fact, so the candidate is dropped once the write model has made it a finding.
 func Run(s Sample, wm *WriteModel) []Match {
+	matches, _ := RunWithLimits(s, wm)
+	return matches
+}
+
+// RunWithLimits is Run, and says where the run stopped short of weighing everything.
+func RunWithLimits(s Sample, wm *WriteModel) ([]Match, Limits) {
 	candidates := WriterSetParameters(s)
 	if wm == nil {
-		return candidates
+		return candidates, Limits{}
 	}
 	findings := SelfAssertedExemptions(s.Model, wm, Options{})
 	confirmed := make(map[string]bool, len(findings))
@@ -44,8 +51,56 @@ func Run(s Sample, wm *WriteModel) []Match {
 			out = append(out, c)
 		}
 	}
-	out = append(out, escalationFindings(s, wm)...)
-	return out
+	escalations, limits := escalationFindings(s, wm)
+	return append(out, escalations...), limits
+}
+
+// Limits says where an analysis of a sample stopped short of weighing everything, so
+// that a store too large to weigh whole does not read as one with nothing more in it.
+// What was found holds either way.
+type Limits struct {
+	// SearchesStopped counts the searches for witnesses that reached maxSearchStates.
+	SearchesStopped int
+
+	// SubjectsLeftOut counts the subjects, one for each object, that were not weighed
+	// for what they can raise once maxSubjectWork was spent.
+	SubjectsLeftOut int
+
+	// HoldingsLeftOut counts the objects not asked who holds what on them once
+	// maxHoldingChecks were spent.
+	HoldingsLeftOut int
+}
+
+// Add sums two limits, for an analysis of several samples.
+func (l *Limits) Add(other Limits) {
+	l.SearchesStopped += other.SearchesStopped
+	l.SubjectsLeftOut += other.SubjectsLeftOut
+	l.HoldingsLeftOut += other.HoldingsLeftOut
+}
+
+// Lines say the limits in words, none when nothing stopped short.
+func (l Limits) Lines() []string {
+	var lines []string
+	if l.SearchesStopped > 0 {
+		lines = append(lines, fmt.Sprintf("%d %s for a witness stopped at the limit of the states weighed: what was found holds, and there can be more",
+			l.SearchesStopped, plural(l.SearchesStopped, "search", "searches")))
+	}
+	if l.SubjectsLeftOut > 0 {
+		lines = append(lines, fmt.Sprintf("%d %s of what a subject can raise on an object went unasked, past the limit of the work",
+			l.SubjectsLeftOut, plural(l.SubjectsLeftOut, "question", "questions")))
+	}
+	if l.HoldingsLeftOut > 0 {
+		lines = append(lines, fmt.Sprintf("%d %s not asked who holds what, past the limit of the work",
+			l.HoldingsLeftOut, plural(l.HoldingsLeftOut, "object", "objects")))
+	}
+	return lines
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // Assertion is a check somebody wrote down with the answer they expect, as a

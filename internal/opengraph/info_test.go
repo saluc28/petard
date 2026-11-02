@@ -255,7 +255,7 @@ func TestCanEscalateToPanelReadsAZanzibarRaise(t *testing.T) {
 		Source:     nodeContext{Properties: map[string]any{"name": "user:attacker"}},
 		Target:     nodeContext{Properties: map[string]any{"name": "document:roadmap"}},
 		Kind:       kindContext{Name: string(graph.EdgeKindCanEscalateTo)},
-		Properties: map[string]any{graph.PropPermission: "view", graph.PropPatterns: []any{"PTD-ZAN-008"}},
+		Properties: map[string]any{graph.PropPermissions: []any{"access", "view"}, graph.PropPatterns: []any{"PTD-ZAN-008"}},
 	}
 
 	panel := render(t, sections, edge)
@@ -263,7 +263,7 @@ func TestCanEscalateToPanelReadsAZanzibarRaise(t *testing.T) {
 		t.Errorf("the panel renders a missing value or a raw template:\n%s", panel)
 	}
 	for _, want := range []string{
-		"**user:attacker** raises **view** on **document:roadmap**",
+		"**user:attacker** raises **access** **view** on **document:roadmap**",
 		"PTD-ZAN-008",
 		"A subject writes itself a relation behind an open gate",
 	} {

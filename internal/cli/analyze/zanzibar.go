@@ -25,6 +25,9 @@ type zanzibarRun struct {
 	// causes are the matches that are escalations, by the write rule behind them.
 	causes []causeGroup
 
+	// limits say where the analysis stopped short of weighing everything.
+	limits zanzibar.Limits
+
 	// unread are the schema files that no validation file or store file reads and
 	// that have no write model beside them, so the patterns have no rule for who
 	// writes their relations and no relationship or check to take as evidence. A
@@ -66,7 +69,9 @@ func runZanzibar(found zanzibarsetup.Found, now time.Time, propose bool) (zanzib
 	seen := map[string]bool{}
 	causes := causesOf{}
 	for _, a := range analyses {
-		for _, m := range zanzibar.Run(a.Sample, a.WriteModel) {
+		matches, limits := zanzibar.RunWithLimits(a.Sample, a.WriteModel)
+		run.limits.Add(limits)
+		for _, m := range matches {
 			key := m.PatternID + "\x00" + a.SchemaPath + "\x00" + m.Subject
 			if seen[key] {
 				continue
@@ -192,6 +197,10 @@ func printZanzibar(out io.Writer, r zanzibarRun, patterns []taxonomy.Pattern, p 
 
 	if p.quiet {
 		return
+	}
+	for _, line := range r.limits.Lines() {
+		fmt.Fprintln(out)
+		render.Print(out, line, "")
 	}
 	printProposals(out, r.proposals, style)
 	for _, f := range r.unread {

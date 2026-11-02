@@ -79,7 +79,7 @@ func TestEveryQueryIsComplete(t *testing.T) {
 	}
 	engines := []enginePatterns{
 		{opa, "Open Policy Agent", registry.OPADir},
-		{zanzibar, "SpiceDB", registry.ZanzibarDir},
+		{zanzibar, "Zanzibar", registry.ZanzibarDir},
 	}
 	byID := map[string]enginePatterns{}
 	platforms := map[string]bool{}
@@ -184,7 +184,7 @@ func TestQueriesAskForWhatTheGraphHolds(t *testing.T) {
 		graph.PropWriteConfidence, graph.PropUncoveredKeys, graph.PropKeysChecked,
 		graph.PropEnforcingSide, graph.PropReachTransitive, graph.PropReachDirect,
 		graph.PropRelation, graph.PropPatterns, graph.PropCandidatePatterns,
-		graph.PropPermission, graph.PropPositions, graph.PropEmptyDomains, graph.PropMitigation,
+		graph.PropPermissions, graph.PropHypothetical, graph.PropPositions, graph.PropEmptyDomains, graph.PropMitigation,
 	} {
 		properties[key] = true
 	}

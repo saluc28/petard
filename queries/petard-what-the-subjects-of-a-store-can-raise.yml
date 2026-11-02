@@ -1,0 +1,18 @@
+name: "Petard: what the subjects a store names can raise"
+guid: 7c2f4e1a-9b3d-4a6e-8f10-2d5c6b7a8e94
+prebuilt: false
+platforms:
+  - Zanzibar
+category: Petard
+description: >
+  The permissions the subjects the relationships name can raise on an object, leaving out the
+  attackers and the objects the analysis supposes, which hold for any account of the type. The edge
+  says which permissions and which patterns.
+query: |-
+  MATCH p = (n:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Resource)
+  WHERE n.hypothetical IS NULL
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard
+acknowledgements: []

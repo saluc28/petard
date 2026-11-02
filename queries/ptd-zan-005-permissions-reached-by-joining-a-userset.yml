@@ -2,7 +2,7 @@ name: "PTD-ZAN-005: permissions reached by joining a userset"
 guid: aeb9792f-4cfe-4e22-b18e-f55d281af060
 prebuilt: false
 platforms:
-  - SpiceDB
+  - Zanzibar
 category: Assumable identity
 description: >
   The permissions a coalition raises by writing itself into a userset the object already grants

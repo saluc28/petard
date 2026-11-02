@@ -266,6 +266,9 @@ type Gaps struct {
 	// UnaskedCapabilities are the questions of what one principal gets out of
 	// one decision that could not be asked, because OPA panicked evaluating it.
 	UnaskedCapabilities int
+
+	// Other are the gaps another engine left in the same graph, already in words.
+	Other []string
 }
 
 // Lines says each gap there is, one line each, the way every command that
@@ -306,7 +309,7 @@ func (g Gaps) Lines() []string {
 			lines = append(lines, fmt.Sprintf("%d %s", said.count, said.many))
 		}
 	}
-	return lines
+	return append(lines, g.Other...)
 }
 
 // Assemble builds the internal graph from an analysis and what the patterns

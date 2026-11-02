@@ -15,6 +15,10 @@
 - `petard demo openfga` analyzes an OpenFGA model carried inside the binary, the service of the
   SpiceDB fixture, and `petard demo` analyzes it beside the others. `petard version` names the
   OpenFGA and the OpenFGA language compiled in.
+- `petard export` draws the subjects the relationships of a SpiceDB schema or an OpenFGA model name:
+  a `PTD_CanPerform` for what each holds as they stand, and a `PTD_CanEscalateTo` for what it can
+  raise by writing what the write model allows. The attackers and the objects the analysis supposes
+  are marked `hypothetical`, and a new saved query leaves them out.
 - `petard analyze` marks a SpiceDB escalation that defeats a time bound. When the decisive write
   sets a relationship the schema lets carry an expiration and the write model leaves that expiration
   for the coalition to set or to omit, the finding carries an `also` line: the grant is renewable or
@@ -39,6 +43,11 @@
 - `petard analyze` puts the escalations of a schema or a model under the write rule behind them, the
   rule that opens the most first, with the permissions that rise the same way on one line. The counts
   and the exit code are the same.
+- The extension schema is `v0.4.0`. A `PTD_CanEscalateTo` of a Zanzibar model carries `permissions`,
+  a list, in place of `permission`, and nodes can carry `hypothetical`. Run `petard export -install`
+  and upload the graph again.
+- The saved queries of the Zanzibar patterns name the platform `Zanzibar`, since they apply to SpiceDB
+  and OpenFGA alike.
 - `PTD-ZAN-001` is titled "A relationship fixes a condition value the check was meant to supply",
   so that it reads for a SpiceDB caveat and for an OpenFGA condition.
 - `petard analyze` proposes safe gates, and `-questions` writes the write-model skeleton, for a
@@ -72,6 +81,16 @@
 
 ### Fixed
 
+- The analysis of a store finishes. With a write model, a sample of about twenty objects behind an
+  open rule did not. Each object is now weighed on the tuples its checks can read. The search and the
+  work on real subjects have limits, and a run that reaches one says so.
+- A rule that only creates no longer lifts a conditional relationship to an unconditional one. The
+  product refuses a create of a tuple that is already there, whatever its caveat, so that escalation
+  was false. A rule that also touches or deletes still reports it.
+- In BloodHound, an attacker that could raise several permissions on one object showed only one of
+  them, since BloodHound keeps one edge of a kind between two nodes. The edge now lists them all.
+- A real subject called `attacker` no longer lends what it holds to the attacker the analysis
+  supposes, which hid what an account with nothing can raise.
 - The safe gates proposed for a schema no longer call a permission unsafe for an escalation the
   declared write rules reach on their own. That escalation is reported against those rules, and a
   relation could read as having no safe gate when one existed.

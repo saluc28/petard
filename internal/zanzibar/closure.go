@@ -46,7 +46,22 @@ type Options struct {
 	// Now is the time expirations are read at. The zero value takes the current
 	// time when the run starts.
 	Now time.Time
+
+	// maxStates stops the search for witnesses after that many states, and cut
+	// counts the searches it stopped. A search over a sample sets them. Zero weighs
+	// every state within MaxWrites, which is what the oracle holds the search to.
+	maxStates int
+	cut       *int
+
+	// work, when set, goes down by the tuples of each state the search weighs, for a
+	// caller that gives many searches one limit.
+	work *int
 }
+
+// maxSearchStates is how many states one search for witnesses weighs over a sample.
+// What it finds before the limit holds, each witness being a sequence of writes that
+// raises the permission, and the report says the search stopped.
+const maxSearchStates = 20000
 
 func (o Options) maxWrites() int {
 	if o.MaxWrites <= 0 {
@@ -388,6 +403,10 @@ func (e *engine) available(checker *Checker, state *stateSet, objects []Object) 
 	var moves []move
 	domain := e.domain(state, objects)
 	tuples := state.list()
+	written := make(map[string]bool, len(tuples))
+	for _, r := range tuples {
+		written[tupleIdentity(r)] = true
+	}
 
 	for _, rule := range e.wm.Writes {
 		relation := e.relation(rule.Resource, rule.Relation)
@@ -412,9 +431,10 @@ func (e *engine) available(checker *Checker, state *stateSet, objects []Object) 
 				for _, writer := range objects {
 					for _, subject := range e.subjects(rule, relation, writer, objects) {
 						rel := Relationship{Resource: resource, Relation: rule.Relation, Subject: subject}
-						if !state.has(rel) {
-							moves = append(moves, move{rel: rel, rule: rule, writer: Subject{Object: writer}})
+						if state.has(rel) || (written[tupleIdentity(rel)] && !replaces(rule.Operations)) {
+							continue
 						}
+						moves = append(moves, move{rel: rel, rule: rule, writer: Subject{Object: writer}})
 					}
 				}
 			}
@@ -747,6 +767,16 @@ func writes(ops []Operation) bool {
 	return slices.Contains(ops, Create) || slices.Contains(ops, Touch)
 }
 
+// replaces says whether a rule can put a tuple where one of the same resource,
+// relation and subject is there already, a caveat on it or not. A create cannot: the
+// product refuses it whatever the caveat (internal/datastore/memdb/readwrite.go:66-93
+// at SpiceDB v1.57.0, pkg/storage/memory/memory.go:459-471 at OpenFGA v1.22.1), so it
+// cannot lift a conditional tuple to an unconditional one. A touch overwrites, and a
+// delete makes room.
+func replaces(ops []Operation) bool {
+	return slices.Contains(ops, Touch) || slices.Contains(ops, Delete)
+}
+
 func containsObject(objects []Object, o Object) bool { return slices.Contains(objects, o) }
 
 func appendSubject(out *[]Subject, s Subject) {
@@ -832,7 +862,7 @@ func (s *stateSet) clone() *stateSet {
 // expiration flag, not the caveat context: a tuple the coalition writes with a
 // writer-filled caveat is the same move whatever satisfiable value it chooses.
 func tupleKey(r Relationship) string {
-	key := r.Resource.String() + "#" + r.Relation + "@" + r.Subject.String()
+	key := tupleIdentity(r)
 	if r.Caveat != nil {
 		key += "[" + r.Caveat.Name + "]"
 	}
@@ -840,6 +870,12 @@ func tupleKey(r Relationship) string {
 		key += "!exp"
 	}
 	return key
+}
+
+// tupleIdentity is what makes a tuple the same tuple to the product: its resource,
+// relation and subject, whatever it carries.
+func tupleIdentity(r Relationship) string {
+	return r.Resource.String() + "#" + r.Relation + "@" + r.Subject.String()
 }
 
 // signatureOf identifies a state and a coalition, so that two sequences of

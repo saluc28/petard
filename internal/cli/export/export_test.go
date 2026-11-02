@@ -162,8 +162,8 @@ func TestRunExportsTheSpiceDBEscalations(t *testing.T) {
 			written++
 		case "PTD_CanEscalateTo":
 			raises++
-			if permission, _ := edge.Properties["permission"].(string); permission == "" {
-				t.Errorf("a %s edge has no permission, which is what tells a Zanzibar raise from an OPA one", edge.Kind)
+			if permissions, _ := edge.Properties["permissions"].([]any); len(permissions) == 0 {
+				t.Errorf("a %s edge has no permissions, which is what tells a Zanzibar raise from an OPA one", edge.Kind)
 			}
 			patterns, _ := edge.Properties["patterns"].([]any)
 			named := false
@@ -746,5 +746,45 @@ func TestRunExportsTheOpenFGAEscalations(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "PTD_Attribute") || !strings.Contains(strings.ToUpper(string(content)), "DOCUMENT") {
 		t.Errorf("the payload holds no escalation of the model:\n%s", content)
+	}
+}
+
+// A store too large to weigh whole does not read as one with nothing more in it: the run
+// says where the analysis stopped short, among the other gaps of the graph.
+func TestRunSaysWhereTheAnalysisStoppedShort(t *testing.T) {
+	dir := t.TempDir()
+	schema := "definition user {}\n\n" +
+		"definition team {\n" +
+		"\trelation member: user\n" +
+		"}\n\n" +
+		"definition document {\n" +
+		"\trelation viewer: team#member\n" +
+		"\tpermission view = viewer\n" +
+		"}\n"
+	writeModel := "schema_version: 1\n" +
+		"model: relationship-writes\n" +
+		"writes:\n" +
+		"  - resource: team\n" +
+		"    relation: member\n" +
+		"    operations: [create]\n" +
+		"    gate: anyone\n" +
+		"    subject: self\n"
+	var validation strings.Builder
+	validation.WriteString("schemaFile: schema.zed\nrelationships: |-\n")
+	for i := range 30 {
+		fmt.Fprintf(&validation, "  document:roadmap#viewer@team:t%d#member\n", i)
+	}
+	for name, content := range map[string]string{"schema.zed": schema, "writes.yaml": writeModel, "validation.yaml": validation.String()} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-out", filepath.Join(t.TempDir(), "petard.json"), dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "stopped at the limit") {
+		t.Errorf("the run does not say the search stopped:\n%s", stdout.String())
 	}
 }

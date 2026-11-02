@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,6 +71,64 @@ func TestARuleOfOneSchemaStaysApartFromAnother(t *testing.T) {
 	Run([]string{spicedbFixture}, &stdout, &stderr)
 	if strings.Contains(stdout.String(), "    in           ") {
 		t.Errorf("with one schema a group still says where it comes from:\n%s", stdout.String())
+	}
+}
+
+// Grouping prints less, and what it leaves out has to be what repeats. A permission that
+// rises another way keeps its own line, an aspect true of one match is still said, and a
+// witness several permissions share prints once while one that differs says what it is for.
+func TestALimitTheAnalysisReachedIsSaid(t *testing.T) {
+	var out bytes.Buffer
+	r := zanzibarRun{limits: zanzibar.Limits{SearchesStopped: 2}}
+	printZanzibar(&out, r, nil, printing{})
+	if !strings.Contains(out.String(), "2 searches for a witness stopped at the limit") {
+		t.Errorf("the report does not say the analysis stopped short:\n%s", out.String())
+	}
+
+	out.Reset()
+	printZanzibar(&out, zanzibarRun{}, nil, printing{})
+	if strings.Contains(out.String(), "limit") {
+		t.Errorf("nothing stopped short, and the report says so:\n%s", out.String())
+	}
+}
+
+// What the engine says of a run reaches the report. A coalition can join any of thirty
+// teams, more sets of up to four than a search weighs.
+func TestARunThatReachesALimitSaysSo(t *testing.T) {
+	dir := t.TempDir()
+	schema := "definition user {}\n\n" +
+		"definition team {\n" +
+		"\trelation member: user\n" +
+		"}\n\n" +
+		"definition document {\n" +
+		"\trelation viewer: team#member\n" +
+		"\tpermission view = viewer\n" +
+		"}\n"
+	writeModel := "schema_version: 1\n" +
+		"model: relationship-writes\n" +
+		"writes:\n" +
+		"  - resource: team\n" +
+		"    relation: member\n" +
+		"    operations: [create]\n" +
+		"    gate: anyone\n" +
+		"    subject: self\n"
+	var validation strings.Builder
+	validation.WriteString("schemaFile: schema.zed\nrelationships: |-\n")
+	for i := range 30 {
+		fmt.Fprintf(&validation, "  document:roadmap#viewer@team:t%d#member\n", i)
+	}
+	for name, content := range map[string]string{"schema.zed": schema, "writes.yaml": writeModel, "validation.yaml": validation.String()} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-fail-on", "none", dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "stopped at the limit") {
+		t.Errorf("the report does not say the search stopped:\n%s", stdout.String())
 	}
 }
 

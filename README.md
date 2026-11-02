@@ -141,7 +141,7 @@ which is what an analysis depends on.
 
 The escalations Petard finds, in a policy, a SpiceDB schema or an OpenFGA model, go to BloodHound
 CE as an OpenGraph, where they are edges pathfinding walks. `petard export` writes the payload or uploads
-it, installs the extension schema and 48 saved queries, and with `-verify` asks the server for a
+it, installs the extension schema and 49 saved queries, and with `-verify` asks the server for a
 path along every escalation, and fails if it will not walk one.
 
 ![Two escalations in the graph](docs/assets/escalations.png)

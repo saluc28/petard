@@ -2,7 +2,7 @@ name: "PTD-ZAN-003: permissions a wildcard write opens"
 guid: 15bd238e-1289-4fc8-af8e-1661b8364542
 prebuilt: false
 platforms:
-  - SpiceDB
+  - Zanzibar
 category: Global switch
 description: >
   The permissions a coalition raises by writing a relation to the wildcard subject, which grants

@@ -17,6 +17,7 @@ import (
 	yaml "go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/saluc28/petard/internal/graph"
 	"github.com/saluc28/petard/internal/zanzibar"
 	registry "github.com/saluc28/petard/taxonomy-registry"
 )
@@ -165,8 +166,10 @@ func TestFixture(t *testing.T) {
 			"team#member, a grant written for another the writer lacks",
 		},
 		"PTD-ZAN-007": {
+			"document#access, written in behind a permission the coalition held",
 			"document#edit, written in behind a permission the coalition held",
 			"document#editor, written in behind a permission the coalition held",
+			"document#view, written in behind a permission the coalition held",
 		},
 		"PTD-ZAN-008": {
 			"document#access, written in behind a gate that needs no permission",
@@ -469,15 +472,27 @@ func TestFixtureWitnessesHoldOnCheck(t *testing.T) {
 	}
 
 	replayed := map[zanzibar.Category]int{}
-	for _, state := range states {
-		classified, err := zanzibar.Classify(schema.Model, wm, schema, state, []zanzibar.Object{attacker}, zanzibar.Options{Now: time.Now()})
+	replay := func(state []zanzibar.Relationship, who zanzibar.Object) {
+		t.Helper()
+		classified, err := zanzibar.Classify(schema.Model, wm, schema, state, []zanzibar.Object{who}, zanzibar.Options{Now: time.Now()})
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, esc := range classified {
-			replayWitness(ctx, t, s, state, attacker, esc)
+			replayWitness(ctx, t, s, state, who, esc)
 			replayed[esc.Category]++
 		}
+	}
+	for _, state := range states {
+		replay(state, attacker)
+	}
+	subjects := 0
+	for _, who := range namedUsers(store) {
+		subjects++
+		replay(store.Relationships, who)
+	}
+	if subjects == 0 {
+		t.Fatal("the store file names no subject")
 	}
 	for _, category := range []zanzibar.Category{
 		zanzibar.CategoryFailOpenOnAbsence,
@@ -493,6 +508,70 @@ func TestFixtureWitnessesHoldOnCheck(t *testing.T) {
 		}
 	}
 	t.Logf("%d states, witnesses by category: %v", len(states), replayed)
+}
+
+// namedUsers are the users the tuples of a store file name as their subject.
+func namedUsers(store *File) []zanzibar.Object {
+	var out []zanzibar.Object
+	for _, r := range store.Relationships {
+		if r.Subject.Relation == "" && r.Subject.Type == "user" && !slices.Contains(out, r.Subject.Object) {
+			out = append(out, r.Subject.Object)
+		}
+	}
+	return out
+}
+
+// What the graph says a subject holds is what OpenFGA's Check says. For every user the
+// tuples name, on every object and relation, there is a permission on a PTD_CanPerform
+// edge exactly where Check allows it. A check it refuses over a condition it cannot
+// decide is not a holding.
+func TestFixtureHoldingsHoldOnCheck(t *testing.T) {
+	ctx := t.Context()
+	s := newFixtureServer(t)
+	store, wm := fixtureStore(t)
+	model := newFixtureStore(ctx, t, s, store.Relationships)
+
+	g, err := zanzibar.EscalationGraph(sampleOf(store), wm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drawn := map[string]bool{}
+	for _, e := range g.Edges() {
+		if e.Kind != graph.EdgeKindCanPerform {
+			continue
+		}
+		permissions, _ := e.Properties[graph.PropPermissions].([]string)
+		for _, permission := range permissions {
+			drawn[e.From+" "+permission+" "+e.To] = true
+		}
+	}
+	if len(drawn) == 0 {
+		t.Fatal("the graph draws no holding")
+	}
+
+	objects := map[zanzibar.Object]bool{}
+	for _, r := range store.Relationships {
+		objects[r.Resource] = true
+	}
+	allowed := 0
+	for _, who := range namedUsers(store) {
+		for object := range objects {
+			for _, p := range store.Schema.Model.Type(object.Type).Permissions {
+				check := zanzibar.Assertion{Resource: object, Name: p.Name, Subject: zanzibar.Subject{Object: who}}
+				got, err := model.check(ctx, t, check)
+				key := who.String() + " " + p.Name + " " + object.String()
+				if err == nil && got {
+					allowed++
+				}
+				if want := err == nil && got; drawn[key] != want {
+					t.Errorf("%s: the graph says %v, Check says %v (%v)", key, drawn[key], got, err)
+				}
+			}
+		}
+	}
+	if allowed == 0 {
+		t.Fatal("Check allows nothing, so nothing was held to it")
+	}
 }
 
 // replayWitness makes the writes of an escalation on a new store and asks Check for the

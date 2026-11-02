@@ -49,6 +49,15 @@ func patternLines(key, heading string) string {
 	return b.String()
 }
 
+// hypotheticalText says that nobody names the selected node.
+const hypotheticalText = "No relationship names this: the analysis supposes it, so what it says holds for " +
+	"any account or object of the type."
+
+// hypotheticalLine is hypotheticalText on the nodes it is true of.
+func hypotheticalLine() string {
+	return "{{ if .Properties.hypothetical }}" + hypotheticalText + "{{ end }}"
+}
+
 // confidenceLine says what the level an edge carries means.
 //
 // The scale is the one internal/opaengine recognizes a request on, and a panel
@@ -114,6 +123,7 @@ func nodeInfo(kind graph.NodeKind) map[string]bhgraph.KindInfo {
 				"stands, and `PTD_CanEscalateTo` whose position it can take by writing something it is "+
 				"allowed to write.",
 		),
+			hypotheticalLine(),
 			patternsFound(),
 			"{{ with .Properties.positions }}**Positions worth taking**\n{{ range . }}\n- {{ . }}{{ end }}\n{{ end }}",
 			// Most principals of a graph carry no mark at all, and a section
@@ -127,8 +137,11 @@ func nodeInfo(kind graph.NodeKind) map[string]bhgraph.KindInfo {
 		return meaning("An operation the policy names, such as read or merge. A capability points " +
 			"here when the condition that grants it fixes the action and names no resource.")
 	case graph.NodeKindResource:
-		return meaning("A document a decision can grant, named by the value the residual condition " +
-			"fixes for it. Capabilities point here.")
+		return withDetails(meaning("A document a decision can grant, named by the value the residual "+
+			"condition fixes for it, or an object of a Zanzibar model. Capabilities point here."),
+			"{{ if .Properties.hypothetical }}"+hypotheticalText+"{{ else }}Who can get at it is on the "+
+				"`PTD_CanPerform` and `PTD_CanEscalateTo` edges that end here.{{ end }}",
+		)
 	case graph.NodeKindAttribute:
 		return meaning(
 			"A field a decision depends on, and what an escalation aims at: the question worth asking "+
@@ -160,8 +173,11 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 	case graph.EdgeKindCanPerform:
 		return withDetails(meaning(
 			"The principal can get this out of the decision, given the data as it stands. It is a "+
-				"measurement: the same policy against other documents gives other edges.",
+				"measurement: the same policy against other documents gives other edges. Against a "+
+				"Zanzibar model it is what the subject holds on the object as the relationships stand.",
 		),
+			"{{ with .Properties.permissions }}**{{ $.Source.Properties.name }}** holds{{ range . }} **{{ . }}**{{ end }} on "+
+				"**{{ $.Target.Properties.name }}**.{{ end }}",
 			"{{ with .Properties.decision }}**Decision** `{{ . }}`{{ end }}",
 			"{{ with .Properties.condition }}**What still has to hold**, as partial evaluation left it:\n\n```\n{{ . }}\n```{{ end }}",
 			"{{ with .Properties.action }}**Action** {{ . }}{{ end }}",
@@ -190,10 +206,10 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 		return withDetails(meaning(
 			"The principal can reach a position it was not given, by writing something it is allowed "+
 				"to write. Against a policy the position is another principal's and the edge ends "+
-				"there; against a Zanzibar model it is a permission on an object, and the edge ends at "+
+				"there; against a Zanzibar model it is permissions on an object, and the edge ends at "+
 				"the object. The only edge that means privilege escalation.",
 		),
-			"{{ with .Properties.permission }}**{{ $.Source.Properties.name }}** raises **{{ . }}** on "+
+			"{{ with .Properties.permissions }}**{{ $.Source.Properties.name }}** raises{{ range . }} **{{ . }}**{{ end }} on "+
 				"**{{ $.Target.Properties.name }}**.{{ else }}"+
 				"**{{ .Source.Properties.name }}** can take the position **{{ .Target.Properties.name }}** holds"+
 				"{{ with .Properties.decision }} in `{{ . }}`{{ end }}"+

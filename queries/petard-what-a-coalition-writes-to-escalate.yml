@@ -2,7 +2,7 @@ name: "Petard: what a coalition writes to escalate"
 guid: 8efe24f5-1f18-4b8d-984e-ec21e616bbd0
 prebuilt: false
 platforms:
-  - SpiceDB
+  - Zanzibar
 category: Petard
 description: >
   The relations a coalition writes or deletes to raise a permission, each from the attribute it

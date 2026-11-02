@@ -93,7 +93,7 @@ Findings
     2  PTD-ZAN-004  An arrow links an object to one the coalition controls
     2  PTD-ZAN-005  Joining a userset a relation grants to takes on its access
     3  PTD-ZAN-006  A gated write grants to another a right the writer never held
-    1  PTD-ZAN-007  A weaker permission gates writing a stronger one into the object
+    3  PTD-ZAN-007  A weaker permission gates writing a stronger one into the object
     2  PTD-ZAN-008  A subject writes itself a relation behind an open gate
 
   document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)

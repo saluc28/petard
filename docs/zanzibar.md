@@ -198,6 +198,36 @@ shows the setup it needs and not only the write that ends it.
 The categories of the registry with no Zanzibar instance, and why, are in section 3 of
 [taxonomy-registry/README.md](../taxonomy-registry/README.md).
 
+## A store
+
+The search for an escalation weighs every sequence of writes up to four, and its cost grows with the
+power of how many objects a coalition can write on. To hold that down each object is weighed apart,
+on the tuples a check of it can read and those of one object of each other type, for a witness to
+link in.
+Those answer a check of it as the whole store does, so nothing found this way is false. What it gives
+up is a witness that needs more objects that already exist: another of the object's own type, or two
+of another type.
+
+A search stops at twenty thousand states, and what it found by then holds. When one stops, the report
+says so.
+
+## What the graph holds
+
+`petard export` draws two kinds of fact. For the subjects the relationships name, a `PTD_CanPerform`
+to each object says what the subject holds as they stand, and a `PTD_CanEscalateTo` says what it can
+raise by writing what the write model allows. A holding is an unconditional yes: what waits on a
+caveat, or rests on a walk that cut a loop, is not drawn. A subject is weighed for what it can raise on
+the objects whose checks read a tuple naming it. The work on what subjects hold and on what they can
+raise each has a limit, the second spent on the smallest states first, and the export says what they
+left out.
+
+For what no relationship names, the same edge starts at an attacker the analysis supposes, an account
+that holds nothing it did not write, and can end at an object of a state generated from the schema.
+Those nodes carry `hypothetical`, since what they say holds for any account or object of the type.
+
+BloodHound keeps one edge of a kind between two nodes (`drivers/pg/query/sql/schema_up.sql:146` at
+dawgs v0.6.0), so each of these edges lists its `permissions`, and a `PTD_CanEscalateTo` its `patterns`.
+
 ## What a match rests on
 
 Who writes a relation, and with which context, is decided by the application that writes to the
@@ -225,7 +255,7 @@ A `writes` entry is a rule for one relation:
 | Field | What |
 |---|---|
 | `resource`, `relation` | the relation written |
-| `operations` | `create`, `touch`, `delete` |
+| `operations` | `create`, `touch`, `delete`. A `create` fails on a tuple that is there, whatever its caveat (`internal/datastore/memdb/readwrite.go:66-93` at SpiceDB v1.57.0, `pkg/storage/memory/memory.go:459-471` at OpenFGA v1.22.1), so only a rule that also touches or deletes can lift a conditional tuple |
 | `gate` | who may write: `anyone`, `{ holds: <permission> }` the writer holds on the resource, or `{ service: <name> }` for a write no end user can cause |
 | `subject` | what may be written as the subject: `self`, `any`, a list of types or usersets (`[user, "team#member"]`), or `{ holds: <permission> }` the subject object holds |
 | `wildcard` | whether the writer may write `T:*` |

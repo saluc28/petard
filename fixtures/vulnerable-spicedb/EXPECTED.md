@@ -44,14 +44,16 @@ roadmap, an object it did not start out holding, through the write the row names
 | `PTD-ZAN-004` | TRANSITIVE-GRANT | write `document#parent` to a folder the coalition controls | `view`, `access` |
 | `PTD-ZAN-005` | ASSUMABLE-IDENTITY | join `team#member`, which anyone may do | `view`, `access` |
 | `PTD-ZAN-006` | DELEGATION-NOT-NARROWED | write `document#editor` for a sybil, gated on holding `view` | `edit`, `view`, `access` |
-| `PTD-ZAN-007` | SPLIT-GRANT | write `document#editor` for itself, gated on holding `view` | `edit` |
+| `PTD-ZAN-007` | SPLIT-GRANT | write `document#editor` for itself, gated on holding `view` | `edit`; for a viewer held to a network, `view` and `access` as well |
 | `PTD-ZAN-008` | ATTR-SELF-WRITE | write `document#viewer` for itself, which anyone may do | `view`, `access` |
 
 Each rests on the write model, which says who writes a relation and so who can make the decisive
 write. With no `writes.yaml` the escalations are not reported at all, since who writes a relation
-is nowhere in the schema. The closure runs from the relationships of the validation file and the
-starting positions generated from the schema, and labels each escalation by the write after which
-the permission rises.
+is nowhere in the schema. The closure runs from the relationships of the validation file, for an
+account with nothing and for each subject they name, and from the starting positions generated from
+the schema, and labels each escalation by the write after which the permission rises. Vic shows the
+last row: held to a network, Vic holds `view` only conditionally, and writing an editor for Vic lifts
+it to yes.
 
 ## Must not find
 

@@ -182,10 +182,14 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 	visited := map[string]bool{signatureOf(start.state, start.objects): true}
 	seen := map[string]bool{}
 	var out []Escalation
+	stopped := false
 
 	for len(queue) > 0 {
 		cur := queue[0]
 		queue = queue[1:]
+		if e.opts.work != nil {
+			*e.opts.work -= len(cur.state.order)
+		}
 		checker := NewChecker(e.model, cur.state.list(), e.caveats, e.opts.now())
 
 		up := make(map[string]bool, len(raised))
@@ -229,7 +233,7 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 			})
 		}
 
-		if len(cur.path) >= bound {
+		if len(cur.path) >= bound || stopped {
 			continue
 		}
 		moves, err := e.available(checker, cur.state, cur.objects)
@@ -247,6 +251,15 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 			}
 			visited[sign] = true
 			queue = append(queue, next)
+			// The states already queued are still weighed, so a witness shorter
+			// than the ones given up on is not lost.
+			if e.opts.maxStates > 0 && len(visited) >= e.opts.maxStates {
+				stopped = true
+				if e.opts.cut != nil {
+					*e.opts.cut++
+				}
+				break
+			}
 		}
 	}
 	return out, nil

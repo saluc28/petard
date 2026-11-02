@@ -109,7 +109,7 @@ Findings
     2  PTD-ZAN-004  An arrow links an object to one the coalition controls
     3  PTD-ZAN-005  Joining a userset a relation grants to takes on its access
     6  PTD-ZAN-006  A gated write grants to another a right the writer never held
-    2  PTD-ZAN-007  A weaker permission gates writing a stronger one into the object
+    4  PTD-ZAN-007  A weaker permission gates writing a stronger one into the object
     4  PTD-ZAN-008  A subject writes itself a relation behind an open gate
 
   document#viewer, user_ip of condition ip_allowlist  (PTD-ZAN-001)
@@ -125,7 +125,7 @@ model. The run reads as a run on a SpiceDB schema does, and [spicedb.md](spicedb
 each line means. A SpiceDB schema keeps a permission apart from a relation, and a check asks for the
 permission. OpenFGA keeps both under one name, and a check can ask for any of them, so a raise is
 reported on the relation as well as on what reads it:
-`document#viewer` beside `document#view`, and `team#member` on its own. Two kinds of relation stay
+`viewer` beside `view` on a document, and `member` on a team. Two kinds of relation stay
 out of that, one an arrow walks and one read only to subtract it, because holding one opens nothing.
 
 Without a write model the two `PTD-ZAN-001` matches are candidates instead, read off the tuples and

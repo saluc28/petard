@@ -110,10 +110,10 @@ graph:
     candidate without a write model.
   marks:
     - kind: PTD_CanEscalateTo
-      properties: [patterns, permission]
+      properties: [patterns, permissions]
   marks_note: >
-    The escalation is a `PTD_CanEscalateTo` from the coalition to the object it raises the
-    permission on, carrying the permission and this pattern's id. The writes behind it are
+    The escalation is a `PTD_CanEscalateTo` from the coalition to the object it raises a
+    permission on, carrying the permissions and this pattern's id. The writes behind it are
     `PTD_WrittenBy` edges on the attributes the witness wrote, which the graph holds without
     tagging them with the pattern.
 

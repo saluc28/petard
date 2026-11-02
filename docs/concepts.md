@@ -128,8 +128,9 @@ The kind names and the property keys are a contract. They end up in ingested dat
 queries, so renaming one means re-ingesting every graph and rewriting every query that mentions
 it. `petard export` reads a policy and the SpiceDB schemas and OpenFGA models under its paths, and draws the
 escalations of each into the one graph. A `PTD_CanEscalateTo` from a policy ends at the principal
-whose position is taken; one from a schema ends at the resource a permission is raised on, with
-the permission carried on the edge.
+whose position is taken; one from a schema ends at the resource permissions are raised on, with the
+permissions carried on the edge. A `PTD_CanPerform` from a schema says what a subject holds as the
+relationships stand, and a node no relationship names is marked `hypothetical`.
 
 ## How the claims are held
 

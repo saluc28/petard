@@ -243,12 +243,20 @@ const (
 	PropPatterns          = "patterns"
 	PropCandidatePatterns = "candidate_patterns"
 
-	// PropPermission is the permission a Zanzibar escalation raises, and the one
-	// property that tells its PTD_CanEscalateTo apart from the OPA one. The far
-	// end of the Zanzibar edge is the resource the permission is raised on; of
-	// the OPA edge, the principal whose position is taken. Reading it is how a
-	// panel or a query knows which of the two it is looking at.
-	PropPermission = "permission"
+	// PropPermissions are the permissions a Zanzibar principal holds on an object,
+	// on a PTD_CanPerform, or can raise there, on a PTD_CanEscalateTo, sorted. It is
+	// a list because BloodHound keeps one edge of a kind between two nodes. It is the
+	// one property that tells a Zanzibar edge apart from the OPA one: the far end of
+	// a Zanzibar edge is the resource the permissions are on, and of an OPA escalation
+	// the principal whose position is taken. Reading it is how a panel or a query knows
+	// which of the two it is looking at.
+	PropPermissions = "permissions"
+
+	// PropHypothetical marks a node the analysis supposes: an attacker that holds
+	// nothing it did not write, or an object of a state generated from the schema. No
+	// relationship names it, so what it says holds for any account or any object of
+	// the type rather than for this one.
+	PropHypothetical = "hypothetical"
 
 	// PropPositions are the positions in a hierarchy a principal holds, one
 	// line per decision with what it grants through the relation and without.

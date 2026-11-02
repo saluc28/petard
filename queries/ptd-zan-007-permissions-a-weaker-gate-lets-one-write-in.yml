@@ -2,7 +2,7 @@ name: "PTD-ZAN-007: permissions a weaker gate lets one write in"
 guid: 6961ba59-9157-41ae-9258-3980ce6113ea
 prebuilt: false
 platforms:
-  - SpiceDB
+  - Zanzibar
 category: A grant split across two decisions
 description: >
   The permissions a coalition raises by writing a relation gated on a permission weaker than the

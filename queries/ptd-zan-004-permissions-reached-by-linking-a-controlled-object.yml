@@ -2,7 +2,7 @@ name: "PTD-ZAN-004: permissions reached by linking a controlled object"
 guid: 19dddd0f-c0e0-4a14-b35b-3304ad2355a6
 prebuilt: false
 platforms:
-  - SpiceDB
+  - Zanzibar
 category: Transitive grant through an intermediate object
 description: >
   The permissions a coalition raises by writing the relation an arrow walks, linking the object

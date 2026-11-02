@@ -48,15 +48,18 @@ out holding, through the write the row names.
 | `PTD-ZAN-006` | DELEGATION-NOT-NARROWED | write `document#editor` for a sybil, gated on holding `view` | `editor`, `edit` |
 | `PTD-ZAN-006` | DELEGATION-NOT-NARROWED | write `document#viewer` for a sybil, which anyone may do | `viewer`, `view`, `access` |
 | `PTD-ZAN-006` | DELEGATION-NOT-NARROWED | write `team#member` for a sybil, which anyone may do | `member` |
-| `PTD-ZAN-007` | SPLIT-GRANT | write `document#editor` for itself, gated on holding `view` | `editor`, `edit` |
+| `PTD-ZAN-007` | SPLIT-GRANT | write `document#editor` for itself, gated on holding `view` | `editor`, `edit`; for a viewer held to a network, `view` and `access` as well |
 | `PTD-ZAN-008` | ATTR-SELF-WRITE | write `document#viewer` for itself, which anyone may do | `viewer`, `view`, `access` |
 | `PTD-ZAN-008` | ATTR-SELF-WRITE | write `team#member` for itself, which anyone may do | `member` |
 
 Each rests on the write model, which says who writes a relation and so who can make the decisive
 write. With no `writes.yaml` the escalations are not reported at all, since who writes a relation
-is nowhere in the model. The closure runs from the tuples of the store file and the starting
-positions generated from the model, and labels each escalation by the write after which the
-relation rises.
+is nowhere in the model. The closure runs from the tuples of the store file, for an account with
+nothing and for each subject they name, and from the starting positions generated from the model,
+and labels each escalation by the write after which the relation rises. Vic shows the `PTD-ZAN-007`
+row: held to a network, Vic holds `view` only conditionally, and writing an editor for Vic lifts it
+to yes. A write of `document#viewer` for Vic is not among them, since the write model's rule only
+creates and OpenFGA refuses a tuple that is already there.
 
 ## Must not find
 
