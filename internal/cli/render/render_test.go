@@ -59,6 +59,26 @@ func TestCountIsSingularForOne(t *testing.T) {
 	}
 }
 
+func TestListReadsTheWayASentenceDoes(t *testing.T) {
+	tests := []struct {
+		name     string
+		names    []string
+		expected string
+	}{
+		{name: "none", expected: ""},
+		{name: "one", names: []string{"view"}, expected: "view"},
+		{name: "two", names: []string{"view", "edit"}, expected: "view and edit"},
+		{name: "three", names: []string{"view", "edit", "access"}, expected: "view, edit and access"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := List(tt.names); got != tt.expected {
+				t.Errorf("List(%v) = %q, want %q", tt.names, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestPlainTakesOutTheEmphasis(t *testing.T) {
 	if got := Plain("the **whole** path, not the `prefix`"); got != "the whole path, not the `prefix`" {
 		t.Errorf("Plain() = %q", got)

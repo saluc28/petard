@@ -132,18 +132,22 @@ func classifiedEscalations(s Sample, wm *WriteModel) []attackerEscalation {
 
 // escalationMatch builds the finding for one classified escalation: the kind of
 // the decisive write, who the write model lets make it, and the permission it
-// raises.
+// raises, in Raise, and what else is true of it and the witness in the details.
 func escalationMatch(id string, c ClassifiedEscalation) Match {
+	kind := categoryPhrase(c.Category)
 	m := Match{
 		PatternID: id,
 		Verdict:   Finding,
-		Subject:   fmt.Sprintf("%s#%s, %s", c.Object.Type, c.Permission, categoryPhrase(c.Category)),
+		Subject:   fmt.Sprintf("%s#%s, %s", c.Object.Type, c.Permission, kind),
+		Raise: &Raise{
+			Cause:      decisiveText(c.DecisiveWrite),
+			Kind:       kind,
+			Type:       c.Object.Type,
+			Permission: c.Permission,
+			Before:     c.Before,
+			After:      c.After,
+		},
 	}
-	m.Details = append(m.Details, Detail{Label: "written by", Text: decisiveText(c.DecisiveWrite)})
-	m.Details = append(m.Details, Detail{
-		Label: "raises",
-		Text:  fmt.Sprintf("%s on %s, from %s to %s", c.Permission, c.Object.Type, c.Before, c.After),
-	})
 	if c.DefeatsExpiry {
 		m.Details = append(m.Details, Detail{
 			Label: "also",

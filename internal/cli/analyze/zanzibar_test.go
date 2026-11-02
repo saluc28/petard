@@ -7,8 +7,167 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/saluc28/petard/internal/cli/render"
 	"github.com/saluc28/petard/internal/zanzibar"
 )
+
+// Somebody reads a report to know what to change, and one write rule can open many
+// raises. So the escalations come under the rule behind them, the rule that opens the
+// most first, with the permissions that rise the same way on one line. The counts stay
+// the matches they were, and so does the verdict of the run.
+func TestTheEscalationsComeUnderTheRuleBehindThem(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{spicedbFixture}, &stdout, &stderr); code != exitFound {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFound, stderr.String())
+	}
+	out := stdout.String()
+
+	for _, expected := range []string{
+		"    3  PTD-ZAN-006  A gated write grants to another a right the writer never held",
+		"  anyone may write document#viewer, through POST /api/v1/documents/{id}/viewers\n" +
+			"    PTD-ZAN-003  a grant to every subject at once\n" +
+			"    raises       access and view on document, from no to yes\n" +
+			"    PTD-ZAN-006  a grant written for another the writer lacks\n",
+		"  anyone may delete document#banned, through DELETE /api/v1/documents/{id}/bans/{user}\n" +
+			"    PTD-ZAN-002  a deny lifted by a delete\n" +
+			"    raises       access on document, from no to yes\n",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("the report does not say %q:\n%s", expected, out)
+		}
+	}
+	if strings.Count(out, "anyone may write document#viewer, through") != 1 {
+		t.Errorf("a rule comes under more than one heading:\n%s", out)
+	}
+	most := strings.Index(out, "anyone may write document#viewer, through")
+	least := strings.Index(out, "anyone may delete document#banned")
+	if most > least {
+		t.Errorf("the rule that opens the most does not come first:\n%s", out)
+	}
+	if !strings.Contains(out, "document#viewer, user_ip of caveat ip_allowlist  (PTD-ZAN-001)") {
+		t.Errorf("the caveat finding, which no gate closes, left its own heading:\n%s", out)
+	}
+}
+
+// Two schemas can hold rules that read alike, and a rule of one says nothing about the
+// other, so they stay apart and each says where it comes from. With one schema there is
+// nothing to tell apart and the report does not say it.
+func TestARuleOfOneSchemaStaysApartFromAnother(t *testing.T) {
+	openfgaFixture := filepath.Join("..", "..", "..", "fixtures", "vulnerable-openfga")
+	var stdout, stderr bytes.Buffer
+	Run([]string{spicedbFixture, openfgaFixture}, &stdout, &stderr)
+	out := stdout.String()
+	if got := strings.Count(out, "anyone may delete document#banned, through"); got != 2 {
+		t.Errorf("the rule comes under %d headings, want one per schema:\n%s", got, out)
+	}
+	for _, schema := range []string{"vulnerable-spicedb/schema.zed", "vulnerable-openfga/model.fga"} {
+		if !strings.Contains(out, "    in           ") || !strings.Contains(out, schema) {
+			t.Errorf("no group says it comes from %s:\n%s", schema, out)
+		}
+	}
+
+	stdout.Reset()
+	Run([]string{spicedbFixture}, &stdout, &stderr)
+	if strings.Contains(stdout.String(), "    in           ") {
+		t.Errorf("with one schema a group still says where it comes from:\n%s", stdout.String())
+	}
+}
+
+func TestPrintCauseLosesNothingAMatchSays(t *testing.T) {
+	match := func(typ, permission string, before zanzibar.Level, details ...zanzibar.Detail) zanzibar.Match {
+		return zanzibar.Match{
+			PatternID: "PTD-ZAN-006",
+			Details:   details,
+			Raise: &zanzibar.Raise{
+				Cause:      "anyone may write team#member",
+				Kind:       "a grant written for another",
+				Type:       typ,
+				Permission: permission,
+				Before:     before,
+				After:      zanzibar.Yes,
+			},
+		}
+	}
+	witness := func(step string) zanzibar.Detail {
+		return zanzibar.Detail{Label: "path", Text: step, Verbose: true}
+	}
+	chain := zanzibar.Detail{Label: "also", Text: "a chain of 2 writes"}
+
+	tests := []struct {
+		name     string
+		matches  []zanzibar.Match
+		verbose  bool
+		expected string
+	}{
+		{
+			name: "permissions that rise the same way share a line",
+			matches: []zanzibar.Match{
+				match("document", "view", zanzibar.No),
+				match("document", "edit", zanzibar.No),
+				match("document", "access", zanzibar.No),
+			},
+			expected: "    raises       view, edit and access on document, from no to yes\n",
+		},
+		{
+			name: "another type or another level keeps its own line",
+			matches: []zanzibar.Match{
+				match("document", "view", zanzibar.No),
+				match("team", "member", zanzibar.No),
+				match("document", "edit", zanzibar.Conditional),
+			},
+			expected: "    raises       view on document, from no to yes\n" +
+				"    raises       member on team, from no to yes\n" +
+				"    raises       edit on document, from conditional to yes\n",
+		},
+		{
+			name: "an aspect of one match is said once",
+			matches: []zanzibar.Match{
+				match("document", "view", zanzibar.No),
+				match("document", "edit", zanzibar.No, chain),
+				match("document", "access", zanzibar.No, chain),
+			},
+			expected: "    also         a chain of 2 writes\n",
+		},
+		{
+			name: "a shared witness prints once",
+			matches: []zanzibar.Match{
+				match("document", "view", zanzibar.No, witness("write a")),
+				match("document", "edit", zanzibar.No, witness("write a")),
+			},
+			verbose:  true,
+			expected: "    path         write a\n",
+		},
+		{
+			name: "a witness that differs says what it is for",
+			matches: []zanzibar.Match{
+				match("document", "view", zanzibar.No, witness("write a")),
+				match("document", "edit", zanzibar.No, witness("write b")),
+				match("document", "access", zanzibar.No, witness("write a")),
+			},
+			verbose: true,
+			expected: "    path         for view and access:\n" +
+				"                 write a\n" +
+				"                 for edit:\n" +
+				"                 write b\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			group := causeGroup{cause: "anyone may write team#member", matches: tt.matches}
+			printCause(&out, group, false, render.Style{}, tt.verbose)
+			if !strings.Contains(out.String(), tt.expected) {
+				t.Errorf("printCause does not say\n%s\nit prints\n%s", tt.expected, out.String())
+			}
+			if strings.Count(out.String(), "write a\n") > 1 || strings.Count(out.String(), "a chain of 2 writes") > 1 {
+				t.Errorf("printCause repeats itself:\n%s", out.String())
+			}
+			if !tt.verbose && strings.Contains(out.String(), "path") {
+				t.Errorf("a witness is on the first screen:\n%s", out.String())
+			}
+		})
+	}
+}
 
 func spicedbTestdata(name string) string {
 	return filepath.Join("..", "..", "zanzibar", "spicedb", "testdata", name)
@@ -269,7 +428,7 @@ func TestRunFindsEscalationsFromASchemaAndWriteModel(t *testing.T) {
 	}
 	out := stdout.String()
 	for _, expected := range []string{
-		"document#view, a grant to every subject at once  (PTD-ZAN-003)",
+		"PTD-ZAN-003  a grant to every subject at once",
 		"whoever holds edit may write document#viewer",
 	} {
 		if !strings.Contains(out, expected) {
@@ -489,9 +648,9 @@ func TestRunReportsOpenFGAFindings(t *testing.T) {
 		"store file of",
 		"test joined, 3 tuples, 1 check",
 		"(PTD-ZAN-001)",
-		"(PTD-ZAN-002)",
-		"(PTD-ZAN-005)",
-		"(PTD-ZAN-008)",
+		"PTD-ZAN-002  a deny lifted by a delete",
+		"PTD-ZAN-005  a userset the coalition can join",
+		"PTD-ZAN-008  written in behind a gate that needs no permission",
 		"user_ip of condition within",
 		"which the writer may set on the tuple instead",
 		"model.fga:11:",

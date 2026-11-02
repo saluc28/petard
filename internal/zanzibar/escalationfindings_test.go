@@ -1,6 +1,9 @@
 package zanzibar
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // stepText renders one write of a witness for the evidence view. Each kind of
 // step reads differently: a rule write and a delete name the gate they pass, a
@@ -61,5 +64,43 @@ func TestStepTextDescribesEachKindOfWrite(t *testing.T) {
 				t.Errorf("stepText() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// A raise is told once, under the rule of the witness kept. With that rule gone, a raise
+// with another way up comes back under the rule of that way, and one with none is gone.
+func TestARaiseWithAnotherWayUpComesBackUnderThatRule(t *testing.T) {
+	selfWrite := func(relation string) *WriteRule {
+		return &WriteRule{Resource: "document", Relation: relation, Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}}
+	}
+	sample := Sample{
+		Model:         documents(t),
+		Relationships: []Relationship{rel("document:roadmap", "owner", "user:olivia")},
+		Now:           time.Unix(0, 0),
+	}
+	causes := func(rules ...*WriteRule) map[string]string {
+		out := map[string]string{}
+		for _, m := range Run(sample, &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: rules}) {
+			if m.PatternID == "PTD-ZAN-008" {
+				out[m.Raise.Permission] = m.Raise.Cause
+			}
+		}
+		return out
+	}
+
+	both := causes(selfWrite("viewer"), selfWrite("editor"))
+	if got := both["view"]; got != "anyone may write document#viewer" {
+		t.Errorf("view is told under %q", got)
+	}
+	if got := both["edit"]; got != "anyone may write document#editor" {
+		t.Errorf("edit is told under %q", got)
+	}
+
+	onlyEditor := causes(selfWrite("editor"))
+	if got := onlyEditor["view"]; got != "anyone may write document#editor" {
+		t.Errorf("with the viewer rule gone, view is told under %q", got)
+	}
+	if onlyViewer := causes(selfWrite("viewer")); onlyViewer["edit"] != "" {
+		t.Errorf("with the editor rule gone, edit is still told under %q", onlyViewer["edit"])
 	}
 }

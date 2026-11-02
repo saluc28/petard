@@ -111,10 +111,15 @@ Findings
                  check that goes through
     raises       edit, view and access on document, from conditional to unconditional
 
-  document#access, a deny lifted by a delete  (PTD-ZAN-002)
-    written by   anyone may delete document#banned, through DELETE
-                 /api/v1/documents/{id}/bans/{user}
-    raises       access on document, from no to yes
+  anyone may write document#viewer, through POST /api/v1/documents/{id}/viewers
+    PTD-ZAN-003  a grant to every subject at once
+    raises       access and view on document, from no to yes
+    PTD-ZAN-006  a grant written for another the writer lacks
+    raises       access and view on document, from no to yes
+    also         a chain of 2 writes reaches it, not a single step: authority accumulates across the
+                 sequence (the agent delegation-chain risk)
+    PTD-ZAN-008  written in behind a gate that needs no permission
+    raises       access and view on document, from no to yes
 ```
 
 They are findings because `fixtures/vulnerable-spicedb/writes.yaml` is a write model beside the
@@ -135,13 +140,18 @@ fix instead. Each match names a relation, a parameter and the caveat it belongs 
 `PTD-ZAN-002` through `PTD-ZAN-008` are the escalation findings, one per kind of decisive write a
 coalition can make: deleting a tuple an exclusion reads, writing a wildcard subject, linking an
 object across an arrow, joining a userset, writing a grant for another, and writing itself in
-behind a gate that is a permission or none. Each names the permission it raises and, under it:
+behind a gate that is a permission or none. They come under the write rule behind them, the rule
+that opens the most first, since a rule is what somebody changes. A raise with another way up comes
+back under the rule of that way on the next run. The heading is who the write model lets make the
+write, and the endpoint it goes through. Under it:
 
-- `written by` is who the write model lets make the write, and the endpoint it goes through.
-- `raises` is the permission the write lifts on the object, from no to yes.
+- the id says which pattern classified the write, and the words beside it what kind it is;
+- `raises` is what the write lifts on the object, with the permissions that rise the same way on one
+  line;
+- `also` is what else is true of it, a chain of writes or a time bound that does not hold.
 
-The heading says the kind of write in a few words, and the id says which pattern classified it.
-`petard explain <id>` has the full account of each.
+With `-v` each adds `path`, the writes in order that reach the raise. A run over several schemas adds
+`in`, the schema the rule belongs to. `petard explain <id>` has the full account of each.
 
 These escalations also leave petard as a BloodHound OpenGraph. `petard export` reads the same
 schemas and draws each as an edge pathfinding can walk; [concepts.md](concepts.md#the-graph) has

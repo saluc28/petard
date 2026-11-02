@@ -36,6 +36,9 @@
 
 ### Changed
 
+- `petard analyze` puts the escalations of a schema or a model under the write rule behind them, the
+  rule that opens the most first, with the permissions that rise the same way on one line. The counts
+  and the exit code are the same.
 - `PTD-ZAN-001` is titled "A relationship fixes a condition value the check was meant to supply",
   so that it reads for a SpiceDB caveat and for an OpenFGA condition.
 - `petard analyze` proposes safe gates, and `-questions` writes the write-model skeleton, for a

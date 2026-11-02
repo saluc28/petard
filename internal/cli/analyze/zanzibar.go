@@ -1,6 +1,7 @@
 package analyze
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"path"
@@ -20,6 +21,9 @@ import (
 type zanzibarRun struct {
 	files   []*zanzibarsetup.File
 	matches []zanzibar.Match
+
+	// causes are the matches that are escalations, by the write rule behind them.
+	causes []causeGroup
 
 	// unread are the schema files that no validation file or store file reads and
 	// that have no write model beside them, so the patterns have no rule for who
@@ -60,6 +64,7 @@ func runZanzibar(found zanzibarsetup.Found, now time.Time, propose bool) (zanzib
 	run.unread = noEvidence
 
 	seen := map[string]bool{}
+	causes := causesOf{}
 	for _, a := range analyses {
 		for _, m := range zanzibar.Run(a.Sample, a.WriteModel) {
 			key := m.PatternID + "\x00" + a.SchemaPath + "\x00" + m.Subject
@@ -68,8 +73,10 @@ func runZanzibar(found zanzibarsetup.Found, now time.Time, propose bool) (zanzib
 			}
 			seen[key] = true
 			run.matches = append(run.matches, m)
+			causes.add(a.SchemaPath, m)
 		}
 	}
+	run.causes = causes.groups()
 	// Safe gates are proposed per schema, so the author sees which gate to fill
 	// in even from a schema with no write model and no validation file. The
 	// closure they run is skipped when a quiet run will neither show nor
@@ -174,7 +181,13 @@ func printZanzibar(out io.Writer, r zanzibarRun, patterns []taxonomy.Pattern, p 
 	printCounts(out, headingFindings, counts, style, sayNothing, func(c patternCount) int { return c.findings })
 	printCounts(out, headingCandidates, counts, style, stayQuiet, func(c patternCount) int { return c.candidates })
 	for _, m := range r.matches {
-		printMatch(out, m, style, p.verbose)
+		if m.Raise == nil {
+			printMatch(out, m, style, p.verbose)
+		}
+	}
+	namesSchema := spansSchemas(r.causes)
+	for _, g := range r.causes {
+		printCause(out, g, namesSchema, style, p.verbose)
 	}
 
 	if p.quiet {
@@ -252,18 +265,177 @@ const matchLabelWidth = 12
 // the default report is the claim and -v is the proof.
 func printMatch(out io.Writer, m zanzibar.Match, style render.Style, verbose bool) {
 	fmt.Fprintf(out, "\n  %s  (%s)\n", style.Bold(m.Subject), m.PatternID)
-	hanging := strings.Repeat(" ", 4+matchLabelWidth+1)
 	for _, d := range m.Details {
 		if d.Verbose && !verbose {
 			continue
 		}
-		lines := render.Wrap(d.Text, hanging)
-		if len(lines) == 0 {
-			continue
+		printLabelled(out, d.Label, d.Text)
+	}
+}
+
+// printLabelled prints a line of a match under its label, wrapped so that what runs
+// on lines up with the text.
+func printLabelled(out io.Writer, label, text string) {
+	hanging := strings.Repeat(" ", 4+matchLabelWidth+1)
+	lines := render.Wrap(text, hanging)
+	if len(lines) == 0 {
+		return
+	}
+	lines[0] = fmt.Sprintf("    %-*s %s", matchLabelWidth, label, strings.TrimPrefix(lines[0], hanging))
+	for _, line := range lines {
+		fmt.Fprintln(out, line)
+	}
+}
+
+// causeGroup is the escalations one write rule opens in one schema, a rule being what
+// somebody changes. A raise is told under the rule of the witness kept, so one with another
+// way up comes back under that way's rule once this one changes.
+type causeGroup struct {
+	schema, cause string
+	matches       []zanzibar.Match
+}
+
+// causesOf gathers escalations by schema and rule. Two schemas are kept apart even
+// when their rules read alike, since a rule of one says nothing about the other.
+type causesOf map[[2]string]*causeGroup
+
+func (c causesOf) add(schema string, m zanzibar.Match) {
+	if m.Raise == nil {
+		return
+	}
+	key := [2]string{schema, m.Raise.Cause}
+	if c[key] == nil {
+		c[key] = &causeGroup{schema: schema, cause: m.Raise.Cause}
+	}
+	c[key].matches = append(c[key].matches, m)
+}
+
+// groups are the rules with the one that opens the most first, since that is the
+// one to change first. Ties break on the words, so the same inputs print the same
+// bytes.
+func (c causesOf) groups() []causeGroup {
+	out := make([]causeGroup, 0, len(c))
+	for _, g := range c {
+		out = append(out, *g)
+	}
+	slices.SortFunc(out, func(a, b causeGroup) int {
+		return cmp.Or(
+			cmp.Compare(len(b.matches), len(a.matches)),
+			cmp.Compare(a.schema, b.schema),
+			cmp.Compare(a.cause, b.cause),
+		)
+	})
+	return out
+}
+
+// spansSchemas says whether the groups come from more than one schema, which is when
+// a group has to say which it comes from.
+func spansSchemas(groups []causeGroup) bool {
+	return slices.ContainsFunc(groups, func(g causeGroup) bool { return g.schema != groups[0].schema })
+}
+
+// printCause prints a write rule and, for each pattern that reads a raise out of it,
+// what it raises. Permissions that rise the same way share a line. What is true of
+// only some of them stays on a line of its own, so nothing a match says is lost; a
+// witness is evidence, printed under -v, and one that several permissions share is
+// printed once.
+func printCause(out io.Writer, g causeGroup, namesSchema bool, style render.Style, verbose bool) {
+	fmt.Fprintln(out)
+	for _, line := range render.Wrap(g.cause, "  ") {
+		fmt.Fprintln(out, style.Bold(line))
+	}
+	if namesSchema {
+		printLabelled(out, "in", g.schema)
+	}
+
+	var patterns []string
+	byPattern := map[string][]zanzibar.Match{}
+	for _, m := range g.matches {
+		if byPattern[m.PatternID] == nil {
+			patterns = append(patterns, m.PatternID)
 		}
-		lines[0] = fmt.Sprintf("    %-*s %s", matchLabelWidth, d.Label, strings.TrimPrefix(lines[0], hanging))
-		for _, line := range lines {
-			fmt.Fprintln(out, line)
+		byPattern[m.PatternID] = append(byPattern[m.PatternID], m)
+	}
+	for _, id := range patterns {
+		of := byPattern[id]
+		printLabelled(out, id, of[0].Raise.Kind)
+		for _, line := range raiseLines(of) {
+			printLabelled(out, "raises", line)
+		}
+		for _, d := range sharedDetails(of) {
+			printLabelled(out, d.Label, d.Text)
+		}
+		if verbose {
+			printWitnesses(out, of)
+		}
+	}
+}
+
+// raiseLines says what the matches raise, one line per type and pair of levels.
+func raiseLines(of []zanzibar.Match) []string {
+	type rise struct {
+		typ           string
+		before, after zanzibar.Level
+	}
+	var order []rise
+	names := map[rise][]string{}
+	for _, m := range of {
+		r := rise{m.Raise.Type, m.Raise.Before, m.Raise.After}
+		if names[r] == nil {
+			order = append(order, r)
+		}
+		names[r] = append(names[r], m.Raise.Permission)
+	}
+	lines := make([]string, 0, len(order))
+	for _, r := range order {
+		lines = append(lines, fmt.Sprintf("%s on %s, from %s to %s", render.List(names[r]), r.typ, r.before, r.after))
+	}
+	return lines
+}
+
+// sharedDetails are the lines the matches print on the first screen beside what they
+// raise, each once.
+func sharedDetails(of []zanzibar.Match) []zanzibar.Detail {
+	var details []zanzibar.Detail
+	for _, m := range of {
+		for _, d := range m.Details {
+			if !d.Verbose && !slices.Contains(details, d) {
+				details = append(details, d)
+			}
+		}
+	}
+	return details
+}
+
+// printWitnesses prints the writes behind the matches, each witness once. When
+// permissions rise through different writes, each witness says which it is for.
+func printWitnesses(out io.Writer, of []zanzibar.Match) {
+	var order []string
+	steps := map[string][]string{}
+	names := map[string][]string{}
+	for _, m := range of {
+		var witness []string
+		for _, d := range m.Details {
+			if d.Verbose {
+				witness = append(witness, d.Text)
+			}
+		}
+		key := strings.Join(witness, "\n")
+		if names[key] == nil {
+			order = append(order, key)
+			steps[key] = witness
+		}
+		names[key] = append(names[key], m.Raise.Permission)
+	}
+	label := "path"
+	for _, key := range order {
+		if len(order) > 1 {
+			printLabelled(out, label, "for "+render.List(names[key])+":")
+			label = ""
+		}
+		for _, step := range steps[key] {
+			printLabelled(out, label, step)
+			label = ""
 		}
 	}
 }

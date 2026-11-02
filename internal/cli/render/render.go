@@ -82,6 +82,15 @@ func Count(n int, thing string) string {
 	return fmt.Sprintf("%d %ss", n, thing)
 }
 
+// List writes names the way a sentence does: a, b and c.
+func List(names []string) string {
+	last := len(names) - 1
+	if last < 1 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:last], ", ") + " and " + names[last]
+}
+
 // Plain takes the markdown emphasis out of registry prose.
 //
 // The files are read on GitHub as well as here, and there the asterisks are

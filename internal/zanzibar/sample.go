@@ -102,6 +102,25 @@ type Match struct {
 	// Details are the lines a report prints under the heading, in order: what
 	// the pattern read, where, and what shows it.
 	Details []Detail
+
+	// Raise is set on an escalation, a finding the closure reaches through a write
+	// rule, and nil on any other match.
+	Raise *Raise
+}
+
+// Raise is what an escalation lifts and the rule behind it, which a report reads to say
+// what one rule opens, a rule being what somebody changes.
+type Raise struct {
+	// Cause says who the write model lets make the decisive write, and through
+	// what.
+	Cause string
+
+	// Kind names the decisive write in a few words.
+	Kind string
+
+	// Type and Permission are what rises, and Before and After how far.
+	Type, Permission string
+	Before, After    Level
 }
 
 // Detail is one labelled line of a match. The text says where to look in the

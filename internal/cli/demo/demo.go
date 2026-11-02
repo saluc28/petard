@@ -109,7 +109,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if !ok {
 		fmt.Fprintf(stderr, "petard demo: %q names no fixture of the demo, which has %s; "+
 			"run petard analyze to analyze a policy or a schema of your own\n",
-			name, inWords(names()))
+			name, render.List(names()))
 		return exitUsage
 	}
 
@@ -124,7 +124,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			}
 			return exitFailure
 		}
-		fmt.Fprintf(stdout, "%s written to %s\n", inWords(dirs(chosen)), *extract)
+		fmt.Fprintf(stdout, "%s written to %s\n", render.List(dirs(chosen)), *extract)
 		fmt.Fprintf(stdout, "analyze %s with: petard analyze %s\n",
 			pronoun(chosen), strings.Join(arguments(*extract, chosen), " "))
 		return exitOK
@@ -178,7 +178,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// The command on a line of its own, so that wrapping never splits it.
 	render.Print(stdout, fmt.Sprintf("That was %s of the demo, written by hand with defects in %s.\n"+
 		"Run %s to get the files, edit them, and analyze them again.",
-		inWords(collect(chosen, func(f fixture) string { return f.what })), pronoun(chosen), extractCommand), "")
+		render.List(collect(chosen, func(f fixture) string { return f.what })), pronoun(chosen), extractCommand), "")
 	return exitOK
 }
 
@@ -207,15 +207,6 @@ func collect(chosen []fixture, of func(fixture) string) []string {
 		out = append(out, of(f))
 	}
 	return out
-}
-
-// inWords lists names the way a sentence does: a, b and c.
-func inWords(names []string) string {
-	last := len(names) - 1
-	if last < 1 {
-		return strings.Join(names, "")
-	}
-	return strings.Join(names[:last], ", ") + " and " + names[last]
 }
 
 func pronoun(chosen []fixture) string {
