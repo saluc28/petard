@@ -142,9 +142,9 @@ when their holders write it.
 <!-- output of: petard analyze fixtures/vulnerable-openfga -->
 ```
 Relations with no write rule
-  folder#parent   safe to gate on view, viewer
-  folder#viewer   safe to gate on viewer
-  document#owner  safe to gate on owner
+  folder#viewer   can raise 4  safe to gate on viewer
+  document#owner  can raise 4  safe to gate on owner
+  folder#parent   can raise 3  safe to gate on view, viewer
 ```
 
 `owner` is the safe gate for `document#owner`, where on the SpiceDB fixture it is `edit`: a holder of

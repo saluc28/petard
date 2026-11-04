@@ -55,7 +55,8 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 	b.WriteString("# really uses, narrow the subjects to the ones it writes, fill in the via, then\n")
 	b.WriteString("# rerun with -write-model and this file. For a caveat, mark a parameter application\n")
 	b.WriteString("# when the check supplies it rather than the writer. A relation nobody can write is\n")
-	b.WriteString("# one to leave out rather than open.\n")
+	b.WriteString("# one to leave out rather than open. The relations whose writes can raise the most\n")
+	b.WriteString("# permissions come first, each with what it can raise.\n")
 	b.WriteString("schema_version: 1\n")
 	b.WriteString("model: relationship-writes\n")
 	b.WriteString("writes:\n")
@@ -80,6 +81,7 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 				}
 				continue
 			}
+			writeReach(&b, p.Raises)
 			fmt.Fprintf(&b, "  - resource: %s\n", p.Type)
 			fmt.Fprintf(&b, "    relation: %s\n", p.Relation)
 			b.WriteString(operationsLine(g.product))
@@ -93,6 +95,28 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 		}
 	}
 	return b.String(), entries
+}
+
+// writeReach writes, above an entry, the permissions writing the relation can raise,
+// the reason it comes where it does. A comment line holds a few of them, so a long
+// list stays readable.
+func writeReach(b *strings.Builder, raises []string) {
+	if len(raises) == 0 {
+		return
+	}
+	const perLine = 4
+	for i := 0; i < len(raises); i += perLine {
+		lead := "  # can raise "
+		if i > 0 {
+			lead = "  #   "
+		}
+		end := min(i+perLine, len(raises))
+		line := strings.Join(raises[i:end], ", ")
+		if end < len(raises) {
+			line += ","
+		}
+		b.WriteString(lead + line + "\n")
+	}
 }
 
 // operationsLine is the writes a skeleton proposes. OpenFGA has no write that also

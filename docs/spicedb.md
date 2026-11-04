@@ -173,9 +173,9 @@ that let no coalition raise anything when their holders write the relation, and 
 <!-- output of: petard analyze fixtures/vulnerable-spicedb -->
 ```
 Relations with no write rule
-  folder#parent   safe to gate on view
-  folder#viewer   safe to gate on view
-  document#owner  safe to gate on edit
+  folder#parent   can raise 3  safe to gate on view
+  folder#viewer   can raise 3  safe to gate on view
+  document#owner  can raise 3  safe to gate on edit
 ```
 
 `document#owner` is set by a service when a document is created; `edit` is a safe gate for it,
@@ -184,8 +184,14 @@ would gain `edit`. A relation with no safe gate at all is named as such. The gat
 together before being proposed, since two writes a coalition can make can raise what neither raises
 alone.
 
+The relations come in the order of how many permissions writing each can raise, the most first,
+since that answer decides the most; two that raise as many keep the order of the schema. The number
+is read off the schema: the permissions that read the relation at all, whether or not a coalition
+can get there.
+
 `-questions <file>` writes the proposal out as a `relationship-writes` write model, one entry per
-relation without a rule, gated by a safe permission, with the subject and the `via` to fill in.
+relation without a rule in the same order, gated by a safe permission, with what it can raise
+above it and the subject and the `via` to fill in.
 Confirm the gate the application really uses, then rerun with `-write-model <file>` and it is input
 no longer. A run that also reads a policy writes the policy's questions there instead.
 

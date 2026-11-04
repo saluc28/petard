@@ -787,3 +787,52 @@ func TestRunReportsBothProducts(t *testing.T) {
 		t.Errorf("want a heading for each product, in order:\n%s", out)
 	}
 }
+
+// The question whose answer decides the most comes first: the relation whose writes can
+// raise the most permissions. A relation that raises nothing comes last, and two that
+// raise as many keep the order of the schema.
+func TestTheQuestionsComeInTheOrderOfWhatTheyCanRaise(t *testing.T) {
+	dir := t.TempDir()
+	schema := "definition user {}\n\n" +
+		"definition document {\n" +
+		"\trelation note: user\n" +
+		"\trelation viewer: user\n" +
+		"\trelation reviewer: user\n" +
+		"\trelation editor: user\n" +
+		"\tpermission edit = editor\n" +
+		"\tpermission view = viewer + reviewer + edit\n" +
+		"}\n"
+	if err := os.WriteFile(filepath.Join(dir, "schema.zed"), []byte(schema), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	order := func(text string, names ...string) {
+		t.Helper()
+		last := -1
+		for _, name := range names {
+			at := strings.Index(text, name)
+			if at < 0 || at < last {
+				t.Errorf("%s is not where it belongs, after %v:\n%s", name, names, text)
+				return
+			}
+			last = at
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	path := filepath.Join(t.TempDir(), "questions.yaml")
+	if code := Run([]string{"-fail-on", "none", "-questions", path, dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit = %d (stderr: %s)", code, stderr.String())
+	}
+	order(stdout.String(), "document#editor", "document#viewer", "document#reviewer", "document#note")
+	if !strings.Contains(stdout.String(), "can raise 2") {
+		t.Errorf("the report does not say how much a relation can raise:\n%s", stdout.String())
+	}
+
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(written)
+	order(content, "relation: editor", "relation: viewer", "relation: reviewer", "relation: note")
+	order(content, "# can raise document#edit, document#view\n", "relation: editor")
+}

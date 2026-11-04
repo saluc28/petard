@@ -1,14 +1,17 @@
 package analyze
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/writemodel"
+	"github.com/saluc28/petard/internal/zanzibar"
 )
 
 func sampleQuestions() []taxonomy.Question {
@@ -157,5 +160,42 @@ func TestSkeletonLoadsOnceFilled(t *testing.T) {
 	}
 	if len(model.Entries) != 3 {
 		t.Errorf("entries = %d, want 3", len(model.Entries))
+	}
+}
+
+// What a relation can raise sits above its entry, a few names to a line, so a relation
+// that raises a whole model stays readable.
+func TestWriteReachKeepsALongListReadable(t *testing.T) {
+	var b strings.Builder
+	writeReach(&b, []string{"a#1", "a#2", "a#3", "a#4", "b#1", "b#2"})
+	want := "  # can raise a#1, a#2, a#3, a#4,\n  #   b#1, b#2\n"
+	if b.String() != want {
+		t.Errorf("writeReach =\n%q\nwant\n%q", b.String(), want)
+	}
+	b.Reset()
+	writeReach(&b, nil)
+	if b.String() != "" {
+		t.Errorf("a relation that raises nothing gets %q", b.String())
+	}
+}
+
+// Two relations that can raise as many keep the order of the schema, so the same schema
+// writes the same file on every run.
+func TestByReachKeepsTheSchemaOrderBetweenEquals(t *testing.T) {
+	var proposals []zanzibar.GateProposal
+	byCount := map[int][]string{}
+	for i := range 40 {
+		name := fmt.Sprintf("r%02d", i)
+		raises := []string{"document#a", "document#b"}[:(i*7)%3]
+		proposals = append(proposals, zanzibar.GateProposal{Type: "document", Relation: name, Raises: raises})
+		byCount[len(raises)] = append(byCount[len(raises)], name)
+	}
+	want := slices.Concat(byCount[2], byCount[1], byCount[0])
+	var got []string
+	for _, p := range byReach(proposals) {
+		got = append(got, p.Relation)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("byReach = %v, want the schema order %v", got, want)
 	}
 }

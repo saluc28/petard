@@ -40,6 +40,9 @@
 
 ### Changed
 
+- `petard analyze` lists the relations with no write rule, and `-questions` writes them, in the
+  order of how many permissions writing each can raise, the most first, with that number in the
+  report and those permissions above each entry of the file.
 - `petard analyze` puts the escalations of a schema or a model under the write rule behind them, the
   rule that opens the most first, with the permissions that rise the same way on one line. The counts
   and the exit code are the same.

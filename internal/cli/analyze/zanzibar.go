@@ -6,6 +6,7 @@ import (
 	"io"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -102,7 +103,8 @@ func runZanzibar(found zanzibarsetup.Found, now time.Time, propose bool) (zanzib
 // skeleton for every writable relation, and one needs no validation file. A
 // schema whose write model already rules every relation leaves nothing to
 // propose and does not appear. One entry per schema, in the order the files
-// sort, so the same inputs print the same bytes.
+// sort, so the same inputs print the same bytes. Within a schema the relations
+// come in the order byReach gives.
 func proposalsOf(files []*zanzibarsetup.File, writeModels map[string]*zanzibar.WriteModel) ([]schemaProposals, error) {
 	var out []schemaProposals
 	done := map[string]bool{}
@@ -122,10 +124,20 @@ func proposalsOf(files []*zanzibarsetup.File, writeModels map[string]*zanzibar.W
 			return nil, err
 		}
 		if len(gates) > 0 {
-			out = append(out, schemaProposals{product: f.Product, schema: f.SchemaPath, model: f.Model, proposals: gates})
+			out = append(out, schemaProposals{product: f.Product, schema: f.SchemaPath, model: f.Model, proposals: byReach(gates)})
 		}
 	}
 	return out, nil
+}
+
+// byReach puts first the relations whose writes can raise the most permissions, the
+// questions whose answer decides the most, and keeps the order of the schema between
+// two that raise as many. It is an upper bound read off the schema, which permissions
+// read the relation at all, so a relation that can raise nothing comes last.
+func byReach(proposals []zanzibar.GateProposal) []zanzibar.GateProposal {
+	ordered := slices.Clone(proposals)
+	slices.SortStableFunc(ordered, func(a, b zanzibar.GateProposal) int { return cmp.Compare(len(b.Raises), len(a.Raises)) })
+	return ordered
 }
 
 // counts are the matches by pattern, the way the summary of a policy counts
@@ -250,15 +262,19 @@ func printProposals(out io.Writer, groups []schemaProposals, style render.Style)
 		tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 		for _, p := range g.proposals {
 			rel := p.Type + "#" + p.Relation
+			reach := ""
+			if len(p.Raises) > 0 {
+				reach = "can raise " + strconv.Itoa(len(p.Raises))
+			}
 			switch {
 			case len(p.Safe) > 0:
-				fmt.Fprintf(tw, "  %s\tsafe to gate on %s\n", rel, strings.Join(p.Safe, ", "))
+				fmt.Fprintf(tw, "  %s\t%s\tsafe to gate on %s\n", rel, reach, strings.Join(p.Safe, ", "))
 			case len(p.Unsafe) > 0:
-				fmt.Fprintf(tw, "  %s\tno safe gate: every permission lets a coalition escalate\n", rel)
+				fmt.Fprintf(tw, "  %s\t%s\tno safe gate: every permission lets a coalition escalate\n", rel, reach)
 			case len(p.Raises) > 0:
-				fmt.Fprintf(tw, "  %s\tno permission on %s to gate on; writing it raises %s\n", rel, p.Type, strings.Join(p.Raises, ", "))
+				fmt.Fprintf(tw, "  %s\t%s\tno permission on %s to gate on; writing it raises %s\n", rel, reach, p.Type, strings.Join(p.Raises, ", "))
 			default:
-				fmt.Fprintf(tw, "  %s\tnothing to gate: writing it raises no permission\n", rel)
+				fmt.Fprintf(tw, "  %s\t%s\tnothing to gate: writing it raises no permission\n", rel, reach)
 			}
 		}
 		tw.Flush()
