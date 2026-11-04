@@ -149,13 +149,13 @@ func TestFixture(t *testing.T) {
 			"document#viewer, a grant to every subject at once",
 		},
 		"PTD-ZAN-004": {
-			"document#access, linked to an object the coalition controls",
-			"document#view, linked to an object the coalition controls",
+			"document#access, linked to an object the coalition holds a permission on",
+			"document#view, linked to an object the coalition holds a permission on",
 		},
 		"PTD-ZAN-005": {
-			"document#access, a userset the coalition can join",
-			"document#view, a userset the coalition can join",
-			"document#viewer, a userset the coalition can join",
+			"document#access, a group the coalition can join",
+			"document#view, a group the coalition can join",
+			"document#viewer, a group the coalition can join",
 		},
 		"PTD-ZAN-006": {
 			"document#access, a grant written for another the writer lacks",

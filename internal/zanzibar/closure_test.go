@@ -640,3 +640,295 @@ func TestClosureOverASharedName(t *testing.T) {
 		})
 	}
 }
+
+// gapModel is a folder a user views, a team a user is in, and a document that takes its
+// view from its folder, its viewers, and its viewer teams, less the teams it bans.
+func gapModel(t *testing.T) *Model {
+	t.Helper()
+	team := &Type{Name: "team", Relations: []*Relation{{Name: "member", Allowed: []Allowed{{Type: "user"}}}}}
+	folder := &Type{
+		Name:        "folder",
+		Relations:   []*Relation{{Name: "viewer", Allowed: []Allowed{{Type: "user"}}}},
+		Permissions: []*Permission{{Name: "view", Expr: Computed{Name: "viewer"}}},
+	}
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "parent", Allowed: []Allowed{{Type: "folder"}}},
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}, {Type: "team", Relation: "member"}}},
+			{Name: "editor", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "banned", Allowed: []Allowed{{Type: "team", Relation: "member"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "view", Expr: Union{Children: []Expr{Computed{Name: "viewer"}, Arrow{Through: "parent", Target: "view"}}}},
+			{Name: "edit", Expr: Computed{Name: "editor"}},
+			{Name: "access", Expr: Exclusion{Base: Computed{Name: "view"}, Subtracted: []Expr{Computed{Name: "banned"}}}},
+		},
+	}
+	m, err := NewModel([]*Type{{Name: "user"}, team, folder, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// A write can name an object the coalition does not own and still raise its access: a
+// folder it views, a team it is in, a ban on a team it is in. Each is a move the write
+// model allows, so leaving it out would miss the raise. Each case also says the category
+// the raise is read as.
+func TestAWriteNamingAnObjectTheCoalitionReachesRaises(t *testing.T) {
+	vic := Object{Type: "user", ID: "vic"}
+	rule := func(relation string, ops ...Operation) *WriteRule {
+		return &WriteRule{Resource: "document", Relation: relation, Operations: ops, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}}
+	}
+	tests := []struct {
+		name       string
+		start      []Relationship
+		rule       *WriteRule
+		permission string
+		category   Category
+	}{
+		{
+			name:       "linking the document to a folder the coalition views",
+			start:      []Relationship{rel("folder:shared", "viewer", "user:vic"), rel("document:roadmap", "editor", "user:olivia")},
+			rule:       rule("parent", Create),
+			permission: "view",
+			category:   CategoryTransitiveGrant,
+		},
+		{
+			name: "granting the document to a team the coalition is in",
+			start: []Relationship{
+				rel("team:design", "member", "user:vic"),
+				rel("document:roadmap", "editor", "user:olivia"),
+			},
+			rule:       &WriteRule{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Types: []string{"team#member"}}},
+			permission: "view",
+			category:   CategoryDelegationNotNarrowed,
+		},
+		{
+			name: "deleting the ban on a team the coalition is in",
+			start: []Relationship{
+				rel("team:design", "member", "user:vic"),
+				rel("document:roadmap", "viewer", "user:vic"),
+				{Resource: Object{Type: "document", ID: "roadmap"}, Relation: "banned", Subject: Subject{Object: Object{Type: "team", ID: "design"}, Relation: "member"}},
+			},
+			rule:       rule("banned", Delete),
+			permission: "access",
+			category:   CategoryFailOpenOnAbsence,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{tt.rule}}
+			classified, err := Classify(gapModel(t), wm, nil, tt.start, []Object{vic}, Options{Now: time.Unix(0, 0)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, c := range classified {
+				if c.Object.ID == "roadmap" && c.Permission == tt.permission {
+					found = true
+					if c.Category != tt.category {
+						t.Errorf("the raise reads as %s, want %s", c.Category, tt.category)
+					}
+				}
+			}
+			if !found {
+				t.Errorf("no raise of %s on the document: %+v", tt.permission, classified)
+			}
+		})
+	}
+}
+
+// A tuple naming an object that is neither the coalition's nor a userset nor across an
+// arrow grants or denies that object alone, so it is never a move: weighing it would cost
+// the search and raise nothing.
+func TestAWriteForAnotherUserIsNotAMove(t *testing.T) {
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}},
+	}}
+	model := gapModel(t)
+	start := []Relationship{rel("document:roadmap", "editor", "user:olivia")}
+	vic := Object{Type: "user", ID: "vic"}
+	e := newEngine(model, wm, nil, start, []Object{vic}, Options{Now: time.Unix(0, 0)})
+	checker := NewChecker(model, start, nil, time.Unix(0, 0))
+	objects := []Object{vic}
+	got, err := e.subjects(checker, wm.Writes[0], model.Type("document").Relation("editor"), Object{Type: "document", ID: "roadmap"}, vic, objects, e.domain(e.start, objects))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []writtenSubject{{subject: Subject{Object: vic}}}; !slices.Equal(got, want) {
+		t.Errorf("subjects = %v, want the coalition alone %v", got, want)
+	}
+}
+
+// A rule can let the writer name only a subject that holds a permission on the resource,
+// adding an editor from among the viewers. It writes the subjects that hold it, and none
+// that do not.
+func TestASubjectThatHoldsAPermissionIsWritten(t *testing.T) {
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Holds: "view"}},
+	}}
+	vic := Object{Type: "user", ID: "vic"}
+	raises := func(start []Relationship) bool {
+		escalations, err := Escalations(gapModel(t), wm, nil, start, []Object{vic}, Options{Now: time.Unix(0, 0)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return slices.ContainsFunc(escalations, func(e Escalation) bool { return e.Object.ID == "roadmap" && e.Permission == "edit" })
+	}
+	if !raises([]Relationship{rel("document:roadmap", "viewer", "user:vic")}) {
+		t.Error("a viewer the rule lets be made editor does not raise edit")
+	}
+	if raises([]Relationship{rel("document:roadmap", "viewer", "user:olivia")}) {
+		t.Error("a subject that does not hold view is made editor")
+	}
+}
+
+// A relation the schema admits only behind a caveat is written with it. When the rule
+// leaves a parameter to the application, the grant waits on the check, so the raise is to
+// conditional and not to yes. When the writer fills every parameter, the default, or the
+// schema also admits the relation bare, the writer makes it hold.
+func TestAWriteBehindACaveatTheApplicationFillsRaisesToConditional(t *testing.T) {
+	model := func(bare bool) *Model {
+		allowed := []Allowed{{Type: "user", Caveat: "ip"}}
+		if bare {
+			allowed = append(allowed, Allowed{Type: "user"})
+		}
+		document := &Type{
+			Name:        "document",
+			Relations:   []*Relation{{Name: "viewer", Allowed: allowed}},
+			Permissions: []*Permission{{Name: "view", Expr: Computed{Name: "viewer"}}},
+		}
+		m, err := NewModel([]*Type{{Name: "user"}, document}, []*Caveat{{Name: "ip", Parameters: []Parameter{{Name: "addr", Type: "string"}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	rule := func(filler Filler) *WriteModel {
+		return &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{{
+			Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true},
+			Caveats: []CaveatWrite{{Name: "ip", Parameters: map[string]Filler{"addr": filler}}},
+		}}}
+	}
+	tests := []struct {
+		name     string
+		bare     bool
+		filler   Filler
+		expected Level
+	}{
+		{name: "the application fills it", filler: FillerApplication, expected: Conditional},
+		{name: "the writer fills it", filler: FillerWriter, expected: Yes},
+		{name: "the schema also admits it bare", bare: true, filler: FillerApplication, expected: Yes},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start := []Relationship{rel("document:roadmap", "viewer", "user:olivia")}
+			escalations, err := Escalations(model(tt.bare), rule(tt.filler), stubCaveats{}, start, []Object{{Type: "user", ID: "vic"}}, Options{Now: time.Unix(0, 0)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(escalations) != 1 || escalations[0].After != tt.expected {
+				t.Errorf("escalations = %+v, want one raise of view to %s", escalations, tt.expected)
+			}
+		})
+	}
+}
+
+// A coalition that joins an object the object under attack reads across an arrow, an org
+// whose members view its documents, raises the document. The rows that tell kinds of write
+// apart do not name that one, and the raise is still reported, as taking on what the
+// joined object passes on.
+func TestJoiningWhatAnArrowReadsIsReported(t *testing.T) {
+	org := &Type{Name: "org", Relations: []*Relation{{Name: "member", Allowed: []Allowed{{Type: "user"}}}}}
+	document := &Type{
+		Name:        "document",
+		Relations:   []*Relation{{Name: "org", Allowed: []Allowed{{Type: "org"}}}},
+		Permissions: []*Permission{{Name: "view", Expr: Arrow{Through: "org", Target: "member"}}},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, org, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "org", Relation: "member", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+	}}
+	sample := Sample{Model: model, Relationships: []Relationship{rel("document:roadmap", "org", "org:acme")}, Now: time.Unix(0, 0)}
+	if !slices.ContainsFunc(Run(sample, wm), func(m Match) bool {
+		return m.PatternID == "PTD-ZAN-005" && m.Raise.Type == "document" && m.Raise.Permission == "view"
+	}) {
+		t.Errorf("joining the org a document reads is not reported: %+v", Run(sample, wm))
+	}
+}
+
+// A subject held to a permission is read the way a gate is: a viewer behind a caveat the
+// coalition may meet holds view, so the rule lets it be made editor.
+func TestASubjectThatHoldsAPermissionBehindACaveatIsWritten(t *testing.T) {
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "viewer", Allowed: []Allowed{{Type: "user", Caveat: "open"}}},
+			{Name: "editor", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "view", Expr: Computed{Name: "viewer"}},
+			{Name: "edit", Expr: Computed{Name: "editor"}},
+		},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, document}, []*Caveat{{Name: "open", Parameters: []Parameter{{Name: "x", Type: "int"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Holds: "view"}},
+	}}
+	viewer := rel("document:roadmap", "viewer", "user:vic")
+	viewer.Caveat = &CaveatUse{Name: "open"}
+	escalations, err := Escalations(model, wm, stubCaveats{}, []Relationship{viewer}, []Object{{Type: "user", ID: "vic"}}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(escalations, func(e Escalation) bool { return e.Permission == "edit" }) {
+		t.Errorf("a viewer behind a caveat is not made editor: %+v", escalations)
+	}
+}
+
+// A delete a rule allows is still only a move when the tuple can matter to the coalition,
+// and a holds constraint on the subject holds for a delete as for a write.
+func TestWhichDeletesAreMoves(t *testing.T) {
+	model := gapModel(t)
+	vic := Object{Type: "user", ID: "vic"}
+	start := []Relationship{
+		rel("document:roadmap", "viewer", "user:olivia"),
+		rel("document:roadmap", "viewer", "user:vic"),
+		rel("document:roadmap", "parent", "folder:shared"),
+		{Resource: Object{Type: "document", ID: "roadmap"}, Relation: "banned", Subject: Subject{Object: Object{Type: "team", ID: "design"}, Relation: "member"}},
+	}
+	e := newEngine(model, &WriteModel{}, nil, start, []Object{vic}, Options{Now: time.Unix(0, 0)})
+	checker := NewChecker(model, start, nil, time.Unix(0, 0))
+	tests := []struct {
+		name     string
+		spec     SubjectSpec
+		tuple    Relationship
+		expected bool
+	}{
+		{name: "another user", spec: SubjectSpec{Any: true}, tuple: start[0]},
+		{name: "the coalition", spec: SubjectSpec{Any: true}, tuple: start[1], expected: true},
+		{name: "an object across an arrow", spec: SubjectSpec{Any: true}, tuple: start[2], expected: true},
+		{name: "a userset", spec: SubjectSpec{Any: true}, tuple: start[3], expected: true},
+		{name: "a subject that holds view", spec: SubjectSpec{Holds: "view"}, tuple: start[1], expected: true},
+		{name: "a subject that does not hold edit", spec: SubjectSpec{Holds: "edit"}, tuple: start[1]},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := e.mayDelete(checker, tt.spec, tt.tuple, []Object{vic})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.expected {
+				t.Errorf("mayDelete(%s) = %v, want %v", tt.tuple, got, tt.expected)
+			}
+		})
+	}
+}

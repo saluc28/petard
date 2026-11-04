@@ -10,13 +10,13 @@ import (
 )
 
 // weighedState is a part of a sample the closure runs from, for one object: the tuples
-// a check of that object can read, and those of what a creation can start from.
+// a check of that object can read, and those of what a witness can link to or start from.
 type weighedState struct {
 	object Object
 	tuples []Relationship
 
-	// reads are the objects a check of object can reach. What came along for a creation
-	// to start from is not among them, unless a check reads it too.
+	// reads are the objects a check of object can reach. What came along for a witness
+	// to link to or start from is not among them, unless a check reads it too.
 	reads map[Object]bool
 
 	// shape is the state with the ids of its objects taken out. Two states of one
@@ -34,10 +34,10 @@ type weighedState struct {
 // answers it exactly as the whole sample does. No raise it finds is false: every object
 // in it carries all its tuples, and a witness writes only on objects in it.
 //
-// A write names as its subject only what the coalition holds, and a gate is asked of the
-// object written, so a witness can use an object the check does not read only by making
-// a creation on it. What creationStarts picks comes along for that. It also says how many
-// objects it let another stand for.
+// A gate is asked of the object written, so a witness can use an object the check does
+// not read only by naming it: as the subject of a write, where startTypes says it can
+// matter, or as what a creation is made on. What linkStarts picks comes along for that.
+// It also says how many objects it let another stand for.
 func weighedStates(s Sample, wm *WriteModel) ([]weighedState, int) {
 	tuples := s.Relationships
 	byResource := positionsOf(tuples)
@@ -47,20 +47,9 @@ func weighedStates(s Sample, wm *WriteModel) ([]weighedState, int) {
 	for _, o := range objects {
 		reads[o] = readsOf(o, tuples, byResource)
 	}
-	held := func(of map[Object]bool) []Relationship {
-		var at []int
-		for o := range of {
-			at = append(at, byResource[o]...)
-		}
-		slices.Sort(at)
-		out := make([]Relationship, 0, len(at))
-		for _, i := range at {
-			out = append(out, tuples[i])
-		}
-		return out
-	}
+	held := func(of map[Object]bool) []Relationship { return heldBy(tuples, byResource, of) }
 
-	starts, leftOut := creationStarts(s, wm, objects, reads, held)
+	starts, leftOut := linkStarts(startTypes(s.Model, wm), objects, reads, held)
 	states := make([]weighedState, 0, len(objects))
 	for _, o := range objects {
 		include := maps.Clone(reads[o])
@@ -73,20 +62,62 @@ func weighedStates(s Sample, wm *WriteModel) ([]weighedState, int) {
 	return states, leftOut
 }
 
-// creationStarts picks what a state brings along for a creation to start from: of each
-// type a creation is made on, what it takes to hold one object of each shape, the fewest
-// tuples first so a state does not grow by a hub of the store. Two objects of one shape
-// give one witness under two names, as long as the witness does not rest on what else
-// reads them. It says how many objects of those types another stands for.
-func creationStarts(s Sample, wm *WriteModel, objects []Object, reads map[Object]map[Object]bool, held func(map[Object]bool) []Relationship) ([]Object, int) {
+// heldBy is the tuples on the given objects, in the order the sample has them.
+func heldBy(tuples []Relationship, byResource map[Object][]int, of map[Object]bool) []Relationship {
+	var at []int
+	for o := range of {
+		at = append(at, byResource[o]...)
+	}
+	slices.Sort(at)
+	out := make([]Relationship, 0, len(at))
+	for _, i := range at {
+		out = append(out, tuples[i])
+	}
+	return out
+}
+
+// startTypes are the types of the objects a witness can use without a check of the
+// object under attack reading them: what a creation is made on, and what a rule lets a
+// write name where naming another's object can matter, a userset or an object across a
+// relation an arrow walks.
+func startTypes(model *Model, wm *WriteModel) map[string]bool {
 	types := map[string]bool{}
-	if wm != nil {
-		for _, rule := range wm.Creates {
-			for _, on := range rule.On {
-				types[on.Type] = true
+	if wm == nil {
+		return types
+	}
+	for _, rule := range wm.Creates {
+		for _, on := range rule.On {
+			types[on.Type] = true
+		}
+	}
+	if model == nil {
+		return types
+	}
+	for _, rule := range wm.Writes {
+		t := model.Type(rule.Resource)
+		if t == nil || rule.Subject.Self {
+			continue
+		}
+		r := t.Relation(rule.Relation)
+		if r == nil {
+			continue
+		}
+		walked := arrowThroughs(model, rule.Resource)[rule.Relation]
+		for _, a := range r.Allowed {
+			if !a.Wildcard && (a.Relation != "" || walked) && subjectAllowed(rule.Subject, a, Object{Type: a.Type}) {
+				types[a.Type] = true
 			}
 		}
 	}
+	return types
+}
+
+// linkStarts picks what a state brings along for a witness to link to or start from: of
+// each of the types, what it takes to hold one object of each shape, the fewest tuples
+// first so a state does not grow by a hub of the store. Two objects of one shape give one
+// witness under two names, as long as the witness does not rest on what else reads them.
+// It says how many objects of those types another stands for.
+func linkStarts(types map[string]bool, objects []Object, reads map[Object]map[Object]bool, held func(map[Object]bool) []Relationship) ([]Object, int) {
 	if len(types) == 0 {
 		return nil, 0
 	}

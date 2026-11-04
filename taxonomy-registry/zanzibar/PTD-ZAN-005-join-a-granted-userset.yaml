@@ -2,7 +2,7 @@ schema_version: 2
 
 id: PTD-ZAN-005
 name: join-a-granted-userset
-title: Joining a userset a relation grants to takes on its access
+title: Joining a group an object grants to takes on its access
 closes: >
   A userset a relation grants to that no coalition can join keeps its members fixed. A write rule
   on the userset's relation, open to a coalition subject, is what lets it in, so a userset with no
@@ -26,8 +26,9 @@ category:
     In a Zanzibar model the identity a relation grants to is a userset, `team:design#member`, and
     the layer that decides who can become it is the write model for the userset's own relation. A
     relationship grants to the members of the userset, so a subject that can be written into the
-    userset takes on the grant. The identity is not assumed in a layer the schema cannot see; it is
-    assumed by a write the write model names.
+    userset takes on the grant. Another object a permission reads across an arrow is such a group
+    too: an org whose members view its documents. The identity is not assumed in a layer the schema
+    cannot see; it is assumed by a write the write model names.
 
 summary: >
   A relation grants to a userset, `document#viewer@team:design#member`, so the document's viewers

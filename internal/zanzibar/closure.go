@@ -355,6 +355,23 @@ type engine struct {
 	opts      Options
 	pol       *polarities
 	e2modes   []creationMode
+
+	// throughs are, by type, the relations an arrow walks, filled as types are asked.
+	throughs map[string]map[string]bool
+}
+
+// walked reports whether an arrow of a type walks a relation, so a tuple of it can
+// carry the permissions of the object it names back to the object it is on.
+func (e *engine) walked(typ, relation string) bool {
+	if e.throughs == nil {
+		e.throughs = map[string]map[string]bool{}
+	}
+	through, known := e.throughs[typ]
+	if !known {
+		through = arrowThroughs(e.model, typ)
+		e.throughs[typ] = through
+	}
+	return through[relation]
 }
 
 func newEngine(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, opts Options) *engine {
@@ -433,8 +450,12 @@ func (e *engine) available(checker *Checker, state *stateSet, objects []Object) 
 			}
 			if canAdd {
 				for _, writer := range objects {
-					for _, subject := range e.subjects(rule, relation, writer, objects) {
-						rel := Relationship{Resource: resource, Relation: rule.Relation, Subject: subject}
+					subjects, err := e.subjects(checker, rule, relation, resource, writer, objects, domain)
+					if err != nil {
+						return nil, err
+					}
+					for _, named := range subjects {
+						rel := Relationship{Resource: resource, Relation: rule.Relation, Subject: named.subject, Caveat: named.caveat}
 						if state.has(rel) || (written[tupleIdentity(rel)] && !replaces(rule.Operations)) {
 							continue
 						}
@@ -444,7 +465,14 @@ func (e *engine) available(checker *Checker, state *stateSet, objects []Object) 
 			}
 			if canDelete {
 				for _, rel := range tuples {
-					if rel.Resource == resource && rel.Relation == rule.Relation && mayDelete(rule.Subject, rel.Subject, objects) {
+					if rel.Resource != resource || rel.Relation != rule.Relation {
+						continue
+					}
+					allowed, err := e.mayDelete(checker, rule.Subject, rel, objects)
+					if err != nil {
+						return nil, err
+					}
+					if allowed {
 						moves = append(moves, move{rel: rel, rule: rule, del: true})
 					}
 				}
@@ -459,28 +487,32 @@ func (e *engine) available(checker *Checker, state *stateSet, objects []Object) 
 	return append(moves, creationMoves...), nil
 }
 
-// mayDelete says whether the coalition can delete a tuple of the given subject
-// under a rule. The subject has to be one the coalition controls, since
-// deleting a tuple that denies somebody else raises nothing for the coalition,
-// and the rule has to allow that subject form. A holds constraint on the
-// subject is left to a later step, so it deletes nothing rather than something
-// the coalition may not reach.
-func mayDelete(spec SubjectSpec, s Subject, objects []Object) bool {
-	controllable := s.ID == WildcardID || containsObject(objects, s.Object)
-	if !controllable {
-		return false
+// mayDelete says whether a rule lets the coalition delete a tuple. The rule has to
+// allow the tuple's subject, and deleting the tuple has to be able to matter to the
+// coalition: a tuple that names it or a wildcard, a userset, which may hold it, or an
+// object across a relation an arrow walks, whose permissions the tuple carries. A tuple
+// that names any other object denies that object alone, so deleting it raises nothing
+// for the coalition.
+func (e *engine) mayDelete(checker *Checker, spec SubjectSpec, rel Relationship, objects []Object) (bool, error) {
+	s := rel.Subject
+	matters := s.ID == WildcardID || containsObject(objects, s.Object) || s.Relation != "" || e.walked(rel.Resource.Type, rel.Relation)
+	if !matters {
+		return false, nil
 	}
 	switch {
 	case spec.Any:
-		return true
+		return true, nil
 	case spec.Self:
-		return s.Relation == "" && containsObject(objects, s.Object)
+		return s.Relation == "" && containsObject(objects, s.Object), nil
 	case spec.Holds != "":
-		return false
+		if s.Relation != "" || s.ID == WildcardID {
+			return false, nil
+		}
+		return subjectHolds(checker, rel.Resource, spec.Holds, s)
 	case len(spec.Types) > 0:
-		return slices.Contains(spec.Types, subjectForm(s))
+		return slices.Contains(spec.Types, subjectForm(s)), nil
 	}
-	return false
+	return false, nil
 }
 
 // subjectForm names a stored subject the way a write rule names an allowed one:
@@ -663,52 +695,117 @@ func (e *engine) coalitionLevel(checker *Checker, resource Object, name string, 
 	return best, nil
 }
 
-// subjects is every subject the coalition can write for a rule on a relation,
-// over the objects it controls. A subject the coalition cannot name is left
-// out, so a write the closure makes is always one the coalition could make.
-func (e *engine) subjects(rule *WriteRule, relation *Relation, writer Object, objects []Object) []Subject {
-	var out []Subject
+// writtenSubject is a subject a write names, and the caveat the tuple carries, nil when
+// the grant holds whatever the check brings.
+type writtenSubject struct {
+	subject Subject
+	caveat  *CaveatUse
+}
+
+// subjects is every subject a rule lets writer name on a tuple of relation on resource.
+// A subject is one of the coalition's objects, or one of the state's where the tuple
+// can carry something back to the coalition: a userset, which grants whoever is in it,
+// or an object across a relation an arrow walks, which carries the permissions that
+// object grants. A tuple naming any other object grants that object alone, so writing
+// it raises nothing for the coalition.
+func (e *engine) subjects(checker *Checker, rule *WriteRule, relation *Relation, resource, writer Object, objects []Object, domain map[string][]Object) ([]writtenSubject, error) {
+	var out []writtenSubject
+	add := func(subject Subject, allowed Allowed) {
+		caveat := e.writtenCaveat(rule, allowed)
+		for i := range out {
+			if out[i].subject == subject {
+				// Of two forms of one subject, the write takes the one that holds.
+				if caveat == nil {
+					out[i].caveat = nil
+				}
+				return
+			}
+		}
+		out = append(out, writtenSubject{subject: subject, caveat: caveat})
+	}
 	for _, allowed := range relation.Allowed {
 		// A wildcard is a separate axis from the subject list: the dedicated
 		// wildcard flag allows it, not naming its type among the subjects.
 		if allowed.Wildcard {
 			if rule.Wildcard {
-				appendSubject(&out, Subject{Object: Object{Type: allowed.Type, ID: WildcardID}})
+				add(Subject{Object: Object{Type: allowed.Type, ID: WildcardID}}, allowed)
 			}
 			continue
 		}
 		if !subjectAllowed(rule.Subject, allowed, writer) {
 			continue
 		}
-		switch allowed.Relation {
-		case "":
-			// subjectAllowed has already held a self subject to the writer's
-			// own type, so the writer is a subject of this form.
-			if rule.Subject.Self {
-				appendSubject(&out, Subject{Object: writer})
+		// subjectAllowed has already held a self subject to the writer's own type,
+		// so the writer is a subject of this form.
+		if rule.Subject.Self {
+			add(Subject{Object: writer}, allowed)
+			continue
+		}
+		candidates := objects
+		if allowed.Relation != "" || e.walked(resource.Type, relation.Name) {
+			// The domain holds the coalition's objects as well as the state's.
+			candidates = domain[allowed.Type]
+		}
+		for _, o := range candidates {
+			if o.Type != allowed.Type {
 				continue
 			}
-			for _, o := range objects {
-				if o.Type == allowed.Type {
-					appendSubject(&out, Subject{Object: o})
+			subject := Subject{Object: o, Relation: allowed.Relation}
+			if rule.Subject.Holds != "" {
+				held, err := subjectHolds(checker, resource, rule.Subject.Holds, subject)
+				if err != nil {
+					return nil, err
+				}
+				if !held {
+					continue
 				}
 			}
-		default:
-			// A userset subject: subjectAllowed never lets self reach here.
-			for _, o := range objects {
-				if o.Type == allowed.Type {
-					appendSubject(&out, Subject{Object: o, Relation: allowed.Relation})
-				}
-			}
+			add(subject, allowed)
 		}
 	}
-	return out
+	return out, nil
+}
+
+// writtenCaveat is the caveat a write of an allowed form carries. A form the schema
+// admits without one, or one whose every parameter the writer fills, which is the
+// default for a caveat the rule leaves out, grants whatever the check brings: the writer
+// fixes the values. A parameter the application fills comes with the check, so the grant
+// waits on it, and the tuple carries the caveat with no context for the check to decide.
+func (e *engine) writtenCaveat(rule *WriteRule, allowed Allowed) *CaveatUse {
+	if allowed.Caveat == "" {
+		return nil
+	}
+	caveat := e.model.Caveat(allowed.Caveat)
+	if caveat == nil {
+		return nil
+	}
+	write := CaveatWrite{Name: allowed.Caveat}
+	for _, declared := range rule.Caveats {
+		if declared.Name == allowed.Caveat {
+			write = declared
+		}
+	}
+	for _, p := range caveat.Parameters {
+		if write.Filler(p.Name) == FillerApplication {
+			return &CaveatUse{Name: allowed.Caveat}
+		}
+	}
+	return nil
+}
+
+// subjectHolds reports whether a subject holds a permission on a resource, the way a
+// gate is read: a grant that waits on a condition the coalition can meet counts.
+func subjectHolds(checker *Checker, resource Object, permission string, subject Subject) (bool, error) {
+	result, err := checker.Check(resource, permission, subject, nil)
+	if err != nil {
+		return false, err
+	}
+	return result.Level >= Conditional, nil
 }
 
 // subjectAllowed filters an allowed subject form against what the rule lets the
-// writer write. Self and a holds constraint keep only the forms this step
-// handles; a holds constraint on the subject is left to a later step, so it
-// produces no subject rather than one that may not hold the permission.
+// writer write. Self is the writer, and a holds constraint is an object that holds
+// the permission, so neither names a userset or a wildcard.
 func subjectAllowed(spec SubjectSpec, allowed Allowed, writer Object) bool {
 	switch {
 	case spec.Any:
@@ -716,7 +813,7 @@ func subjectAllowed(spec SubjectSpec, allowed Allowed, writer Object) bool {
 	case spec.Self:
 		return allowed.Relation == "" && !allowed.Wildcard && allowed.Type == writer.Type
 	case spec.Holds != "":
-		return false
+		return allowed.Relation == "" && !allowed.Wildcard
 	case len(spec.Types) > 0:
 		return slices.Contains(spec.Types, allowedName(allowed))
 	}
@@ -782,12 +879,6 @@ func replaces(ops []Operation) bool {
 }
 
 func containsObject(objects []Object, o Object) bool { return slices.Contains(objects, o) }
-
-func appendSubject(out *[]Subject, s Subject) {
-	if !slices.Contains(*out, s) {
-		*out = append(*out, s)
-	}
-}
 
 // createdID is the identifier of an object a creation rule makes. A merged
 // rule has one object whatever the choice, so the signature and copy are left

@@ -1,4 +1,4 @@
-name: "PTD-ZAN-004: permissions reached by linking a controlled object"
+name: "PTD-ZAN-004: permissions reached by linking an object across an arrow"
 guid: 19dddd0f-c0e0-4a14-b35b-3304ad2355a6
 prebuilt: false
 platforms:
@@ -6,7 +6,7 @@ platforms:
 category: Transitive grant through an intermediate object
 description: >
   The permissions a coalition raises by writing the relation an arrow walks, linking the object
-  under attack to one the coalition controls.
+  under attack to one the coalition holds a permission on.
 query: |-
   MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)
   WHERE 'PTD-ZAN-004' IN e.patterns

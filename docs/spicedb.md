@@ -90,8 +90,8 @@ Findings
     2  PTD-ZAN-001  A relationship fixes a condition value the check was meant to supply
     1  PTD-ZAN-002  Deleting a tuple an exclusion reads lifts the deny
     2  PTD-ZAN-003  A wildcard subject grants a relation to every object of a type
-    2  PTD-ZAN-004  An arrow links an object to one the coalition controls
-    2  PTD-ZAN-005  Joining a userset a relation grants to takes on its access
+    2  PTD-ZAN-004  An arrow links an object to one the coalition holds a permission on
+    2  PTD-ZAN-005  Joining a group an object grants to takes on its access
     3  PTD-ZAN-006  A gated write grants to another a right the writer never held
     3  PTD-ZAN-007  A weaker permission gates writing a stronger one into the object
     2  PTD-ZAN-008  A subject writes itself a relation behind an open gate
@@ -139,7 +139,7 @@ fix instead. Each match names a relation, a parameter and the caveat it belongs 
 
 `PTD-ZAN-002` through `PTD-ZAN-008` are the escalation findings, one per kind of decisive write a
 coalition can make: deleting a tuple an exclusion reads, writing a wildcard subject, linking an
-object across an arrow, joining a userset, writing a grant for another, and writing itself in
+object across an arrow, joining a group, writing a grant for another, and writing itself in
 behind a gate that is a permission or none. They come under the write rule behind them, the rule
 that opens the most first, since a rule is what somebody changes. A raise with another way up comes
 back under the rule of that way on the next run. The heading is who the write model lets make the

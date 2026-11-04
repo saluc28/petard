@@ -277,9 +277,9 @@ func categoryPhrase(c Category) string {
 	case CategoryGlobalSwitch:
 		return "a grant to every subject at once"
 	case CategoryTransitiveGrant:
-		return "linked to an object the coalition controls"
+		return "linked to an object the coalition holds a permission on"
 	case CategoryAssumableIdentity:
-		return "a userset the coalition can join"
+		return "a group the coalition can join"
 	case CategoryDelegationNotNarrowed:
 		return "a grant written for another the writer lacks"
 	case CategorySplitGrant:

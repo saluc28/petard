@@ -40,6 +40,9 @@
 
 ### Changed
 
+- `PTD-ZAN-004` is titled "An arrow links an object to one the coalition holds a permission on" and
+  `PTD-ZAN-005` "Joining a group an object grants to takes on its access", since the linked object
+  need not be one the coalition made and the group need not be a userset.
 - `petard analyze` lists the relations with no write rule, and `-questions` writes them, in the
   order of how many permissions writing each can raise, the most first, with that number in the
   report and those permissions above each entry of the file.
@@ -84,6 +87,20 @@
 
 ### Fixed
 
+- A write can name an object of the store the coalition did not make, where that can raise its
+  access: a userset it is in, or an object across a relation an arrow walks, a folder it already
+  views. Deleting a tuple that names one is weighed too. Moving a document into a folder its
+  attacker views, granting it to a team the attacker is in, and lifting a ban on that team went
+  unreported, and a gate those writes pass was proposed as safe.
+- A write rule whose subject has to hold a permission, `subject: { holds: ... }`, wrote no tuple at
+  all. It now writes the subjects that hold the permission on the resource.
+- A subject the relationships name is weighed, on one object of each type, for what it can carry
+  there from what it holds: a viewer of a folder who may move any document into it. It used to be
+  weighed only on the objects that name it.
+- A raise whose decisive write puts the coalition into another object the target reads, an org
+  whose members view its documents, was found and not reported. It is reported as `PTD-ZAN-005`.
+- A relation the schema admits only behind a caveat, with a parameter the write model leaves to the
+  application, rises to conditional and not to yes.
 - The analysis of a store finishes. With a write model, a sample of about twenty objects behind an
   open rule did not. Each object is now weighed on the tuples its checks can read, and one object of
   each shape of a type a creation can be made on comes along. The search and the work over a store

@@ -708,7 +708,7 @@ func TestRunReportsOpenFGAFindings(t *testing.T) {
 		"test joined, 3 tuples, 1 check",
 		"(PTD-ZAN-001)",
 		"PTD-ZAN-002  a deny lifted by a delete",
-		"PTD-ZAN-005  a userset the coalition can join",
+		"PTD-ZAN-005  a group the coalition can join",
 		"PTD-ZAN-008  written in behind a gate that needs no permission",
 		"user_ip of condition within",
 		"which the writer may set on the tuple instead",

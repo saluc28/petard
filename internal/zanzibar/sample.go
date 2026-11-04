@@ -74,8 +74,8 @@ type Limits struct {
 	// supposes once maxSupposedWork was spent.
 	SupposedLeftOut int
 
-	// StartsLeftOut counts the objects a creation can start from that were weighed
-	// through another of their shape.
+	// StartsLeftOut counts the objects a witness can link to or start from that were
+	// weighed through another of their shape.
 	StartsLeftOut int
 }
 
@@ -108,7 +108,7 @@ func (l Limits) Lines() []string {
 			l.SupposedLeftOut, plural(l.SupposedLeftOut, "question", "questions")))
 	}
 	if l.StartsLeftOut > 0 {
-		lines = append(lines, fmt.Sprintf("%d %s a creation can start from weighed through another of the same shape: a witness that needs that very object is not found",
+		lines = append(lines, fmt.Sprintf("%d %s a witness can link to or start from weighed through another of the same shape: a witness that needs that very object is not found",
 			l.StartsLeftOut, plural(l.StartsLeftOut, "object", "objects")))
 	}
 	return lines

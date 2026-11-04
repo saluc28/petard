@@ -292,3 +292,119 @@ func TestTheWorkOnHoldingsIsCounted(t *testing.T) {
 		t.Errorf("past the limit it finds %v, want what the first object gives: %v", some, all[:2])
 	}
 }
+
+// Vic views a folder, and anyone may move a document into a folder. No tuple of the
+// document names Vic, and Vic can still raise view on it by moving it into the folder.
+// The report says so, and the graph draws it from Vic.
+func TestASubjectCarriesWhatItHoldsToAnObjectThatDoesNotNameIt(t *testing.T) {
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "parent", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}},
+	}}
+	sample := Sample{
+		Model: gapModel(t),
+		Relationships: []Relationship{
+			rel("folder:shared", "viewer", "user:vic"),
+			rel("document:roadmap", "editor", "user:olivia"),
+		},
+		Now: time.Unix(0, 0),
+	}
+	if !slices.ContainsFunc(Run(sample, wm), func(m Match) bool {
+		return m.PatternID == "PTD-ZAN-004" && m.Raise.Type == "document" && m.Raise.Permission == "view"
+	}) {
+		t.Error("the report does not say a viewer of a folder raises view on a document by moving it there")
+	}
+	got, _ := subjectEscalations(sample, wm, maxSubjectWork)
+	if !slices.ContainsFunc(got, func(f attackerEscalation) bool {
+		return f.attacker.ID == "vic" && f.esc.Object.ID == "roadmap" && f.esc.Permission == "view"
+	}) {
+		t.Errorf("the graph does not draw it from Vic: %+v", got)
+	}
+}
+
+// What any account can raise on an object stays with the attacker the analysis supposes,
+// so carrying a subject over to an object that does not name it draws only what the
+// subject's own holdings add, not one more edge for what everybody can do.
+func TestWhatAnyAccountRaisesIsNotASubjectsOwn(t *testing.T) {
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "parent", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}},
+		{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+	}}
+	sample := Sample{
+		Model: gapModel(t),
+		Relationships: []Relationship{
+			rel("folder:shared", "viewer", "user:vic"),
+			rel("document:roadmap", "editor", "user:olivia"),
+		},
+		Now: time.Unix(0, 0),
+	}
+	got, _ := subjectEscalations(sample, wm, maxSubjectWork)
+	for _, f := range got {
+		if f.attacker.ID == "vic" && f.esc.Object.ID == "roadmap" && f.patternID == "PTD-ZAN-008" {
+			t.Errorf("writing itself a viewer is what anyone can do, and it is drawn from Vic: %+v", f)
+		}
+	}
+	if !slices.ContainsFunc(got, func(f attackerEscalation) bool {
+		return f.attacker.ID == "vic" && f.esc.Object.ID == "roadmap" && f.patternID == "PTD-ZAN-004"
+	}) {
+		t.Errorf("moving the document into the folder only Vic views is Vic's own, and it is not drawn: %+v", got)
+	}
+}
+
+// A subject carried over to an object that does not name it is part of the work, so a
+// store of many such subjects does not take hours, and what is left out is counted.
+func TestCarryingASubjectSpendsTheWork(t *testing.T) {
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "parent", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}},
+	}}
+	sample := Sample{
+		Model: gapModel(t),
+		Relationships: []Relationship{
+			rel("folder:shared", "viewer", "user:vic"),
+			rel("document:roadmap", "editor", "user:olivia"),
+		},
+		Now: time.Unix(0, 0),
+	}
+	states, _ := weighedStates(sample, wm)
+	scope := newReach(sample.Model, wm).scopeOf(sample.Model, wm)
+	opts := Options{Now: sample.Now, taken: namedObjects(sample)}
+	carry := func(work int) ([]attackerEscalation, Limits) {
+		var limits Limits
+		return reachedFrom(sample, wm, states, scope, opts, &work, &limits), limits
+	}
+	if found, limits := carry(maxSubjectWork); len(found) == 0 || limits.SubjectsLeftOut != 0 {
+		t.Fatalf("with the work to spare it finds %v and leaves out %d", found, limits.SubjectsLeftOut)
+	}
+	if found, limits := carry(1); len(found) != 0 || limits.SubjectsLeftOut == 0 {
+		t.Errorf("past the limit it finds %v and leaves out %d", found, limits.SubjectsLeftOut)
+	}
+}
+
+// A subject named on the object it is weighed on is weighed there once, so the graph does
+// not draw the same raise twice from it.
+func TestASubjectIsWeighedOnceOnAnObject(t *testing.T) {
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "parent", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}},
+		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Holds: "view"}, Subject: SubjectSpec{Self: true}},
+	}}
+	sample := Sample{
+		Model: gapModel(t),
+		Relationships: []Relationship{
+			rel("folder:shared", "viewer", "user:vic"),
+			rel("document:plan", "viewer", "user:vic"),
+			rel("document:roadmap", "editor", "user:olivia"),
+		},
+		Now: time.Unix(0, 0),
+	}
+	got, _ := subjectEscalations(sample, wm, maxSubjectWork)
+	seen := map[string]bool{}
+	for _, f := range got {
+		key := f.attacker.String() + " " + f.patternID + " " + f.esc.Permission + " " + f.esc.Object.String()
+		if seen[key] {
+			t.Errorf("drawn twice: %s", key)
+		}
+		seen[key] = true
+	}
+	if !seen["user:vic PTD-ZAN-007 edit document:plan"] {
+		t.Errorf("the editor Vic can make itself on plan is not drawn: %v", seen)
+	}
+}

@@ -576,14 +576,14 @@
     "acknowledgements": []
   },
   {
-    "name": "PTD-ZAN-004: permissions reached by linking a controlled object",
+    "name": "PTD-ZAN-004: permissions reached by linking an object across an arrow",
     "guid": "19dddd0f-c0e0-4a14-b35b-3304ad2355a6",
     "prebuilt": false,
     "platforms": [
       "Zanzibar"
     ],
     "category": "Transitive grant through an intermediate object",
-    "description": "The permissions a coalition raises by writing the relation an arrow walks, linking the object under attack to one the coalition controls.",
+    "description": "The permissions a coalition raises by writing the relation an arrow walks, linking the object under attack to one the coalition holds a permission on.",
     "query": "MATCH p = (:PTD_Principal)-[e:PTD_CanEscalateTo]->(:PTD_Resource)\nWHERE 'PTD-ZAN-004' IN e.patterns\nRETURN p",
     "revision": 1,
     "resources": [
@@ -592,7 +592,7 @@
     "acknowledgements": []
   },
   {
-    "name": "PTD-ZAN-005: permissions reached by joining a userset",
+    "name": "PTD-ZAN-005: permissions reached by joining a group",
     "guid": "aeb9792f-4cfe-4e22-b18e-f55d281af060",
     "prebuilt": false,
     "platforms": [

@@ -22,12 +22,13 @@ const (
 	// wildcard subject.
 	CategoryGlobalSwitch Category = "GLOBAL-SWITCH"
 
-	// CategoryTransitiveGrant links an object to one the coalition controls,
-	// through the relation an arrow walks.
+	// CategoryTransitiveGrant links an object to one the coalition holds a
+	// permission on, one it made or one it already reaches, through the relation an
+	// arrow walks.
 	CategoryTransitiveGrant Category = "TRANSITIVE-GRANT"
 
-	// CategoryAssumableIdentity writes the coalition into a userset the object
-	// already grants to.
+	// CategoryAssumableIdentity writes the coalition into a group the object already
+	// grants to: a userset, or another object it reads.
 	CategoryAssumableIdentity Category = "ASSUMABLE-IDENTITY"
 
 	// CategoryDelegationNotNarrowed is one coalition subject writing for another
@@ -172,7 +173,9 @@ func (e *engine) classifyStep(esc Escalation, step WriteStep, i int) (Category, 
 	case subject.ID == WildcardID:
 		return CategoryGlobalSwitch, true, nil
 
-	case e.arrowThroughs(rel.Resource.Type)[rel.Relation] && e.controls(subject, step.Writer, created):
+	// An object linked across an arrow carries what the linked one grants back to it,
+	// whether the coalition made that one or already holds something on it.
+	case e.walked(rel.Resource.Type, rel.Relation) && subject.Relation == "" && subject.ID != WildcardID:
 		return CategoryTransitiveGrant, true, nil
 
 	case e.grantsToUserset(esc.Object.Type, rel.Resource.Type, rel.Relation) && e.controls(subject, step.Writer, created):
@@ -199,6 +202,13 @@ func (e *engine) classifyStep(esc Escalation, step WriteStep, i int) (Category, 
 
 	case rel.Resource == esc.Object && e.controls(subject, step.Writer, created) && step.Rule != nil && step.Rule.Gate.Anyone:
 		return CategoryAttrSelfWrite, true, nil
+
+	// The coalition written into another object that the object under attack reads, a
+	// group across an arrow among them, takes on what that object passes on. The rows
+	// above name the ways that are told apart; this one keeps the rest from going
+	// unreported.
+	case rel.Resource != esc.Object && e.controls(subject, step.Writer, created):
+		return CategoryAssumableIdentity, true, nil
 	}
 	return "", false, nil
 }
@@ -232,8 +242,8 @@ func createdObjects(moves []move) map[Object]bool {
 // arrowThroughs is the relations an arrow walks in the permissions of a type.
 // The left side of an arrow is always a relation of the current object, so a
 // write of one of these extends what an arrow reaches.
-func (e *engine) arrowThroughs(typeName string) map[string]bool {
-	t := e.model.Type(typeName)
+func arrowThroughs(model *Model, typeName string) map[string]bool {
+	t := model.Type(typeName)
 	if t == nil {
 		return nil
 	}

@@ -112,7 +112,7 @@ model fails open and grants globally through different mechanisms:
 
 The rest, `PTD-ZAN-004` through `PTD-ZAN-008`, are the writes that rest on who writes which
 relation, which a `relationship-writes` write model declares: an object linked across an arrow to
-one the coalition controls, a userset somebody joins, a grant written for another, and a self-write
+one the coalition holds a permission on, a group somebody joins, a grant written for another, and a self-write
 behind a permission or behind an open gate. `PTD-ZAN-001` rests on the write model too, for the
 context a write may carry.
 
@@ -427,8 +427,8 @@ find, the pattern is not verifiable and stays `status: draft`.
 | `PTD-ZAN-001` | SELF-ASSERTED-EXEMPTION | zanzibar | finding | | `implemented`, the first of the Zanzibar engine: a caveat parameter the check is meant to supply, which whoever writes the relationship can fix |
 | `PTD-ZAN-002` | FAIL-OPEN-ON-ABSENCE | zanzibar | finding | | `implemented`, deleting a tuple an exclusion subtracts lifts the deny it kept |
 | `PTD-ZAN-003` | GLOBAL-SWITCH | zanzibar | finding | | `implemented`, a wildcard subject grants a relation to every object of a type at once |
-| `PTD-ZAN-004` | TRANSITIVE-GRANT | zanzibar | finding | | `implemented`, an arrow links an object to one the coalition controls |
-| `PTD-ZAN-005` | ASSUMABLE-IDENTITY | zanzibar | finding | | `implemented`, joining a userset a relation grants to takes on its access |
+| `PTD-ZAN-004` | TRANSITIVE-GRANT | zanzibar | finding | | `implemented`, an arrow links an object to one the coalition holds a permission on |
+| `PTD-ZAN-005` | ASSUMABLE-IDENTITY | zanzibar | finding | | `implemented`, joining a group an object grants to takes on its access |
 | `PTD-ZAN-006` | DELEGATION-NOT-NARROWED | zanzibar | finding | | `implemented`, a gated write grants to another a right the writer never held |
 | `PTD-ZAN-007` | SPLIT-GRANT | zanzibar | finding | | `implemented`, a weaker permission gates writing a stronger one into the object |
 | `PTD-ZAN-008` | ATTR-SELF-WRITE | zanzibar | finding | | `implemented`, a subject writes itself a relation behind an open gate |

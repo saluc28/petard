@@ -2,11 +2,12 @@ schema_version: 2
 
 id: PTD-ZAN-004
 name: arrow-links-controlled-object
-title: An arrow links an object to one the coalition controls
+title: An arrow links an object to one the coalition holds a permission on
 closes: >
   A relation an arrow walks that no coalition can write keeps the objects an arrow reaches fixed.
-  A write rule on the walked relation, with a subject type the coalition can bring an object of, is
-  what lets it link in one it controls, so a walked relation with no such rule closes the pattern.
+  A write rule on the walked relation, with a subject type of which the coalition holds a permission
+  on an object or can make one, is what lets it link that object in, so a walked relation with no
+  such rule closes the pattern.
 engine: zanzibar
 front_ends: [spicedb, openfga]
 status: implemented
@@ -23,22 +24,23 @@ category:
   category_note: >
     A Zanzibar model is the ReBAC model the category names, and the transitive relation is an arrow,
     `parent->view`. The write model's part is the relation the arrow walks: when a coalition can
-    write it with a subject it controls, it links the object to one whose permission it already
-    holds, and the arrow carries that permission back to the object.
+    write it with an object whose permission it holds, one it made or one it already reaches, it
+    links the object to that one, and the arrow carries the permission back to the object.
 
 summary: >
   A permission reaches across an arrow, `view = viewer + parent->view`, so a document inherits the
   view of the folder it is in. The write model lets a coalition set a document's `parent`, and the
   coalition controls a folder, one it created and views. It moves the document under that folder,
   and the arrow carries the folder's view to the document. The decisive write is the one that sets
-  the parent, linking an object the coalition did not own to one it does.
+  the parent, linking an object the coalition did not own to one it does. A folder the coalition
+  already views serves as well: a viewer of one folder moves the document into it.
 
 preconditions:
-  - capability: The coalition can write the relation an arrow walks, with a subject it controls
+  - capability: The coalition can write the relation an arrow walks, with an object it holds a permission on
     note: >
       The write rule on the walked relation, `parent`, says who may set it and to what. The
-      coalition needs a controllable object of the subject type, which a creation rule gives it
-      when the schema has a type it can make and hold a permission on.
+      coalition needs an object of the subject type whose permission it holds: one it already holds
+      a permission on, or one a creation rule lets it make and hold one on.
 
 mechanism:
   description: >
@@ -84,30 +86,30 @@ detection:
     - order: 1
       check: >
         A permission walks an arrow, `r->p`, and the write model lets the coalition write the walked
-        relation `r` with a subject of a type it can control.
+        relation `r` with a subject of a type it holds a permission on, or can make an object of.
       rationale: >
-        The left of an arrow is a relation of the object. Writing it with an object the coalition
-        controls extends what the arrow reaches to that object, whose permission the coalition holds.
+        The left of an arrow is a relation of the object. Writing it with an object whose permission
+        the coalition holds extends what the arrow reaches to that object.
     - order: 2
       check: >
-        The closure creates or takes a controllable object of the subject type, grants itself the
-        walked permission on it, writes the arrow's relation to it, and the object's permission rises,
-        with the arrow write as the decisive write.
+        The closure takes an object of the subject type the coalition holds the walked permission on,
+        or creates one and grants itself the permission, writes the arrow's relation to it, and the
+        object's permission rises, with the arrow write as the decisive write.
       rationale: >
         It is the raise, read on the model the engine builds: the permission goes from no to yes on
-        the link, and the witness carries the controllable object's setup before it.
+        the link, and the witness carries the linked object's setup, if any, before it.
   requires_write_model: true
   requires_write_model_note: >
-    For the finding. The arrow is in the schema; that a coalition can write the relation it walks,
-    and control an object of the subject type, is in the write model and the creation rules. Without
-    them there is no link to make.
+    For the finding. The arrow is in the schema; that a coalition can write the relation it walks is
+    in the write model, and the object it links to is in the relationships or the creation rules.
+    Without them there is no link to make.
 
 graph:
   emits: finding
   emits_note: >
-    A finding when the write model lets a coalition write the walked relation with a controllable
-    object. The arrow is in the schema, but who can link an object in is not, so there is no
-    candidate without a write model.
+    A finding when the write model lets a coalition write the walked relation with an object whose
+    permission it holds. The arrow is in the schema, but who can link an object in is not, so there
+    is no candidate without a write model.
   marks:
     - kind: PTD_CanEscalateTo
       properties: [patterns, permissions]
@@ -184,7 +186,7 @@ related:
     note: >
       The same category in Rego, a transitive grant through ownership. There the engine chains a
       self-write into a reachability walk; here the arrow is the walk and the write is the link into
-      an object the coalition controls.
+      an object whose permission the coalition holds.
 
 notes:
   - >

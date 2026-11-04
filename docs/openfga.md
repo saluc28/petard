@@ -106,8 +106,8 @@ Findings
     2  PTD-ZAN-001  A relationship fixes a condition value the check was meant to supply
     1  PTD-ZAN-002  Deleting a tuple an exclusion reads lifts the deny
     3  PTD-ZAN-003  A wildcard subject grants a relation to every object of a type
-    2  PTD-ZAN-004  An arrow links an object to one the coalition controls
-    3  PTD-ZAN-005  Joining a userset a relation grants to takes on its access
+    2  PTD-ZAN-004  An arrow links an object to one the coalition holds a permission on
+    3  PTD-ZAN-005  Joining a group an object grants to takes on its access
     6  PTD-ZAN-006  A gated write grants to another a right the writer never held
     4  PTD-ZAN-007  A weaker permission gates writing a stronger one into the object
     4  PTD-ZAN-008  A subject writes itself a relation behind an open gate

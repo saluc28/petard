@@ -597,7 +597,7 @@ func TestLimitsSayWhatStoppedShort(t *testing.T) {
 	lines := Limits{SearchesStopped: 1, SubjectsLeftOut: 3, HoldingsLeftOut: 2, SupposedLeftOut: 7, StartsLeftOut: 4}.Lines()
 	if len(lines) != 5 || !strings.HasPrefix(lines[0], "1 search ") || !strings.HasPrefix(lines[1], "3 questions ") ||
 		!strings.HasPrefix(lines[2], "2 objects not asked") || !strings.HasPrefix(lines[3], "7 questions of what an account") ||
-		!strings.HasPrefix(lines[4], "4 objects a creation") {
+		!strings.HasPrefix(lines[4], "4 objects a witness") {
 		t.Errorf("Lines = %v", lines)
 	}
 	if got := (Limits{SearchesStopped: 2}).Lines(); !strings.HasPrefix(got[0], "2 searches ") {
@@ -678,5 +678,51 @@ func TestASubjectOfAnObjectLinkedInIsNotWeighedThere(t *testing.T) {
 	want := []string{"user:vic edit document:plan"}
 	if !slices.Equal(raises, want) {
 		t.Errorf("subjectEscalations = %v, want %v", raises, want)
+	}
+}
+
+// What a write can link to comes along like what a creation starts from: a userset it can
+// grant to, an object across a relation an arrow walks, one of each shape. A plain subject
+// on a relation no arrow walks grants that subject alone, so nothing comes along for it.
+func TestAStateBringsWhatAWriteCanLinkTo(t *testing.T) {
+	sample := Sample{
+		Model: gapModel(t),
+		Relationships: []Relationship{
+			rel("document:roadmap", "editor", "user:olivia"),
+			rel("document:roadmap", "viewer", "user:vic"),
+			rel("folder:a", "viewer", "user:erin"),
+			rel("folder:b", "viewer", "user:dana"),
+			rel("team:design", "member", "user:tess"),
+		},
+	}
+	broughtBy := func(rules ...*WriteRule) []string {
+		states, _ := weighedStates(sample, &WriteModel{Writes: rules})
+		var others []string
+		for _, r := range states[0].tuples {
+			if r.Resource != states[0].object {
+				others = append(others, r.Resource.String())
+			}
+		}
+		return others
+	}
+	write := func(relation string, subject SubjectSpec) *WriteRule {
+		return &WriteRule{Resource: "document", Relation: relation, Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: subject}
+	}
+	tests := []struct {
+		name     string
+		rule     *WriteRule
+		expected []string
+	}{
+		{name: "across an arrow", rule: write("parent", SubjectSpec{Any: true}), expected: []string{"folder:a"}},
+		{name: "a userset", rule: write("viewer", SubjectSpec{Types: []string{"team#member"}}), expected: []string{"team:design"}},
+		{name: "a plain subject no arrow walks", rule: write("editor", SubjectSpec{Any: true})},
+		{name: "the writer itself", rule: write("parent", SubjectSpec{Self: true})},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := broughtBy(tt.rule); !slices.Equal(got, tt.expected) {
+				t.Errorf("the state brings %v, want %v", got, tt.expected)
+			}
+		})
 	}
 }

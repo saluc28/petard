@@ -142,8 +142,10 @@ func subjectHoldings(s Sample, work int) ([]holding, Limits) {
 // two facts.
 //
 // A subject is weighed on the objects whose checks read a tuple naming it, which is
-// where what it holds can open something. On any other object it starts like any other
-// account, and what such an account can raise hangs off the attacker the analysis supposes.
+// where what it holds can open something. What it holds on an object a witness can link
+// to or start from reaches further, onto objects that do not name it, and reachedFrom
+// weighs that. On any other object it starts like any other account, and what such an
+// account can raise hangs off the attacker the analysis supposes.
 //
 // A store where many subjects share large states would take hours to weigh whole, so the
 // work has a limit, spent on the smallest states first: they are the most subjects for
@@ -183,5 +185,89 @@ func subjectEscalations(s Sample, wm *WriteModel, work int) ([]attackerEscalatio
 			}
 		}
 	}
-	return out, limits
+	return append(out, reachedFrom(s, wm, states, scope, opts, &work, &limits)...), limits
+}
+
+// reachedFrom is what a subject raises by carrying what it holds on objects a witness
+// can link to or start from onto an object that does not name it: Vic views a folder,
+// and may move any document into it. The smallest state of each type stands for the
+// type, weighed with the objects that name the subject brought along. What an account
+// with nothing raises there is left to the attacker the analysis supposes, so only what
+// the subject's own holdings add is its own.
+func reachedFrom(s Sample, wm *WriteModel, states []weighedState, scope map[permRef]bool, opts Options, work *int, limits *Limits) []attackerEscalation {
+	tuples := s.Relationships
+	byResource := positionsOf(tuples)
+	types := startTypes(s.Model, wm)
+	holds := map[Object]map[Object]bool{}
+	for _, x := range uniqueObjects(slices.Collect(maps.Keys(byResource))) {
+		if !types[x.Type] {
+			continue
+		}
+		reads := readsOf(x, tuples, byResource)
+		for _, subject := range realSubjects(heldBy(tuples, byResource, reads)) {
+			if holds[subject] == nil {
+				holds[subject] = map[Object]bool{}
+			}
+			maps.Copy(holds[subject], reads)
+		}
+	}
+	if len(holds) == 0 {
+		return nil
+	}
+
+	var out []attackerEscalation
+	ofType := map[string]bool{}
+	for _, state := range states {
+		if ofType[state.object.Type] {
+			continue
+		}
+		ofType[state.object.Type] = true
+		anyone := map[string]map[string]bool{}
+		for _, subject := range uniqueObjects(slices.Collect(maps.Keys(holds))) {
+			if state.reads[subject] {
+				continue
+			}
+			include := maps.Clone(holds[subject])
+			for _, r := range state.tuples {
+				include[r.Resource] = true
+			}
+			start := heldBy(tuples, byResource, include)
+			*work -= len(start)
+			if *work < 0 {
+				limits.SubjectsLeftOut++
+				continue
+			}
+			if anyone[subject.Type] == nil {
+				anyone[subject.Type] = raisedByNobody(s, wm, state, scope, opts, subject.Type)
+			}
+			classified, err := classifyScoped(s.Model, wm, s.Caveats, start, []Object{subject}, scope, opts)
+			if err != nil {
+				continue
+			}
+			for _, c := range classified {
+				id := c.Category.patternID()
+				if id != "" && c.Object == state.object && !anyone[subject.Type][id+"|"+c.Permission] {
+					out = append(out, attackerEscalation{attacker: subject, esc: c, patternID: id})
+				}
+			}
+		}
+	}
+	return out
+}
+
+// raisedByNobody is what an account of a type that holds nothing raises on the object of
+// a state, by pattern and permission.
+func raisedByNobody(s Sample, wm *WriteModel, state weighedState, scope map[permRef]bool, opts Options, typ string) map[string]bool {
+	raised := map[string]bool{}
+	attacker := freeObject(opts.taken, typ, "attacker")
+	classified, err := classifyScoped(s.Model, wm, s.Caveats, state.tuples, []Object{attacker}, scope, opts)
+	if err != nil {
+		return raised
+	}
+	for _, c := range classified {
+		if id := c.Category.patternID(); id != "" && c.Object == state.object {
+			raised[id+"|"+c.Permission] = true
+		}
+	}
+	return raised
 }

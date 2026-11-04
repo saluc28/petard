@@ -158,8 +158,8 @@ in `taxonomy-registry/zanzibar/` are the source of truth.
 | `PTD-ZAN-001` | a caveat parameter the check is meant to supply, which whoever writes the relationship can set instead |
 | `PTD-ZAN-002` | a deny an exclusion keeps, lifted by deleting the tuple it subtracts |
 | `PTD-ZAN-003` | a relation granted to every object of a type at once, through a wildcard subject |
-| `PTD-ZAN-004` | an object linked across an arrow to one the coalition controls |
-| `PTD-ZAN-005` | a userset a relation grants to, which the coalition can join |
+| `PTD-ZAN-004` | an object linked across an arrow to one the coalition holds a permission on |
+| `PTD-ZAN-005` | a group an object grants to, a userset or an object it reads, which the coalition can join |
 | `PTD-ZAN-006` | a gated write that grants to another a right the writer never held |
 | `PTD-ZAN-007` | a weaker permission gating the write of a stronger one into the object |
 | `PTD-ZAN-008` | a subject writing itself a relation behind a gate that needs no permission |
@@ -205,10 +205,11 @@ power of how many objects a coalition can write on. To hold that down each objec
 on the tuples a check of it can read. Those answer a check of it as the whole store does, so nothing
 found this way is false.
 
-A write names as its subject only what the coalition holds, and a gate is asked of the object written,
-so a witness can use another object that already exists only by making a creation on it. Of each
-type a creation can be made on, one object of each shape comes along. What this gives up is a witness
-that needs that very object and not another of its shape, and the run says how many objects it weighed
+A gate is asked of the object written, so a witness can use another object that already exists only
+by naming it: as the subject of a write, where the tuple can carry something back to the coalition,
+a userset or an object across a relation an arrow walks, or as what a creation is made on. Of each
+type that can be named so, one object of each shape comes along. What this gives up is a witness that
+needs that very object and not another of its shape, and the run says how many objects it weighed
 this way.
 
 A search stops at twenty thousand states, and what it found by then holds. The searches for an account
@@ -221,7 +222,9 @@ take together, spent on the smallest states first. When any of these stops short
 to each object says what the subject holds as they stand, and a `PTD_CanEscalateTo` says what it can
 raise by writing what the write model allows. A holding is an unconditional yes: what waits on a
 caveat, or rests on a walk that cut a loop, is not drawn. A subject is weighed for what it can raise on
-the objects whose checks read a tuple naming it. The work on what subjects hold and on what they can
+the objects whose checks read a tuple naming it, and, on one object of each type, for what it can carry
+there from what it holds: a folder it views, into which it may move any document. There only what an
+account with nothing could not raise is drawn as the subject's. The work on what subjects hold and on what they can
 raise each has a limit, the second spent on the smallest states first, and the export says what they
 left out.
 
@@ -261,7 +264,7 @@ A `writes` entry is a rule for one relation:
 | `resource`, `relation` | the relation written |
 | `operations` | `create`, `touch`, `delete`. A `create` fails on a tuple that is there, whatever its caveat (`internal/datastore/memdb/readwrite.go:66-93` at SpiceDB v1.57.0, `pkg/storage/memory/memory.go:459-471` at OpenFGA v1.22.1), so only a rule that also touches or deletes can lift a conditional tuple |
 | `gate` | who may write: `anyone`, `{ holds: <permission> }` the writer holds on the resource, or `{ service: <name> }` for a write no end user can cause |
-| `subject` | what may be written as the subject: `self`, `any`, a list of types or usersets (`[user, "team#member"]`), or `{ holds: <permission> }` the subject object holds |
+| `subject` | what may be written as the subject: `self`, `any`, a list of types or usersets (`[user, "team#member"]`), or `{ holds: <permission> }` an object that holds the permission on the resource |
 | `wildcard` | whether the writer may write `T:*` |
 | `caveat` | the caveats the writer may attach, and per parameter whether the `writer` or the `application` fills it; `writer` is the default, because the written context wins over the check's |
 | `expiration` | `writer`, `application` or `none` |
