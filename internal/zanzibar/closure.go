@@ -403,6 +403,9 @@ type move struct {
 	created Object
 	writer  Subject
 
+	// ons are the objects a creation is made in, by type, whose gates held.
+	ons map[string]Object
+
 	// del is true when the move removes rel rather than adding it, the move
 	// that lifts a deny by deleting a tuple that occurs negatively.
 	del bool
@@ -548,7 +551,7 @@ func (e *engine) creations(checker *Checker, state *stateSet, objects []Object, 
 				added := !containsObject(objects, created)
 				if added {
 					// The creation itself brings the object into the coalition.
-					moves = append(moves, move{creates: rule, created: created})
+					moves = append(moves, move{creates: rule, created: created, ons: combo.ons})
 				}
 				// The tuples the rule writes are moves of their own, so a rule
 				// with several writes adds each. They are offered even when the
@@ -559,7 +562,7 @@ func (e *engine) creations(checker *Checker, state *stateSet, objects []Object, 
 					if !ok || state.has(rel) {
 						continue
 					}
-					moves = append(moves, move{rel: rel, creates: rule, created: created})
+					moves = append(moves, move{rel: rel, creates: rule, created: created, ons: combo.ons})
 				}
 			}
 		}

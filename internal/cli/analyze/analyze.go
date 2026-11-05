@@ -89,6 +89,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	noColor := flags.Bool("no-color", false, "never use escape sequences, whatever the terminal says")
 	testsPath := flags.String("tests", "", "write an opa test for each escalation proven by a request to this file; it fails while the escalation is open")
 	questionsPath := flags.String("questions", "", "write a write model to this file, one entry per open question, to fill in and rerun with -write-model")
+	proofsPath := flags.String("proofs", "", "write to this empty directory, for each escalation of a SpiceDB schema or an OpenFGA model, the files zed validate or fga model test reads to show it; they pass while the escalation is open")
 
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
@@ -118,6 +119,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		mode = opaengine.ParseModeV0
 	case *regoV1:
 		mode = opaengine.ParseModeV1
+	}
+
+	if *proofsPath != "" {
+		if err := checkProofsDir(*proofsPath); err != nil {
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+			return exitFailure
+		}
 	}
 
 	// Before the analysis rather than after it: a registry that cannot be read
@@ -175,6 +183,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			if !*quiet {
 				reportEntriesWritten(stdout, written, *questionsPath)
 			}
+		}
+		if err := proofs(stdout, *proofsPath, schemas, *quiet); err != nil {
+			fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+			return exitFailure
 		}
 		printFooter(stdout, pr, false, schemas.hasEvidence())
 		return schemas.exitCode(*failOn)
@@ -249,7 +261,27 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			reportEntriesWritten(stdout, written, *questionsPath)
 		}
 	}
+	if err := proofs(stdout, *proofsPath, schemas, *quiet); err != nil {
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+		return exitFailure
+	}
 	return max(exitCode(found, *failOn), schemas.exitCode(*failOn))
+}
+
+// proofs writes the proofs of the escalations to dir, when -proofs named one, and says
+// what it wrote unless the run is quiet.
+func proofs(out io.Writer, dir string, schemas zanzibarRun, quiet bool) error {
+	if dir == "" {
+		return nil
+	}
+	written, without, err := writeProofs(dir, schemas.escalations)
+	if err != nil {
+		return err
+	}
+	if !quiet {
+		reportProofs(out, dir, written, without)
+	}
+	return nil
 }
 
 // reportEntriesWritten says how many write-model entries were written and where,

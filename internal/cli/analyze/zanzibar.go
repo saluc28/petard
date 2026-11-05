@@ -26,6 +26,10 @@ type zanzibarRun struct {
 	// causes are the matches that are escalations, by the write rule behind them.
 	causes []causeGroup
 
+	// escalations are the same matches with what writes their proofs, in the order
+	// the matches come.
+	escalations []provable
+
 	// limits say where the analysis stopped short of weighing everything.
 	limits zanzibar.Limits
 
@@ -80,6 +84,9 @@ func runZanzibar(found zanzibarsetup.Found, now time.Time, propose bool) (zanzib
 			seen[key] = true
 			run.matches = append(run.matches, m)
 			causes.add(a.SchemaPath, m)
+			if m.Raise != nil {
+				run.escalations = append(run.escalations, provable{schema: a.SchemaPath, match: m, prove: a.Prove})
+			}
 		}
 	}
 	run.causes = causes.groups()

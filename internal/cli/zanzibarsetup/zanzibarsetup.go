@@ -65,7 +65,16 @@ type File struct {
 	// relations whose subjects it lists.
 	Assertions        []zanzibar.Assertion
 	ExpectedRelations int
+
+	// Prove writes a proof of an escalation of the schema in the files the test runner
+	// of the product reads: validation files for zed validate, a store file for fga
+	// model test.
+	Prove Prover
 }
+
+// Prover writes a proof in the files of a product, under the directory name inside dir,
+// each file starting with the lines of title.
+type Prover func(dir, name string, title []string, p *zanzibar.Proof) ([]zanzibar.ProofFile, error)
 
 // Sample is what the file holds about its schema, for the patterns of the engine
 // to read. now is when expirations are read.
@@ -91,6 +100,7 @@ func fromSpiceDB(f *spicedb.File) *File {
 		Relationships:     f.Relationships,
 		Assertions:        f.Assertions,
 		ExpectedRelations: f.ExpectedRelations,
+		Prove:             f.Schema.ProofFiles,
 	}
 }
 
@@ -106,6 +116,7 @@ func fromOpenFGA(f *openfga.File) *File {
 		Test:          f.Test,
 		Relationships: f.Relationships,
 		Assertions:    f.Assertions,
+		Prove:         f.Schema.ProofFiles,
 	}
 }
 
@@ -221,6 +232,10 @@ type Analysis struct {
 	SchemaPath string
 	Sample     zanzibar.Sample
 	WriteModel *zanzibar.WriteModel
+
+	// Prove writes a proof of an escalation the analysis finds, in the files of the
+	// schema's product.
+	Prove Prover
 }
 
 // Analyses is what the patterns run on, and the schemas left with nothing to run
@@ -246,7 +261,7 @@ func (f Found) Analyses(now time.Time) (run []Analysis, noEvidence []*File) {
 	for _, file := range f.Files {
 		wm := f.WriteModels[path.Dir(file.SchemaPath)]
 		if file.Holds {
-			run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm})
+			run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm, Prove: file.Prove})
 			continue
 		}
 		// A schema a validation file reads is analyzed with that file above; a bare
@@ -259,7 +274,7 @@ func (f Found) Analyses(now time.Time) (run []Analysis, noEvidence []*File) {
 			noEvidence = append(noEvidence, file)
 			continue
 		}
-		run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm})
+		run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm, Prove: file.Prove})
 	}
 	return run, noEvidence
 }

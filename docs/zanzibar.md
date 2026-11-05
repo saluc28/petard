@@ -248,6 +248,57 @@ model nor such a file has nothing to run from, and the report names it as one wi
 `petard export` reads the schemas the same way, and draws the escalations it finds as a BloodHound
 OpenGraph.
 
+## Proofs
+
+`-proofs <dir>` writes each escalation as the files the product's own test runner reads, so the
+product shows it without Petard: for a SpiceDB schema a directory of validation files for
+`zed validate`, for an OpenFGA model a store file for `fga model test`. A proof is named after the
+pattern, the type and the permission, and its first lines say what it shows and the command that
+runs it.
+
+```
+petard analyze -proofs proofs fixtures/vulnerable-spicedb
+zed validate proofs/ptd-zan-007-document-edit/1-before.yaml proofs/ptd-zan-007-document-edit/2-after.yaml
+```
+
+A proof is the witness of the finding, replayed the way the product applies writes: a write of a
+tuple that is already there in another form replaces it, and what has expired is left out. Its files
+hold the schema, written back by the product's own generator, and the store at each point of the
+witness where something is asked:
+
+- before the writes, the coalition does not hold the permission, or holds it only under a condition;
+- before each write the write model puts behind a permission, the coalition holds that permission,
+  which is what the application checks; the permission a rule holds its subject to, and the one a
+  creation needs on the object it is made in, are asked the same way;
+- after the writes, the coalition holds the permission.
+
+The store is the one the witness was found on: the tuples a check of the object reads, from a
+validation file or a store file, or a position generated from a bare schema. Read from a running
+server, those tuples are the server's own, identifiers included. A proof passes while the escalation
+is open. It does not show that the application makes the checks the write model declares.
+
+SpiceDB answers a check that waits on a caveat it has no context for as caveated, which
+`assertCaveated` states. OpenFGA answers it with an error, which fails the check whatever it
+expected, so such a check is asked under the first context one of the store's own checks supplies
+that decides it the way the proof needs. An OpenFGA escalation with no such context has no proof.
+
+The engine stops at the first way that grants. SpiceDB follows a loop of relationships to its depth
+limit, and fails a check on it wherever it waits for every result, as on the base of an exclusion
+(`internal/graph/check.go:1106` and `:1198` at v1.57.0). A check follows a relation an arrow walks,
+and the subject of a userset, so an escalation whose store holds a loop a check can follow that way
+has no SpiceDB proof. An escalation with a tuple the product would refuse has none either, such as a
+write the engine makes without the caveat context or the expiration the relation requires. The run
+lists each escalation without a proof, and why.
+
+A proof carries the schema it was written from, so it goes on passing after the schema in the
+repository is fixed. `-proofs` takes a directory that does not exist yet or is empty, and the proofs
+belong outside the paths a run reads, where they would be read as inputs.
+
+The proofs of both fixtures are held to the products in CI: `zed validate` passes on every SpiceDB
+proof, and `fga model test` from openfga/cli v0.8.2 on every OpenFGA one. `go test` runs the OpenFGA
+proofs on a server in the test process as well. Each proof fails once its last state holds the store
+before the writes.
+
 ## The write model
 
 The write model is a YAML file that declares `model: relationship-writes`, the same file family as

@@ -78,10 +78,36 @@ jobs:
 
       # It runs over the validation files of testdata, the SpiceDB fixture, and
       # the integration test configs SpiceDB ships in the module petard already
-      # requires.
+      # requires, and over the proofs petard writes for the escalations of the
+      # fixture.
       - name: Hold the engine against SpiceDB
         run: |
           go mod download github.com/authzed/spicedb
           export PETARD_ZED="$PWD/zed"
           export PETARD_ZANZIBAR_CORPUS="$(go list -m -f '{{.Dir}}' github.com/authzed/spicedb)/internal/services/integrationtesting/testconfigs"
           go test -run TestOracle -v ./internal/zanzibar/spicedb
+
+  proofs:
+    name: Proofs against fga
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      # fga model test is OpenFGA's own runner for store files. Every proof petard
+      # writes for the escalations of the OpenFGA fixture passes on it, and fails
+      # once its last state holds the store before the writes. The version is
+      # pinned, and the archive is checked against the checksum the release
+      # publishes.
+      - name: Install fga
+        run: |
+          curl -sSfL -o fga.tar.gz https://github.com/openfga/cli/releases/download/v0.8.2/fga_0.8.2_linux_amd64.tar.gz
+          echo "e48c4a73cf68031fe9fc0827f1462a9b2d6981e3d2e9b82f1e1c2e120c293443  fga.tar.gz" | sha256sum --check
+          tar -xzf fga.tar.gz fga
+
+      - name: Hold the proofs against fga
+        run: PETARD_FGA="$PWD/fga" go test -run TestOracleProofs -v ./internal/zanzibar/openfga

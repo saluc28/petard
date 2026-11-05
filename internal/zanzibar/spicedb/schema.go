@@ -36,6 +36,10 @@ type Schema struct {
 
 	compiled map[string]*caveats.CompiledCaveat
 	refs     map[string]map[string]*core.CaveatTypeReference
+
+	// definitions are the compiled definitions in the order the schema gave them,
+	// imports and partials resolved, which a proof writes the schema back from.
+	definitions []compiler.SchemaDefinition
 }
 
 // Compile compiles a schema. file is the name positions are reported against
@@ -59,8 +63,9 @@ func Compile(file string, imports fs.FS, firstLine int, text string) (*Schema, e
 
 	at := origin{file: file, line: firstLine}
 	s := &Schema{
-		compiled: make(map[string]*caveats.CompiledCaveat, len(compiled.CaveatDefinitions)),
-		refs:     make(map[string]map[string]*core.CaveatTypeReference, len(compiled.CaveatDefinitions)),
+		compiled:    make(map[string]*caveats.CompiledCaveat, len(compiled.CaveatDefinitions)),
+		refs:        make(map[string]map[string]*core.CaveatTypeReference, len(compiled.CaveatDefinitions)),
+		definitions: compiled.OrderedDefinitions,
 	}
 	caveatList := make([]*zanzibar.Caveat, 0, len(compiled.CaveatDefinitions))
 	for _, def := range compiled.CaveatDefinitions {

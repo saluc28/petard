@@ -170,6 +170,18 @@ go test ./internal/zanzibar/openfga -run TestFixture -v
 [zanzibar.md](zanzibar.md#held-to-openfga) has how the engine's answers are held to the same server
 over every check the objects allow.
 
+`-proofs <dir>` writes each escalation as a store file, with one test for each point of its witness
+where something is asked, and `fga model test` passes on it while the escalation is open:
+
+```
+petard analyze -proofs proofs fixtures/vulnerable-openfga
+fga model test --tests "proofs/*.fga.yaml"
+```
+
+A check that waits on a condition is asked under a context one of the store's own checks supplies,
+since OpenFGA answers it with an error otherwise. [zanzibar.md](zanzibar.md#proofs) has what a proof
+holds and when an escalation has none.
+
 ## In a pipeline
 
 A match on a model with a write model beside it is a finding, which fails a run by default. A match

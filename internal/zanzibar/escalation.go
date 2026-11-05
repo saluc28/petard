@@ -25,6 +25,10 @@ type WriteStep struct {
 	// creation step so the witness can name it even when the step itself writes
 	// no tuple, the bare birth of an object.
 	Created Object
+
+	// On are the objects a creation step is made in, by type: the ones whose
+	// gates the coalition held, a folder for a document.
+	On map[string]Object
 }
 
 // Escalation is a permission a coalition can raise on an object that existed
@@ -44,6 +48,11 @@ type Escalation struct {
 	// moves is the same witness as the moves the closure applies, kept so the
 	// state before a write can be replayed exactly when a finding needs it.
 	moves []move
+
+	// start and coalition are the state the witness starts from and who makes
+	// it, which a proof replays the writes over.
+	start     []Relationship
+	coalition []Object
 }
 
 // Decisive is the write after which the permission rose, the last of the
@@ -178,6 +187,7 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 		up map[string]bool
 	}
 	start := node{state: e.start.clone(), objects: slices.Clone(e.coalition)}
+	startTuples := e.start.list()
 	queue := []node{start}
 	visited := map[string]bool{signatureOf(start.state, start.objects): true}
 	seen := map[string]bool{}
@@ -230,6 +240,8 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 				After:      level,
 				Writes:     steps(cur.path),
 				moves:      slices.Clone(cur.path),
+				start:      startTuples,
+				coalition:  e.coalition,
 			})
 		}
 
@@ -311,6 +323,7 @@ func steps(path []move) []WriteStep {
 			Creation:     mv.creates,
 			Writer:       mv.writer,
 			Created:      mv.created,
+			On:           mv.ons,
 		})
 	}
 	return out

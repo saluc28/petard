@@ -45,6 +45,9 @@ type Schema struct {
 	Model *zanzibar.Model
 
 	types *typesystem.TypeSystem
+
+	// model is the model as OpenFGA stores it, which a proof writes back in the DSL.
+	model *openfgav1.AuthorizationModel
 }
 
 // Compile compiles a model written in the DSL. file is the name positions are
@@ -207,7 +210,7 @@ func lower(file string, model *openfgav1.AuthorizationModel, at map[string]zanzi
 	}
 	m.Walk = walkOf(types, model)
 	m.Terms = zanzibar.Terms{Caveat: "condition", Relationship: "tuple"}
-	return &Schema{Model: m, types: types}, nil
+	return &Schema{Model: m, types: types, model: model}, nil
 }
 
 // walkOf is how a check of OpenFGA follows the tuples of a model. It reads a tuple's

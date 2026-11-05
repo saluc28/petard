@@ -73,6 +73,9 @@ with the product's own tools.
 - An escalation in a policy is `proven by` a request: the decision refuses it as the data stands
   and grants it once the write is made. OPA answers both questions, and `-tests` writes the pair
   as an opa test that fails while the escalation is open.
+- An escalation in a schema is shown by its witness, the writes in order. `-proofs` writes them as
+  the files `zed validate` or `fga model test` reads, with the store before the writes, before each
+  write behind a permission, and after them: they pass while the escalation is open.
 - A caveat parameter of a schema, matched as a candidate, is `shown by` a check of the validation
   file: the check goes from no to yes once a relationship carries the value. Written into the file
   that way, `zed validate` fails on the assertion the check came from. On an OpenFGA model the check

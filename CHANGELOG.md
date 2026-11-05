@@ -37,6 +37,11 @@
   on what the store holds and not only on the positions the schema generates. A bearer token the
   server needs is read from `$PETARD_SPICEDB_TOKEN`, and a write model for such a schema comes from
   `-write-model`.
+- `petard analyze -proofs <dir>` writes each escalation of a SpiceDB schema or an OpenFGA model as
+  the files the product's own test runner reads: validation files for `zed validate`, a store file
+  for `fga model test`. They hold the schema and the store before the writes, before each write
+  behind a permission and after them, with the checks the product has to answer, and they pass while
+  the escalation is open. The run lists each escalation it wrote no proof for, and why.
 
 ### Changed
 

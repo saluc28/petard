@@ -194,6 +194,12 @@ type Raise struct {
 	// Type and Permission are what rises, and Before and After how far.
 	Type, Permission string
 	Before, After    Level
+
+	// Proof is the raise as the product itself can be asked to show it, on the
+	// object and from the state the witness was found on. It is nil when petard
+	// cannot write one, and NoProof then says why.
+	Proof   *Proof
+	NoProof string
 }
 
 // Detail is one labelled line of a match. The text says where to look in the

@@ -45,10 +45,17 @@ func escalationFindings(s Sample, wm *WriteModel) ([]Match, Limits) {
 	seen := make(map[string]bool, len(found))
 	out := make([]Match, 0, len(found))
 	for _, f := range slices.Concat(found, subjects) {
-		if !seen[f.key()] {
-			seen[f.key()] = true
-			out = append(out, escalationMatch(f.patternID, f.esc))
+		if seen[f.key()] {
+			continue
 		}
+		seen[f.key()] = true
+		m := escalationMatch(f.patternID, f.esc)
+		if proof, err := proofOf(s, f.esc.Escalation); err != nil {
+			m.Raise.NoProof = err.Error()
+		} else {
+			m.Raise.Proof = proof
+		}
+		out = append(out, m)
 	}
 
 	// The closure visits states in an order a map decides, so the escalations

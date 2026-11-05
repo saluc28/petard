@@ -213,6 +213,19 @@ zed validate validation.yaml
 zed now fails on two assertions: Vic is no longer refused from `192.168.0.1`, and the view is no
 longer caveated, since the relationship settles the caveat whatever the check brings.
 
+## Proofs
+
+`-proofs <dir>` writes each escalation as validation files, one for each point of its witness where
+something is asked, and `zed validate` passes on them while the escalation is open:
+
+```
+petard analyze -proofs proofs fixtures/vulnerable-spicedb
+zed validate proofs/ptd-zan-007-document-edit/1-before.yaml proofs/ptd-zan-007-document-edit/2-after.yaml
+```
+
+The first lines of each file give the command for its proof. [zanzibar.md](zanzibar.md#proofs) has
+what a proof holds and when an escalation has none.
+
 ## In a pipeline
 
 A match on a schema with a write model beside it is a finding, which fails a run by default. A
