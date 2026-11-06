@@ -325,6 +325,7 @@ A `writes` entry is a rule for one relation:
 | `caveat` | the caveats the writer may attach, and per parameter whether the `writer` or the `application` fills it; `writer` is the default, because the written context wins over the check's |
 | `expiration` | `writer`, `application` or `none` |
 | `via`, `note`, `intended` | how the write happens, a note, and whether the raise it allows is by design and so not reported |
+| `evidence` | the lines of the application that make the write, each `path:line` or `{ at: path:line, text: ... }`, held to the source on every run ([below](#evidence-in-the-source)) |
 
 A `creates` entry is a rule for a new object a coalition can make. Sign-up is one on the user type
 gated `anyone`, which is what puts sybil accounts in a coalition:
@@ -349,5 +350,46 @@ creates:
 ```
 
 A `creates` entry holds `creates`, a `gate`, an optional `on` (the objects it is made in, each
-with its own gate), and `writes`, the tuples it writes, where `{created}` stands for the object
-just made and `{creator}` for the coalition that made it.
+with its own gate), `writes`, the tuples it writes, where `{created}` stands for the object just
+made and `{creator}` for the coalition that made it, and `evidence`, as a write rule does.
+
+## Evidence in the source
+
+A write model is declared, and nothing in a schema says it is right. Its rules can cite the lines
+of the application that make each write and check its gate, so that a reviewer reads the rule beside
+the code, and so that a rule the code has moved away from shows up:
+
+```yaml
+writes:
+  - resource: document
+    relation: viewer
+    operations: [create, touch]
+    gate: { holds: edit }
+    subject: [user, "team#member"]
+    via: the share endpoint
+    evidence:
+      - api/share.go:41                                  # the check of edit
+      - { at: api/share.go:58, text: WriteRelationships } # the write
+```
+
+Every run holds each citation to the source: the file is there, it has the line, and the line holds
+the text, when the citation gives one. A citation that no longer holds is reported under
+`Evidence in the source` and fails the run as a finding does, unless `-fail-on none`. Without the
+text, a citation still holds after the call has moved elsewhere in its file.
+
+A citation is a path relative to the source, read inside it and never outside it. The source is
+the directory `-code` names, or, without it, the directory of the write model.
+
+With `-code`, a run also lists the places in the source that call a write of SpiceDB or OpenFGA,
+and those no rule cites. For SpiceDB these are the calls its API names, `WriteRelationships`,
+`DeleteRelationships` and `ImportBulkRelationships`, in the spelling of each SDK, and the HTTP paths
+of its gateway. OpenFGA calls its write `Write`, a name that says nothing on its own, so a place is
+found by what its SDKs name distinctly: `ClientWriteRequest`, `WriteTuples` and `DeleteTuples`, and the
+`/stores/{id}/write` path. `internal/evidence/evidence.go` cites each name in the API and the SDKs.
+Files the languages name as tests are left out, and so are `vendor`, `node_modules` and the
+directories a build leaves.
+
+The list is found by name. A line that only mentions a call counts, and a call made through a
+wrapper of another name is not found, so the list starts a review and does not prove there is no
+other place. A person still reads whether a cited line does what the rule declares, and whether the
+application checks the gate the rule names.

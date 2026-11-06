@@ -5,6 +5,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/saluc28/petard/internal/evidence"
 	"github.com/saluc28/petard/internal/writemodel"
 	yaml "go.yaml.in/yaml/v3"
 )
@@ -67,6 +68,10 @@ type WriteModel struct {
 	// Creates are the rules that let the coalition make a new object, sign-up
 	// among them, which is what puts accounts the coalition controls into play.
 	Creates []*CreationRule `yaml:"creates"`
+
+	// Path is the file the model was read from, empty for one held inline. The
+	// evidence of its rules is read beside it unless a run names the source.
+	Path string `yaml:"-"`
 }
 
 // WriteRule says who may write a relation, as what subject, and with which
@@ -101,6 +106,11 @@ type WriteRule struct {
 	Via        string `yaml:"via"`
 	Note       string `yaml:"note"`
 	Confidence string `yaml:"confidence"`
+
+	// Evidence are the lines of the application that make the write and check its
+	// gate, which a run holds to the source so that a rule the code has moved away
+	// from shows up. That they do what the rule says is for a person to read.
+	Evidence []evidence.Citation `yaml:"evidence"`
 
 	// Intended marks a raise this rule allows by design, joining a public group
 	// among them. A witness made only of intended rules is not a finding.
@@ -148,6 +158,10 @@ type CreationRule struct {
 	Via        string `yaml:"via"`
 	Note       string `yaml:"note"`
 	Confidence string `yaml:"confidence"`
+
+	// Evidence are the lines of the application that make the object and check its
+	// gate, held to the source as a write rule's are.
+	Evidence []evidence.Citation `yaml:"evidence"`
 
 	// Intended marks a creation a run should not report as a raise, a public
 	// workspace anybody may open among them.
@@ -309,6 +323,7 @@ func LoadWriteModel(path string) (*WriteModel, error) {
 	if err != nil {
 		return nil, fmt.Errorf("zanzibar: parsing %s: %w", path, err)
 	}
+	m.Path = path
 	return m, nil
 }
 

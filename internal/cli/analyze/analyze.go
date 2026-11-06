@@ -89,6 +89,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	noColor := flags.Bool("no-color", false, "never use escape sequences, whatever the terminal says")
 	testsPath := flags.String("tests", "", "write an opa test for each escalation proven by a request to this file; it fails while the escalation is open")
 	questionsPath := flags.String("questions", "", "write a write model to this file, one entry per open question, to fill in and rerun with -write-model")
+	code := flags.String("code", "", "the source of the application that writes the tuples: the evidence the write model cites is read in it, and it is searched for the places that call a write of SpiceDB or OpenFGA; without it, the evidence is read beside the write model")
 	proofsPath := flags.String("proofs", "", "write to this empty directory, for each escalation of a SpiceDB schema or an OpenFGA model, the files zed validate or fga model test reads to show it; they pass while the escalation is open")
 
 	if err := flags.Parse(args); err != nil {
@@ -152,6 +153,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
+	cited, err := checkEvidence(writeModelsOf(setup.WriteModels), *code)
+	if err != nil {
+		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
+		return exitFailure
+	}
 	pr := printing{style: style, quiet: *quiet, verbose: *verbose}
 
 	analyzed, err := taxonomy.Load(ctx, taxonomy.Inputs{
@@ -174,6 +180,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	})
 	if errors.Is(err, opaengine.ErrNoModules) && len(setup.Files) > 0 {
 		printZanzibar(stdout, schemas, patterns, pr)
+		printEvidence(stdout, cited, style, *quiet)
 		if *questionsPath != "" {
 			written, err := writeSchemaQuestions(*questionsPath, schemas.proposals)
 			if err != nil {
@@ -189,7 +196,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		printFooter(stdout, pr, false, schemas.hasEvidence())
-		return schemas.exitCode(*failOn)
+		return max(schemas.exitCode(*failOn), cited.exitCode(*failOn))
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
@@ -215,6 +222,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout)
 		printZanzibar(stdout, schemas, patterns, pr)
 	}
+	printEvidence(stdout, cited, style, *quiet)
 	printFooter(stdout, pr, true, schemas.hasEvidence())
 
 	if *verbose {
@@ -265,7 +273,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
 	}
-	return max(exitCode(found, *failOn), schemas.exitCode(*failOn))
+	return max(exitCode(found, *failOn), schemas.exitCode(*failOn), cited.exitCode(*failOn))
 }
 
 // proofs writes the proofs of the escalations to dir, when -proofs named one, and says

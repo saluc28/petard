@@ -2,8 +2,10 @@ package zanzibar
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
+	"github.com/saluc28/petard/internal/evidence"
 	"github.com/saluc28/petard/internal/writemodel"
 )
 
@@ -74,6 +76,44 @@ creates:
 	team := m.Creates[1]
 	if len(team.Writes) != 1 || team.Writes[0].Subject != CreatorPlaceholder {
 		t.Errorf("team creation writes = %+v, want one write of the creator", team.Writes)
+	}
+}
+
+// A rule cites the lines of the application that make its write, in either form a
+// citation takes, and a creation does too; a citation that is not path:line is refused.
+func TestParseWriteModelEvidence(t *testing.T) {
+	m, err := ParseWriteModel([]byte(`
+schema_version: 1
+model: relationship-writes
+writes:
+  - resource: document
+    relation: viewer
+    operations: [create]
+    gate: anyone
+    subject: self
+    evidence:
+      - api/share.go:88
+      - {at: api/share.go:91, text: WriteRelationships}
+creates:
+  - creates: user
+    gate: anyone
+    evidence: [api/signup.go:12]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, c := range append(slices.Clone(m.Writes[0].Evidence), m.Creates[0].Evidence...) {
+		got = append(got, c.String()+" "+c.Text)
+	}
+	want := []string{"api/share.go:88 ", "api/share.go:91 WriteRelationships", "api/signup.go:12 "}
+	if !slices.Equal(got, want) {
+		t.Errorf("evidence = %q, want %q", got, want)
+	}
+
+	_, err = ParseWriteModel([]byte("schema_version: 1\nmodel: relationship-writes\nwrites:\n  - resource: document\n    relation: viewer\n    operations: [create]\n    gate: anyone\n    subject: self\n    evidence: [api/share.go]\n"))
+	if !errors.Is(err, evidence.ErrCitation) {
+		t.Errorf("a citation with no line: %v, want %v", err, evidence.ErrCitation)
 	}
 }
 

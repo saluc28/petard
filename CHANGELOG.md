@@ -42,6 +42,11 @@
   for `fga model test`. They hold the schema and the store before the writes, before each write
   behind a permission and after them, with the checks the product has to answer, and they pass while
   the escalation is open. The run lists each escalation it wrote no proof for, and why.
+- A rule of a `relationship-writes` write model can cite the lines of the application that make its
+  write, as `evidence: [path:line]`, or `{ at: path:line, text: ... }` to say what the line holds.
+  `petard analyze` holds each citation to the source and fails the run when one is no longer there.
+  `-code <dir>` names the source, and lists the places in it that call a write of SpiceDB or OpenFGA
+  that no rule cites.
 
 ### Changed
 

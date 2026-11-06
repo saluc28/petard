@@ -52,11 +52,12 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 	b.WriteString("#\n")
 	b.WriteString("# Each relation below has no write rule. petard fills in the subjects the schema\n")
 	b.WriteString("# allows and the permission that is a safe gate; confirm the gate the application\n")
-	b.WriteString("# really uses, narrow the subjects to the ones it writes, fill in the via, then\n")
-	b.WriteString("# rerun with -write-model and this file. For a caveat, mark a parameter application\n")
-	b.WriteString("# when the check supplies it rather than the writer. A relation nobody can write is\n")
-	b.WriteString("# one to leave out rather than open. The relations whose writes can raise the most\n")
-	b.WriteString("# permissions come first, each with what it can raise.\n")
+	b.WriteString("# really uses, narrow the subjects to the ones it writes, fill in the via and cite\n")
+	b.WriteString("# the lines that make the write in evidence, then rerun with -write-model and this\n")
+	b.WriteString("# file. For a caveat, mark a parameter application when the check supplies it\n")
+	b.WriteString("# rather than the writer. A relation nobody can write is one to leave out rather\n")
+	b.WriteString("# than open. The relations whose writes can raise the most permissions come first,\n")
+	b.WriteString("# each with what it can raise.\n")
 	b.WriteString("schema_version: 1\n")
 	b.WriteString("model: relationship-writes\n")
 	b.WriteString("writes:\n")
@@ -92,6 +93,7 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 			b.WriteString("\n")
 			writeSkeletonSubject(&b, g.model, relationOf(g.model, p.Type, p.Relation))
 			b.WriteString("    via: \"\"\n")
+			b.WriteString("    # evidence: [path:line]   the lines of the application that make the write\n")
 		}
 	}
 	return b.String(), entries

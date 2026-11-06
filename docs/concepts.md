@@ -52,7 +52,9 @@ For a Rego policy each is a file Petard reads, given with `-write-model` and `-p
 who writes a relation and with which context is decided by the application that writes to the
 product, which a `relationship-writes` write model declares: a `writes.yaml` beside the schema, or
 one given with `-write-model`. [spicedb.md](spicedb.md#a-run) and [openfga.md](openfga.md#a-run) have
-the details.
+the details. A rule of it can cite the lines of the application that make its write, and a run fails
+when one of those lines is no longer there; with `-code` it also lists the places in the source that
+call a write and that no rule cites ([zanzibar.md](zanzibar.md#evidence-in-the-source)).
 
 ## Findings and candidates
 
