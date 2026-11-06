@@ -25,7 +25,7 @@ an admission controller or a configuration check, and the report says so when th
 | Engine | Reads | Patterns | Answers held to |
 |---|---|---|---|
 | [OPA](docs/opa.md) | Rego policies in either syntax, directories and bundle archives, a running OPA over its API, and the data beside them | 13, `PTD-OPA-001` to `PTD-OPA-013` | OPA v1.21.4, compiled in, which Petard asks by partial evaluation what is left of each decision |
-| [Zanzibar](docs/zanzibar.md) | [SpiceDB](docs/spicedb.md) schemas (`.zed`) and the validation files `zed validate` reads, [OpenFGA](docs/openfga.md) models (`.fga`, `fga.mod`, JSON) and the store files `fga model test` reads | 8, `PTD-ZAN-001` to `PTD-ZAN-008` | SpiceDB v1.57.0, whose compiler and caveats are compiled in, and `zed validate`, which agrees with the engine on 26,543 checks in CI. OpenFGA v1.22.1, whose type system and conditions are compiled in, and `Check` of a server in the test process, which agrees with the engine on more than 20,000 checks |
+| [Zanzibar](docs/zanzibar.md) | [SpiceDB](docs/spicedb.md) schemas (`.zed`) and the validation files `zed validate` reads, [OpenFGA](docs/openfga.md) models (`.fga`, `fga.mod`, JSON) and the store files `fga model test` reads | 8, `PTD-ZAN-001` to `PTD-ZAN-008` | SpiceDB v1.57.0, whose compiler and caveats are compiled in, and `zed validate`, which agrees with the engine on 26,746 checks in CI. OpenFGA v1.22.1, whose type system and conditions are compiled in, and `Check` of a server in the test process, which agrees with the engine on more than 20,000 checks |
 
 On a policy, a match becomes a finding once what it rests on is known: the policy alone, or a
 write model and an enforcement point you declare. On a SpiceDB schema or an OpenFGA model it

@@ -1,0 +1,37 @@
+# Loops of relationships, with the answers SpiceDB gives around them. SpiceDB follows a
+# loop to its depth limit and fails a check on it wherever it waits for every result, as
+# on the base of an exclusion, and ends a walk at the first way that grants elsewhere. The
+# assertions are checked twice: by the engine in TestAssertions, and by zed validate when
+# the oracle runs, along with every other check the engine answers here that SpiceDB does
+# not fail.
+schema: |-
+  definition user {}
+
+  definition session {
+    relation owner: user
+    relation parent: session
+    relation denied: user
+    permission inherit = parent->inherit + owner
+    permission approve = (parent->approve + owner) - denied
+    permission view = parent->inherit - denied
+  }
+relationships: |-
+  // Two sessions, each the parent of the other.
+  session:p#owner@user:alice
+  session:c#owner@user:bob
+  session:c#parent@session:p
+  session:p#parent@session:c
+  // A session with two parents that are each the parent of the other.
+  session:d#parent@session:a
+  session:d#parent@session:b
+  session:a#owner@user:bob
+  session:a#parent@session:b
+  session:b#parent@session:a
+assertions:
+  assertTrue:
+    # A union ends at the owner, though its other way comes back round the loop.
+    - session:p#inherit@user:bob
+    - session:p#inherit@user:alice
+    # The base of view waits for both parents, and each is answered over again, where
+    # the union ends at the owner.
+    - session:d#view@user:bob

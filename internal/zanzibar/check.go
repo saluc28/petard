@@ -125,6 +125,11 @@ const (
 	// cutMetIfCaveat is a loop the product meets only if a caveat it stops at, and
 	// that nothing decides yet, holds.
 	cutMetIfCaveat
+
+	// cutFails is a loop the product follows to its depth limit, failing the
+	// check, unless a way that grants ends the walk before it gets there
+	// (Walk.AnswersLoops).
+	cutFails
 )
 
 // Checker answers checks over a fixed set of relationships. It remembers what
@@ -143,6 +148,13 @@ type Checker struct {
 	// apart from answers given with another.
 	request    map[string]any
 	requestKey string
+
+	// waits is true where SpiceDB waits for every result of what it is
+	// answering: the base and the subtracted side of an exclusion, and the
+	// operands of an intersection (internal/graph/check.go:1142, :1198 and :1207
+	// at v1.57.0). A way that grants does not end the walk there, so a loop on
+	// another way fails the check.
+	waits bool
 }
 
 type storedKey struct {
@@ -195,7 +207,12 @@ func (c *Checker) Check(resource Object, name string, subject Subject, context m
 		return Result{}, fmt.Errorf("zanzibar: context of the check: %w", err)
 	}
 	c.request, c.requestKey = context, string(key)
+	c.waits = false
 	level, cycle, err := c.check(resource, name, subject)
+	if cycle&cutFails != 0 {
+		// The product fails the check, which grants nothing.
+		level = No
+	}
 	return Result{Level: level, Cycle: cycle != 0}, err
 }
 
@@ -211,10 +228,13 @@ func (c *Checker) check(resource Object, name string, subject Subject) (Level, c
 		return level, 0, nil
 	}
 	if c.inProgress[key] {
-		if c.model.Walk.meetsLoopAt(resource.Type, name, subject) {
+		if !c.model.Walk.meetsLoopAt(resource.Type, name, subject) {
+			return No, cutLoop, nil
+		}
+		if c.model.Walk.AnswersLoops {
 			return No, cutLoop | cutMet, nil
 		}
-		return No, cutLoop, nil
+		return No, cutLoop | cutMet | cutFails, nil
 	}
 
 	t := c.model.Type(resource.Type)
@@ -253,6 +273,34 @@ func (c *Checker) check(resource Object, name string, subject Subject) (Level, c
 	return level, cycle, nil
 }
 
+// send answers name on another object, or on the same one under another name, as SpiceDB
+// answers a check it dispatches: over again, without waiting for every result. That is
+// what it does with a check of one object (internal/graph/check.go:224-227 at v1.57.0),
+// and what zed validate answers for several objects of a type sent on together, as
+// TestCheckALoopWhereSpiceDBWaitsForEveryResult holds.
+func (c *Checker) send(resource Object, name string, subject Subject) (Level, cuts, error) {
+	waits := c.waits
+	c.waits = false
+	defer func() { c.waits = waits }()
+	return c.check(resource, name, subject)
+}
+
+// waitForAll marks what is answered until the returned function runs as answered
+// waiting for every result, for a product that fails on a loop it meets.
+func (c *Checker) waitForAll() func() {
+	waits := c.waits
+	c.waits = waits || !c.model.Walk.AnswersLoops
+	return func() { c.waits = waits }
+}
+
+// endsAt says whether a way that grants ends the walk where it is answering: it does where
+// the product does not wait for every result (internal/graph/check.go:430 and :1106 at
+// v1.57.0). Ending there, the product never meets a loop on another way, so a failure on
+// one is forgotten.
+func (c *Checker) endsAt(level Level) bool {
+	return level == Yes && !c.waits
+}
+
 // direct answers a relation from the relationships stored against it.
 func (c *Checker) direct(resource Object, relation string, subject Subject) (Level, cuts, error) {
 	level, cycle := No, cuts(0)
@@ -283,9 +331,12 @@ func (c *Checker) direct(resource Object, relation string, subject Subject) (Lev
 			return No, 0, err
 		}
 		level = or(level, and(got, carried))
-		if level == Yes {
+		if c.endsAt(level) {
 			break
 		}
+	}
+	if c.endsAt(level) {
+		cycle &^= cutFails
 	}
 	return level, cycle, nil
 }
@@ -302,7 +353,7 @@ func (c *Checker) holds(stored, subject Subject) (Level, cuts, error) {
 		}
 		return No, 0, nil
 	case stored.Relation != "":
-		return c.check(stored.Object, stored.Relation, subject)
+		return c.send(stored.Object, stored.Relation, subject)
 	}
 	return No, 0, nil
 }
@@ -369,11 +420,13 @@ func (c *Checker) eval(resource Object, expr Expr, subject Subject) (Level, cuts
 		return c.combine(resource, e.Children, subject, anyOf)
 
 	case Intersection:
+		defer c.waitForAll()()
 		return c.combine(resource, e.Children, subject, allOf)
 
 	case Exclusion:
+		defer c.waitForAll()()
 		level, cycle, err := c.eval(resource, e.Base, subject)
-		if err != nil || level == No {
+		if err != nil || level == No || cycle&cutFails != 0 {
 			return No, cycle, err
 		}
 		for _, child := range e.Subtracted {
@@ -404,7 +457,7 @@ func (c *Checker) eval(resource Object, expr Expr, subject Subject) (Level, cuts
 		return level, cycle, nil
 
 	case Computed:
-		return c.check(resource, e.Name, subject)
+		return c.send(resource, e.Name, subject)
 
 	case Arrow:
 		return c.arrow(resource, e, subject)
@@ -434,9 +487,12 @@ func (c *Checker) combine(resource Object, children []Expr, subject Subject, how
 			return No, 0, err
 		}
 		level, cycle = how.combine(level, got), cycle|cut
-		if level == how.decided {
+		if level == how.decided && (how.decided == No || c.endsAt(level)) {
 			break
 		}
+	}
+	if how.decided == Yes && c.endsAt(level) {
+		cycle &^= cutFails
 	}
 	return level, cycle, nil
 }
@@ -461,9 +517,12 @@ func (c *Checker) arrow(resource Object, a Arrow, subject Subject) (Level, cuts,
 			return No, 0, err
 		}
 		level, cycle = how.combine(level, got), cycle|cut
-		if level == how.decided {
+		if level == how.decided && (how.decided == No || c.endsAt(level)) {
 			break
 		}
+	}
+	if how.decided == Yes && c.endsAt(level) {
+		cycle &^= cutFails
 	}
 	return level, cycle, nil
 }
@@ -475,7 +534,7 @@ func (c *Checker) across(r Relationship, target string, subject Subject) (Level,
 	if stops || err != nil {
 		return No, 0, err
 	}
-	got, cut, err := c.check(r.Subject.Object, target, subject)
+	got, cut, err := c.send(r.Subject.Object, target, subject)
 	if err != nil {
 		return No, 0, err
 	}

@@ -219,54 +219,6 @@ definition document {
 	}
 }
 
-// SpiceDB follows a loop of relationships to its depth limit and fails the check where
-// it waits for every result, so a proof whose store holds a loop a check can follow is
-// not written. A loop no check reaches, or one through a relation no arrow walks, which a
-// check never follows, does not stop it.
-func TestAProofThroughALoopIsNotWritten(t *testing.T) {
-	schema, err := Compile("loop.zed", nil, 1, `definition user {}
-
-definition session {
-	relation owner: user
-	relation parent: session
-	relation child: session
-	permission approve = owner + parent->approve
-}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	link := func(child, parent string) zanzibar.Relationship {
-		return zanzibar.Relationship{
-			Resource: zanzibar.Object{Type: "session", ID: child},
-			Relation: "parent",
-			Subject:  zanzibar.Subject{Object: zanzibar.Object{Type: "session", ID: parent}},
-		}
-	}
-	ask := zanzibar.ProofCheck{Assertion: zanzibar.Assertion{
-		Resource: zanzibar.Object{Type: "session", ID: "p"},
-		Name:     "approve",
-		Subject:  zanzibar.Subject{Object: zanzibar.Object{Type: "user", ID: "bob"}},
-	}}
-	proof := func(rels ...zanzibar.Relationship) *zanzibar.Proof {
-		return &zanzibar.Proof{States: []zanzibar.ProofState{{Relationships: rels, Checks: []zanzibar.ProofCheck{ask}}}}
-	}
-
-	if _, err := schema.ProofFiles("proofs", "loop", nil, proof(link("p", "c"), link("c", "p"))); err == nil || !strings.Contains(err.Error(), "loop") {
-		t.Errorf("a loop the check reaches: %v, want an error naming the loop", err)
-	}
-	if _, err := schema.ProofFiles("proofs", "aside", nil, proof(link("p", "c"), link("x", "y"), link("y", "x"))); err != nil {
-		t.Errorf("a loop no check reaches: %v, want the proof written", err)
-	}
-	child := zanzibar.Relationship{
-		Resource: zanzibar.Object{Type: "session", ID: "c"},
-		Relation: "child",
-		Subject:  zanzibar.Subject{Object: zanzibar.Object{Type: "session", ID: "p"}},
-	}
-	if _, err := schema.ProofFiles("proofs", "child", nil, proof(link("p", "c"), child)); err != nil {
-		t.Errorf("a loop through a relation no arrow walks: %v, want the proof written", err)
-	}
-}
-
 // An empty line of a comment loses the space the generator leaves after //, and nothing
 // else on any line changes.
 func TestTrimComments(t *testing.T) {

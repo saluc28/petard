@@ -146,31 +146,6 @@ func TestAProofLeavesOutWhatHasExpired(t *testing.T) {
 	}
 }
 
-// A check follows a userset to its subject, so two teams each in the other are a loop;
-// it only compares a plain subject, so a document and a user naming each other are not.
-func TestALoopIsWhatACheckCanFollow(t *testing.T) {
-	model := gapModel(t)
-	member := func(team, of string) Relationship {
-		return Relationship{Resource: object(team), Relation: "member", Subject: Subject{Object: object(of), Relation: "member"}}
-	}
-	tests := []struct {
-		name          string
-		relationships []Relationship
-		expected      string
-	}{
-		{name: "two teams in each other", relationships: []Relationship{rel("document:roadmap", "banned", "team:a#member"), member("team:a", "team:b"), member("team:b", "team:a")}, expected: "team:a"},
-		{name: "a team in another", relationships: []Relationship{rel("document:roadmap", "banned", "team:a#member"), member("team:a", "team:b")}},
-		{name: "plain subjects", relationships: []Relationship{rel("document:roadmap", "viewer", "user:vic"), rel("document:roadmap", "editor", "user:vic")}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := model.LoopFrom(tt.relationships, object("document:roadmap")); got != tt.expected {
-				t.Errorf("LoopFrom = %q, want %q", got, tt.expected)
-			}
-		})
-	}
-}
-
 // A check that cuts a loop without granting is one a product fails at its depth limit
 // rather than answering no, so a proof cannot ask it.
 func TestAProofCannotAskACheckThatCutsALoop(t *testing.T) {

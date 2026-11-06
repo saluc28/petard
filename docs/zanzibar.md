@@ -84,8 +84,16 @@ For a SpiceDB schema the rest follows SpiceDB, at v1.56.2:
 A check that comes back to itself on the way is answered from the paths without the loop, and
 the answer says a loop was cut. SpiceDB follows the loop until its dispatch depth runs out, 50 by
 default (`pkg/cmd/server/server.go:100`), and the check then fails with an error
-(`internal/dispatch/dispatch.go:133-135`). Petard stops at ten thousand nested checks, so a chain
-of relationships long enough to exhaust the stack ends in an error rather than a crash.
+(`internal/dispatch/dispatch.go:133-135`). A way that grants ends the walk before that only where
+SpiceDB does not wait for every result (`internal/graph/check.go:1106` at v1.57.0). It waits on the
+base and the subtracted side of an exclusion and on the operands of an intersection (`:1142`,
+`:1198`, `:1207`), so a loop met there fails the check even beside a way that grants, and the engine
+answers no, as it does for a loop met with no way that grants at all. A check sent on to another
+object starts over (`:224-227`), and `zed validate` answers the same for several objects sent at
+once. `internal/zanzibar/spicedb/testdata/loops.yaml` holds these answers, and the oracle below holds
+them to SpiceDB. Petard
+stops at ten thousand nested checks, so a chain of relationships long enough to exhaust the stack
+ends in an error rather than a crash.
 
 For an OpenFGA model the rest follows OpenFGA, at v1.22.1:
 
@@ -118,9 +126,9 @@ usersets as subjects, with no context and with each context the assertions of th
 writes the answers into the file as assertions, and `zed validate`, from zed v1.2.1, says whether
 SpiceDB gives the same ones.
 
-On 76 files that is 26,543 checks, and SpiceDB agrees on all of them. Another 36 are left out:
-they go round a loop and grant nothing, and SpiceDB fails them at its depth limit rather than
-answering. To run it with a zed binary of your own:
+On 77 files that is 26,746 checks, and SpiceDB agrees on all of them. Another 157 are left out:
+the engine answers that SpiceDB fails them at its depth limit on a loop, rather than answering. To
+run it with a zed binary of your own:
 
 ```
 PETARD_ZED=zed PETARD_ZANZIBAR_CORPUS="$(go list -m -f '{{.Dir}}' github.com/authzed/spicedb)/internal/services/integrationtesting/testconfigs" go test ./internal/zanzibar/spicedb -run TestOracle
@@ -282,13 +290,10 @@ SpiceDB answers a check that waits on a caveat it has no context for as caveated
 expected, so such a check is asked under the first context one of the store's own checks supplies
 that decides it the way the proof needs. An OpenFGA escalation with no such context has no proof.
 
-The engine stops at the first way that grants. SpiceDB follows a loop of relationships to its depth
-limit, and fails a check on it wherever it waits for every result, as on the base of an exclusion
-(`internal/graph/check.go:1106` and `:1198` at v1.57.0). A check follows a relation an arrow walks,
-and the subject of a userset, so an escalation whose store holds a loop a check can follow that way
-has no SpiceDB proof. An escalation with a tuple the product would refuse has none either, such as a
-write the engine makes without the caveat context or the expiration the relation requires. The run
-lists each escalation without a proof, and why.
+A check the product fails at its depth limit on a loop, as [above](#how-a-check-is-answered), has
+no answer to assert, so an escalation whose proof would ask one has no proof. Nor has one with a
+tuple the product would refuse, such as a write the engine makes without the caveat context or the
+expiration the relation requires. The run lists each escalation without a proof, and why.
 
 A proof carries the schema it was written from, so it goes on passing after the schema in the
 repository is fixed. `-proofs` takes a directory that does not exist yet or is empty, and the proofs

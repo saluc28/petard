@@ -3,6 +3,7 @@ package zanzibar
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -365,11 +366,112 @@ func TestCheckALoopUnderAnExclusion(t *testing.T) {
 	}
 }
 
+// SpiceDB ends a walk at the first way that grants only where it does not wait for every
+// result. On the base of an exclusion it waits, so a loop on another way of the base
+// fails the check even when the owner holds it; a union alone ends at the owner. A check
+// it sends on to other objects starts over, several parents of one type included. OpenFGA
+// answers the loop. zed validate v1.2.1 and fga model test v0.8.2 gave each of these
+// answers on the same schema and relationships.
+func TestCheckALoopWhereSpiceDBWaitsForEveryResult(t *testing.T) {
+	model := func(approve Expr) *Model {
+		session := &Type{
+			Name: "session",
+			Relations: []*Relation{
+				{Name: "owner", Allowed: []Allowed{{Type: "user"}}},
+				{Name: "parent", Allowed: []Allowed{{Type: "session"}}},
+				{Name: "denied", Allowed: []Allowed{{Type: "user"}}},
+				{Name: "member", Allowed: []Allowed{{Type: "user"}, {Type: "session", Relation: "member"}}},
+			},
+			Permissions: []*Permission{
+				{Name: "approve", Expr: approve},
+				{Name: "inherit", Expr: Union{Children: []Expr{Arrow{Through: "parent", Target: "inherit"}, Computed{Name: "owner"}}}},
+				{Name: "wrapped", Expr: Union{Children: []Expr{Computed{Name: "approve"}, Computed{Name: "denied"}}}},
+			},
+		}
+		m, err := NewModel([]*Type{{Name: "user"}, session}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	// The arrow comes first, so the walk meets the loop before it reaches the owner.
+	inherited := Union{Children: []Expr{Arrow{Through: "parent", Target: "approve"}, Computed{Name: "owner"}}}
+	unlessDenied := Exclusion{Base: inherited, Subtracted: []Expr{Computed{Name: "denied"}}}
+	bothWays := Intersection{Children: []Expr{inherited, Computed{Name: "owner"}}}
+	fromParents := Exclusion{Base: Arrow{Through: "parent", Target: "inherit"}, Subtracted: []Expr{Computed{Name: "denied"}}}
+	loop := []Relationship{
+		rel("session:p", "owner", "user:alice"),
+		rel("session:c", "owner", "user:bob"),
+		rel("session:c", "parent", "session:p"),
+		rel("session:p", "parent", "session:c"),
+	}
+	parents := []Relationship{
+		rel("session:d", "parent", "session:a"),
+		rel("session:d", "parent", "session:b"),
+		rel("session:a", "owner", "user:bob"),
+		rel("session:a", "parent", "session:b"),
+		rel("session:b", "parent", "session:a"),
+	}
+
+	members := []Relationship{
+		rel("session:p", "member", "session:c#member"),
+		rel("session:c", "member", "session:p#member"),
+		rel("session:p", "member", "user:bob"),
+	}
+	besideALoop := []Relationship{
+		rel("session:x", "parent", "session:y"),
+		rel("session:x", "parent", "session:z"),
+		rel("session:y", "parent", "session:w"),
+		rel("session:w", "parent", "session:y"),
+		rel("session:z", "owner", "user:bob"),
+	}
+
+	tests := []struct {
+		name      string
+		model     *Model
+		walk      Walk
+		tuples    []Relationship
+		resource  string
+		ask       string
+		want      Level
+		wantCycle bool
+	}{
+		{name: "a union ends at the owner", model: model(inherited), tuples: loop, resource: "session:p", want: Yes, wantCycle: true},
+		{name: "the base of an exclusion follows the loop", model: model(unlessDenied), tuples: loop, resource: "session:p", want: No, wantCycle: true},
+		{name: "the owner's own object as well", model: model(unlessDenied), tuples: loop, resource: "session:c", want: No, wantCycle: true},
+		{name: "no loop", model: model(unlessDenied), tuples: loop[:3], resource: "session:c", want: Yes},
+		{name: "an intersection follows it too", model: model(bothWays), tuples: append(slices.Clone(loop), rel("session:p", "owner", "user:bob")), resource: "session:p", want: No, wantCycle: true},
+		{name: "a union over a check that fails grants nothing", model: model(unlessDenied), tuples: append(slices.Clone(loop), rel("session:p", "owner", "user:bob")), resource: "session:p", ask: "wrapped", want: No, wantCycle: true},
+		{name: "OpenFGA answers the loop", model: model(unlessDenied), walk: Walk{AnswersLoops: true}, tuples: loop, resource: "session:p", want: Yes, wantCycle: true},
+		{name: "two parents sent on start over", model: model(fromParents), tuples: parents, resource: "session:d", want: Yes, wantCycle: true},
+		{name: "one parent sent on starts over", model: model(fromParents), tuples: slices.Delete(slices.Clone(parents), 1, 2), resource: "session:d", want: Yes, wantCycle: true},
+		{name: "a relation ends at the subject it names", model: model(inherited), tuples: members, resource: "session:p", ask: "member", want: Yes, wantCycle: true},
+		{name: "an arrow ends at the object that grants", model: model(Arrow{Through: "parent", Target: "inherit"}), tuples: besideALoop, resource: "session:x", want: Yes, wantCycle: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.model.Walk = tt.walk
+			ask := tt.ask
+			if ask == "" {
+				ask = "approve"
+			}
+			got, err := NewChecker(tt.model, tt.tuples, nil, time.Unix(0, 0)).Check(object(tt.resource), ask, subjectOf("user:bob"), nil)
+			if err != nil {
+				t.Fatalf("Check: %v", err)
+			}
+			if got.Level != tt.want || got.Cycle != tt.wantCycle {
+				t.Errorf("Check() = %s (cycle %v), want %s (cycle %v)", got.Level, got.Cycle, tt.want, tt.wantCycle)
+			}
+		})
+	}
+}
+
 // A product's walk decides what a loop on the subtracted side comes to. A loop it walks
 // to a fixpoint, or leaves behind a caveat that fails, is no reason to refuse: the
 // exclusion reads the real answer. A loop behind a caveat nothing decides stays open,
-// since the product meets it only if the caveat holds. And with no walk said, as in
-// TestCheckALoopUnderAnExclusion, the product meets every loop.
+// since the product meets it only if the caveat holds. The walks that stop at a caveat or
+// reach a fixpoint are OpenFGA's, which answers the loops it meets. And with no walk
+// said, as in TestCheckALoopUnderAnExclusion, the product meets every loop.
 func TestCheckALoopAccordingToTheWalk(t *testing.T) {
 	groups := &Type{
 		Name: "group",
@@ -433,7 +535,7 @@ func TestCheckALoopAccordingToTheWalk(t *testing.T) {
 		},
 		{
 			name:      "a relation walked to a fixpoint: the loop is not met",
-			walk:      Walk{Fixpoint: fixpoint},
+			walk:      Walk{AnswersLoops: true, Fixpoint: fixpoint},
 			tuples:    append([]Relationship{direct, banned}, loop...),
 			ask:       "viewer",
 			subject:   jon,
@@ -442,7 +544,7 @@ func TestCheckALoopAccordingToTheWalk(t *testing.T) {
 		},
 		{
 			name:    "a walk to a fixpoint still finds who is in it",
-			walk:    Walk{Fixpoint: fixpoint},
+			walk:    Walk{AnswersLoops: true, Fixpoint: fixpoint},
 			tuples:  append([]Relationship{direct, banned, rel("group:b", "member", "user:jon")}, loop...),
 			ask:     "viewer",
 			subject: jon,
@@ -450,7 +552,7 @@ func TestCheckALoopAccordingToTheWalk(t *testing.T) {
 		},
 		{
 			name:      "a walk to a fixpoint is not what a userset gets",
-			walk:      Walk{Fixpoint: map[FixpointWalk]bool{{Type: "group", Name: "member", SubjectType: "group"}: true}},
+			walk:      Walk{AnswersLoops: true, Fixpoint: map[FixpointWalk]bool{{Type: "group", Name: "member", SubjectType: "group"}: true}},
 			tuples:    append([]Relationship{rel("document:1", "direct", "group:z#member"), banned}, loop...),
 			ask:       "viewer",
 			subject:   subjectOf("group:z#member"),
@@ -459,7 +561,7 @@ func TestCheckALoopAccordingToTheWalk(t *testing.T) {
 		},
 		{
 			name:      "a walk to a fixpoint of another subject type",
-			walk:      Walk{Fixpoint: map[FixpointWalk]bool{{Type: "group", Name: "member", SubjectType: "robot"}: true}},
+			walk:      Walk{AnswersLoops: true, Fixpoint: map[FixpointWalk]bool{{Type: "group", Name: "member", SubjectType: "robot"}: true}},
 			tuples:    append([]Relationship{direct, banned}, loop...),
 			ask:       "viewer",
 			subject:   jon,
@@ -468,7 +570,7 @@ func TestCheckALoopAccordingToTheWalk(t *testing.T) {
 		},
 		{
 			name:      "a caveat that fails hides the loop from a product that stops at it",
-			walk:      Walk{StopsAtFailedCaveat: true},
+			walk:      Walk{StopsAtFailedCaveat: true, AnswersLoops: true},
 			tuples:    append([]Relationship{direct, caveated(banned)}, loop...),
 			ask:       "viewer",
 			subject:   jon,
@@ -487,7 +589,7 @@ func TestCheckALoopAccordingToTheWalk(t *testing.T) {
 		},
 		{
 			name:      "a caveat that holds leaves the loop met",
-			walk:      Walk{StopsAtFailedCaveat: true},
+			walk:      Walk{StopsAtFailedCaveat: true, AnswersLoops: true},
 			tuples:    append([]Relationship{direct, caveated(banned)}, loop...),
 			ask:       "viewer",
 			subject:   jon,
@@ -497,7 +599,7 @@ func TestCheckALoopAccordingToTheWalk(t *testing.T) {
 		},
 		{
 			name:      "a caveat nothing decides leaves the exclusion open",
-			walk:      Walk{StopsAtFailedCaveat: true},
+			walk:      Walk{StopsAtFailedCaveat: true, AnswersLoops: true},
 			tuples:    append([]Relationship{direct, caveated(banned)}, loop...),
 			ask:       "viewer",
 			subject:   jon,
@@ -506,7 +608,7 @@ func TestCheckALoopAccordingToTheWalk(t *testing.T) {
 		},
 		{
 			name:      "a walked relationship with a caveat that fails hides the loop",
-			walk:      Walk{StopsAtFailedCaveat: true},
+			walk:      Walk{StopsAtFailedCaveat: true, AnswersLoops: true},
 			tuples:    append([]Relationship{direct, caveated(rel("document:1", "parent", "group:a"))}, walkedLoop...),
 			ask:       "open",
 			subject:   jon,
@@ -516,7 +618,7 @@ func TestCheckALoopAccordingToTheWalk(t *testing.T) {
 		},
 		{
 			name:      "a walked relationship with a caveat nothing decides leaves it open",
-			walk:      Walk{StopsAtFailedCaveat: true},
+			walk:      Walk{StopsAtFailedCaveat: true, AnswersLoops: true},
 			tuples:    append([]Relationship{direct, caveated(rel("document:1", "parent", "group:a"))}, walkedLoop...),
 			ask:       "open",
 			subject:   jon,

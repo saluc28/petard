@@ -223,7 +223,7 @@ func lower(file string, model *openfgav1.AuthorizationModel, at map[string]zanzi
 // each has been (internal/planner/plan.go:47), and starts out expecting the walk to be
 // faster (internal/graph/recursive_resolver.go:28-30, internal/graph/default_resolver.go:34-37).
 func walkOf(types *typesystem.TypeSystem, model *openfgav1.AuthorizationModel) zanzibar.Walk {
-	walk := zanzibar.Walk{StopsAtFailedCaveat: true, Fixpoint: map[zanzibar.FixpointWalk]bool{}}
+	walk := zanzibar.Walk{StopsAtFailedCaveat: true, AnswersLoops: true, Fixpoint: map[zanzibar.FixpointWalk]bool{}}
 	for _, def := range model.GetTypeDefinitions() {
 		for name, rewrite := range def.GetRelations() {
 			for _, subject := range model.GetTypeDefinitions() {

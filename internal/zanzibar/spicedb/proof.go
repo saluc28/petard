@@ -49,14 +49,6 @@ func (s *Schema) ProofFiles(dir, name string, title []string, p *zanzibar.Proof)
 		run[i] = path.Join(dir, paths[i])
 	}
 
-	for _, state := range p.States {
-		for _, c := range state.Checks {
-			if loop := s.Model.LoopFrom(state.Relationships, c.Resource); loop != "" {
-				return nil, fmt.Errorf("%w: a check of %s can follow the relationships round a loop through %s, which SpiceDB follows to its depth limit and fails the check on wherever it waits for every result, as on the base of an exclusion (internal/graph/check.go:1106 and :1198 at v1.57.0)", ErrProof, c.Resource, loop)
-			}
-		}
-	}
-
 	files := make([]zanzibar.ProofFile, 0, len(p.States))
 	for i, state := range p.States {
 		lines := make([]string, 0, len(state.Relationships))

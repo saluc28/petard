@@ -106,8 +106,8 @@ var errNoReplay = errors.New("the writes do not give the same answers once appli
 // The product keeps one tuple to a resource, relation and subject, so a write of a
 // tuple that is already there in another form replaces it, where the search keeps
 // both. When that changes an answer, the replay no longer gives the levels the search
-// found, and there is no proof. A check that cuts a loop without granting has none
-// either: SpiceDB answers it with an error at its depth limit rather than a no.
+// found, and there is no proof. A check the product fails on a loop has none either:
+// SpiceDB answers it with an error at its depth limit, which no assertion states.
 func proofOf(s Sample, esc Escalation) (*Proof, error) {
 	if len(esc.coalition) == 0 {
 		return nil, errNoReplay
@@ -276,7 +276,7 @@ func (r replay) ask(checker *Checker, a Assertion, want Level) (ProofCheck, erro
 		return ProofCheck{}, err
 	}
 	if result.Cycle && result.Level != Yes {
-		return ProofCheck{}, fmt.Errorf("checking %s cuts a loop in the relationships without granting, which a product answers with an error at its depth limit", a)
+		return ProofCheck{}, fmt.Errorf("checking %s goes round a loop in the relationships, on which SpiceDB fails at its depth limit rather than answering", a)
 	}
 	a.Level = result.Level
 	c := ProofCheck{Assertion: a}
@@ -337,52 +337,6 @@ func declaredAt(p Position) string {
 		return ""
 	}
 	return " (" + p.String() + ")"
-}
-
-// LoopFrom names an object a check of start can come back to by following relationships,
-// or returns nothing when the relationships hold no such loop. A check goes from one
-// object to another through a relation an arrow walks, or to the subject of a userset, so
-// those are the relationships it follows; a plain subject of any other relation is only
-// compared, never asked.
-func (m *Model) LoopFrom(relationships []Relationship, start Object) string {
-	throughs := map[string]map[string]bool{}
-	next := map[Object][]Object{}
-	for _, r := range relationships {
-		if r.Subject.ID == WildcardID {
-			continue
-		}
-		through, known := throughs[r.Resource.Type]
-		if !known {
-			through = arrowThroughs(m, r.Resource.Type)
-			throughs[r.Resource.Type] = through
-		}
-		if r.Subject.Relation != "" || through[r.Relation] {
-			next[r.Resource] = append(next[r.Resource], r.Subject.Object)
-		}
-	}
-
-	const (
-		open = 1
-		done = 2
-	)
-	state := map[Object]int{}
-	var visit func(o Object) string
-	visit = func(o Object) string {
-		state[o] = open
-		for _, n := range next[o] {
-			switch state[n] {
-			case open:
-				return n.String()
-			case 0:
-				if found := visit(n); found != "" {
-					return found
-				}
-			}
-		}
-		state[o] = done
-		return ""
-	}
-	return visit(start)
 }
 
 // productState is a store as the product keeps it: one tuple to a resource, relation

@@ -92,6 +92,12 @@
 
 ### Fixed
 
+- A raise on a SpiceDB schema could rest on a check SpiceDB fails. SpiceDB waits for every result
+  on the base and the subtracted side of an exclusion and on the operands of an intersection, so a
+  loop of relationships met there makes it follow the loop to its depth limit and fail the check,
+  even beside a way that grants. The engine now answers such a check as no. A raise only such a
+  check held up is no longer reported, and one with another way up shows that way as its witness.
+  OpenFGA answers the loop, and nothing changes for an OpenFGA model.
 - A write can name an object of the store the coalition did not make, where that can raise its
   access: a userset it is in, or an object across a relation an arrow walks, a folder it already
   views. Deleting a tuple that names one is weighed too. Moving a document into a folder its

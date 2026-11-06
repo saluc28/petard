@@ -62,6 +62,13 @@ type Walk struct {
 	// Fixpoint is what the product walks to a fixpoint, with a set of what it has
 	// seen, so a loop there is never met.
 	Fixpoint map[FixpointWalk]bool
+
+	// AnswersLoops is true when the product notices a loop it meets and answers the
+	// check without it, as OpenFGA does (internal/graph/check.go:419-428 and :478-491
+	// at v1.22.1). SpiceDB follows a loop to its dispatch depth limit and fails the
+	// check, unless a way that grants ends the walk first, which it does only where it
+	// does not wait for every result (internal/graph/check.go:1106 at v1.57.0).
+	AnswersLoops bool
 }
 
 // FixpointWalk is a relation or permission of a type, asked by objects of a type. A
