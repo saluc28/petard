@@ -1,0 +1,17 @@
+// The documents of an application whose users sign in with Active Directory.
+// A subject is the security identifier of the account, which is how the
+// application names a user in its relationships.
+//
+// The defect is in writes.yaml, beside this file: whoever views a document may
+// add an editor to it, so a viewer can make themselves one.
+
+definition user {}
+
+definition document {
+  relation owner: user
+  relation editor: user
+  relation viewer: user
+
+  permission edit = owner + editor
+  permission view = viewer + edit
+}

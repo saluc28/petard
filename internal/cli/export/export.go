@@ -33,6 +33,7 @@ import (
 	"github.com/saluc28/petard/internal/cli/render"
 	"github.com/saluc28/petard/internal/cli/zanzibarsetup"
 	"github.com/saluc28/petard/internal/graph"
+	"github.com/saluc28/petard/internal/identity"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/opengraph"
 	"github.com/saluc28/petard/internal/taxonomy"
@@ -178,6 +179,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	for _, line := range gaps.Lines() {
 		fmt.Fprintf(stdout, "  %s\n", line)
 	}
+	if linked := countKind(payload, graph.EdgeKindActsAs); linked > 0 {
+		fmt.Fprintf(stdout, "identities: %s joined to a node of the directory, which BloodHound links when exactly one node matches\n",
+			render.Count(linked, "principal"))
+	}
 	if analysis.DecisionsInferred {
 		fmt.Fprintf(stdout, "decisions: %d, inferred as the rules no other rule uses (-entrypoint names them)\n",
 			len(analysis.Reads.Decisions))
@@ -235,6 +240,7 @@ func build(ctx context.Context, inputs taxonomy.Inputs, schemas zanzibarsetup.Fo
 		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
 	}
 
+	var identities []identity.Source
 	if len(schemas.Files) > 0 {
 		var graphInputs []zanzibar.GraphInput
 		analyses, _ := schemas.Analyses(time.Now())
@@ -243,6 +249,7 @@ func build(ctx context.Context, inputs taxonomy.Inputs, schemas zanzibarsetup.Fo
 				Sample:     a.Sample,
 				WriteModel: a.WriteModel,
 			})
+			identities = append(identities, identity.Source{Relationships: a.Sample.Relationships, Map: a.Identities})
 		}
 		limits, err := zanzibar.AddEscalations(g, graphInputs)
 		if err != nil {
@@ -250,8 +257,19 @@ func build(ctx context.Context, inputs taxonomy.Inputs, schemas zanzibarsetup.Fo
 		}
 		gaps.Other = limits.Lines()
 	}
+	links, err := identity.Links(g, identities)
+	if err != nil {
+		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
+	}
 
 	payload := opengraph.Payload(g)
+	// The links are added before the ids are uppercased: a match on objectid is
+	// then uppercased with them, as BloodHound stores it, and a match on a
+	// property BloodHound keeps as it was ingested is sent as the subject's id has
+	// it.
+	if err := opengraph.AddIdentities(&payload, links); err != nil {
+		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
+	}
 	payload.UppercaseIDs()
 	if err := opengraph.Validate(payload); err != nil {
 		return bhgraph.Graph{}, taxonomy.Analysis{}, taxonomy.Gaps{}, err
@@ -521,33 +539,36 @@ func requireExtensions(ctx context.Context, out io.Writer, api *client.Client) (
 // one that succeeded until somebody asks. The completed tasks endpoint lists a
 // task once it is done, with whatever errors it collected, so an empty list is
 // "still working" and a non-empty one is the answer.
+//
+// A task also carries warnings: what BloodHound left out of a file it otherwise
+// took, among them every PTD_ActsAs whose node of the directory matched none or
+// more than one. Those are reported and do not fail the run, since a subject
+// with no account in the directory is a fact about the data and not an error.
 func awaitJob(ctx context.Context, out io.Writer, api *client.Client, job client.JobID, wait time.Duration) error {
 	deadline := time.Now().Add(wait)
 	for {
-		raw, err := api.JobStatus(ctx, job)
+		tasks, err := api.CompletedTasks(ctx, job)
 		if err != nil {
 			return fmt.Errorf("asking about job %d: %w", job, err)
 		}
 
-		var body struct {
-			Data []struct {
-				FileName string   `json:"file_name"`
-				Errors   []string `json:"errors"`
-			} `json:"data"`
-		}
-		if err := json.Unmarshal(raw, &body); err != nil {
-			return fmt.Errorf("reading the status of job %d: %w", job, err)
-		}
-
-		if len(body.Data) > 0 {
-			var failed []string
-			for _, task := range body.Data {
+		if len(tasks) > 0 {
+			var failed, left []string
+			for _, task := range tasks {
 				failed = append(failed, task.Errors...)
+				left = append(left, task.Warnings...)
 			}
 			if len(failed) > 0 {
 				return fmt.Errorf("job %d finished with %d error(s): %s", job, len(failed), strings.Join(failed, "; "))
 			}
-			fmt.Fprintf(out, "job %d processed %d file(s) with no errors\n", job, len(body.Data))
+			fmt.Fprintf(out, "job %d processed %d file(s) with no errors\n", job, len(tasks))
+			if len(left) > 0 {
+				fmt.Fprintf(out, "  BloodHound left out %s, for an endpoint that matched no node or more than one:\n",
+					render.Count(len(left), "edge"))
+				for _, line := range left {
+					fmt.Fprintf(out, "    %s\n", line)
+				}
+			}
 			return nil
 		}
 
@@ -636,4 +657,15 @@ func walkEscalations(ctx context.Context, out io.Writer, api *client.Client, pay
 func isNotFound(err error) bool {
 	var apiErr *client.APIError
 	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
+}
+
+// countKind is how many edges of a kind the payload holds.
+func countKind(payload bhgraph.Graph, kind graph.EdgeKind) int {
+	n := 0
+	for _, e := range payload.Edges {
+		if e.Kind == string(kind) {
+			n++
+		}
+	}
+	return n
 }

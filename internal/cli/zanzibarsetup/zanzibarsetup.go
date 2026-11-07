@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/saluc28/petard/internal/identity"
 	"github.com/saluc28/petard/internal/writemodel"
 	"github.com/saluc28/petard/internal/zanzibar"
 	"github.com/saluc28/petard/internal/zanzibar/openfga"
@@ -129,6 +130,10 @@ type Found struct {
 	// directory, keyed by that directory, for the directories that have one.
 	WriteModels map[string]*zanzibar.WriteModel
 
+	// Identities is the identity map beside each schema, keyed the same way: which
+	// node another collector ingested a subject of the schema is.
+	Identities map[string]*identity.Map
+
 	// PolicyPaths are the paths with the schema files named one by one taken
 	// out, for the policy loader: a schema named on the command line is not a
 	// Rego file, and the loader reads every file it is handed as one. A directory
@@ -197,6 +202,10 @@ func Load(ctx context.Context, paths []string, writeModelPath string) (Found, er
 	if err != nil {
 		return Found{}, err
 	}
+	identities, err := discoverIdentities(files)
+	if err != nil {
+		return Found{}, err
+	}
 
 	policyWriteModel := writeModelPath
 	if writeModelPath != "" {
@@ -217,6 +226,7 @@ func Load(ctx context.Context, paths []string, writeModelPath string) (Found, er
 	return Found{
 		Files:            files,
 		WriteModels:      writeModels,
+		Identities:       identities,
 		PolicyPaths:      nonSchemaPaths(paths, files),
 		PolicyWriteModel: policyWriteModel,
 	}, nil
@@ -232,6 +242,9 @@ type Analysis struct {
 	SchemaPath string
 	Sample     zanzibar.Sample
 	WriteModel *zanzibar.WriteModel
+
+	// Identities is the identity map beside the schema, nil when there is none.
+	Identities *identity.Map
 
 	// Prove writes a proof of an escalation the analysis finds, in the files of the
 	// schema's product.
@@ -260,8 +273,9 @@ func (f Found) Analyses(now time.Time) (run []Analysis, noEvidence []*File) {
 	seen := map[string]bool{}
 	for _, file := range f.Files {
 		wm := f.WriteModels[path.Dir(file.SchemaPath)]
+		ids := f.Identities[path.Dir(file.SchemaPath)]
 		if file.Holds {
-			run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm, Prove: file.Prove})
+			run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm, Identities: ids, Prove: file.Prove})
 			continue
 		}
 		// A schema a validation file reads is analyzed with that file above; a bare
@@ -274,7 +288,7 @@ func (f Found) Analyses(now time.Time) (run []Analysis, noEvidence []*File) {
 			noEvidence = append(noEvidence, file)
 			continue
 		}
-		run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm, Prove: file.Prove})
+		run = append(run, Analysis{SchemaPath: file.SchemaPath, Sample: file.Sample(now), WriteModel: wm, Identities: ids, Prove: file.Prove})
 	}
 	return run, noEvidence
 }
@@ -311,6 +325,36 @@ func discoverWriteModels(files []*File) (map[string]*zanzibar.WriteModel, error)
 		}
 	}
 	return models, nil
+}
+
+// discoverIdentities reads an identity map from the directory of each schema the
+// files name, the way discoverWriteModels reads a write model: a YAML of another
+// kind is left alone, and a map that does not hold together is an error named to
+// the user.
+func discoverIdentities(files []*File) (map[string]*identity.Map, error) {
+	found := map[string]*identity.Map{}
+	for _, dir := range dirs(files) {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if e.IsDir() || (!strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml")) {
+				continue
+			}
+			m, err := identity.Load(path.Join(dir, name))
+			switch {
+			case err == nil:
+				found[dir] = m
+			case errors.Is(err, identity.ErrNotAMap):
+				// A write model, a validation file or some other YAML.
+			default:
+				return nil, err
+			}
+		}
+	}
+	return found, nil
 }
 
 // dirs is the distinct directories the schemas live in, in a stable order.

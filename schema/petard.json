@@ -2,7 +2,7 @@
   "schema": {
     "name": "petard",
     "display_name": "Petard",
-    "version": "v0.4.0",
+    "version": "v0.5.0",
     "namespace": "PTD"
   },
   "node_kinds": [
@@ -215,6 +215,27 @@
           "position": 1,
           "markdown": {
             "content": "The value comes from this external source rather than from the policy. A dependency, not a capability: whoever answers decides what the value is."
+          }
+        }
+      }
+    },
+    {
+      "name": "PTD_ActsAs",
+      "description": "The node another collector ingested is this principal in the application, matched by a property the identity map names. Whoever controls the one acts as the other.",
+      "is_traversable": true,
+      "info": {
+        "details": {
+          "title": "What Petard found",
+          "position": 2,
+          "markdown": {
+            "content": "**{{ .Source.Properties.name }}** is **{{ .Target.Properties.name }}**{{ with .Properties.identity_property }}: its `{{ . }}` is the subject's id{{ end }}{{ with .Properties.identity_map }}, as `{{ . }}` declares{{ end }}."
+          }
+        },
+        "meaning": {
+          "title": "What it means",
+          "position": 1,
+          "markdown": {
+            "content": "The node at the start, ingested by another collector, is the principal at the end in the application Petard analyzed. Whoever controls the one acts as the other, so a path that reaches the node in the directory carries on into what the application grants.\n\nThe link is exact: the identity map names a property of the node, and the subject's id in the relationships has to equal it. A subject with no such node, or with more than one, has no link."
           }
         }
       }

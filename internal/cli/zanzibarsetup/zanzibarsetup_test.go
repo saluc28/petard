@@ -160,6 +160,52 @@ func TestLoadDiscoversTheWriteModelBesideTheSchema(t *testing.T) {
 // own relationships; a schema no validation file reads is run from its bare
 // schema when a write model stands beside it; a schema with neither is left
 // without evidence for the caller to report rather than read as clean.
+// An identity map beside a schema is found the way its write model is, and each
+// analysis of the schema carries it. A write model sitting in the same directory is
+// not taken for one, nor the map for a write model, and a map that does not hold
+// together stops the run with its file named.
+func TestLoadDiscoversTheIdentityMapBesideTheSchema(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"schema.zed", "validation.yaml", "writes.yaml"} {
+		content, err := os.ReadFile(filepath.Join(rel("fixtures", "vulnerable-spicedb"), name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	identities := filepath.Join(dir, "identities.yaml")
+	content := "schema_version: 1\nmodel: identities\ntypes:\n  - type: user\n    kind: User\n    property: objectid\n"
+	if err := os.WriteFile(identities, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := Load(context.Background(), []string{dir}, "")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(found.WriteModels) != 1 || len(found.Identities) != 1 {
+		t.Fatalf("write models = %d, identity maps = %d, want one of each", len(found.WriteModels), len(found.Identities))
+	}
+	analyses, _ := found.Analyses(time.Now())
+	if len(analyses) == 0 {
+		t.Fatal("no analysis")
+	}
+	for _, a := range analyses {
+		if a.Identities == nil || filepath.Clean(a.Identities.Path) != filepath.Clean(identities) {
+			t.Errorf("the analysis of %s carries the identity map %+v, want %s", a.SchemaPath, a.Identities, identities)
+		}
+	}
+
+	if err := os.WriteFile(identities, []byte(content+"  - type: user\n    kind: AZUser\n    property: objectid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(context.Background(), []string{dir}, ""); err == nil || !strings.Contains(err.Error(), "identities.yaml") {
+		t.Errorf("a broken identity map: Load() = %v, want an error naming the file", err)
+	}
+}
+
 func TestAnalysesChoosesWhatEachSchemaIsRunWith(t *testing.T) {
 	schema := "definition user {}\n\n" +
 		"definition document {\n" +

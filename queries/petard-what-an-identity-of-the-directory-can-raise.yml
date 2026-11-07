@@ -1,0 +1,17 @@
+name: "Petard: what an identity of the directory can raise"
+guid: 5c02f321-036c-4df8-afdc-94981cdde97e
+prebuilt: false
+platforms:
+  - Zanzibar
+category: Petard
+description: >
+  The nodes of the directory joined by PTD_ActsAs to a principal of an application, and the
+  permissions that principal can raise there by writing what the write model allows. A path that
+  reaches the node in the directory carries on into the application along these edges.
+query: |-
+  MATCH p = ()-[:PTD_ActsAs]->(:PTD_Principal)-[:PTD_CanEscalateTo]->(:PTD_Resource)
+  RETURN p
+revision: 1
+resources:
+  - https://github.com/saluc28/petard
+acknowledgements: []

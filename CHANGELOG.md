@@ -4,6 +4,12 @@
 
 ### Added
 
+- An identity map beside a Zanzibar schema, `model: identities`, says which node of BloodHound a
+  subject of each type is, by a property of that node equal to the subject's id. `petard export`
+  then joins each subject drawn as a principal to that node with `PTD_ActsAs`, which BloodHound
+  walks, so a path through Active Directory or Entra ID carries on into what the application
+  grants. BloodHound keeps the edge only if exactly one node matches, and `-upload` reports the
+  ones it left out. A saved query draws the joins with the escalations they lead to.
 - `petard analyze` and `petard export` read OpenFGA models: `.fga` files, modular models (`fga.mod`
   and the modules it lists), models in JSON, and store files (`.fga.yaml`) with their tuples and
   checks. A store of a running OpenFGA can be named in place of a path as `openfga://host:port/store`,
@@ -59,9 +65,9 @@
 - `petard analyze` puts the escalations of a schema or a model under the write rule behind them, the
   rule that opens the most first, with the permissions that rise the same way on one line. The counts
   and the exit code are the same.
-- The extension schema is `v0.4.0`. A `PTD_CanEscalateTo` of a Zanzibar model carries `permissions`,
-  a list, in place of `permission`, nodes can carry `hypothetical`, and an edge can carry `also`. Run
-  `petard export -install` and upload the graph again.
+- The extension schema is `v0.5.0`. A `PTD_CanEscalateTo` of a Zanzibar model carries `permissions`,
+  a list, in place of `permission`, nodes can carry `hypothetical`, an edge can carry `also`, and
+  `PTD_ActsAs` is a relationship kind. Run `petard export -install` and upload the graph again.
 - The saved queries of the Zanzibar patterns name the platform `Zanzibar`, since they apply to SpiceDB
   and OpenFGA alike.
 - `PTD-ZAN-001` is titled "A relationship fixes a condition value the check was meant to supply",

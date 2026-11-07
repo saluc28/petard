@@ -16,18 +16,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/saluc28/bhgraph"
 
 	"github.com/saluc28/petard/internal/graph"
+	"github.com/saluc28/petard/internal/identity"
 )
 
 // Version is the version of the schema Petard installs, which changes whenever
 // a kind or a property does. BloodHound keys an extension by its name, so this
 // is what tells one installation from the next.
-const Version = "v0.4.0"
+const Version = "v0.5.0"
 
 // namespace is what the extension declares, and it is PTD and not PTD_.
 //
@@ -104,6 +106,7 @@ var descriptions = map[graph.EdgeKind]string{
 	graph.EdgeKindWrittenBy:     "The attribute can be written by this principal. It describes the system around OPA and is declared rather than derived from any policy.",
 	graph.EdgeKindCanEscalateTo: "The principal can reach the position the other one holds, by writing something they are allowed to write. The only edge that means privilege escalation.",
 	graph.EdgeKindTaintedBy:     "The value comes from this external source rather than from the policy. A dependency, not a capability.",
+	graph.EdgeKindActsAs:        "The node another collector ingested is this principal in the application, matched by a property the identity map names. Whoever controls the one acts as the other.",
 }
 
 // Schema returns the extension definition schema Petard installs.
@@ -190,6 +193,47 @@ func Payload(g *graph.Graph) bhgraph.Graph {
 		})
 	}
 	return payload
+}
+
+// AddIdentities adds a PTD_ActsAs for each link, from the node another collector
+// ingested to the principal the link names. The start is matched by the property
+// the identity map names, among the nodes of its kind, and BloodHound keeps the
+// edge only if exactly one node matches; with none or more than one it drops the
+// edge and says so among the warnings of the ingest task
+// (cmd/api/src/services/graphify/endpoint/fetch.go:123-153 and tasks.go:158-163 at
+// v9.9.2).
+//
+// The edges go into a payload without a source kind and nowhere else. BloodHound
+// gives the source kind of a payload to every node one of its edges reaches, and
+// deleting that source then deletes the user of the directory along with
+// Petard's data (ingestrelationships.go:209-210 at v9.9.2, and verified against a
+// running v9.9.2). A payload that has one is refused here rather than sent.
+func AddIdentities(payload *bhgraph.Graph, links []identity.Link) error {
+	if len(links) > 0 && payload.SourceKind != "" {
+		return fmt.Errorf("opengraph: the payload has the source kind %s, and the nodes its identity links reach would take it", payload.SourceKind)
+	}
+	for _, link := range links {
+		// BloodHound stores name upper cased, as it does objectid, unless
+		// use_raw_object_id is on (cmd/api/src/services/graphify/ingestnodes.go:145-157
+		// at v9.9.2), and compares a property match case sensitively. The value of a
+		// match on objectid is upper cased with the ids, by UppercaseIDs; one on name
+		// is upper cased here.
+		value := link.ID
+		if link.Entry.Property == "name" {
+			value = strings.ToUpper(value)
+		}
+		payload.AddEdge(bhgraph.Edge{
+			Kind: string(graph.EdgeKindActsAs),
+			Start: bhgraph.PropertyRef(link.Entry.Kind,
+				bhgraph.PropertyMatcher{Key: link.Entry.Property, Value: value}),
+			End: bhgraph.NodeRef(link.Principal),
+			Properties: map[string]any{
+				graph.PropIdentityProperty: link.Entry.Property,
+				graph.PropIdentityMap:      filepath.ToSlash(link.Map),
+			},
+		})
+	}
+	return nil
 }
 
 // fold takes what another edge between the same two nodes says into the one that goes

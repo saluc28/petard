@@ -88,6 +88,14 @@ const (
 	// EdgeKindTaintedBy links an attribute to the external origin its value
 	// comes from, an http.send response for instance.
 	EdgeKindTaintedBy EdgeKind = "PTD_TaintedBy"
+
+	// EdgeKindActsAs links a node another collector ingested, an Active Directory
+	// user for instance, to the principal it is in the application: whoever
+	// controls the one acts as the other. It is the edge that carries a path from
+	// the directory into what the application grants, and it starts at a node
+	// that is not in Petard's graph, so it is added to the payload rather than to
+	// the graph (see the identity package).
+	EdgeKindActsAs EdgeKind = "PTD_ActsAs"
 )
 
 // EdgeKinds returns every edge kind the model declares.
@@ -98,6 +106,7 @@ func EdgeKinds() []EdgeKind {
 		EdgeKindWrittenBy,
 		EdgeKindCanEscalateTo,
 		EdgeKindTaintedBy,
+		EdgeKindActsAs,
 	}
 }
 
@@ -116,7 +125,7 @@ func (k EdgeKind) IsValid() bool {
 // capability invents paths in the UI that nobody can take.
 func (k EdgeKind) IsTraversable() bool {
 	switch k {
-	case EdgeKindCanPerform, EdgeKindWrittenBy, EdgeKindCanEscalateTo:
+	case EdgeKindCanPerform, EdgeKindWrittenBy, EdgeKindCanEscalateTo, EdgeKindActsAs:
 		return true
 	default:
 		// Reads and TaintedBy are dependency relations, not capabilities, and
@@ -274,4 +283,11 @@ const (
 	// PropMitigation says whether anything outside the policy can still stop a
 	// check that fails open, and how.
 	PropMitigation = "mitigation"
+
+	// PropIdentityProperty is the property of the node another collector ingested
+	// that a PTD_ActsAs matched against the subject's id, and PropIdentityMap the
+	// identity map that says so, so that the link names the declaration it rests
+	// on.
+	PropIdentityProperty = "identity_property"
+	PropIdentityMap      = "identity_map"
 )

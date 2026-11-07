@@ -243,6 +243,40 @@ Those nodes carry `hypothetical`, since what they say holds for any account or o
 BloodHound keeps one edge of a kind between two nodes (`drivers/pg/query/sql/schema_up.sql:146` at
 dawgs v0.6.0), so each of these edges lists its `permissions`, and a `PTD_CanEscalateTo` its `patterns`.
 
+## Joining the directory
+
+The subjects of a store are usually people and services that sign in somewhere else: a user of the
+application is an account of Active Directory or of Entra ID. An identity map beside the schema
+says which node of BloodHound a subject of each type is, and `petard export` then joins the two
+with a `PTD_ActsAs`, from the node of the directory to the principal. BloodHound walks it, so a
+path that reaches the account in the directory carries on into what the account can raise in the
+application.
+
+```yaml
+schema_version: 1
+model: identities
+types:
+  - type: user        # the type of the subject in the schema
+    kind: User        # the kind of the node it is in BloodHound
+    property: objectid # the property of that node that equals the subject's id
+```
+
+The join is exact. A subject is joined to the node of the kind named whose property equals the
+subject's id in the relationships, `user:S-1-5-21-...-1105` to the `User` whose `objectid` is
+`S-1-5-21-...-1105`, and BloodHound keeps the edge only if exactly one node matches
+(`cmd/api/src/services/graphify/endpoint/fetch.go:123-153` at v9.9.2). A subject with no such
+node, or with more than one, has no edge, and nothing looks for a name that is merely alike.
+BloodHound stores `objectid` and `name` upper cased, and the export writes a match on either the same
+way. Any other property is compared as the subject's id has it.
+
+Only the subjects the relationships name directly are joined, and only those drawn as a principal.
+An attacker the analysis supposes, an object of a generated position, a wildcard and a userset are
+nobody's identity. Two maps that make one principal two different nodes stop the run.
+
+With `-upload`, the run reports the edges BloodHound left out, which is where a subject without an
+account in the directory shows. The saved query `Petard: what an identity of the directory can
+raise` draws the joins together with the escalations they lead to.
+
 ## What a match rests on
 
 Who writes a relation, and with which context, is decided by the application that writes to the

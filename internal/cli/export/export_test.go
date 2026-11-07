@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/saluc28/bhgraph"
 	"github.com/saluc28/bhgraph/client"
 
 	"github.com/saluc28/petard/queries"
@@ -290,6 +291,7 @@ type instance struct {
 type task struct {
 	FileName string   `json:"file_name"`
 	Errors   []string `json:"errors"`
+	Warnings []string `json:"warnings"`
 }
 
 func (i *instance) start(t *testing.T) string {
@@ -520,6 +522,142 @@ func TestRunReportsWhatTheIngestRejected(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "PTD_Nonsense") {
 		t.Errorf("stderr does not carry what the server rejected: %s", stderr.String())
+	}
+}
+
+// An identity link whose node of the directory matched nothing is left out by
+// BloodHound without failing the file, and the warnings are the only place that
+// says so. The run reports them and still succeeds: a subject with no account in
+// the directory is a fact about the data.
+func TestRunReportsWhatBloodHoundLeftOut(t *testing.T) {
+	left := `unable to resolve endpoint: "objectid" equals "S-1-5-21-1-9999"`
+	server := &instance{
+		extensionsFlag: true,
+		tasks:          [][]task{{{FileName: "petard.json", Warnings: []string{left}}}},
+	}
+	base := server.start(t)
+
+	var stdout, stderr bytes.Buffer
+	if code := Run(analysisArgs("-url", base, "-upload"), &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "left out 1 edge") || !strings.Contains(stdout.String(), left) {
+		t.Errorf("stdout does not say what BloodHound left out:\n%s", stdout.String())
+	}
+}
+
+// With an identity map beside the schema, each subject of the relationships that
+// is drawn as a principal is joined to the node of the directory its id names: a
+// PTD_ActsAs from the User whose objectid is the id, as BloodHound stores it, to
+// the principal. Nobody the analysis supposes is joined to anything.
+func TestRunLinksTheSubjectsToTheDirectory(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"schema.zed", "validation.yaml", "writes.yaml"} {
+		content, err := os.ReadFile(filepath.Join("..", "..", "..", "fixtures", "vulnerable-spicedb", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	identities := "schema_version: 1\nmodel: identities\ntypes:\n  - type: user\n    kind: User\n    property: objectid\n"
+	if err := os.WriteFile(filepath.Join(dir, "identities.yaml"), []byte(identities), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(t.TempDir(), "petard.json")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-out", out, dir}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	content, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload bhgraph.Graph
+	var raw struct {
+		Graph struct {
+			Nodes []bhgraph.Node `json:"nodes"`
+			Edges []bhgraph.Edge `json:"edges"`
+		} `json:"graph"`
+	}
+	if err := json.Unmarshal(content, &raw); err != nil {
+		t.Fatalf("the payload is not the shape BloodHound ingests: %v", err)
+	}
+	payload.Nodes, payload.Edges = raw.Graph.Nodes, raw.Graph.Edges
+
+	principals := map[string]bool{}
+	for _, n := range payload.Nodes {
+		supposed, _ := n.Properties["hypothetical"].(bool)
+		if slices.Contains(n.Kinds, "PTD_Principal") && !supposed {
+			principals[n.ID] = true
+		}
+	}
+	var linked []string
+	for _, e := range payload.Edges {
+		if e.Kind != "PTD_ActsAs" {
+			continue
+		}
+		if !principals[e.End.Value] {
+			t.Errorf("a link ends at %q, which is no principal the relationships name", e.End.Value)
+		}
+		m := e.Start.PropertyMatchers
+		if e.Start.MatchBy != bhgraph.MatchByProperty || e.Start.Kind != "User" || len(m) != 1 ||
+			m[0].Key != "objectid" || "USER:"+m[0].Value.(string) != e.End.Value {
+			t.Errorf("a link starts at %+v, want the User whose objectid is the id of %s", e.Start, e.End.Value)
+		}
+		linked = append(linked, e.End.Value)
+	}
+	if !slices.Contains(linked, "USER:OLIVIA") {
+		t.Errorf("Olivia, who owns the roadmap, is not linked; linked: %v", linked)
+	}
+	if !strings.Contains(stdout.String(), fmt.Sprintf("identities: %d principal", len(linked))) {
+		t.Errorf("stdout does not count the links:\n%s", stdout.String())
+	}
+}
+
+// The directory bridge fixture holds what its EXPECTED.md says: Dev raises edit on
+// the roadmap and is joined to the account of the directory with Dev's security
+// identifier, Olivia is joined to hers, and the attacker the analysis supposes is
+// joined to nothing.
+func TestRunJoinsTheDirectoryBridgeFixture(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "petard.json")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-out", out, filepath.Join("..", "..", "..", "fixtures", "directory-bridge", "app")}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	content, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw struct {
+		Graph struct {
+			Edges []bhgraph.Edge `json:"edges"`
+		} `json:"graph"`
+	}
+	if err := json.Unmarshal(content, &raw); err != nil {
+		t.Fatalf("the payload is not the shape BloodHound ingests: %v", err)
+	}
+
+	const dev, olivia = "USER:S-1-5-21-1000-2000-3000-1106", "USER:S-1-5-21-1000-2000-3000-1104"
+	raises, joined := false, map[string]string{}
+	for _, e := range raw.Graph.Edges {
+		switch e.Kind {
+		case "PTD_CanEscalateTo":
+			if e.Start.Value == dev && e.End.Value == "DOCUMENT:ROADMAP" {
+				raises = true
+			}
+		case "PTD_ActsAs":
+			joined[e.End.Value] = fmt.Sprint(e.Start.PropertyMatchers[0].Value)
+		}
+	}
+	if !raises {
+		t.Errorf("Dev raises nothing on the roadmap:\n%s", content)
+	}
+	want := map[string]string{dev: "S-1-5-21-1000-2000-3000-1106", olivia: "S-1-5-21-1000-2000-3000-1104"}
+	if len(joined) != len(want) || joined[dev] != want[dev] || joined[olivia] != want[olivia] {
+		t.Errorf("joined = %v, want Dev and Olivia to their own accounts and nobody else", joined)
 	}
 }
 

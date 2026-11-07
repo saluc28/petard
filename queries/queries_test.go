@@ -185,6 +185,7 @@ func TestQueriesAskForWhatTheGraphHolds(t *testing.T) {
 		graph.PropEnforcingSide, graph.PropReachTransitive, graph.PropReachDirect,
 		graph.PropRelation, graph.PropPatterns, graph.PropCandidatePatterns,
 		graph.PropPermissions, graph.PropHypothetical, graph.PropPositions, graph.PropEmptyDomains, graph.PropMitigation,
+		graph.PropIdentityProperty, graph.PropIdentityMap,
 	} {
 		properties[key] = true
 	}

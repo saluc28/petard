@@ -1,0 +1,113 @@
+{
+  "data": [
+    {
+      "Properties": {
+        "domain": "PETARD.TEST",
+        "name": "OLIVIA@PETARD.TEST",
+        "distinguishedname": "CN=OLIVIA,CN=USERS,DC=PETARD,DC=TEST",
+        "domainsid": "S-1-5-21-1000-2000-3000",
+        "description": "Owns the roadmap in the documents application",
+        "whencreated": 1767225600,
+        "sensitive": false,
+        "dontreqpreauth": false,
+        "passwordnotreqd": false,
+        "unconstraineddelegation": false,
+        "pwdneverexpires": false,
+        "enabled": true,
+        "trustedtoauth": false,
+        "lastlogon": 1767225600,
+        "lastlogontimestamp": 1767225600,
+        "pwdlastset": 1767225600,
+        "serviceprincipalnames": [],
+        "hasspn": false,
+        "admincount": false,
+        "sidhistory": []
+      },
+      "AllowedToDelegate": [],
+      "PrimaryGroupSID": "S-1-5-21-1000-2000-3000-513",
+      "HasSIDHistory": [],
+      "SpnTargets": [],
+      "Aces": [],
+      "ObjectIdentifier": "S-1-5-21-1000-2000-3000-1104",
+      "IsDeleted": false,
+      "IsACLProtected": false
+    },
+    {
+      "Properties": {
+        "domain": "PETARD.TEST",
+        "name": "HELPDESK@PETARD.TEST",
+        "distinguishedname": "CN=HELPDESK,CN=USERS,DC=PETARD,DC=TEST",
+        "domainsid": "S-1-5-21-1000-2000-3000",
+        "description": "Resets passwords for the developers",
+        "whencreated": 1767225600,
+        "sensitive": false,
+        "dontreqpreauth": false,
+        "passwordnotreqd": false,
+        "unconstraineddelegation": false,
+        "pwdneverexpires": false,
+        "enabled": true,
+        "trustedtoauth": false,
+        "lastlogon": 1767225600,
+        "lastlogontimestamp": 1767225600,
+        "pwdlastset": 1767225600,
+        "serviceprincipalnames": [],
+        "hasspn": false,
+        "admincount": false,
+        "sidhistory": []
+      },
+      "AllowedToDelegate": [],
+      "PrimaryGroupSID": "S-1-5-21-1000-2000-3000-513",
+      "HasSIDHistory": [],
+      "SpnTargets": [],
+      "Aces": [],
+      "ObjectIdentifier": "S-1-5-21-1000-2000-3000-1105",
+      "IsDeleted": false,
+      "IsACLProtected": false
+    },
+    {
+      "Properties": {
+        "domain": "PETARD.TEST",
+        "name": "DEV@PETARD.TEST",
+        "distinguishedname": "CN=DEV,CN=USERS,DC=PETARD,DC=TEST",
+        "domainsid": "S-1-5-21-1000-2000-3000",
+        "description": "A developer who views the roadmap",
+        "whencreated": 1767225600,
+        "sensitive": false,
+        "dontreqpreauth": false,
+        "passwordnotreqd": false,
+        "unconstraineddelegation": false,
+        "pwdneverexpires": false,
+        "enabled": true,
+        "trustedtoauth": false,
+        "lastlogon": 1767225600,
+        "lastlogontimestamp": 1767225600,
+        "pwdlastset": 1767225600,
+        "serviceprincipalnames": [],
+        "hasspn": false,
+        "admincount": false,
+        "sidhistory": []
+      },
+      "AllowedToDelegate": [],
+      "PrimaryGroupSID": "S-1-5-21-1000-2000-3000-513",
+      "HasSIDHistory": [],
+      "SpnTargets": [],
+      "Aces": [
+        {
+          "PrincipalSID": "S-1-5-21-1000-2000-3000-1105",
+          "PrincipalType": "User",
+          "RightName": "ForceChangePassword",
+          "IsInherited": false
+        }
+      ],
+      "ObjectIdentifier": "S-1-5-21-1000-2000-3000-1106",
+      "IsDeleted": false,
+      "IsACLProtected": false
+    }
+  ],
+  "meta": {
+    "methods": 0,
+    "type": "users",
+    "count": 3,
+    "version": 6
+  }
+}

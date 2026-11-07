@@ -1,0 +1,22 @@
+# Who can write each relation of the documents schema beside this file.
+#
+# Sharing a document as a viewer takes being able to edit it. Adding an editor
+# takes only being able to view it, which is the defect: a viewer can add
+# themselves as an editor.
+schema_version: 1
+model: relationship-writes
+
+writes:
+  - resource: document
+    relation: viewer
+    operations: [create]
+    gate: { holds: edit }
+    subject: [user]
+    via: the share dialog
+
+  - resource: document
+    relation: editor
+    operations: [create]
+    gate: { holds: view }
+    subject: [user]
+    via: the share dialog

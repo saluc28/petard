@@ -241,6 +241,19 @@ func edgeInfo(kind graph.EdgeKind) map[string]bhgraph.KindInfo {
 			"{{ with .Properties.provenance_origin }}Answered to a call to `{{ . }}`{{ end }}{{ with .Properties.source_file }} at `{{ . }}:{{ $.Properties.source_line }}`{{ end }}.",
 			alsoLine(),
 		)
+	case graph.EdgeKindActsAs:
+		return withDetails(meaning(
+			"The node at the start, ingested by another collector, is the principal at the end in the "+
+				"application Petard analyzed. Whoever controls the one acts as the other, so a path that "+
+				"reaches the node in the directory carries on into what the application grants.",
+			"The link is exact: the identity map names a property of the node, and the subject's id in "+
+				"the relationships has to equal it. A subject with no such node, or with more than one, "+
+				"has no link.",
+		),
+			"**{{ .Source.Properties.name }}** is **{{ .Target.Properties.name }}**"+
+				"{{ with .Properties.identity_property }}: its `{{ . }}` is the subject's id{{ end }}"+
+				"{{ with .Properties.identity_map }}, as `{{ . }}` declares{{ end }}.",
+		)
 	default:
 		return nil
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/saluc28/bhgraph"
 
 	"github.com/saluc28/petard/internal/graph"
+	"github.com/saluc28/petard/internal/identity"
 )
 
 // A kind the model declares and the schema does not describe produces nodes
@@ -253,5 +254,89 @@ func TestPayloadFoldsEdgesBetweenTheSameNodes(t *testing.T) {
 	}
 	if !bytes.Equal(once, again) {
 		t.Errorf("building the payload twice gives two payloads, so the first changed the graph:\n%s\n%s", once, again)
+	}
+}
+
+// A link goes out as a PTD_ActsAs from the node of the directory, matched by the
+// property the identity map names, to the principal, and the payload it joins
+// holds together against the schema: the kind of the start is one of the
+// directory's, which no schema of Petard's declares, and it is not asked to.
+func TestAddIdentitiesLinksTheDirectoryToThePrincipal(t *testing.T) {
+	g := graph.New()
+	if err := g.AddNode(graph.Node{ID: "user:s-1-5-21-1-1105", Kind: graph.NodeKindPrincipal}); err != nil {
+		t.Fatal(err)
+	}
+	payload := Payload(g)
+	link := identity.Link{
+		Principal: "user:s-1-5-21-1-1105",
+		Entry:     identity.Entry{Type: "user", Kind: "User", Property: "objectid"},
+		ID:        "s-1-5-21-1-1105",
+		Map:       `authz\identities.yaml`,
+	}
+	if err := AddIdentities(&payload, []identity.Link{link}); err != nil {
+		t.Fatal(err)
+	}
+	payload.UppercaseIDs()
+
+	if len(payload.Edges) != 1 {
+		t.Fatalf("edges = %+v, want one", payload.Edges)
+	}
+	edge := payload.Edges[0]
+	if edge.Kind != string(graph.EdgeKindActsAs) || edge.End.Value != "USER:S-1-5-21-1-1105" || edge.End.MatchBy != bhgraph.MatchByID {
+		t.Errorf("edge = %+v, want a PTD_ActsAs to the principal", edge)
+	}
+	start := edge.Start
+	if start.MatchBy != bhgraph.MatchByProperty || start.Kind != "User" || len(start.PropertyMatchers) != 1 ||
+		start.PropertyMatchers[0].Key != "objectid" || start.PropertyMatchers[0].Value != "S-1-5-21-1-1105" {
+		t.Errorf("start = %+v, want the User whose objectid is the subject's id, upper cased as BloodHound stores it", start)
+	}
+	if edge.Properties[graph.PropIdentityProperty] != "objectid" || edge.Properties[graph.PropIdentityMap] != "authz/identities.yaml" {
+		t.Errorf("properties = %v, want the property matched and the map, with forward slashes", edge.Properties)
+	}
+	if err := Validate(payload); err != nil {
+		t.Errorf("Validate() = %v", err)
+	}
+}
+
+// BloodHound keeps a name upper cased, so a link matched by name is sent upper
+// cased, and one matched by a property BloodHound keeps as it was ingested is sent
+// as the subject's id has it.
+func TestAddIdentitiesSendsANameUpperCased(t *testing.T) {
+	cases := []struct {
+		property, want string
+	}{
+		{"name", "DEV@PETARD.TEST"},
+		{"userprincipalname", "dev@petard.test"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.property, func(t *testing.T) {
+			var payload bhgraph.Graph
+			link := identity.Link{
+				Principal: "user:dev@petard.test",
+				Entry:     identity.Entry{Type: "user", Kind: "User", Property: tc.property},
+				ID:        "dev@petard.test",
+			}
+			if err := AddIdentities(&payload, []identity.Link{link}); err != nil {
+				t.Fatal(err)
+			}
+			payload.UppercaseIDs()
+			if got := payload.Edges[0].Start.PropertyMatchers[0].Value; got != tc.want {
+				t.Errorf("value = %v, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// A payload with a source kind would give it to the node of the directory each
+// link reaches, and deleting that source would delete the user with it, so the
+// links are refused rather than sent there.
+func TestAddIdentitiesRefusesAPayloadWithASourceKind(t *testing.T) {
+	payload := bhgraph.Graph{SourceKind: "PTD"}
+	link := identity.Link{Principal: "user:a", Entry: identity.Entry{Type: "user", Kind: "User", Property: "objectid"}, ID: "a"}
+	if err := AddIdentities(&payload, []identity.Link{link}); err == nil || len(payload.Edges) != 0 {
+		t.Errorf("AddIdentities() = %v with %d edges, want a refusal and no edge", err, len(payload.Edges))
+	}
+	if err := AddIdentities(&payload, nil); err != nil {
+		t.Errorf("no link to add: AddIdentities() = %v, want nothing to refuse", err)
 	}
 }

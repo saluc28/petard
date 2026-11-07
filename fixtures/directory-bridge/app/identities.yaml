@@ -1,0 +1,9 @@
+# Which node of BloodHound a subject of the documents schema is. A user of the
+# application is the account of Active Directory whose objectid, its security
+# identifier, is the subject's id.
+schema_version: 1
+model: identities
+types:
+  - type: user
+    kind: User
+    property: objectid

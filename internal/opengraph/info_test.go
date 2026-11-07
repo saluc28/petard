@@ -273,6 +273,40 @@ func TestCanEscalateToPanelReadsAZanzibarRaise(t *testing.T) {
 	}
 }
 
+// The panel of an identity link names the node of the directory, the principal
+// it is, the property that matched and the map that says so, and renders whole for
+// a node another collector ingested, whose properties Petard does not set.
+func TestActsAsPanelNamesBothSidesAndTheDeclaration(t *testing.T) {
+	var sections map[string]string
+	for _, kind := range Schema().RelationshipKinds {
+		if kind.Name == string(graph.EdgeKindActsAs) {
+			sections = contents(kind.Info)
+		}
+	}
+	if sections == nil {
+		t.Fatal("the schema has no PTD_ActsAs kind to render")
+	}
+
+	edge := relationshipContext{
+		Source: nodeContext{Properties: map[string]any{"name": "ALICE@CORP.LOCAL", "objectid": "S-1-5-21-1-1105"}},
+		Target: nodeContext{Properties: map[string]any{"name": "user:S-1-5-21-1-1105"}},
+		Kind:   kindContext{Name: string(graph.EdgeKindActsAs)},
+		Properties: map[string]any{
+			graph.PropIdentityProperty: "objectid",
+			graph.PropIdentityMap:      "authz/identities.yaml",
+		},
+	}
+
+	panel := render(t, sections, edge)
+	if strings.Contains(panel, "<no value>") || strings.Contains(panel, "{{") {
+		t.Errorf("the panel renders a missing value or a raw template:\n%s", panel)
+	}
+	want := "**ALICE@CORP.LOCAL** is **user:S-1-5-21-1-1105**: its `objectid` is the subject's id, as `authz/identities.yaml` declares."
+	if !strings.Contains(panel, want) {
+		t.Errorf("the panel does not say %q:\n%s", want, panel)
+	}
+}
+
 // The Attribute kind is shared: an OPA field read from data and a Zanzibar
 // relation on an object are the same node kind, so the panel has to read right
 // for a Zanzibar attribute too, not describe the OPA one alone.

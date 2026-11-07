@@ -110,7 +110,7 @@ petard explain PTD-ZAN-001
 ## The graph
 
 The escalations Petard finds, in a policy, a SpiceDB schema or an OpenFGA model, leave it as a BloodHound OpenGraph,
-over [bhgraph](https://github.com/saluc28/bhgraph): five node kinds and five relationship kinds,
+over [bhgraph](https://github.com/saluc28/bhgraph): five node kinds and six relationship kinds,
 declared in `internal/graph`.
 
 ```mermaid
@@ -122,9 +122,10 @@ graph LR
   Principal -->|PTD_CanEscalateTo| Resource
   Principal -->|PTD_CanPerform| Action[PTD_Action]
   Attribute -->|PTD_TaintedBy| Source["PTD_Principal, an external source"]
+  Directory["a node of the directory"] -->|PTD_ActsAs| Principal
 ```
 
-`PTD_CanPerform`, `PTD_WrittenBy` and `PTD_CanEscalateTo` are the three BloodHound may walk.
+`PTD_CanPerform`, `PTD_WrittenBy`, `PTD_CanEscalateTo` and `PTD_ActsAs` are the four BloodHound may walk.
 `PTD_Reads` and `PTD_TaintedBy` are dependencies rather than capabilities, and marking them
 traversable would invent paths in the interface that nobody can take. The decision is made in
 the model and the schema is generated from it, so the two cannot drift apart.

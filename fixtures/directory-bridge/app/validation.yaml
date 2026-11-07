@@ -1,0 +1,12 @@
+schemaFile: schema.zed
+relationships: |-
+  // Olivia owns the roadmap, and Dev views it. Each is named by the security
+  // identifier of their account in PETARD.TEST.
+  document:roadmap#owner@user:S-1-5-21-1000-2000-3000-1104
+  document:roadmap#viewer@user:S-1-5-21-1000-2000-3000-1106
+assertions:
+  assertTrue:
+    - document:roadmap#edit@user:S-1-5-21-1000-2000-3000-1104
+    - document:roadmap#view@user:S-1-5-21-1000-2000-3000-1106
+  assertFalse:
+    - document:roadmap#edit@user:S-1-5-21-1000-2000-3000-1106
