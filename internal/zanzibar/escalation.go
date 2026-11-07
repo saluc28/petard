@@ -1,6 +1,9 @@
 package zanzibar
 
-import "slices"
+import (
+	"maps"
+	"slices"
+)
 
 // WriteStep is one write of a witness: the tuple written or deleted, the rule
 // or creation that allowed it, and the coalition subject that made it. The
@@ -188,6 +191,12 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 	}
 	start := node{state: e.start.clone(), objects: slices.Clone(e.coalition)}
 	startTuples := e.start.list()
+	// The targets are weighed in the order of their keys. Two of them can rise at
+	// the same node, the same permission on two objects of one type, and the
+	// caller keeps the first escalation of a type and permission, so an order
+	// that changed from run to run would change the witness kept and the edge the
+	// graph draws for it.
+	keys := slices.Sorted(maps.Keys(raised))
 	queue := []node{start}
 	visited := map[string]bool{signatureOf(start.state, start.objects): true}
 	seen := map[string]bool{}
@@ -208,10 +217,11 @@ func (e *engine) witnesses(raised map[string]target, before map[string]Level, bo
 		// Checking the targets at the root would recompute the before levels and
 		// find nothing, so it is skipped, which on a schema with many permissions
 		// is a whole pass over the targets saved per search.
-		for key, q := range raised {
+		for _, key := range keys {
 			if len(cur.path) == 0 {
 				break
 			}
+			q := raised[key]
 			level, err := e.coalitionLevel(checker, q.resource, q.name, cur.objects)
 			if err != nil {
 				return nil, err

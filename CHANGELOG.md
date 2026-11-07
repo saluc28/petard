@@ -97,6 +97,10 @@
 
 ### Fixed
 
+- `petard export` could draw a different graph on each run of the same schema. When one write
+  raised the same permission on two objects of a type, the edge drawn for the attacker the analysis
+  supposes named either object. The witnesses are now weighed in a fixed order, and the graph is
+  the same on every run.
 - A raise on a SpiceDB schema could rest on a check SpiceDB fails. SpiceDB waits for every result
   on the base and the subtracted side of an exclusion and on the operands of an intersection, so a
   loop of relationships met there makes it follow the loop to its depth limit and fail the check,

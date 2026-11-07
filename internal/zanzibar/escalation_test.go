@@ -1,6 +1,7 @@
 package zanzibar
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -87,6 +88,44 @@ func TestEscalationsGateChain(t *testing.T) {
 	}
 	if len(esc.Writes) != 2 {
 		t.Errorf("edit-through-editor witness has %d writes, want 2: %+v", len(esc.Writes), esc.Writes)
+	}
+}
+
+// One write can raise the same permission on two objects at once: joining a team
+// that views two documents raises view on both. The escalations come out in the
+// order of their targets on every run, since the caller keeps the first of a type
+// and permission, and an order that moved would change the witness kept and the
+// edge the graph draws for it.
+func TestEscalationsOfOneWriteComeInTheOrderOfTheirTargets(t *testing.T) {
+	model := documents(t)
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "team", Relation: "member", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}},
+	}}
+	start := []Relationship{
+		rel("document:b", "viewer", "team:t#member"),
+		rel("document:a", "viewer", "team:t#member"),
+	}
+
+	var first []string
+	for run := range 40 {
+		escs, err := Escalations(model, wm, nil, start, []Object{object("user:mallory")}, Options{Now: time.Unix(0, 0)})
+		if err != nil {
+			t.Fatalf("Escalations: %v", err)
+		}
+		var got []string
+		for _, e := range escs {
+			got = append(got, e.Object.String()+"#"+e.Permission)
+		}
+		if run == 0 {
+			first = got
+			if len(got) < 2 || got[0] != "document:a#view" || got[1] != "document:b#view" {
+				t.Fatalf("escalations = %v, want view on document:a, then on document:b", got)
+			}
+			continue
+		}
+		if !slices.Equal(got, first) {
+			t.Fatalf("run %d gave %v, and the first run gave %v", run, got, first)
+		}
 	}
 }
 
