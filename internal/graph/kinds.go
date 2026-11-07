@@ -234,7 +234,7 @@ const (
 	// authorizes the write allows the write on, when one does. The requests and
 	// the value are JSON, as a request body carries them, because BloodHound
 	// takes no object as the value of a property
-	// (cmd/api/src/services/upload/jsonschema/edge.json:6 at v9.7.1).
+	// (packages/go/chow/payload/jsonschema/edge.json:6-24 at v9.9.2).
 	PropWitnessRequest      = "witness_request"
 	PropWitnessDocument     = "witness_document"
 	PropWitnessValue        = "witness_value"

@@ -32,8 +32,8 @@ const Version = "v0.4.0"
 // namespace is what the extension declares, and it is PTD and not PTD_.
 //
 // BloodHound appends the underscore itself: it accepts a kind only if the name
-// starts with the namespace followed by "_" (cmd/api/src/model/graphschema.go:508
-// at v9.7.1). Declaring PTD_ therefore makes the server look for PTD__Principal
+// starts with the namespace followed by "_" (cmd/api/src/model/graphschema.go:556-557
+// at v9.9.2). Declaring PTD_ therefore makes the server look for PTD__Principal
 // and refuse the whole schema with a 400 that names the first kind. The kind
 // names do not change either way: they are PTD_Principal and friends, and it is
 // only the declared namespace that leaves the underscore out.
@@ -48,7 +48,7 @@ const namespace = "PTD"
 // Every kind is declared a display kind, the way MSSQLHound declares all seven
 // of its own. The server registers an icon only for a display kind
 // (upsertCustomIcons in cmd/api/src/database/upsert_schema_extension.go at
-// v9.7.1), and the UI draws a question mark for a kind it finds no icon for
+// v9.9.2), and the UI draws a question mark for a kind it finds no icon for
 // (GetIconInfo in packages/javascript/bh-shared-ui/src/utils/icons.ts). A node
 // here carries one kind, so there is nothing for a display kind to disambiguate
 // and nothing to gain by leaving one out.
@@ -121,7 +121,7 @@ func Schema() bhgraph.Extension {
 			Version:     Version,
 			Namespace:   namespace,
 		},
-		RelationshipFindings: []any{},
+		RelationshipFindings: []bhgraph.RelationshipFinding{},
 		Environments:         []bhgraph.Environment{},
 	}
 

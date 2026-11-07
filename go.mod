@@ -10,7 +10,7 @@ require (
 	github.com/openfga/api/proto v0.0.0-20260319214821-f153694bfc20
 	github.com/openfga/language/pkg/go v0.3.2
 	github.com/openfga/openfga v1.22.1
-	github.com/saluc28/bhgraph v0.4.0
+	github.com/saluc28/bhgraph v0.5.0
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/sync v0.24.0
 	google.golang.org/grpc v1.83.2

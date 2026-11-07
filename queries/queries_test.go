@@ -232,7 +232,7 @@ var (
 // The Explore view shows a graph and nothing else: it treats an answer with no
 // nodes and no edges as no answer at all, whatever else came back
 // (packages/javascript/bh-shared-ui/src/hooks/useExploreGraph/queries/
-// cypherSearch.ts at v9.7.1). A query that returns columns is answered by the
+// cypherSearch.ts at v9.9.2). A query that returns columns is answered by the
 // API and reported to the analyst as "No results match your criteria", which
 // reads as a clean policy. What a finding says in words is on the entity, in
 // its Entity Panel, and a query is there to put that entity on the screen.
@@ -263,7 +263,7 @@ var comparedName = regexp.MustCompile(`\.(name|objectid)\s*(?:=|=~|STARTS WITH|E
 // Ingest upper-cases name and objectid unless the use_raw_object_id feature
 // flag is on, and that flag ships disabled and not user updatable
 // (cmd/api/src/services/graphify/ingestnodes.go and the migration
-// 20260710120000_v9_add_use_raw_object_id_flag_bed_8954.sql at v9.7.1). A query
+// 20260710120000_v9_add_use_raw_object_id_flag_bed_8954.sql at v9.9.2). A query
 // that compares either against a lower case literal matches nothing, which
 // reads like a clean policy. BloodHound's own prebuilt queries write the
 // literal in upper case for the same reason.

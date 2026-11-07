@@ -241,7 +241,7 @@ For `PTD-OPA-001` the write model is then asked about the element:
 `data.teams.{team}.members.{member}` writable by `{member}` says anybody can add themselves,
 while an entry on the list alone says who writes the list and nothing about who may join it.
 BloodHound keeps the two apart for the same reason, `AddSelf` next to `AddMember`
-(`packages/cue/bh/ad/ad.cue:1337` and `1427` at `v9.7.1`).
+(`packages/cue/bh/ad/ad.cue:1393` and `1488` at `v9.9.2`).
 
 `PTD-OPA-006` reads the same search from the other side: there the writer is not the subject but
 an endpoint with a decision behind it, and joining is what that decision authorizes. What varies

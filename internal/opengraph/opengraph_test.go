@@ -56,7 +56,7 @@ func TestSchemaDescribesEveryKindOfTheModel(t *testing.T) {
 
 // The server registers an icon only for a kind declared a display kind
 // (upsertCustomIcons in cmd/api/src/database/upsert_schema_extension.go at
-// v9.7.1), and the UI falls back to a question mark for a kind it has no icon
+// v9.9.2), and the UI falls back to a question mark for a kind it has no icon
 // for (GetIconInfo in packages/javascript/bh-shared-ui/src/utils/icons.ts). A
 // kind given an icon here and not declared a display kind is a question mark in
 // the browser.

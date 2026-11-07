@@ -375,7 +375,7 @@ func send(ctx context.Context, out io.Writer, url string, payload bhgraph.Graph,
 //
 // A query is left alone when the owner already has one under its name:
 // BloodHound refuses a second query with a name the user has (CreateSavedQuery,
-// cmd/api/src/api/v2/saved_queries.go:481 at v9.7.1), and one saved by an
+// cmd/api/src/api/v2/saved_queries.go:481 at v9.9.2), and one saved by an
 // earlier version keeps its text until it is deleted.
 func installQueries(ctx context.Context, api *client.Client) (added, present int, err error) {
 	saved, err := savedQueries(ctx, api)
@@ -422,7 +422,7 @@ type savedQuery struct {
 // savedQueries lists what the owner of the token has saved.
 //
 // The endpoint defaults to the queries the caller owns and to a limit of ten
-// thousand (saved_queries.go:134 at v9.7.1), so this neither pages nor reaches
+// thousand (saved_queries.go:84-85 and 133 at v9.9.2), so this neither pages nor reaches
 // a query somebody else shared.
 func savedQueries(ctx context.Context, api *client.Client) ([]savedQuery, error) {
 	raw, err := api.Get(ctx, "/api/v2/saved-queries")

@@ -56,7 +56,7 @@ func TestEveryKindSaysWhatItMeans(t *testing.T) {
 }
 
 // What BloodHound hands a template, as server/graphdb/internal/services/template.go
-// declares it at v9.7.1.
+// declares it at v9.9.2.
 type (
 	kindContext struct {
 		KindID *int32
@@ -138,7 +138,7 @@ func fixturePayload(t *testing.T) (nodes map[string]nodeContext, edges []relatio
 		// Ingest upper-cases objectid and name unless the use_raw_object_id
 		// feature flag is on, and it ships disabled and not user updatable
 		// (cmd/api/src/services/graphify/ingestnodes.go and the migration
-		// 20260710120000_v9_add_use_raw_object_id_flag_bed_8954.sql at v9.7.1).
+		// 20260710120000_v9_add_use_raw_object_id_flag_bed_8954.sql at v9.9.2).
 		// A panel rendered against the payload would read a name the analyst
 		// never sees.
 		if name, isString := context.Properties["name"].(string); isString {

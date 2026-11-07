@@ -18,7 +18,7 @@ A query here returns nodes, relationships or paths, never columns. BloodHound's 
 draws a graph and reads an answer with no nodes and no edges as no answer at all, so a query
 that returns columns is shown as "No results match your criteria" even though the API answered
 it. BloodHound's own prebuilt queries each return a node or a path for the same reason
-(`packages/javascript/bh-shared-ui/src/commonSearchesAGI.ts` at `v9.7.1`).
+(`packages/javascript/bh-shared-ui/src/commonSearchesAGI.ts` at `v9.9.2`).
 
 What a finding says in words stays on the entity, in the Entity Panel that opens when it is
 selected: which documents a check misses, the collection an `every` passes empty, the position a
