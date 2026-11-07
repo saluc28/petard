@@ -43,7 +43,7 @@ func TestOracle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths = append(paths, fixtureValidation)
+	paths = append(paths, fixtureValidation, agentSwarmValidation)
 	if corpus := os.Getenv(corpusEnv); corpus != "" {
 		more, err := filepath.Glob(filepath.Join(corpus, "*.yaml"))
 		if err != nil {

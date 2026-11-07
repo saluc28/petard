@@ -1,0 +1,9 @@
+# Which node another collector ingested a subject is. A principal of the agent
+# platform is a non-human identity in Microsoft Entra ID: the service principal
+# whose object id equals the subject's id.
+schema_version: 1
+model: identities
+types:
+  - type: user
+    kind: AZServicePrincipal
+    property: objectid

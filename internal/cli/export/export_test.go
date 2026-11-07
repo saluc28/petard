@@ -661,6 +661,59 @@ func TestRunJoinsTheDirectoryBridgeFixture(t *testing.T) {
 	}
 }
 
+// The agent-swarm fixture holds what its EXPECTED.md says: the planner, a
+// non-human identity that may only audit the deploy tool, raises invoke on it
+// through the delegation defect, and is joined to its workload identity in Entra
+// by object id. The releaser is joined to its own, and the attacker the analysis
+// supposes is joined to nothing.
+func TestRunJoinsTheAgentSwarmFixture(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "petard.json")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"-out", out, filepath.Join("..", "..", "..", "fixtures", "agent-swarm", "openfga")}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitOK, stderr.String())
+	}
+	content, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw struct {
+		Graph struct {
+			Edges []bhgraph.Edge `json:"edges"`
+		} `json:"graph"`
+	}
+	if err := json.Unmarshal(content, &raw); err != nil {
+		t.Fatalf("the payload is not the shape BloodHound ingests: %v", err)
+	}
+
+	const planner, releaser = "USER:11111111-1111-1111-1111-111111111111", "USER:22222222-2222-2222-2222-222222222222"
+	raises, joined := false, map[string]string{}
+	for _, e := range raw.Graph.Edges {
+		switch e.Kind {
+		case "PTD_CanEscalateTo":
+			if e.Start.Value == planner && e.End.Value == "TOOL:DEPLOY" {
+				raises = true
+			}
+		case "PTD_ActsAs":
+			m := e.Start.PropertyMatchers
+			if e.Start.MatchBy != bhgraph.MatchByProperty || e.Start.Kind != "AZServicePrincipal" ||
+				len(m) != 1 || m[0].Key != "objectid" || "USER:"+m[0].Value.(string) != e.End.Value {
+				t.Errorf("a link starts at %+v, want the AZServicePrincipal whose objectid is the id of %s", e.Start, e.End.Value)
+			}
+			joined[e.End.Value] = fmt.Sprint(m[0].Value)
+		}
+	}
+	if !raises {
+		t.Errorf("the planner raises nothing on the deploy tool:\n%s", content)
+	}
+	want := map[string]string{
+		planner:  "11111111-1111-1111-1111-111111111111",
+		releaser: "22222222-2222-2222-2222-222222222222",
+	}
+	if len(joined) != len(want) || joined[planner] != want[planner] || joined[releaser] != want[releaser] {
+		t.Errorf("joined = %v, want the planner and the releaser to their own service principals and nobody else", joined)
+	}
+}
+
 // The criterion the whole export exists for. Everything else can pass on an
 // instance where the graph is present and unwalkable, and only asking the
 // server for the path answers that.

@@ -1,0 +1,31 @@
+# Who can write each tuple of the agent platform, and who can start a session.
+#
+# OpenFGA says which tuples are well formed; this says which of them the platform
+# lets an end user bring about. The defect is here, not in the model: the model
+# is a reasonable one, and it is who the platform lets write the tuples that turns
+# it into an escalation.
+schema_version: 1
+model: relationship-writes
+
+writes:
+  # Any session may register a sub-session as a caller of any tool. The gate is
+  # open, so a session adds a sub-session it spawned as a caller of a tool the
+  # session itself cannot call: the sub-agent is delegated a right the delegating
+  # side never held.
+  - resource: tool
+    relation: caller
+    operations: [create]
+    gate: anyone
+    subject: ["agentsession#member"]
+    via: "POST /api/v1/tools/{id}/callers"
+
+creates:
+  # Anyone may start a session and is a member of it, so a coalition controls a
+  # session to act through: the sub-agent it spawns.
+  - creates: agentsession
+    gate: anyone
+    writes:
+      - resource: "{created}"
+        relation: member
+        subject: "{creator}"
+    via: "POST /api/v1/sessions"

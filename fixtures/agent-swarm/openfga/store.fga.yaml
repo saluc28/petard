@@ -1,0 +1,31 @@
+name: agent-swarm
+model_file: model.fga
+tuples:
+  # The planner agent may audit the deploy tool but not call it. Its subject is
+  # the object id of its workload identity in the directory.
+  - user: user:11111111-1111-1111-1111-111111111111
+    relation: observer
+    object: tool:deploy
+
+  # The release session may call the deploy tool, and the releaser is a member of
+  # it.
+  - user: user:22222222-2222-2222-2222-222222222222
+    relation: member
+    object: agentsession:release
+  - user: agentsession:release#member
+    relation: caller
+    object: tool:deploy
+tests:
+  - name: the deploy tool before any delegation
+    check:
+      # The planner can audit the deploy tool but cannot call it.
+      - user: user:11111111-1111-1111-1111-111111111111
+        object: tool:deploy
+        assertions:
+          audit: true
+          invoke: false
+      # The releaser can call it.
+      - user: user:22222222-2222-2222-2222-222222222222
+        object: tool:deploy
+        assertions:
+          invoke: true

@@ -1,0 +1,24 @@
+# An agent platform whose sessions act for workload identities and call tools.
+# A subject is the object id of the workload identity in the directory, which is
+# how the platform names a non-human principal in its relationships.
+#
+# The model is sound: a session calls a tool it is registered to call, a session
+# acts for its members, and an observer may audit a tool without calling it. The
+# defect is in writes.yaml beside this file: it lets any session register a
+# sub-session it controls as a caller of any tool, so a sub-agent is delegated a
+# tool the delegating session never held.
+model
+  schema 1.1
+
+type user
+
+type agentsession
+  relations
+    define member: [user]
+
+type tool
+  relations
+    define observer: [user]
+    define caller: [agentsession#member]
+    define invoke: caller
+    define audit: observer or invoke

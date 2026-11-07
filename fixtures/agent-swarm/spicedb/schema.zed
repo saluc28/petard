@@ -1,0 +1,25 @@
+// An agent platform whose sessions act for workload identities and call tools,
+// the SpiceDB twin of the OpenFGA fixture beside it. A subject is the object id
+// of the workload identity in the directory.
+//
+// The model is sound: a session calls a tool it is registered to call, a session
+// acts for its members, and an observer may audit a tool without calling it. A
+// caller grant may carry an expiration, so delegated tool access can be made to
+// lapse. The defect is in writes.yaml beside this file: it lets any session
+// register a sub-session it controls as a caller of any tool, with an expiration
+// the writer chooses, so a sub-agent is delegated a tool the delegating session
+// never held and the grant need not lapse.
+use expiration
+
+definition user {}
+
+definition agentsession {
+	relation member: user
+}
+
+definition tool {
+	relation observer: user
+	relation caller: agentsession#member | agentsession#member with expiration
+	permission invoke = caller
+	permission audit = observer + invoke
+}

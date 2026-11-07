@@ -1,0 +1,34 @@
+# Who can write each relationship of the agent platform, and who can start a
+# session.
+#
+# SpiceDB says which tuples are well formed; this says which of them the platform
+# lets an end user bring about. The defect is here, not in the schema: the schema
+# is a reasonable one, and it is who the platform lets write the tuples, and who
+# sets the expiration, that turns it into an escalation.
+schema_version: 1
+model: relationship-writes
+
+writes:
+  # Any session may register a sub-session as a caller of any tool, and the
+  # writer sets the expiration. The gate is open, so a session adds a sub-session
+  # it spawned as a caller of a tool the session itself cannot call, and writes
+  # the grant with no expiration or one far enough out: the sub-agent is delegated
+  # a right the delegating side never held, and the grant does not lapse.
+  - resource: tool
+    relation: caller
+    operations: [create]
+    gate: anyone
+    subject: ["agentsession#member"]
+    expiration: writer
+    via: "POST /api/v1/tools/{id}/callers"
+
+creates:
+  # Anyone may start a session and is a member of it, so a coalition controls a
+  # session to act through: the sub-agent it spawns.
+  - creates: agentsession
+    gate: anyone
+    writes:
+      - resource: "{created}"
+        relation: member
+        subject: "{creator}"
+    via: "POST /api/v1/sessions"
