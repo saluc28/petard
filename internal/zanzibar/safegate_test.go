@@ -2,6 +2,7 @@ package zanzibar
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -221,4 +222,184 @@ func TestSafeGatesCheckedTogether(t *testing.T) {
 	if unsafe.Escalation.Permission != "p" {
 		t.Errorf("the combination should raise p, got %+v", unsafe.Escalation)
 	}
+}
+
+// checkTogether reuses a safe verdict across rebuilds instead of reweighing every
+// pair after each demotion. The reuse must leave the proposals exactly as
+// reweighing everything would, so it is held against a reference that does. The
+// models force more than one demotion, so the reuse spans several passes.
+func TestCheckTogetherReuseMatchesFullRecheck(t *testing.T) {
+	cases := []struct {
+		name  string
+		model *Model
+		wm    *WriteModel
+	}{
+		{name: "one demotion", model: checkedTogetherModel(t), wm: serviceGatedW(t)},
+		{name: "two independent demotions", model: twoConflictModel(t), wm: serviceGatedW(t)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := Options{Now: time.Unix(0, 0)}
+			rc := newReach(tc.model, tc.wm)
+			byGate := positionsByGate(startingPositionsForSubjects(tc.model, opts))
+			base := phase1Proposals(t, tc.model, tc.wm, nil, byGate, rc, opts)
+
+			reuse := cloneProposals(base)
+			if err := checkTogether(tc.model, tc.wm, nil, reuse, byGate, rc, opts); err != nil {
+				t.Fatalf("checkTogether: %v", err)
+			}
+			full := cloneProposals(base)
+			if err := checkTogetherFullRecheck(tc.model, tc.wm, nil, full, byGate, rc, opts); err != nil {
+				t.Fatalf("reference: %v", err)
+			}
+			if got, want := proposalVerdicts(reuse), proposalVerdicts(full); !slices.Equal(got, want) {
+				t.Errorf("reuse changed the proposals:\n got:  %v\n want: %v", got, want)
+			}
+		})
+	}
+}
+
+// phase1Proposals is the per-relation pass of safeGates, in the same order, so
+// the reference and the real checkTogether weigh the same proposals.
+func phase1Proposals(t testing.TB, model *Model, wm *WriteModel, caveats CaveatEvaluator, byGate map[gateKey][]StartingPosition, rc reach, opts Options) []GateProposal {
+	t.Helper()
+	var out []GateProposal
+	for _, ty := range model.Types {
+		for _, r := range ty.Relations {
+			if hasWriteRule(wm, ty.Name, r.Name) {
+				continue
+			}
+			p, err := relationGates(model, wm, caveats, ty, r, byGate, rc, opts)
+			if err != nil {
+				t.Fatalf("relationGates: %v", err)
+			}
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// cloneProposals copies the safe and unsafe sets each checkTogether mutates, so a
+// run does not disturb the proposals a later run reads.
+func cloneProposals(ps []GateProposal) []GateProposal {
+	out := make([]GateProposal, len(ps))
+	for i, p := range ps {
+		p.Safe = slices.Clone(p.Safe)
+		p.Unsafe = slices.Clone(p.Unsafe)
+		out[i] = p
+	}
+	return out
+}
+
+// proposalVerdicts renders the safe and unsafe gate of every proposal as sorted
+// lines, so two runs are compared as the classification they reached.
+func proposalVerdicts(ps []GateProposal) []string {
+	var out []string
+	for _, p := range ps {
+		safe := slices.Clone(p.Safe)
+		slices.Sort(safe)
+		var unsafe []string
+		for _, u := range p.Unsafe {
+			unsafe = append(unsafe, u.Permission)
+		}
+		slices.Sort(unsafe)
+		out = append(out, p.Type+"#"+p.Relation+" safe="+strings.Join(safe, ",")+" unsafe="+strings.Join(unsafe, ","))
+	}
+	slices.Sort(out)
+	return out
+}
+
+// checkTogetherFullRecheck is checkTogether before the reuse: it reweighs every
+// pair after each demotion. It is the reference the reuse is held to.
+func checkTogetherFullRecheck(model *Model, wm *WriteModel, caveats CaveatEvaluator, proposals []GateProposal, byGate map[gateKey][]StartingPosition, rc reach, opts Options) error {
+	for {
+		combined := withProposals(model, wm, proposals)
+		scope := rc.scopeOf(model, combined)
+		gates := map[gateKey]map[string]Escalation{}
+		demoted := false
+		for i := range proposals {
+			for _, gate := range proposals[i].Safe {
+				k := gateKey{typ: proposals[i].Type, target: gate}
+				byRel, ok := gates[k]
+				if !ok {
+					var err error
+					byRel, err = combinedGate(model, combined, caveats, byGate[k], scope, k, opts)
+					if err != nil {
+						return err
+					}
+					gates[k] = byRel
+				}
+				if esc, found := byRel[proposals[i].Relation]; found {
+					demoteGate(proposals, proposals[i].Type, proposals[i].Relation, gate, esc)
+					demoted = true
+					break
+				}
+			}
+			if demoted {
+				break
+			}
+		}
+		if !demoted {
+			return nil
+		}
+	}
+}
+
+// checkedTogetherModel is the one-demotion model: p needs both a and b, both
+// without a rule, reachable from a holder of gate.
+func checkedTogetherModel(t *testing.T) *Model {
+	t.Helper()
+	doc := &Type{
+		Name: "doc",
+		Relations: []*Relation{
+			{Name: "w", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "a", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "b", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "gate", Expr: Computed{Name: "w"}},
+			{Name: "p", Expr: Intersection{Children: []Expr{Computed{Name: "a"}, Computed{Name: "b"}}}},
+		},
+	}
+	m, err := NewModel([]*Type{{Name: "user"}, doc}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// twoConflictModel has two independent intersections, p1 over a and b and p2 over
+// c and d, all reachable from a holder of gate, so the combined check demotes one
+// gate for each conflict: two demotions over more than one pass.
+func twoConflictModel(t *testing.T) *Model {
+	t.Helper()
+	doc := &Type{
+		Name: "doc",
+		Relations: []*Relation{
+			{Name: "w", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "a", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "b", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "c", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "d", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "gate", Expr: Computed{Name: "w"}},
+			{Name: "p1", Expr: Intersection{Children: []Expr{Computed{Name: "a"}, Computed{Name: "b"}}}},
+			{Name: "p2", Expr: Intersection{Children: []Expr{Computed{Name: "c"}, Computed{Name: "d"}}}},
+		},
+	}
+	m, err := NewModel([]*Type{{Name: "user"}, doc}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// serviceGatedW gives w a service gate, so gate is held only through a starting
+// position and the relations without a rule are all proposed.
+func serviceGatedW(t testing.TB) *WriteModel {
+	t.Helper()
+	return &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "doc", Relation: "w", Operations: []Operation{Create}, Gate: Gate{Service: "provisioner"}, Subject: SubjectSpec{Types: []string{"user"}}},
+	}}
 }

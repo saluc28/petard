@@ -169,6 +169,15 @@ func positionsByGate(positions []StartingPosition) map[gateKey][]StartingPositio
 // decisive write is a rule the author declared is a finding the run already
 // reports, not a fault of a proposal, so it demotes nothing.
 func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, proposals []GateProposal, byGate map[gateKey][]StartingPosition, rc reach, opts Options) error {
+	// A gate proposed for a relation stays safe only while it raises nothing
+	// together with the other gates still proposed. Demoting one removes its rule
+	// from the combination, and a combination with fewer rules opens strictly less
+	// (adding a rule can only let the coalition reach more, section 6), so a pair
+	// found safe in company stays safe as the set shrinks. confirmed holds those
+	// pairs across the rebuilds, so the pass after a demotion reweighs only the
+	// pairs still in question, not the many already found safe. The pair a demotion
+	// falls on, and the final set, are the same as reweighing every pair every pass.
+	confirmed := map[confirmKey]bool{}
 	for {
 		combined := withProposals(model, wm, proposals)
 		scope := rc.scopeOf(model, combined)
@@ -182,6 +191,10 @@ func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, propos
 		for i := range proposals {
 			for _, gate := range proposals[i].Safe {
 				k := gateKey{typ: proposals[i].Type, target: gate}
+				ck := confirmKey{gate: k, relation: proposals[i].Relation}
+				if confirmed[ck] {
+					continue
+				}
 				byRel, ok := gates[k]
 				if !ok {
 					var err error
@@ -196,6 +209,7 @@ func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, propos
 					demoted = true
 					break
 				}
+				confirmed[ck] = true
 			}
 			if demoted {
 				break
@@ -203,12 +217,19 @@ func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, propos
 		}
 		// A demotion removes one rule from the combination, which can make a gate
 		// unsafe only in its company safe again, so each is rebuilt and rechecked
-		// from the start until the set holds together. Demoting the gate under
-		// test, in proposal order, keeps which one is dropped the same on every run.
+		// until the set holds together. Demoting the gate under test, in proposal
+		// order, keeps which one is dropped the same on every run.
 		if !demoted {
 			return nil
 		}
 	}
+}
+
+// confirmKey is a gate proposed for a relation, the pair checkTogether weighs. A
+// pair found safe in company need not be weighed again as gates are demoted.
+type confirmKey struct {
+	gate     gateKey
+	relation string
 }
 
 // combinedGate runs the closure over the model that holds every proposal at once,
