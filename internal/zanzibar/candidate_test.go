@@ -186,6 +186,183 @@ func TestCandidateTargetsMatchesFullSearch(t *testing.T) {
 	}
 }
 
+// The scaled proposal search must return exactly what the full one returns. The
+// scaling touches only the scoped path (the proposal pass), so the guard runs
+// with a scope, the permissions a write could raise, as SafeGates passes it, and
+// holds the scaled path (the default) against the full one (fullProposalSearch),
+// which weighs every scoped target and branches on every move. The models are
+// non-E1, where the two paths part: on an E1 model both saturate the same.
+func TestProposalSearchScaledMatchesFull(t *testing.T) {
+	attacker := object("user:attacker")
+
+	cases := []struct {
+		name      string
+		model     *Model
+		wm        *WriteModel
+		start     []Relationship
+		wantRaise bool
+	}{
+		{
+			// Eight commuting grant writes a holder of super can make at once, plus a
+			// mixed guard that breaks E1 but is gated on a permission the position
+			// cannot reach, so the search is monotone in effect and decided by
+			// saturation rather than by walking every subset of the grant writes.
+			// Writing viewer still raises view, the one raise among the noise.
+			name:      "mixed guard unreachable, monotone raise",
+			model:     nonMonotoneGrantModel(t, 8),
+			wm:        nonMonotoneGrantWrites(8),
+			start:     []Relationship{rel("role:target", "super", "user:attacker")},
+			wantRaise: true,
+		},
+		{
+			// The same, but guard is gated on admin, which a holder of super has, so
+			// the mixed relation is reachable and the search is not monotone: every
+			// target is weighed in the bounded search, as the full path does.
+			name:      "mixed guard reachable",
+			model:     nonMonotoneGrantModel(t, 8),
+			wm:        nonMonotoneGrantWritesReachable(8),
+			start:     []Relationship{rel("role:target", "super", "user:attacker")},
+			wantRaise: true,
+		},
+		{
+			// The mixed relation reaches a target only through the gate of a write, not
+			// by being read: writing secret needs p, and p reads flag. The cone has to
+			// follow that gate, or reads_secret looks monotone and its raise is missed.
+			name:      "mixed relation reached through a gate",
+			model:     gatedByMixedModel(t),
+			wm:        gatedByMixedWrites(),
+			start:     []Relationship{rel("res:target", "member", "user:bystander")},
+			wantRaise: true,
+		},
+		{
+			// A mixed relation with nothing else writable: every target that can rise
+			// does so through it, so none is pruned and the two paths weigh the same.
+			// Deleting flag lifts the deny and raises q.
+			name:  "mixed relation alone",
+			model: mixedFlagModel(t),
+			wm: &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+				{Resource: "res", Relation: "flag", Operations: []Operation{Create, Touch, Delete}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}},
+			}},
+			start:     []Relationship{rel("res:target", "member", "user:attacker"), rel("res:target", "flag", "user:attacker")},
+			wantRaise: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scope := newReach(tc.model, tc.wm).scopeOf(tc.model, tc.wm)
+			scaled := Options{Now: time.Unix(0, 0)}
+			full := Options{Now: time.Unix(0, 0), fullProposalSearch: true}
+			got, err := escalationsScoped(tc.model, tc.wm, nil, tc.start, []Object{attacker}, scope, scaled)
+			if err != nil {
+				t.Fatalf("scaled: %v", err)
+			}
+			want, err := escalationsScoped(tc.model, tc.wm, nil, tc.start, []Object{attacker}, scope, full)
+			if err != nil {
+				t.Fatalf("full: %v", err)
+			}
+			if !slices.Equal(escSigs(got), escSigs(want)) {
+				t.Errorf("scaled search changed the escalations:\n got:  %v\n want: %v", escSigs(got), escSigs(want))
+			}
+			if tc.wantRaise && len(want) == 0 {
+				t.Fatal("test is vacuous: the full search found no raise to compare against")
+			}
+		})
+	}
+}
+
+// nonMonotoneGrantModel is broadGrantModel with a mixed guard relation, positive
+// in needguard and negative in safe, and a viewer relation super does not grant.
+// The grant permissions read guard in neither, so they stay monotone while guard
+// breaks E1 for the model, and view is a raise a monotone write still opens.
+func nonMonotoneGrantModel(t *testing.T, grants int) *Model {
+	t.Helper()
+	role := &Type{
+		Name: "role",
+		Relations: []*Relation{
+			{Name: "super", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "guard", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "viewer", Allowed: []Allowed{{Type: "user", Wildcard: true}}},
+		},
+		Permissions: []*Permission{
+			{Name: "admin", Expr: Computed{Name: "super"}},
+			{Name: "needguard", Expr: Computed{Name: "guard"}},
+			{Name: "safe", Expr: Exclusion{Base: Computed{Name: "admin"}, Subtracted: []Expr{Computed{Name: "guard"}}}},
+			{Name: "view", Expr: Computed{Name: "viewer"}},
+		},
+	}
+	for i := range grants {
+		role.Relations = append(role.Relations, &Relation{Name: fmt.Sprintf("grant%d", i), Allowed: []Allowed{{Type: "user", Wildcard: true}}})
+		role.Permissions = append(role.Permissions, &Permission{Name: fmt.Sprintf("perm%d", i), Expr: Union{Children: []Expr{Computed{Name: fmt.Sprintf("grant%d", i)}, Computed{Name: "super"}}}})
+	}
+	m, err := NewModel([]*Type{{Name: "user"}, role}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// nonMonotoneGrantWrites gates guard on needguard, which needs guard, so a
+// coalition that does not already hold guard can never write it: from a position
+// holding super the search is monotone in effect. The grants and viewer are
+// writable, viewer by anyone, so a monotone raise (view) is still reachable.
+func nonMonotoneGrantWrites(grants int) *WriteModel {
+	return nonMonotoneGrantWritesGated(grants, "needguard")
+}
+
+// nonMonotoneGrantWritesReachable gates guard on admin, which a holder of super
+// has, so the mixed relation is reachable and the search is not monotone.
+func nonMonotoneGrantWritesReachable(grants int) *WriteModel {
+	return nonMonotoneGrantWritesGated(grants, "admin")
+}
+
+func nonMonotoneGrantWritesGated(grants int, guardGate string) *WriteModel {
+	writes := []*WriteRule{
+		{Resource: "role", Relation: "guard", Operations: []Operation{Create, Touch}, Gate: Gate{Holds: guardGate}, Subject: SubjectSpec{Any: true}},
+		{Resource: "role", Relation: "viewer", Operations: []Operation{Create, Touch}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}, Wildcard: true},
+	}
+	for i := range grants {
+		writes = append(writes, &WriteRule{Resource: "role", Relation: fmt.Sprintf("grant%d", i), Operations: []Operation{Create, Touch}, Gate: Gate{Holds: "admin"}, Subject: SubjectSpec{Any: true}, Wildcard: true})
+	}
+	return &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: writes}
+}
+
+// gatedByMixedModel reads flag positively in p and negatively in q, so flag is
+// mixed, and reads secret in reads_secret. secret is not mixed, so reads_secret
+// looks monotone until the write model gates writing secret on p, which reads
+// flag: the raise of reads_secret then runs through the mixed relation.
+func gatedByMixedModel(t *testing.T) *Model {
+	t.Helper()
+	res := &Type{
+		Name: "res",
+		Relations: []*Relation{
+			{Name: "member", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "flag", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "secret", Allowed: []Allowed{{Type: "user"}}},
+		},
+		Permissions: []*Permission{
+			{Name: "p", Expr: Computed{Name: "flag"}},
+			{Name: "q", Expr: Exclusion{Base: Computed{Name: "member"}, Subtracted: []Expr{Computed{Name: "flag"}}}},
+			{Name: "reads_secret", Expr: Computed{Name: "secret"}},
+		},
+	}
+	m, err := NewModel([]*Type{{Name: "user"}, res}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// gatedByMixedWrites lets anyone write flag and lets a holder of p write secret,
+// so raising reads_secret means first writing flag to hold p. The gate is why the
+// cone of reads_secret has to reach flag.
+func gatedByMixedWrites() *WriteModel {
+	return &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "res", Relation: "flag", Operations: []Operation{Create, Touch, Delete}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Any: true}},
+		{Resource: "res", Relation: "secret", Operations: []Operation{Create, Touch}, Gate: Gate{Holds: "p"}, Subject: SubjectSpec{Any: true}},
+	}}
+}
+
 // mixedFlagModel reads flag positively in p and negatively in q, so a rule that
 // both writes and deletes flag is a mixed relation and E1 does not hold.
 func mixedFlagModel(t *testing.T) *Model {

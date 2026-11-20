@@ -60,6 +60,12 @@ type Options struct {
 	// taken are the objects a sample names, whose names nothing the analysis supposes
 	// may use.
 	taken map[Object]bool
+
+	// fullProposalSearch keeps the scoped proposal search on its plain path, with
+	// no monotone saturation of the targets off the mixed cone and no pruning of
+	// the moves to that cone. It is the reference an equivalence test holds the
+	// scaled path to, so the two can be shown to find the same escalations.
+	fullProposalSearch bool
 }
 
 // maxSearchStates is how many states one search for witnesses weighs over a sample.
@@ -260,6 +266,26 @@ func splitE2(failures []E2Failure) (merged []string, negative bool) {
 // saturate applies every available write each round until none changes the
 // state, which under E1 is the one greatest element the coalition can reach.
 func (e *engine) saturate() (*stateSet, []Object, error) {
+	return e.saturateExcluding(nil)
+}
+
+// saturateMonotone saturates while never writing or deleting a mixed relation,
+// the moves that are not one-way. It reaches the greatest state the coalition
+// can bring about using only monotone writes. For a search that can reach no
+// mixed relation at all (effectivelyMonotone), that is the greatest state
+// outright, so a target not raised there is raised in no reachable state. The
+// engine must have no negative creation, the other move that is not one-way,
+// which the caller checks.
+func (e *engine) saturateMonotone(mixed map[relRef]bool) (*stateSet, []Object, error) {
+	return e.saturateExcluding(mixed)
+}
+
+// saturateExcluding applies every available write whose relation is not in
+// exclude, each round until none changes the state, and returns the fixpoint. A
+// nil exclude applies every write, the full saturation E1 reaches; excluding the
+// mixed relations leaves the one-way moves alone, which stays confluent and
+// terminating.
+func (e *engine) saturateExcluding(exclude map[relRef]bool) (*stateSet, []Object, error) {
 	state := e.start.clone()
 	objects := slices.Clone(e.coalition)
 
@@ -271,6 +297,9 @@ func (e *engine) saturate() (*stateSet, []Object, error) {
 		}
 		grew := false
 		for _, mv := range moves {
+			if exclude[relRef{typ: mv.rel.Resource.Type, name: mv.rel.Relation}] {
+				continue
+			}
 			if applyMove(state, &objects, mv) {
 				grew = true
 			}

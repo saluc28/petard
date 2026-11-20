@@ -124,7 +124,18 @@ func escalationsScoped(model *Model, wm *WriteModel, caveats CaveatEvaluator, st
 		before[q.key()] = lvl
 	}
 
-	raised, err := e.candidateTargets(targets, before)
+	// A scoped search is the proposal pass. When a mixed writable relation breaks
+	// E1, the model is still monotone off the cone of that relation, so the targets
+	// whose cone the relation does not reach are decided by saturation and only the
+	// rest go to the bounded search, over the moves inside their cone. The findings
+	// path (nil scope), the E1 proposal path, and a model with a negative creation
+	// keep the plain search, so what they report is unchanged.
+	var mixed map[relRef]bool
+	if scope != nil && !opts.fullProposalSearch && !e.hasNegativeCreation() {
+		mixed = e.mixedWritableRelations()
+	}
+
+	raised, err := e.candidateTargets(targets, before, mixed)
 	if err != nil {
 		return nil, err
 	}
@@ -150,19 +161,64 @@ func escalationsScoped(model *Model, wm *WriteModel, caveats CaveatEvaluator, st
 // holds the saturation to (assertSaturated in closure_oracle_test.go): the
 // targets dropped are exactly those the search would return nothing for, so the
 // witnesses are unchanged.
-func (e *engine) candidateTargets(targets []target, before map[string]Level) (map[string]target, error) {
-	raised := make(map[string]target, len(targets))
-	if !e.e1Holds() || e.hasNegativeCreation() {
-		for _, q := range targets {
-			raised[q.key()] = q
+//
+// When mixed is given, a non-empty set of writable relations that break E1, the
+// scoped proposal search still takes the saturation path for a search in which
+// none of them can actually be written or deleted (effectivelyMonotone): the
+// reachable states are then monotone, saturation of the monotone moves reaches
+// their greatest element, and the prune is exact, the same as under E1. This is
+// the common case of the proposal pass, where a gate under test does not let the
+// coalition reach the mixed relation at all. When a mixed relation is reachable,
+// no single state dominates and every target is kept for the bounded search,
+// which weighs them exactly. mixed is empty on the findings path and the E1
+// proposal path, which keep the two paths above.
+func (e *engine) candidateTargets(targets []target, before map[string]Level, mixed map[relRef]bool) (map[string]target, error) {
+	if len(mixed) > 0 {
+		// The cheap static test comes first, so a search that can reach a mixed
+		// relation falls back without paying for the monotone saturation.
+		if !e.mixedRulesAllowMonotone(mixed) {
+			return allCandidates(targets), nil
 		}
-		return raised, nil
+		state, objects, err := e.saturateMonotone(mixed)
+		if err != nil {
+			return nil, err
+		}
+		reachable, err := e.mixedMoveAvailable(mixed, state, objects)
+		if err != nil {
+			return nil, err
+		}
+		if reachable {
+			return allCandidates(targets), nil
+		}
+		return e.raisedInState(state, objects, targets, before)
+	}
+
+	if !e.e1Holds() || e.hasNegativeCreation() {
+		return allCandidates(targets), nil
 	}
 	state, objects, err := e.saturate()
 	if err != nil {
 		return nil, err
 	}
+	return e.raisedInState(state, objects, targets, before)
+}
+
+// allCandidates keeps every target, which the bounded search then weighs itself.
+// It is what candidateTargets returns when nothing cheaper rules a target out.
+func allCandidates(targets []target) map[string]target {
+	raised := make(map[string]target, len(targets))
+	for _, q := range targets {
+		raised[q.key()] = q
+	}
+	return raised
+}
+
+// raisedInState keeps the targets above their starting level in a saturated
+// state, the greatest the coalition can reach. One not raised there is raised in
+// no reachable state, so it is dropped and the search never weighs it.
+func (e *engine) raisedInState(state *stateSet, objects []Object, targets []target, before map[string]Level) (map[string]target, error) {
 	checker := NewChecker(e.model, state.list(), e.caveats, e.opts.now())
+	raised := make(map[string]target, len(targets))
 	for _, q := range targets {
 		lvl, err := e.coalitionLevel(checker, q.resource, q.name, objects)
 		if err != nil {
