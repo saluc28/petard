@@ -1,7 +1,7 @@
 # What the analysis has to find in the agent-swarm fixture
 
 The fixture is an agent platform whose sessions act for workload identities and
-call tools, and the directory those identities live in. Neither is real. It comes
+call tools. It is not real. It comes
 in two: the same platform in OpenFGA under `openfga/` and in SpiceDB under
 `spicedb/`, so one fixture shows the finding on both engines, and the SpiceDB one
 shows the time bound OpenFGA cannot express.
@@ -58,26 +58,10 @@ generated position.
 The attacker the analysis supposes has its own `PTD_CanEscalateTo` and no
 `PTD_ActsAs`: it stands for any account and is nobody's.
 
-## The path
+## In BloodHound
 
-The platform does not know who can take over the planner's workload identity, and
-the directory does not know what the planner can do in the platform. Petard draws
-the hop between them. Loaded into BloodHound next to a directory that holds the
-planner's service principal, the two join into one path:
-
-```
-ATTACKER (AZUser)  --AZOwns-->  AZServicePrincipal, the planner's workload
-                   --PTD_ActsAs-->  USER:11111111-1111-1111-1111-111111111111, the planner
-                   --PTD_CanEscalateTo, invoke-->  TOOL:DEPLOY
-```
-
-An identity that owns the planner's service principal in Entra takes it over, acts
-as the planner in the platform, spawns a sub-session, grants it the deploy tool,
-and calls it. The directory half of the path, the service principal and the
-ownership that reaches it, is what a directory collector ingests; `entra/` holds a
-synthetic AzureHound collection to load into BloodHound for the walk. Petard reads
-only `openfga/` or `spicedb/`, never the directory.
-
-On BloodHound CE v9.9.2, on 2026-11-07, loaded with `entra/azurehound.json` and the
-export of `openfga/`, pathfinding walked this path from the attacker to the deploy
-tool over the traversable edges.
+Loaded into BloodHound next to a directory collection that holds the planner's
+account, the export's `PTD_ActsAs` and `PTD_CanEscalateTo` edges join the account
+to the escalation by `objectid`, so pathfinding reaches the tool from whoever can
+take over that account. Petard reads only `openfga/` or `spicedb/`, never the
+directory collection.
