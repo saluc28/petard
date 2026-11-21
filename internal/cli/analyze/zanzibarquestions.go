@@ -57,7 +57,7 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 	b.WriteString("# file. For a caveat, mark a parameter application when the check supplies it\n")
 	b.WriteString("# rather than the writer. A relation nobody can write is one to leave out rather\n")
 	b.WriteString("# than open. The relations whose writes can raise the most permissions come first,\n")
-	b.WriteString("# each with what it can raise.\n")
+	b.WriteString("# each with what it can raise, and the relations that raise nothing gathered at the end.\n")
 	b.WriteString("schema_version: 1\n")
 	b.WriteString("model: relationship-writes\n")
 	b.WriteString("writes:\n")
@@ -67,6 +67,7 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 		if len(groups) > 1 {
 			fmt.Fprintf(&b, "  # %s\n", g.schema)
 		}
+		var quiet []string
 		for _, p := range g.proposals {
 			entries++
 			if len(p.Safe) == 0 {
@@ -78,7 +79,7 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 					fmt.Fprintf(&b, "  # %s#%s has no permission on %s to gate on; writing it raises %s.\n", p.Type, p.Relation, p.Type, strings.Join(p.Raises, ", "))
 					fmt.Fprintf(&b, "  # Leave it out, or gate it on a service no end user can drive.\n")
 				default:
-					fmt.Fprintf(&b, "  # %s#%s raises no permission; it is safe to write and needs no gate.\n", p.Type, p.Relation)
+					quiet = append(quiet, p.Type+"#"+p.Relation)
 				}
 				continue
 			}
@@ -95,29 +96,63 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 			b.WriteString("    via: \"\"\n")
 			b.WriteString("    # evidence: [path:line]   the lines of the application that make the write\n")
 		}
+		writeQuietGroup(&b, quiet)
 	}
 	return b.String(), entries
 }
 
 // writeReach writes, above an entry, the permissions writing the relation can raise,
-// the reason it comes where it does. A comment line holds a few of them, so a long
-// list stays readable.
+// the reason it comes where it does. A few names go on a line, and past a cap only a
+// count of the rest follows, so a relation that can raise a whole model stays a few
+// lines rather than dozens.
 func writeReach(b *strings.Builder, raises []string) {
 	if len(raises) == 0 {
 		return
 	}
-	const perLine = 4
-	for i := 0; i < len(raises); i += perLine {
+	const perLine, shown = 4, 8
+	list := raises
+	extra := 0
+	if len(list) > shown {
+		list, extra = raises[:shown], len(raises)-shown
+	}
+	for i := 0; i < len(list); i += perLine {
 		lead := "  # can raise "
 		if i > 0 {
 			lead = "  #   "
 		}
-		end := min(i+perLine, len(raises))
-		line := strings.Join(raises[i:end], ", ")
-		if end < len(raises) {
+		end := min(i+perLine, len(list))
+		line := strings.Join(list[i:end], ", ")
+		if end < len(list) || extra > 0 {
 			line += ","
 		}
 		b.WriteString(lead + line + "\n")
+	}
+	if extra > 0 {
+		fmt.Fprintf(b, "  #   and %d more\n", extra)
+	}
+}
+
+// writeQuietGroup gathers the relations whose writes raise no permission into one
+// note that names them, rather than a line each: a schema with many leaf relations
+// would otherwise bury the few that need a gate. They are safe to write and need no
+// gate, so the note is all they warrant.
+func writeQuietGroup(b *strings.Builder, names []string) {
+	if len(names) == 0 {
+		return
+	}
+	head := fmt.Sprintf("%d relations raise no permission and need no gate:", len(names))
+	if len(names) == 1 {
+		head = "1 relation raises no permission and needs no gate:"
+	}
+	fmt.Fprintf(b, "  # %s\n", head)
+	const perLine = 4
+	for i := 0; i < len(names); i += perLine {
+		end := min(i+perLine, len(names))
+		line := strings.Join(names[i:end], ", ")
+		if end < len(names) {
+			line += ","
+		}
+		b.WriteString("  #   " + line + "\n")
 	}
 }
 

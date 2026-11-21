@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/saluc28/petard/internal/cli/zanzibarsetup"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/writemodel"
@@ -176,6 +177,62 @@ func TestWriteReachKeepsALongListReadable(t *testing.T) {
 	writeReach(&b, nil)
 	if b.String() != "" {
 		t.Errorf("a relation that raises nothing gets %q", b.String())
+	}
+}
+
+// A relation that can raise more than a handful shows the first few and a count of
+// the rest, so one leaf relation does not print a whole model.
+func TestWriteReachCapsALongList(t *testing.T) {
+	var raises []string
+	for i := range 10 {
+		raises = append(raises, fmt.Sprintf("doc#p%d", i))
+	}
+	var b strings.Builder
+	writeReach(&b, raises)
+	got := b.String()
+	if !strings.Contains(got, "and 2 more") {
+		t.Errorf("writeReach did not cap a long list:\n%s", got)
+	}
+	if strings.Contains(got, "doc#p8") || strings.Contains(got, "doc#p9") {
+		t.Errorf("writeReach listed past the cap:\n%s", got)
+	}
+}
+
+// The skeleton keeps the relations that need a gate as full entries, caps what each
+// can raise, and gathers the ones that raise nothing into one note that still names
+// them, so a schema with many leaf relations does not bury the few levers.
+func TestSchemaSkeletonGathersTheRelationsThatRaiseNothing(t *testing.T) {
+	raises := make([]string, 10)
+	for i := range raises {
+		raises[i] = fmt.Sprintf("doc#p%d", i)
+	}
+	groups := []schemaProposals{{
+		product: zanzibarsetup.OpenFGA,
+		schema:  "model.fga",
+		proposals: []zanzibar.GateProposal{
+			{Type: "doc", Relation: "owner", Safe: []string{"admin"}, Raises: raises},
+			{Type: "doc", Relation: "a"},
+			{Type: "doc", Relation: "b"},
+			{Type: "doc", Relation: "c"},
+		},
+	}}
+	content, entries := schemaSkeleton(groups)
+	if entries != 4 {
+		t.Errorf("entries = %d, want 4", entries)
+	}
+	for _, want := range []string{
+		"- resource: doc",
+		"relation: owner",
+		"and 2 more",
+		"3 relations raise no permission and need no gate:",
+		"doc#a", "doc#b", "doc#c",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("the skeleton does not contain %q:\n%s", want, content)
+		}
+	}
+	if strings.Contains(content, "doc#a raises no permission") {
+		t.Errorf("a relation that raises nothing still has its own line:\n%s", content)
 	}
 }
 
