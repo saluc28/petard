@@ -113,7 +113,7 @@ func TestFixtureSafeGates(t *testing.T) {
 		t.Fatalf("LoadWriteModel: %v", err)
 	}
 
-	proposals, err := zanzibar.SafeGates(sample.Model, wm, sample.Caveats, zanzibar.Options{Now: now})
+	proposals, _, err := zanzibar.SafeGates(sample.Model, wm, sample.Caveats, zanzibar.Options{Now: now})
 	if err != nil {
 		t.Fatalf("SafeGates: %v", err)
 	}

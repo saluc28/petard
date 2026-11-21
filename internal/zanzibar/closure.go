@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -54,8 +55,14 @@ type Options struct {
 	cut       *int
 
 	// work, when set, goes down by the tuples of each state the search weighs, for a
-	// caller that gives many searches one limit.
+	// caller that gives many searches one limit. It is not safe to share across
+	// goroutines; a caller whose searches run in parallel uses budget instead.
 	work *int
+
+	// budget is work for a caller whose searches run across goroutines, the
+	// proposal pass among them: it goes down atomically by the tuples of each
+	// state weighed, so the one limit holds over searches running at once.
+	budget *atomic.Int64
 
 	// taken are the objects a sample names, whose names nothing the analysis supposes
 	// may use.

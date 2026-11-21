@@ -41,7 +41,7 @@ func BenchmarkSafeGates(b *testing.B) {
 			opts := zanzibar.Options{}
 			b.ReportAllocs()
 			for b.Loop() {
-				if _, err := zanzibar.SafeGates(schema.Model, wm, schema, opts); err != nil {
+				if _, _, err := zanzibar.SafeGates(schema.Model, wm, schema, opts); err != nil {
 					b.Fatal(err)
 				}
 			}

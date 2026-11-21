@@ -97,11 +97,11 @@ func TestSafeGatesScopingMatchesUnscoped(t *testing.T) {
 			wm := &WriteModel{}
 			opts := Options{}
 
-			scoped, err := safeGates(tc.model, wm, stubCaveats{}, newReach(tc.model, wm), opts)
+			scoped, _, err := safeGates(tc.model, wm, stubCaveats{}, newReach(tc.model, wm), opts)
 			if err != nil {
 				t.Fatalf("scoped: %v", err)
 			}
-			unscoped, err := safeGates(tc.model, wm, stubCaveats{}, reach{}, opts)
+			unscoped, _, err := safeGates(tc.model, wm, stubCaveats{}, reach{}, opts)
 			if err != nil {
 				t.Fatalf("unscoped: %v", err)
 			}

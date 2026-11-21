@@ -3,6 +3,7 @@ package zanzibar
 import (
 	"runtime"
 	"slices"
+	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -39,6 +40,15 @@ type UnsafeGate struct {
 	Escalation Escalation
 }
 
+// maxProposalSearches is how many scoped searches the proposal pass may run
+// before it stops and reports the gates it had not weighed. A search is the unit
+// both the saturation and the bounded walk share, so counting searches bounds
+// the pass by what it actually does; a large model has far more relations,
+// permissions and positions than this, and the reachability the pass decides is
+// PSPACE-complete, so without a bound it could run without end. The findings do
+// not pass through this pass and are always reported in full.
+const maxProposalSearches = 30000
+
 // SafeGates computes, for every relation the write model leaves without a rule,
 // which permissions on its type are safe gates to write it. A permission W is a
 // safe gate for relation r of type T when letting every holder of W write r, as
@@ -50,7 +60,11 @@ type UnsafeGate struct {
 // without the proposal is a finding the run reports against them, and does not
 // count against the gate. A relation whose every permission is unsafe has no safe
 // gate, and the run says so rather than proposing one.
-func SafeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, opts Options) ([]GateProposal, error) {
+//
+// The returned Limits says whether the combined check spent its work budget
+// before holding every gate against the others, so a caller can tell a gate
+// shown safe because nothing raised it from one whose company check did not run.
+func SafeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, opts Options) ([]GateProposal, Limits, error) {
 	// Each gate check need only weigh the permissions a write to the relation
 	// under it could reach; the rest cannot change and would read the same every
 	// time. The reach that says which those are is read off the schema once here.
@@ -60,7 +74,7 @@ func SafeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, opts Optio
 // safeGates is SafeGates with the reach given rather than read from the model,
 // so a test can run it both with the reach and with an empty one and confirm
 // the scoping leaves every proposal unchanged.
-func safeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, rc reach, opts Options) ([]GateProposal, error) {
+func safeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, rc reach, opts Options) ([]GateProposal, Limits, error) {
 	// The starting positions depend on the schema alone, not on the relation or
 	// the gate under test, so they are generated once and indexed by the gate
 	// they put the attacker on. Regenerating them inside the per-relation,
@@ -87,47 +101,93 @@ func safeGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, rc reach, 
 		}
 	}
 
+	// The whole pass shares one work budget. The per-relation checks run across
+	// goroutines, so it goes down atomically; the combined check below spends from
+	// the same counter, sequentially. When it runs out, the gates not yet weighed
+	// are left unverified and counted, so the pass terminates on a large model
+	// rather than running without end (the reachability it decides is
+	// PSPACE-complete). Each search is also capped at maxSearchStates, so a single
+	// one terminates.
+	budget := opts.budget
+	if budget == nil {
+		budget = &atomic.Int64{}
+		budget.Store(int64(maxProposalSearches))
+	}
+
+	phaseOpts := opts
+	if phaseOpts.maxStates == 0 {
+		phaseOpts.maxStates = maxSearchStates
+	}
+	phaseOpts.budget = budget
+
+	var limits Limits
 	proposals := make([]GateProposal, len(jobs))
+	skipped := make([]int, len(jobs))
 	g := new(errgroup.Group)
 	g.SetLimit(runtime.GOMAXPROCS(0))
 	for i, jb := range jobs {
 		g.Go(func() error {
-			proposal, err := relationGates(model, wm, caveats, jb.t, jb.r, byGate, rc, opts)
+			proposal, left, err := relationGates(model, wm, caveats, jb.t, jb.r, byGate, rc, phaseOpts)
 			if err != nil {
 				return err
 			}
 			proposals[i] = proposal
+			skipped[i] = left
 			return nil
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, Limits{}, err
+	}
+	for _, left := range skipped {
+		limits.ProposalsLeftOut += left
 	}
 
-	if err := checkTogether(model, wm, caveats, proposals, byGate, rc, opts); err != nil {
-		return nil, err
+	ctOpts := opts
+	if ctOpts.maxStates == 0 {
+		ctOpts.maxStates = maxSearchStates
 	}
-	return proposals, nil
+	ctOpts.budget = budget
+	ctOpts.cut = &limits.SearchesStopped
+	leftOut, err := checkTogether(model, wm, caveats, proposals, byGate, rc, ctOpts)
+	if err != nil {
+		return nil, Limits{}, err
+	}
+	limits.ProposalsLeftOut += leftOut
+	return proposals, limits, nil
 }
 
 // relationGates weighs each permission of a type as a gate for writing one of
 // its relations, and returns which are safe and which a coalition could
 // escalate through. It reads only shared inputs it does not change, so one call
 // is independent of the next and they can run on separate workers.
-func relationGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, t *Type, r *Relation, byGate map[gateKey][]StartingPosition, rc reach, opts Options) (GateProposal, error) {
+// relationGates returns the proposal and, when the work budget ran out partway,
+// the count of permissions it did not weigh for this relation. Those are left
+// neither safe nor unsafe, so the run can report that the pass did not finish.
+func relationGates(model *Model, wm *WriteModel, caveats CaveatEvaluator, t *Type, r *Relation, byGate map[gateKey][]StartingPosition, rc reach, opts Options) (GateProposal, int, error) {
 	proposal := GateProposal{Type: t.Name, Relation: r.Name, Raises: raisesList(rc.index, t.Name, r.Name)}
-	for _, p := range t.Permissions {
+	for i, p := range t.Permissions {
+		if budgetSpent(opts) {
+			return proposal, len(t.Permissions) - i, nil
+		}
 		esc, unsafe, err := gateEscalates(model, wm, caveats, t.Name, r, p.Name, byGate, rc, opts)
 		if err != nil {
-			return GateProposal{}, err
+			return GateProposal{}, 0, err
 		}
 		if unsafe {
+			// A raise found is reliable whether or not the budget then ran out: it
+			// uses the proposed rule and the search stops at the first one.
 			proposal.Unsafe = append(proposal.Unsafe, UnsafeGate{Permission: p.Name, Escalation: esc})
-		} else {
-			proposal.Safe = append(proposal.Safe, p.Name)
+			continue
 		}
+		if budgetSpent(opts) {
+			// gateEscalates stopped at the budget without a raise, so "safe" for p
+			// is not reliable: leave p and the rest of this relation unweighed.
+			return proposal, len(t.Permissions) - i, nil
+		}
+		proposal.Safe = append(proposal.Safe, p.Name)
 	}
-	return proposal, nil
+	return proposal, 0, nil
 }
 
 // raisesList is the permissions writing a relation could raise, as sorted
@@ -168,7 +228,7 @@ func positionsByGate(positions []StartingPosition) map[gateKey][]StartingPositio
 // was safe only while the other relations stayed unwritable. An escalation whose
 // decisive write is a rule the author declared is a finding the run already
 // reports, not a fault of a proposal, so it demotes nothing.
-func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, proposals []GateProposal, byGate map[gateKey][]StartingPosition, rc reach, opts Options) error {
+func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, proposals []GateProposal, byGate map[gateKey][]StartingPosition, rc reach, opts Options) (int, error) {
 	// A gate proposed for a relation stays safe only while it raises nothing
 	// together with the other gates still proposed. Demoting one removes its rule
 	// from the combination, and a combination with fewer rules opens strictly less
@@ -179,6 +239,9 @@ func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, propos
 	// falls on, and the final set, are the same as reweighing every pair every pass.
 	confirmed := map[confirmKey]bool{}
 	for {
+		if budgetSpent(opts) {
+			return unverifiedSafe(proposals, confirmed), nil
+		}
 		combined := withProposals(model, wm, proposals)
 		scope := rc.scopeOf(model, combined)
 		// The combined run from a starting position depends on the type and gate
@@ -195,12 +258,21 @@ func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, propos
 				if confirmed[ck] {
 					continue
 				}
+				if budgetSpent(opts) {
+					return unverifiedSafe(proposals, confirmed), nil
+				}
 				byRel, ok := gates[k]
 				if !ok {
 					var err error
 					byRel, err = combinedGate(model, combined, caveats, byGate[k], scope, k, opts)
 					if err != nil {
-						return err
+						return 0, err
+					}
+					if budgetSpent(opts) {
+						// combinedGate stopped partway, so byRel is incomplete; do not
+						// confirm or demote from it. The gates not yet weighed are left
+						// unverified.
+						return unverifiedSafe(proposals, confirmed), nil
 					}
 					gates[k] = byRel
 				}
@@ -220,9 +292,31 @@ func checkTogether(model *Model, wm *WriteModel, caveats CaveatEvaluator, propos
 		// until the set holds together. Demoting the gate under test, in proposal
 		// order, keeps which one is dropped the same on every run.
 		if !demoted {
-			return nil
+			return 0, nil
 		}
 	}
+}
+
+// budgetSpent reports whether the proposal pass has spent its shared work budget,
+// so the combined check stops rather than running without end on a large model.
+func budgetSpent(opts Options) bool {
+	return opts.budget != nil && opts.budget.Load() <= 0
+}
+
+// unverifiedSafe counts the safe gates the combined check had not yet held
+// against the others when it stopped. A gate still shown safe among them was not
+// weighed in company, so it may be unsafe there; the run reports the count.
+func unverifiedSafe(proposals []GateProposal, confirmed map[confirmKey]bool) int {
+	n := 0
+	for i := range proposals {
+		for _, gate := range proposals[i].Safe {
+			k := gateKey{typ: proposals[i].Type, target: gate}
+			if !confirmed[confirmKey{gate: k, relation: proposals[i].Relation}] {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // confirmKey is a gate proposed for a relation, the pair checkTogether weighs. A
@@ -248,6 +342,11 @@ type confirmKey struct {
 func combinedGate(model *Model, combined *WriteModel, caveats CaveatEvaluator, positions []StartingPosition, scope map[permRef]bool, k gateKey, opts Options) (map[string]Escalation, error) {
 	byRel := map[string]Escalation{}
 	for _, pos := range positions {
+		if budgetSpent(opts) {
+			// The budget ran out partway, so byRel is incomplete; the caller sees
+			// the budget is spent and stops rather than trusting it.
+			break
+		}
 		escs, err := escalationsScoped(model, combined, caveats, pos.Tuples, []Object{pos.Attacker}, scope, opts)
 		if err != nil {
 			return nil, err
@@ -345,6 +444,12 @@ func gateEscalates(model *Model, wm *WriteModel, caveats CaveatEvaluator, typ st
 	scope := rc.scopeOf(model, proposed)
 
 	for _, p := range byGate[gateKey{typ: typ, target: gate}] {
+		if budgetSpent(opts) {
+			// The budget ran out partway through the positions, so a run that found
+			// nothing is not a safe verdict. The caller reweighs none of this and
+			// leaves the gate unverified.
+			break
+		}
 		escs, err := escalationsScoped(model, proposed, caveats, p.Tuples, []Object{p.Attacker}, scope, opts)
 		if err != nil {
 			return Escalation{}, false, err

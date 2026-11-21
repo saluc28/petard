@@ -24,7 +24,7 @@ func BenchmarkCheckTogether(b *testing.B) {
 		b.Run(fmt.Sprintf("reuse/grants=%d", grants), func(b *testing.B) {
 			for b.Loop() {
 				p := cloneProposals(base)
-				if err := checkTogether(model, wm, nil, p, byGate, rc, opts); err != nil {
+				if _, err := checkTogether(model, wm, nil, p, byGate, rc, opts); err != nil {
 					b.Fatal(err)
 				}
 			}

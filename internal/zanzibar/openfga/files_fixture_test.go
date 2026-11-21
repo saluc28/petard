@@ -289,7 +289,7 @@ func TestRegistryCases(t *testing.T) {
 // raises whichever gate is weighed, and does not count against any of them.
 func TestFixtureSafeGates(t *testing.T) {
 	store, wm := fixtureStore(t)
-	proposals, err := zanzibar.SafeGates(store.Schema.Model, wm, store.Schema, zanzibar.Options{Now: time.Now()})
+	proposals, _, err := zanzibar.SafeGates(store.Schema.Model, wm, store.Schema, zanzibar.Options{Now: time.Now()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +312,7 @@ func TestFixtureSafeGatesAddNoRaise(t *testing.T) {
 	store, wm := fixtureStore(t)
 	model := store.Schema.Model
 	opts := zanzibar.Options{Now: time.Now()}
-	proposals, err := zanzibar.SafeGates(model, wm, store.Schema, opts)
+	proposals, _, err := zanzibar.SafeGates(model, wm, store.Schema, opts)
 	if err != nil {
 		t.Fatal(err)
 	}

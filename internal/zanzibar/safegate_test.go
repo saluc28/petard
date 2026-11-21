@@ -3,6 +3,7 @@ package zanzibar
 import (
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -52,7 +53,7 @@ func TestSafeGatesRaises(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proposals, err := SafeGates(model, &WriteModel{}, nil, Options{Now: time.Unix(0, 0)})
+	proposals, _, err := SafeGates(model, &WriteModel{}, nil, Options{Now: time.Unix(0, 0)})
 	if err != nil {
 		t.Fatalf("SafeGates: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestSafeGates(t *testing.T) {
 		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Holds: "owner"}, Subject: SubjectSpec{Types: []string{"user"}}},
 	}}
 
-	proposals, err := SafeGates(model, wm, nil, Options{Now: time.Unix(0, 0)})
+	proposals, _, err := SafeGates(model, wm, nil, Options{Now: time.Unix(0, 0)})
 	if err != nil {
 		t.Fatalf("SafeGates: %v", err)
 	}
@@ -145,7 +146,7 @@ func TestSafeGatesLeaveARaiseTheDeclaredRulesReachAlone(t *testing.T) {
 		{Resource: "doc", Relation: "reader", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Types: []string{"user"}}},
 	}}
 
-	proposals, err := SafeGates(model, wm, nil, Options{Now: time.Unix(0, 0)})
+	proposals, _, err := SafeGates(model, wm, nil, Options{Now: time.Unix(0, 0)})
 	if err != nil {
 		t.Fatalf("SafeGates: %v", err)
 	}
@@ -190,7 +191,7 @@ func TestSafeGatesCheckedTogether(t *testing.T) {
 		{Resource: "doc", Relation: "w", Operations: []Operation{Create}, Gate: Gate{Service: "provisioner"}, Subject: SubjectSpec{Types: []string{"user"}}},
 	}}
 
-	proposals, err := SafeGates(model, wm, nil, Options{Now: time.Unix(0, 0)})
+	proposals, _, err := SafeGates(model, wm, nil, Options{Now: time.Unix(0, 0)})
 	if err != nil {
 		t.Fatalf("SafeGates: %v", err)
 	}
@@ -245,7 +246,7 @@ func TestCheckTogetherReuseMatchesFullRecheck(t *testing.T) {
 			base := phase1Proposals(t, tc.model, tc.wm, nil, byGate, rc, opts)
 
 			reuse := cloneProposals(base)
-			if err := checkTogether(tc.model, tc.wm, nil, reuse, byGate, rc, opts); err != nil {
+			if _, err := checkTogether(tc.model, tc.wm, nil, reuse, byGate, rc, opts); err != nil {
 				t.Fatalf("checkTogether: %v", err)
 			}
 			full := cloneProposals(base)
@@ -259,6 +260,65 @@ func TestCheckTogetherReuseMatchesFullRecheck(t *testing.T) {
 	}
 }
 
+// SafeGates stops the whole pass at its work budget: a tiny budget leaves
+// proposal gates unverified and counted, while the default finishes a small
+// model with none left. This covers the per-relation pass and the Limits count,
+// which TestCheckTogetherBudget below does not reach.
+func TestSafeGatesBudget(t *testing.T) {
+	model := twoConflictModel(t)
+	wm := serviceGatedW(t)
+
+	tiny := &atomic.Int64{}
+	tiny.Store(5)
+	_, limits, err := SafeGates(model, wm, nil, Options{Now: time.Unix(0, 0), budget: tiny})
+	if err != nil {
+		t.Fatalf("SafeGates (tiny budget): %v", err)
+	}
+	if limits.ProposalsLeftOut == 0 {
+		t.Error("a tiny budget should leave proposal gates unverified")
+	}
+
+	_, full, err := SafeGates(model, wm, nil, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("SafeGates (default budget): %v", err)
+	}
+	if full.ProposalsLeftOut != 0 {
+		t.Errorf("a small model finishes within the budget, left = %d, want 0", full.ProposalsLeftOut)
+	}
+}
+
+// The combined check stops at its work budget instead of running without end: a
+// tiny budget leaves safe gates unverified in company, and no budget finishes
+// with none left. The findings do not pass through this check and are unaffected.
+func TestCheckTogetherBudget(t *testing.T) {
+	model := twoConflictModel(t)
+	wm := serviceGatedW(t)
+	opts := Options{Now: time.Unix(0, 0)}
+	rc := newReach(model, wm)
+	byGate := positionsByGate(startingPositionsForSubjects(model, opts))
+	base := phase1Proposals(t, model, wm, nil, byGate, rc, opts)
+
+	tiny := &atomic.Int64{}
+	tiny.Store(1)
+	budgeted := opts
+	budgeted.budget = tiny
+	left, err := checkTogether(model, wm, nil, cloneProposals(base), byGate, rc, budgeted)
+	if err != nil {
+		t.Fatalf("checkTogether (budgeted): %v", err)
+	}
+	if left == 0 {
+		t.Error("a tiny budget should leave safe gates unverified in company")
+	}
+
+	done, err := checkTogether(model, wm, nil, cloneProposals(base), byGate, rc, opts)
+	if err != nil {
+		t.Fatalf("checkTogether (no budget): %v", err)
+	}
+	if done != 0 {
+		t.Errorf("with no budget the check finishes, left = %d, want 0", done)
+	}
+}
+
 // phase1Proposals is the per-relation pass of safeGates, in the same order, so
 // the reference and the real checkTogether weigh the same proposals.
 func phase1Proposals(t testing.TB, model *Model, wm *WriteModel, caveats CaveatEvaluator, byGate map[gateKey][]StartingPosition, rc reach, opts Options) []GateProposal {
@@ -269,7 +329,7 @@ func phase1Proposals(t testing.TB, model *Model, wm *WriteModel, caveats CaveatE
 			if hasWriteRule(wm, ty.Name, r.Name) {
 				continue
 			}
-			p, err := relationGates(model, wm, caveats, ty, r, byGate, rc, opts)
+			p, _, err := relationGates(model, wm, caveats, ty, r, byGate, rc, opts)
 			if err != nil {
 				t.Fatalf("relationGates: %v", err)
 			}

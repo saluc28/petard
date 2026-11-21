@@ -22,7 +22,7 @@ func TestSafeGatesIsDeterministic(t *testing.T) {
 	wm := &zanzibar.WriteModel{}
 	opts := zanzibar.Options{}
 
-	first, err := zanzibar.SafeGates(schema.Model, wm, schema, opts)
+	first, _, err := zanzibar.SafeGates(schema.Model, wm, schema, opts)
 	if err != nil {
 		t.Fatalf("SafeGates: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestSafeGatesIsDeterministic(t *testing.T) {
 	}
 
 	for i := range 25 {
-		got, err := zanzibar.SafeGates(schema.Model, wm, schema, opts)
+		got, _, err := zanzibar.SafeGates(schema.Model, wm, schema, opts)
 		if err != nil {
 			t.Fatalf("SafeGates run %d: %v", i, err)
 		}

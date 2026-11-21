@@ -106,6 +106,12 @@ func Escalations(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []
 // weighs every target, the behavior the findings path and the graph keep, so
 // what they report is unchanged.
 func escalationsScoped(model *Model, wm *WriteModel, caveats CaveatEvaluator, start []Relationship, coalition []Object, scope map[permRef]bool, opts Options) ([]Escalation, error) {
+	// The proposal pass counts each scoped search against its budget, whether the
+	// search saturates or walks, so the budget bounds the pass by the one measure
+	// both paths share. The findings path sets no budget and is not counted.
+	if opts.budget != nil {
+		opts.budget.Add(-1)
+	}
 	e := newEngine(model, wm, caveats, start, coalition, opts)
 
 	targets := e.preExistingTargets()

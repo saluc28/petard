@@ -95,11 +95,12 @@ func runZanzibar(found zanzibarsetup.Found, now time.Time, propose bool) (zanzib
 	// closure they run is skipped when a quiet run will neither show nor
 	// serialize them, so a pipeline run does not pay for them.
 	if propose {
-		props, err := proposalsOf(found.Files, found.WriteModels)
+		props, limits, err := proposalsOf(found.Files, found.WriteModels)
 		if err != nil {
 			return zanzibarRun{}, err
 		}
 		run.proposals = props
+		run.limits.Add(limits)
 	}
 	return run, nil
 }
@@ -112,8 +113,9 @@ func runZanzibar(found zanzibarsetup.Found, now time.Time, propose bool) (zanzib
 // propose and does not appear. One entry per schema, in the order the files
 // sort, so the same inputs print the same bytes. Within a schema the relations
 // come in the order byReach gives.
-func proposalsOf(files []*zanzibarsetup.File, writeModels map[string]*zanzibar.WriteModel) ([]schemaProposals, error) {
+func proposalsOf(files []*zanzibarsetup.File, writeModels map[string]*zanzibar.WriteModel) ([]schemaProposals, zanzibar.Limits, error) {
 	var out []schemaProposals
+	var limits zanzibar.Limits
 	done := map[string]bool{}
 	for _, f := range files {
 		if done[f.SchemaPath] {
@@ -126,15 +128,16 @@ func proposalsOf(files []*zanzibarsetup.File, writeModels map[string]*zanzibar.W
 			// skeleton the author starts from, rather than nothing.
 			wm = &zanzibar.WriteModel{}
 		}
-		gates, err := zanzibar.SafeGates(f.Model, wm, f.Caveats, zanzibar.Options{})
+		gates, lim, err := zanzibar.SafeGates(f.Model, wm, f.Caveats, zanzibar.Options{})
 		if err != nil {
-			return nil, err
+			return nil, zanzibar.Limits{}, err
 		}
+		limits.Add(lim)
 		if len(gates) > 0 {
 			out = append(out, schemaProposals{product: f.Product, schema: f.SchemaPath, model: f.Model, proposals: byReach(gates)})
 		}
 	}
-	return out, nil
+	return out, limits, nil
 }
 
 // byReach puts first the relations whose writes can raise the most permissions, the

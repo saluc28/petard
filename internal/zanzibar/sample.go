@@ -77,6 +77,11 @@ type Limits struct {
 	// StartsLeftOut counts the objects a witness can link to or start from that were
 	// weighed through another of their shape.
 	StartsLeftOut int
+
+	// ProposalsLeftOut counts the safe gates whose company check did not finish once
+	// the proposal pass spent its work budget. A gate still shown safe among them
+	// was not held against the others, so it may be unsafe in their company.
+	ProposalsLeftOut int
 }
 
 // Add sums two limits, for an analysis of several samples.
@@ -86,6 +91,7 @@ func (l *Limits) Add(other Limits) {
 	l.HoldingsLeftOut += other.HoldingsLeftOut
 	l.SupposedLeftOut += other.SupposedLeftOut
 	l.StartsLeftOut += other.StartsLeftOut
+	l.ProposalsLeftOut += other.ProposalsLeftOut
 }
 
 // Lines say the limits in words, none when nothing stopped short.
@@ -110,6 +116,10 @@ func (l Limits) Lines() []string {
 	if l.StartsLeftOut > 0 {
 		lines = append(lines, fmt.Sprintf("%d %s a witness can link to or start from weighed through another of the same shape: a witness that needs that very object is not found",
 			l.StartsLeftOut, plural(l.StartsLeftOut, "object", "objects")))
+	}
+	if l.ProposalsLeftOut > 0 {
+		lines = append(lines, fmt.Sprintf("%d safe %s not held against the others, past the limit of the work the proposals may take: run with -quiet for the findings alone, or supply a write model",
+			l.ProposalsLeftOut, plural(l.ProposalsLeftOut, "gate", "gates")))
 	}
 	return lines
 }
