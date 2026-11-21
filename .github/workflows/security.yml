@@ -75,7 +75,7 @@ jobs:
       # The SARIF goes to code scanning, and the same results as JSON to the next
       # step.
       - name: gosec
-        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -no-fail -exclude=G104,G304,G404 -fmt sarif -out gosec-results.sarif -stdout -verbose json ./... > gosec-results.json
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -no-fail -exclude=G104,G304,G404 -fmt sarif -out gosec-results.sarif -stdout -verbose json ./... > gosec-results.json
 
       # -no-fail keeps findings out of the job's result, and a run that checked
       # nothing looks the same. This fails when no file was checked, or when a file
