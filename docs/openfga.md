@@ -22,6 +22,12 @@ is one of those of a store file and it holds a model or names one. Any other YAM
 left alone, and so is a directory whose name starts with a dot. A file named on the command line is
 read the same way, on its own.
 
+A directory of modules with no `fga.mod` is not read as one model: a directory may hold models that
+are not one, so petard does not combine modules on its own. An application that assembles its modules
+in code, and so ships no `fga.mod`, can hand petard the model it builds as JSON, which petard reads as
+it is; the refusal says so, and shows an `fga.mod` that lists the modules found under the path if you
+would rather write one.
+
 A tuple file can be JSON, YAML, JSONL or CSV, the formats fga reads
 (`internal/tuplefile/read.go:37-49` at openfga/cli v0.8.2). A tuple the model does not admit stops
 the run, since `fga model test` would have OpenFGA refuse it.

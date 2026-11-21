@@ -181,9 +181,45 @@ func (r reader) compileModel(rel string) (*Schema, error) {
 		return CompileJSON(name, string(raw))
 	}
 	if declaresModule(string(raw)) {
-		return nil, fmt.Errorf("%w: %s is a module of a modular model, and no fga.mod under the path lists it", ErrModel, name)
+		return nil, r.moduleGuidance(name)
 	}
 	return Compile(name, string(raw))
+}
+
+// moduleGuidance is the error for a .fga that opens as a module with no fga.mod to
+// list it. petard does not combine modules on its own, because a directory may hold
+// models that are not one, so instead of auto merging it names the two ways out: the
+// assembled JSON model it reads directly, and an fga.mod listing the modules, written
+// with the module files found under the path so it can be pasted in rather than
+// recalled. The guidance keeps the "no fga.mod" wording so a scripted check still
+// recognizes the case.
+func (r reader) moduleGuidance(name string) error {
+	var modules []string
+	_ = r.Walk(func(rel string) error {
+		if !strings.HasSuffix(strings.ToLower(rel), ".fga") {
+			return nil
+		}
+		if raw, err := r.Read(rel); err == nil && declaresModule(string(raw)) {
+			// The relative path, not the display name, since an fga.mod lists its
+			// modules relative to itself, and this block is written to be pasted in.
+			modules = append(modules, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	slices.Sort(modules)
+	if len(modules) == 0 {
+		modules = []string{name}
+	}
+	var contents strings.Builder
+	for _, module := range modules {
+		fmt.Fprintf(&contents, "    - %s\n", module)
+	}
+	return fmt.Errorf("%w: %s opens as a module of a modular model, and no fga.mod under the path lists it. "+
+		"petard does not combine modules on its own, since a directory may hold models that are not one. "+
+		"Either give petard the model assembled into one JSON model, which it reads directly (for example with "+
+		"fga model transform, or by having the application dump the model it builds), or add an fga.mod beside the "+
+		"modules that lists them:\n  schema: '1.2'\n  contents:\n%s",
+		ErrModel, name, contents.String())
 }
 
 // compileMod compiles the modular model an fga.mod lists, and returns the modules

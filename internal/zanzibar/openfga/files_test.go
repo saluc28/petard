@@ -136,6 +136,25 @@ func TestFindRefusesAModuleNoModFileLists(t *testing.T) {
 	}
 }
 
+// The refusal says how to go on: the JSON model petard reads directly, and an
+// fga.mod listing the module files found under the path, so the fix is to paste one
+// rather than to learn the format.
+func TestModuleErrorShowsHowToFixIt(t *testing.T) {
+	dir := write(t, map[string]string{
+		"core.fga":     "module core\ntype user\n",
+		"sub/wiki.fga": "module wiki\n",
+	})
+	_, err := Find([]string{dir})
+	if err == nil {
+		t.Fatal("Find read a modular model with no fga.mod, want an error")
+	}
+	for _, want := range []string{"fga model transform", "schema: '1.2'", "contents:", "- core.fga", "- sub/wiki.fga"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not mention %q:\n%v", want, err)
+		}
+	}
+}
+
 // A store file holds its model or names one, brings tuples and checks, and a position
 // for each. Tuples read from a file a store file names are held to the same model.
 func TestFindReadsAStoreFile(t *testing.T) {
