@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 )
 
 // TargetID is the identifier of the object a starting position is about: an
@@ -288,13 +289,20 @@ func tuple(resource Object, relation string, subject Subject) Relationship {
 // combine is the cartesian product of two lists of tuple sets, each pair joined
 // into one set with its tuples deduplicated: the ways to hold an intersection of
 // two expressions.
+//
+// The dedup compares a tuple's identity by value (resource, relation, subject),
+// not by building a key string for every comparison. A starting position's
+// tuples never carry a caveat or an expiration (tuple builds them without), so
+// the identity is the whole tuple, and value comparison is both exact and free
+// of the string garbage the key building otherwise makes, millions of times over
+// on a large schema.
 func combine(left, right [][]Relationship) [][]Relationship {
 	var out [][]Relationship
 	for _, l := range left {
 		for _, r := range right {
 			merged := slices.Clone(l)
 			for _, t := range r {
-				if !slices.ContainsFunc(merged, func(x Relationship) bool { return tupleKey(x) == tupleKey(t) }) {
+				if !containsTuple(merged, t) {
 					merged = append(merged, t)
 				}
 			}
@@ -302,6 +310,18 @@ func combine(left, right [][]Relationship) [][]Relationship {
 		}
 	}
 	return out
+}
+
+// containsTuple reports whether a set already holds a tuple, comparing the
+// identity by value. It is for the starting-position tuples combine builds,
+// which carry no caveat or expiration, so the identity is the whole tuple.
+func containsTuple(set []Relationship, t Relationship) bool {
+	for _, x := range set {
+		if x.Resource == t.Resource && x.Relation == t.Relation && x.Subject == t.Subject {
+			return true
+		}
+	}
+	return false
 }
 
 // dedupSets drops tuple sets that hold the same tuples as an earlier one, since
@@ -315,7 +335,7 @@ func dedupSets(sets [][]Relationship) [][]Relationship {
 			keys = append(keys, tupleKey(t))
 		}
 		slices.Sort(keys)
-		sig := fmt.Sprint(keys)
+		sig := strings.Join(keys, "\x00")
 		if seen[sig] {
 			continue
 		}
