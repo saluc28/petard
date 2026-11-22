@@ -204,13 +204,26 @@ type Gate struct {
 	Anyone bool
 
 	// Holds names a permission the writer must hold on the resource, empty when
-	// the gate is Anyone or a service.
+	// the gate is Anyone, HoldsOnSubject or a service.
 	Holds string
+
+	// HoldsOnSubject names a permission the writer must hold on the object the
+	// tuple's subject names, rather than on the resource. It is the gate of a
+	// write that grants through a subject the writer manages: granting a group a
+	// permission lands the tuple on the resource with the group's members as the
+	// subject, and the right that authorizes it is the right to edit that group,
+	// not a permission on the resource. Empty unless the gate is of that shape.
+	HoldsOnSubject string
 
 	// Service names a layer no end user can drive. A service gate is never held
 	// by the coalition, so a write behind it is out of the coalition's reach.
 	Service string
 }
+
+// onSubject reports whether the gate is held on the object the tuple's subject
+// names rather than on the resource, which moves the gate check from the
+// resource to each subject the write would name.
+func (g Gate) onSubject() bool { return g.HoldsOnSubject != "" }
 
 // UnmarshalYAML reads a gate written as the scalar anyone, or as a mapping with
 // holds or service.
@@ -223,23 +236,30 @@ func (g *Gate) UnmarshalYAML(node *yaml.Node) error {
 		*g = Gate{Anyone: true}
 		return nil
 	case yaml.MappingNode:
-		if err := onlyKeys(node, "holds", "service"); err != nil {
+		if err := onlyKeys(node, "holds", "holds_on_subject", "service"); err != nil {
 			return err
 		}
 		var m struct {
-			Holds   string `yaml:"holds"`
-			Service string `yaml:"service"`
+			Holds          string `yaml:"holds"`
+			HoldsOnSubject string `yaml:"holds_on_subject"`
+			Service        string `yaml:"service"`
 		}
 		if err := node.Decode(&m); err != nil {
 			return err
 		}
-		if (m.Holds == "") == (m.Service == "") {
-			return fmt.Errorf("%w: line %d: a gate holds a permission or names a service, not both and not neither", writemodel.ErrInvalid, node.Line)
+		set := 0
+		for _, v := range []string{m.Holds, m.HoldsOnSubject, m.Service} {
+			if v != "" {
+				set++
+			}
 		}
-		*g = Gate{Holds: m.Holds, Service: m.Service}
+		if set != 1 {
+			return fmt.Errorf("%w: line %d: a gate holds a permission on the resource, holds one on the subject, or names a service, and names exactly one of the three", writemodel.ErrInvalid, node.Line)
+		}
+		*g = Gate{Holds: m.Holds, HoldsOnSubject: m.HoldsOnSubject, Service: m.Service}
 		return nil
 	default:
-		return fmt.Errorf("%w: line %d: a gate is anyone, {holds: ...} or {service: ...}", writemodel.ErrInvalid, node.Line)
+		return fmt.Errorf("%w: line %d: a gate is anyone, {holds: ...}, {holds_on_subject: ...} or {service: ...}", writemodel.ErrInvalid, node.Line)
 	}
 }
 
@@ -399,6 +419,18 @@ func (m *WriteModel) validate() error {
 		if err := c.Gate.validate(fmt.Sprintf("creation of %s", c.Creates)); err != nil {
 			return err
 		}
+		// holds_on_subject gates a write by a permission on the tuple's subject.
+		// A creation and its On choices have no such subject, so the form is
+		// meaningless there and would misroute the gate check; reject it with a
+		// sentence rather than let it silently never hold.
+		if c.Gate.onSubject() {
+			return fmt.Errorf("%w: creation of %s uses holds_on_subject, which gates a write by its subject; a creation has none, so gate it with anyone or holds", writemodel.ErrInvalid, c.Creates)
+		}
+		for _, on := range c.On {
+			if on.Gate.onSubject() {
+				return fmt.Errorf("%w: creation of %s has an on %s gate with holds_on_subject, which has no subject to hold on", writemodel.ErrInvalid, c.Creates, on.Type)
+			}
+		}
 	}
 	return nil
 }
@@ -407,7 +439,7 @@ func (m *WriteModel) validate() error {
 // service, which UnmarshalYAML already enforces for a gate that was present. It
 // catches the gate a rule left out, decoded as the zero Gate.
 func (g Gate) validate(where string) error {
-	if !g.Anyone && g.Holds == "" && g.Service == "" {
+	if !g.Anyone && g.Holds == "" && g.HoldsOnSubject == "" && g.Service == "" {
 		return fmt.Errorf("%w: %s has no gate, and a write nobody is allowed to make is simply not declared", writemodel.ErrInvalid, where)
 	}
 	return nil

@@ -159,6 +159,16 @@ func TestParseWriteModelErrors(t *testing.T) {
 			want:    writemodel.ErrInvalid,
 		},
 		{
+			name:    "gate both holds and holds_on_subject",
+			content: "schema_version: 1\nmodel: relationship-writes\nwrites:\n  - resource: thing\n    relation: admin\n    operations: [create]\n    gate: { holds: edit, holds_on_subject: can_edit }\n    subject: [group#member]\n",
+			want:    writemodel.ErrInvalid,
+		},
+		{
+			name:    "holds_on_subject on a creation",
+			content: "schema_version: 1\nmodel: relationship-writes\ncreates:\n  - creates: group\n    gate: { holds_on_subject: can_edit }\n",
+			want:    writemodel.ErrInvalid,
+		},
+		{
 			name:    "gate word not anyone",
 			content: "schema_version: 1\nmodel: relationship-writes\nwrites:\n  - resource: document\n    relation: viewer\n    operations: [create]\n    gate: everyone\n",
 			want:    writemodel.ErrInvalid,
@@ -199,6 +209,24 @@ func TestParseWriteModelErrors(t *testing.T) {
 				t.Errorf("error = %v, want %v", err, tt.want)
 			}
 		})
+	}
+}
+
+// A gate held on the object the subject names, holds_on_subject, parses as such:
+// the form that gates granting a group a right by the right to edit the group,
+// rather than by a permission on the resource.
+func TestParseWriteModelSubjectGate(t *testing.T) {
+	content := []byte("schema_version: 1\nmodel: relationship-writes\nwrites:\n  - resource: thing\n    relation: admin\n    operations: [create]\n    gate: { holds_on_subject: can_edit }\n    subject: [group#member]\n")
+	m, err := ParseWriteModel(content)
+	if err != nil {
+		t.Fatalf("ParseWriteModel: %v", err)
+	}
+	if len(m.Writes) != 1 {
+		t.Fatalf("got %d write rules, want 1", len(m.Writes))
+	}
+	g := m.Writes[0].Gate
+	if g.HoldsOnSubject != "can_edit" || g.Holds != "" || g.Anyone || g.Service != "" {
+		t.Errorf("gate = %+v, want only HoldsOnSubject can_edit", g)
 	}
 }
 

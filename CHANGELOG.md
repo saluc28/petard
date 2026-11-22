@@ -4,6 +4,13 @@
 
 ### Added
 
+- A `relationship-writes` write model can gate a write by a permission held on the object the
+  tuple's subject names, `gate: {holds_on_subject: <permission>}`, where before a gate held a
+  permission on the object written or was open to anyone. It models a system where editing a group
+  is what authorizes granting the group a right: the grant lands on a resource with the group's
+  members as the subject, so the right that authorizes it sits on the group, not on the resource. The
+  escalation it surfaces is a coalition that edits a group it belongs to granting the group a right it
+  never held.
 - An identity map beside a Zanzibar schema, `model: identities`, says which node of BloodHound a
   subject of each type is, by a property of that node equal to the subject's id. `petard export`
   then joins each subject drawn as a principal to that node with `PTD_ActsAs`, which BloodHound

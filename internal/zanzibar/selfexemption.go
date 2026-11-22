@@ -172,6 +172,8 @@ func gatePhrase(g Gate) string {
 		return "anyone"
 	case g.Holds != "":
 		return "whoever holds " + g.Holds
+	case g.HoldsOnSubject != "":
+		return "whoever holds " + g.HoldsOnSubject + " on the subject"
 	case g.Service != "":
 		return "the " + g.Service + " service"
 	}

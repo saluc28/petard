@@ -91,6 +91,154 @@ func TestEscalationsGateChain(t *testing.T) {
 	}
 }
 
+// A write gated on a permission held on the tuple's subject, not on the
+// resource, is the shape of granting a group a right by editing the group: the
+// tuple lands on the resource with the group's members as the subject, and the
+// right to edit the group authorizes it. A coalition that may edit a group it
+// belongs to writes the group a right it never held and rises to it. Without the
+// right to edit the group the subject gate does not hold, the write is no move,
+// and nothing rises.
+func TestEscalationsSubjectGate(t *testing.T) {
+	grp := &Type{
+		Name: "grp",
+		Relations: []*Relation{
+			{Name: "member", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "can_edit", Allowed: []Allowed{{Type: "user"}, {Type: "grp", Relation: "member"}}},
+		},
+	}
+	thing := &Type{
+		Name: "thing",
+		Relations: []*Relation{
+			{Name: "admin", Allowed: []Allowed{{Type: "user"}, {Type: "grp", Relation: "member"}}},
+		},
+		Permissions: []*Permission{{Name: "use", Expr: Computed{Name: "admin"}}},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, grp, thing}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "thing", Relation: "admin", Operations: []Operation{Create}, Gate: Gate{HoldsOnSubject: "can_edit"}, Subject: SubjectSpec{Types: []string{"grp#member"}}},
+	}}
+
+	attacker := object("user:attacker")
+	target := object("thing:t1")
+	decisive := rel("thing:t1", "admin", "grp:g1#member")
+
+	// Held: the attacker belongs to g1 and may edit it, so it writes g1 the admin
+	// of a thing it did not hold, and rises to use through its membership.
+	held := []Relationship{
+		rel("grp:g1", "member", "user:attacker"),
+		rel("grp:g1", "can_edit", "user:attacker"),
+		rel("thing:t1", "admin", "user:victim"),
+	}
+	escs, err := Escalations(model, wm, nil, held, []Object{attacker}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Escalations: %v", err)
+	}
+	esc, ok := findEscalation(escs, target, "use", decisive)
+	if !ok {
+		t.Fatalf("no escalation on thing:t1#use by writing admin@grp:g1#member; got %+v", escs)
+	}
+	if esc.Before != No || esc.After != Yes {
+		t.Errorf("use goes from %s to %s, want no to yes", esc.Before, esc.After)
+	}
+
+	// Not held: the attacker belongs to g1 but may not edit it, so the subject
+	// gate does not hold, the write is no move, and the same raise does not occur.
+	notHeld := []Relationship{
+		rel("grp:g1", "member", "user:attacker"),
+		rel("thing:t1", "admin", "user:victim"),
+	}
+	escs, err = Escalations(model, wm, nil, notHeld, []Object{attacker}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Escalations (not held): %v", err)
+	}
+	if _, ok := findEscalation(escs, target, "use", decisive); ok {
+		t.Errorf("escalation found though the attacker cannot edit g1; got %+v", escs)
+	}
+}
+
+// The subject gate applies to a delete too: lifting a deny by deleting a tuple
+// is gated by the right to edit the object the tuple's subject names. A coalition
+// banned through a group it may edit deletes its own ban and access rises; without
+// the right to edit the group the delete is no move and the ban stands.
+func TestEscalationsSubjectGateDelete(t *testing.T) {
+	grp := &Type{
+		Name: "grp",
+		Relations: []*Relation{
+			{Name: "member", Allowed: []Allowed{{Type: "user"}}},
+			{Name: "can_edit", Allowed: []Allowed{{Type: "user"}, {Type: "grp", Relation: "member"}}},
+		},
+	}
+	thing := &Type{
+		Name: "thing",
+		Relations: []*Relation{
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}, {Type: "grp", Relation: "member"}}},
+			{Name: "banned", Allowed: []Allowed{{Type: "grp", Relation: "member"}}},
+		},
+		Permissions: []*Permission{{Name: "access", Expr: Exclusion{Base: Computed{Name: "viewer"}, Subtracted: []Expr{Computed{Name: "banned"}}}}},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, grp, thing}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "thing", Relation: "banned", Operations: []Operation{Delete}, Gate: Gate{HoldsOnSubject: "can_edit"}, Subject: SubjectSpec{Types: []string{"grp#member"}}},
+	}}
+
+	attacker := object("user:attacker")
+	target := object("thing:t1")
+	ban := rel("thing:t1", "banned", "grp:g1#member")
+
+	// deletedBanRaisesAccess reports whether an escalation raises thing:t1#access
+	// with the decisive write being the delete of the ban on grp:g1#member.
+	deletedBanRaisesAccess := func(escs []Escalation) bool {
+		for _, e := range escs {
+			if e.Object != target || e.Permission != "access" {
+				continue
+			}
+			if step, ok := e.Decisive(); ok && step.Delete && step.Relationship.String() == ban.String() {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Held: the attacker is a viewer but banned through g1, and may edit g1, so it
+	// deletes its own ban and access rises.
+	held := []Relationship{
+		rel("grp:g1", "member", "user:attacker"),
+		rel("grp:g1", "can_edit", "user:attacker"),
+		rel("thing:t1", "viewer", "user:attacker"),
+		ban,
+	}
+	escs, err := Escalations(model, wm, nil, held, []Object{attacker}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Escalations: %v", err)
+	}
+	if !deletedBanRaisesAccess(escs) {
+		t.Fatalf("no escalation on thing:t1#access by deleting the ban; got %+v", escs)
+	}
+
+	// Not held: the attacker cannot edit g1, so the subject gate does not hold, the
+	// delete is no move, and the ban stands.
+	notHeld := []Relationship{
+		rel("grp:g1", "member", "user:attacker"),
+		rel("thing:t1", "viewer", "user:attacker"),
+		ban,
+	}
+	escs, err = Escalations(model, wm, nil, notHeld, []Object{attacker}, Options{Now: time.Unix(0, 0)})
+	if err != nil {
+		t.Fatalf("Escalations (not held): %v", err)
+	}
+	if deletedBanRaisesAccess(escs) {
+		t.Errorf("ban lifted though the attacker cannot edit g1; got %+v", escs)
+	}
+}
+
 // One write can raise the same permission on two objects at once: joining a team
 // that views two documents raises view on both. The escalations come out in the
 // order of their targets on every run, since the caller keeps the first of a type

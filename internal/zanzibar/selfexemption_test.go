@@ -187,3 +187,25 @@ func TestRunUpgradesCoveredCandidates(t *testing.T) {
 type stubCaveats struct{}
 
 func (stubCaveats) Evaluate(string, map[string]any) (Level, error) { return Conditional, nil }
+
+// gatePhrase names a gate in a report. A subject gate, held on the object the
+// tuple's subject names, reads apart from one held on the resource.
+func TestGatePhrase(t *testing.T) {
+	tests := []struct {
+		name string
+		gate Gate
+		want string
+	}{
+		{name: "anyone", gate: Gate{Anyone: true}, want: "anyone"},
+		{name: "holds on the resource", gate: Gate{Holds: "edit"}, want: "whoever holds edit"},
+		{name: "holds on the subject", gate: Gate{HoldsOnSubject: "can_edit"}, want: "whoever holds can_edit on the subject"},
+		{name: "a service", gate: Gate{Service: "billing"}, want: "the billing service"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := gatePhrase(tt.gate); got != tt.want {
+				t.Errorf("gatePhrase = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

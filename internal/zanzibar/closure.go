@@ -480,12 +480,17 @@ func (e *engine) available(checker *Checker, state *stateSet, objects []Object) 
 			continue
 		}
 		for _, resource := range domain[rule.Resource] {
-			held, err := e.gateHolds(checker, rule.Gate, resource, objects)
-			if err != nil {
-				return nil, err
-			}
-			if !held {
-				continue
+			// A resource gate is decided once for the resource. A subject gate is
+			// decided per subject below, on the object each subject names, so the
+			// resource-level check does not apply and the write proceeds to it.
+			if !rule.Gate.onSubject() {
+				held, err := e.gateHolds(checker, rule.Gate, resource, objects)
+				if err != nil {
+					return nil, err
+				}
+				if !held {
+					continue
+				}
 			}
 			if canAdd {
 				for _, writer := range objects {
@@ -494,6 +499,13 @@ func (e *engine) available(checker *Checker, state *stateSet, objects []Object) 
 						return nil, err
 					}
 					for _, named := range subjects {
+						gated, err := e.subjectGateHolds(checker, rule.Gate, named.subject, objects)
+						if err != nil {
+							return nil, err
+						}
+						if !gated {
+							continue
+						}
 						rel := Relationship{Resource: resource, Relation: rule.Relation, Subject: named.subject, Caveat: named.caveat}
 						if state.has(rel) || (written[tupleIdentity(rel)] && !replaces(rule.Operations)) {
 							continue
@@ -505,6 +517,13 @@ func (e *engine) available(checker *Checker, state *stateSet, objects []Object) 
 			if canDelete {
 				for _, rel := range tuples {
 					if rel.Resource != resource || rel.Relation != rule.Relation {
+						continue
+					}
+					gated, err := e.subjectGateHolds(checker, rule.Gate, rel.Subject, objects)
+					if err != nil {
+						return nil, err
+					}
+					if !gated {
 						continue
 					}
 					allowed, err := e.mayDelete(checker, rule.Subject, rel, objects)
@@ -704,7 +723,35 @@ func (e *engine) gateHolds(checker *Checker, gate Gate, resource Object, objects
 	if gate.Anyone {
 		return true, nil
 	}
+	if gate.onSubject() {
+		// A subject gate is held on the object a subject names, which this call
+		// does not carry: it is decided in subjectGateHolds, per subject. Reaching
+		// here means a caller routed a subject gate to the resource check, so hold
+		// nothing rather than invent a reach, and leave the miss to a test.
+		return false, nil
+	}
 	level, err := e.coalitionLevel(checker, resource, gate.Holds, objects)
+	if err != nil {
+		return false, err
+	}
+	return level >= Conditional, nil
+}
+
+// subjectGateHolds narrows a write to the subjects the coalition may write when
+// the rule's gate is held on the object the subject names rather than on the
+// resource: granting a group a permission is authorized by the right to edit
+// that group, the object the tuple's subject names, not by a permission on the
+// resource. For any other gate it holds, since the resource-level check has
+// already decided it. A subject that names no object, a wildcard, can hold no
+// permission, so it never passes.
+func (e *engine) subjectGateHolds(checker *Checker, gate Gate, subject Subject, objects []Object) (bool, error) {
+	if !gate.onSubject() {
+		return true, nil
+	}
+	if subject.ID == WildcardID {
+		return false, nil
+	}
+	level, err := e.coalitionLevel(checker, subject.Object, gate.HoldsOnSubject, objects)
 	if err != nil {
 		return false, err
 	}

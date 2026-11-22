@@ -213,7 +213,7 @@ power of how many objects a coalition can write on. To hold that down each objec
 on the tuples a check of it can read. Those answer a check of it as the whole store does, so nothing
 found this way is false.
 
-A gate is asked of the object written, so a witness can use another object that already exists only
+A gate is usually asked of the object written, so a witness can use another object that already exists only
 by naming it: as the subject of a write, where the tuple can carry something back to the coalition,
 a userset or an object across a relation an arrow walks, or as what a creation is made on. Of each
 type that can be named so, one object of each shape comes along. What this gives up is a witness that
@@ -287,6 +287,15 @@ fails a run on a candidate. A schema a write model stands beside is analyzed eve
 validation file or store file: the escalation patterns run from the positions generated from the
 schema, so findings surface without such a file written by hand. A schema with neither a write
 model nor such a file has nothing to run from, and the report names it as one with no evidence.
+
+The right that lets a writer make a write is its gate: a permission it holds on the object written,
+or `anyone`. A gate written `holds_on_subject` is held instead on the object the tuple's subject
+names, the shape of a system where editing a group is what lets one grant the group a right: the
+grant lands on the resource with the group's members as the subject, so the right that authorizes it
+sits on the group, not on the resource. The engine asks such a gate of each subject a write would
+name, and what it finds is a coalition that edits a group it belongs to writing the group a right it
+never held.
+
 `petard export` reads the schemas the same way, and draws the escalations it finds as a BloodHound
 OpenGraph.
 
