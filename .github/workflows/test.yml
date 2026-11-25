@@ -16,10 +16,10 @@ jobs:
       fail-fast: false
       matrix:
         # The minimum declared in go.mod has to be tested: it is the version
-        # that decides whether the compatibility claim is true. It is not a
-        # choice, it is the higher of the floors of OPA and SpiceDB, and it
-        # moves when they move. stable is what most people will actually be on.
-        go: ["1.26", "stable"]
+        # that decides whether the compatibility claim is true, and with
+        # GOTOOLCHAIN=local a lower runner cannot even build. It tracks the go
+        # directive and moves with it. stable is what most people will be on.
+        go: ["1.27.4", "stable"]
 
     steps:
       - uses: actions/checkout@v7

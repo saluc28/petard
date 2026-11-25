@@ -144,7 +144,16 @@ func oracleFile(t *testing.T, path string) (string, int, int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	generated := filepath.Join(t.TempDir(), "oracle.yaml")
+	// A temp directory of our own, not t.TempDir(): its name carries the
+	// subtest's, and two fixtures with the same base name make the second
+	// "validation.yaml#01", whose "#" some versions of zed read as the start
+	// of a URL fragment and cut the path at.
+	dir, err := os.MkdirTemp("", "petard-oracle-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	generated := filepath.Join(dir, "oracle.yaml")
 	if err := os.WriteFile(generated, encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}

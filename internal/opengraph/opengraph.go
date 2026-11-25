@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -229,7 +228,7 @@ func AddIdentities(payload *bhgraph.Graph, links []identity.Link) error {
 			End: bhgraph.NodeRef(link.Principal),
 			Properties: map[string]any{
 				graph.PropIdentityProperty: link.Entry.Property,
-				graph.PropIdentityMap:      filepath.ToSlash(link.Map),
+				graph.PropIdentityMap:      strings.ReplaceAll(link.Map, "\\", "/"),
 			},
 		})
 	}
