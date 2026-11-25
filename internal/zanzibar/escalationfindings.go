@@ -50,6 +50,7 @@ func escalationFindings(s Sample, wm *WriteModel) ([]Match, Limits) {
 		}
 		seen[f.key()] = true
 		m := escalationMatch(f.patternID, f.esc)
+		m.Raise.Witness = witnessOf(f.esc, s.Model)
 		if proof, err := proofOf(s, f.esc.Escalation); err != nil {
 			m.Raise.NoProof = err.Error()
 		} else {
@@ -238,9 +239,24 @@ func witnessDetails(writes []WriteStep) []Detail {
 // creation writes on its own new object rides on the creation's gate, named at
 // the create step above it, so it carries no gate of its own.
 func stepText(w WriteStep) string {
-	var verb, what string
-	var gate Gate
-	var via string
+	verb, what, gate, via := stepFields(w)
+	line := verb + " " + what
+	if gate == (Gate{}) {
+		return line
+	}
+	who := gatePhrase(gate)
+	if via != "" {
+		who += ", through " + via
+	}
+	return line + " (" + who + ")"
+}
+
+// stepFields reads the parts of a witness step from the write alone: the verb,
+// what it writes or creates, the gate it passes, and the endpoint it goes
+// through. The schema position of the relation needs the model, so the caller
+// that has one resolves it. The two readers of a witness, the -v path lines and
+// petard why, share this so they describe a write the same way.
+func stepFields(w WriteStep) (verb, what string, gate Gate, via string) {
 	switch {
 	case w.Delete:
 		verb, what = "delete", w.Relationship.String()
@@ -263,16 +279,63 @@ func stepText(w WriteStep) string {
 			gate, via = w.Rule.Gate, w.Rule.Via
 		}
 	}
+	return verb, what, gate, via
+}
 
-	line := verb + " " + what
-	if gate == (Gate{}) {
-		return line
+// witnessOf resolves the writes of a classified escalation for a report: each
+// with the schema position of the relation it writes and the decisive write
+// marked. It is the one place a witness becomes the structured steps that
+// Raise.Witness carries, so petard why renders exactly the writes the closure
+// produced rather than finding them a second way.
+func witnessOf(c ClassifiedEscalation, model *Model) []WitnessStep {
+	decisive := stepKey(c.DecisiveWrite)
+	steps := make([]WitnessStep, 0, len(c.Writes))
+	for _, w := range c.Writes {
+		verb, what, gate, via := stepFields(w)
+		step := WitnessStep{
+			Verb:     verb,
+			Tuple:    what,
+			At:       relationPosition(model, w),
+			Decisive: stepKey(w) == decisive,
+		}
+		if gate != (Gate{}) {
+			step.Who, step.Via = gatePhrase(gate), via
+		}
+		steps = append(steps, step)
 	}
-	who := gatePhrase(gate)
-	if via != "" {
-		who += ", through " + via
+	return steps
+}
+
+// relationPosition is where the relation a write targets is declared in the
+// schema. It is the zero Position for a creation, which writes no relation, and
+// for a relation the model does not declare.
+func relationPosition(model *Model, w WriteStep) Position {
+	if model == nil || w.Relationship.Relation == "" {
+		return Position{}
 	}
-	return line + " (" + who + ")"
+	t := model.Type(w.Relationship.Resource.Type)
+	if t == nil {
+		return Position{}
+	}
+	r := t.Relation(w.Relationship.Relation)
+	if r == nil {
+		return Position{}
+	}
+	return r.Position
+}
+
+// stepKey identifies a write within a witness so the decisive write can be
+// found among the steps: the tuple and who wrote it, a bare creation by the
+// object it makes.
+func stepKey(w WriteStep) string {
+	switch {
+	case w.Creation != nil && w.Relationship.Relation == "":
+		return "create:" + w.Created.String()
+	case w.Delete:
+		return "del:" + w.Relationship.String() + "@by:" + w.Writer.String()
+	default:
+		return "add:" + w.Relationship.String() + "@by:" + w.Writer.String()
+	}
 }
 
 // categoryPhrase names the kind of a decisive write in a few words, for the

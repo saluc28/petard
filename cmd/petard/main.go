@@ -20,6 +20,7 @@ import (
 	"github.com/saluc28/petard/internal/cli/export"
 	"github.com/saluc28/petard/internal/cli/measure"
 	"github.com/saluc28/petard/internal/cli/patterns"
+	"github.com/saluc28/petard/internal/cli/why"
 )
 
 // version, commit and date are set by the linker on a release build. A binary
@@ -82,6 +83,7 @@ type command struct {
 var commands = []command{
 	{"analyze", "read policies, schemas and models and report what their decisions depend on", analyze.Run},
 	{"explain", "print what one pattern looks for, and what it will not report", explain.Run},
+	{"why", "lay out one escalation finding as a readable chain, with where to check it", why.Run},
 	{"patterns", "list the patterns this binary carries", patterns.Run},
 	{"export", "send the analysis of a policy to BloodHound as an OpenGraph payload", export.Run},
 	{"measure", "run the analysis over a body of Rego written by somebody else", measure.Run},

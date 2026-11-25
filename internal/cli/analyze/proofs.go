@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/saluc28/petard/internal/cli/render"
 	"github.com/saluc28/petard/internal/cli/zanzibarsetup"
@@ -106,29 +105,10 @@ func reportProofs(out io.Writer, dir string, written int, without []string) {
 // ptd-zan-007-document-edit, with a number after it when the same three come up again in
 // another schema.
 func proofName(taken map[string]bool, m zanzibar.Match) string {
-	base := slug(m.PatternID + "-" + m.Raise.Type + "-" + m.Raise.Permission)
+	base := render.Slug(m.PatternID + "-" + m.Raise.Type + "-" + m.Raise.Permission)
 	name := base
 	for n := 2; taken[name]; n++ {
 		name = base + "-" + strconv.Itoa(n)
 	}
 	return name
-}
-
-// slug turns a name into one a file can take on every system: lower case letters and
-// digits, with a hyphen for whatever runs of anything else stand between them.
-func slug(name string) string {
-	var b strings.Builder
-	gap := false
-	for _, r := range strings.ToLower(name) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			if gap && b.Len() > 0 {
-				b.WriteByte('-')
-			}
-			b.WriteRune(r)
-			gap = false
-			continue
-		}
-		gap = true
-	}
-	return b.String()
 }

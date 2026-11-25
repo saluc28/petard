@@ -4,6 +4,10 @@
 
 ### Added
 
+- `petard why <finding> <paths>` lays out one SpiceDB or OpenFGA escalation as a readable chain: the
+  writes that reach it in order, the decisive one marked, where each relation is declared, and how to
+  have the product's own checker confirm it. The finding is named by its pattern id, its name, or the
+  slug a report gives it. It is the witness `-v` already carries, shown for one finding on its own.
 - A `relationship-writes` write model can gate a write by a permission held on the object the
   tuple's subject names, `gate: {holds_on_subject: <permission>}`, where before a gate held a
   permission on the object written or was open to anyone. It models a system where editing a group

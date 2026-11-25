@@ -151,7 +151,9 @@ write, and the endpoint it goes through. Under it:
 - `also` is what else is true of it, a chain of writes or a time bound that does not hold.
 
 With `-v` each adds `path`, the writes in order that reach the raise. A run over several schemas adds
-`in`, the schema the rule belongs to. `petard explain <id>` has the full account of each.
+`in`, the schema the rule belongs to. `petard explain <id>` has the full account of each pattern,
+and `petard why <id>` lays out a single finding as a chain of its own: the writes that reach it,
+where each relation is declared, and the command to confirm it with `zed validate`.
 
 These escalations also leave petard as a BloodHound OpenGraph. `petard export` reads the same
 schemas and draws each as an edge pathfinding can walk; [concepts.md](concepts.md#the-graph) has

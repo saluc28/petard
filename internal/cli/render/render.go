@@ -91,6 +91,27 @@ func List(names []string) string {
 	return strings.Join(names[:last], ", ") + " and " + names[last]
 }
 
+// Slug turns a name into one a file or a command-line argument can take on
+// every system: lower case letters and digits, with a hyphen for whatever runs
+// of anything else stand between them. A proof directory and the finding
+// petard why takes are both named this way, so the two agree.
+func Slug(name string) string {
+	var b strings.Builder
+	gap := false
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			if gap && b.Len() > 0 {
+				b.WriteByte('-')
+			}
+			b.WriteRune(r)
+			gap = false
+			continue
+		}
+		gap = true
+	}
+	return b.String()
+}
+
 // Plain takes the markdown emphasis out of registry prose.
 //
 // The files are read on GitHub as well as here, and there the asterisks are

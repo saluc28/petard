@@ -162,7 +162,9 @@ engine agrees with them.
 ## The patterns
 
 Eight patterns apply to Zanzibar models. `petard explain <id>` prints each in full, and the files
-in `taxonomy-registry/zanzibar/` are the source of truth.
+in `taxonomy-registry/zanzibar/` are the source of truth. `petard why <finding>` works at the level
+of one finding of a run: it lays out the writes that reach it, where each relation is declared, and
+how to have the product's own checker confirm it.
 
 | ID | What it looks for |
 |---|---|

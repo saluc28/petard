@@ -210,6 +210,39 @@ type Raise struct {
 	// cannot write one, and NoProof then says why.
 	Proof   *Proof
 	NoProof string
+
+	// Witness is the shortest attack path, the writes in order, resolved for a
+	// report: what each writes, who the write model lets make it and through
+	// what, and where the relation it writes is declared. The one marked
+	// Decisive is the write the raise is classified by. petard why renders it,
+	// and -v prints the same writes as its path lines. It is empty on a match
+	// the closure reached without a witness.
+	Witness []WitnessStep
+}
+
+// WitnessStep is one write of an escalation's witness, resolved for a report.
+// The writes in order are the attack path, and the one marked Decisive is the
+// write after which the permission rose, the one the finding is classified by.
+type WitnessStep struct {
+	// Verb is write, delete or create.
+	Verb string
+
+	// Tuple is the relationship written or deleted, or the object a creation
+	// brings into being.
+	Tuple string
+
+	// Who is who the write model lets make the write, empty when no rule gates
+	// it; Via is the endpoint it goes through, empty when the write model names
+	// none.
+	Who string
+	Via string
+
+	// At is where the relation the write targets is declared in the schema, the
+	// zero Position for a creation, which writes no relation of its own.
+	At Position
+
+	// Decisive marks the write the permission rose after.
+	Decisive bool
 }
 
 // Detail is one labelled line of a match. The text says where to look in the

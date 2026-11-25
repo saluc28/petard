@@ -67,6 +67,88 @@ func TestStepTextDescribesEachKindOfWrite(t *testing.T) {
 	}
 }
 
+// Raise.Witness carries the same writes as the -v path, in the same order, so
+// petard why and the path lines show one witness and not two. The decisive write
+// is marked once, and a step that writes a relation carries where that relation
+// is declared.
+func TestRaiseWitnessMatchesThePathAndCarriesProvenance(t *testing.T) {
+	document := &Type{
+		Name: "document",
+		Relations: []*Relation{
+			{Name: "viewer", Allowed: []Allowed{{Type: "user"}}, Position: Position{File: "schema.zed", Line: 3, Column: 3}},
+			{Name: "editor", Allowed: []Allowed{{Type: "user"}}, Position: Position{File: "schema.zed", Line: 4, Column: 3}},
+		},
+		Permissions: []*Permission{
+			{Name: "edit", Expr: Computed{Name: "editor"}},
+			{Name: "view", Expr: Union{Children: []Expr{Computed{Name: "viewer"}, Computed{Name: "edit"}}}},
+		},
+	}
+	model, err := NewModel([]*Type{{Name: "user"}, document}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wm := &WriteModel{SchemaVersion: 1, Kind: "relationship-writes", Writes: []*WriteRule{
+		{Resource: "document", Relation: "viewer", Operations: []Operation{Create}, Gate: Gate{Anyone: true}, Subject: SubjectSpec{Self: true}, Via: "POST /viewers"},
+		{Resource: "document", Relation: "editor", Operations: []Operation{Create}, Gate: Gate{Holds: "view"}, Subject: SubjectSpec{Self: true}, Via: "POST /editors"},
+	}}
+
+	var escalation Match
+	for _, m := range Run(Sample{Model: model, Now: time.Unix(0, 0)}, wm) {
+		if m.Raise != nil {
+			escalation = m
+			break
+		}
+	}
+	if escalation.Raise == nil {
+		t.Fatal("no escalation found to read a witness from")
+	}
+
+	var path []string
+	for _, d := range escalation.Details {
+		if d.Verbose {
+			path = append(path, d.Text)
+		}
+	}
+	witness := escalation.Raise.Witness
+	if len(witness) != len(path) {
+		t.Fatalf("witness has %d steps, the path has %d lines", len(witness), len(path))
+	}
+
+	decisive, provenance := 0, false
+	for i, s := range witness {
+		if got := stepLine(s); got != path[i] {
+			t.Errorf("witness step %d = %q, path line = %q", i, got, path[i])
+		}
+		if s.Decisive {
+			decisive++
+		}
+		if s.At == (Position{File: "schema.zed", Line: 4, Column: 3}) {
+			provenance = true
+		}
+	}
+	if decisive != 1 {
+		t.Errorf("decisive writes marked = %d, want 1", decisive)
+	}
+	if !provenance {
+		t.Errorf("no step carries where the editor relation is declared:\n%+v", witness)
+	}
+}
+
+// stepLine rebuilds a witness step's description the way the -v path prints it,
+// so the test can hold the structured witness and the path text to the same
+// words independently of the code that makes both.
+func stepLine(s WitnessStep) string {
+	line := s.Verb + " " + s.Tuple
+	if s.Who == "" {
+		return line
+	}
+	who := s.Who
+	if s.Via != "" {
+		who += ", through " + s.Via
+	}
+	return line + " (" + who + ")"
+}
+
 // A raise is told once, under the rule of the witness kept. With that rule gone, a raise
 // with another way up comes back under the rule of that way, and one with none is gone.
 func TestARaiseWithAnotherWayUpComesBackUnderThatRule(t *testing.T) {

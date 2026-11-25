@@ -1,0 +1,20 @@
+# A write model for the schema beside it, so petard why has escalations to lay
+# out. viewer is writable by anyone; editor is gated on view, the weaker
+# permission, while writing it raises edit, the stronger one.
+schema_version: 1
+model: relationship-writes
+
+writes:
+  - resource: document
+    relation: viewer
+    operations: [create, touch]
+    gate: anyone
+    subject: [user]
+    via: "POST /viewers"
+
+  - resource: document
+    relation: editor
+    operations: [create, touch]
+    gate: { holds: view }
+    subject: [user]
+    via: "POST /editors"
