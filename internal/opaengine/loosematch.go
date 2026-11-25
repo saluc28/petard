@@ -141,7 +141,7 @@ func globForm(pattern string) matchForm {
 
 // regexForm reads a regex the way OPA compiles one, with Go's regexp syntax
 // (regex.match compiles its pattern with regexp.Compile, in getRegexp,
-// v1/topdown/regex.go:142 at v1.21.1).
+// v1/topdown/regex.go:143 at v1.22.4).
 //
 // An alternation is as loose as its loosest branch: ^/public|/health$ pins one
 // end in each branch and both in neither, so a value only has to start one way

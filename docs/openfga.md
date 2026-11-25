@@ -13,7 +13,7 @@ SpiceDB schema there:
   own;
 - a model in JSON, a mapping that holds `schema_version` and `type_definitions`;
 - a store file, the YAML format `fga model test` reads
-  (`internal/storetest/storedata.go:45-89` at openfga/cli v0.8.2): a `model` written inline or a
+  (`internal/storetest/storedata.go:45-89` at openfga/cli v0.9.0): a `model` written inline or a
   `model_file` naming one, the `tuples` written against it, written inline or named by `tuple_file`
   and `tuple_files`, and the `tests`.
 
@@ -29,7 +29,7 @@ it is; the refusal says so, and shows an `fga.mod` that lists the modules found 
 would rather write one.
 
 A tuple file can be JSON, YAML, JSONL or CSV, the formats fga reads
-(`internal/tuplefile/read.go:37-49` at openfga/cli v0.8.2). A tuple the model does not admit stops
+(`internal/tuplefile/read.go:37-49` at openfga/cli v0.9.0). A tuple the model does not admit stops
 the run, since `fga model test` would have OpenFGA refuse it.
 
 A check of a test can carry the context it supplies:
@@ -51,12 +51,12 @@ candidate. A `writes.yaml` beside the model, a `relationship-writes` write model
 finding: it says who writes a relation and, per condition parameter, whether the writer or the
 application fills it. A test that brings tuples of its own is a state of its own, because
 `fga model test` sends those tuples with that test's checks alone
-(`internal/storetest/localtest.go:237-265` at openfga/cli v0.8.2), so it is one analysis more. A
+(`internal/storetest/localtest.go:237-265` at openfga/cli v0.9.0), so it is one analysis more. A
 check that asks with a wildcard is left out. The `list_objects` and `list_users` tests are not
 read: they say nothing a check does not.
 
 Models are compiled with OpenFGA's own language module, v0.3.2, and validated with OpenFGA's own
-type system, from OpenFGA v1.22.1, which `petard version` names. A model that does not compile
+type system, from OpenFGA v1.23.0, which `petard version` names. A model that does not compile
 stops the run, as a policy that does not parse does, and so does one OpenFGA would refuse to store.
 
 Nothing outside the paths given is read. The files are opened through an `os.Root`, so a link that
@@ -65,10 +65,10 @@ is resolved against the directory of the file that names it, and one that is abs
 of the directory analyzed is refused.
 
 Conditions are evaluated with OpenFGA's own compiled conditions, so `ipaddress` and `in_cidr` behave
-as they do there (`internal/condition/types/ipaddress.go:45-49` at v1.22.1). A parameter the context
+as they do there (`internal/condition/types/ipaddress.go:45-49` at v1.23.0). A parameter the context
 leaves out stays unknown, and a condition that depends on it is conditional. A tuple with an inline
 `$expression`, which OpenFGA takes only behind an experimental flag (`pkg/server/write.go:58-66` at
-v1.22.1), reads as conditional: its expression is not evaluated.
+v1.23.0), reads as conditional: its expression is not evaluated.
 
 ## A running OpenFGA
 
@@ -86,7 +86,7 @@ petard analyze openfga://localhost:8081/01HVMMBCMGZNT3SED4Z17ECXCA
 
 This is how a model that lives only inside a running OpenFGA is analyzed. A tuple the model does not
 admit is left out, as a check of OpenFGA leaves it out (`internal/validation/validation.go:379-384`
-at v1.22.1). The server returns the compiled form, which holds no positions, so what the report says
+at v1.23.0). The server returns the compiled form, which holds no positions, so what the report says
 names the endpoint alone. A bearer token the server needs is read from `$PETARD_OPENFGA_TOKEN`, and
 the insecure scheme also lets that token reach a local server over plaintext.
 
@@ -159,7 +159,7 @@ Relations with no write rule
 has the details. For an OpenFGA model the skeleton proposes `create`.
 
 A tuple of OpenFGA carries no expiration (`openfga/v1/openfga.proto:161-199` in openfga/api at
-f153694bfc20), so the `expiration` field of a write rule has nothing to apply to.
+c0650ce2169b), so the `expiration` field of a write rule has nothing to apply to.
 
 ## How a finding is held
 

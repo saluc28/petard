@@ -370,7 +370,7 @@ func TestCheckALoopUnderAnExclusion(t *testing.T) {
 // result. On the base of an exclusion it waits, so a loop on another way of the base
 // fails the check even when the owner holds it; a union alone ends at the owner. A check
 // it sends on to other objects starts over, several parents of one type included. OpenFGA
-// answers the loop. zed validate v1.2.1 and fga model test v0.8.2 gave each of these
+// answers the loop. zed validate v1.2.1 and fga model test v0.9.0 gave each of these
 // answers on the same schema and relationships.
 func TestCheckALoopWhereSpiceDBWaitsForEveryResult(t *testing.T) {
 	model := func(approve Expr) *Model {

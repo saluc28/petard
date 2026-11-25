@@ -44,7 +44,7 @@ mechanism:
   description: >
     A relationship stored with the wildcard subject `user:*` is matched for any concrete subject of
     that type: a check of the relation resolves the wildcard form of the subject
-    (`internal/graph/check.go:383-401` at v1.56.2, which queries with `tuple.PublicWildcard` when a
+    (`internal/graph/check.go:408-414` at v1.57.1, which queries with `tuple.PublicWildcard` when a
     relation has a wildcard subject). A wildcard cannot itself be the subject of a check
     (`internal/graph/check.go:179`), so the coalition does not ask "does `user:*` hold view"; it
     writes the wildcard and then every member of the coalition holds the relation as a plain
@@ -129,12 +129,12 @@ false_positives:
     measurement: out-of-band
 
 not_a_lint_rule: >
-  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.56.2) and do not
+  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.57.1) and do not
   flag a relation that admits a wildcard, which is a declared, supported subject form. `zed validate`
   confirms that a written wildcard grants to everyone, which is what it is meant to do. That a
   coalition can write it is in the write model, not the schema.
   OpenFGA's validation of a model reads the model alone as well
-  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.23.0), and the checks of a store file stay right
   in the same way.
 
 fixture:
@@ -153,12 +153,12 @@ fixture:
 references:
   - title: authzed/spicedb, how a wildcard subject is matched
     note: >
-      At v1.56.2, `internal/graph/check.go:383-401`: a relation with a wildcard subject is checked
+      At v1.57.1, `internal/graph/check.go:408-414`: a relation with a wildcard subject is checked
       by querying the wildcard form `tuple.PublicWildcard`, so a stored `T:*` relationship satisfies
       the relation for any concrete subject of type `T`.
   - title: authzed/spicedb, a wildcard is not a check subject
     note: >
-      At v1.56.2, `internal/graph/check.go:179`: asking a check whose subject is `T:*` is an error,
+      At v1.57.1, `internal/graph/check.go:179`: asking a check whose subject is `T:*` is an error,
       so the wildcard is written and read through concrete subjects, not queried as one.
 
 verified:
@@ -172,7 +172,7 @@ verified:
     relationship names, and the engine's answers agree with SpiceDB's on the whole corpus the
     oracle runs.
     On `fixtures/vulnerable-openfga` the engine reports the same finding, and the test suite holds
-    its witnesses to OpenFGA v1.22.1: `Check` of a server in process does not allow the permission
+    its witnesses to OpenFGA v1.23.0: `Check` of a server in process does not allow the permission
     before the writes of the witness, and allows it after them. `TestOracle` holds the engine's
     answers to the same server over the fixture and OpenFGA's own test suite.
 
@@ -185,7 +185,7 @@ related:
 notes:
   - >
     In OpenFGA a relation admits a wildcard as `define viewer: [user:*]`, and a stored `user:*` tuple
-    answers for every user of the type (`internal/graph/check.go:490-545` at v1.22.1). OpenFGA also
+    answers for every user of the type (`internal/graph/check.go:488-543` at v1.23.0). OpenFGA also
     takes a check whose user is the wildcard, where SpiceDB refuses one: its own suite asks it
     (`assets/tests/consolidated_1_1_tests.yaml:2972-2976`). The engine has no question that stands
     for it, so such a check of a store file is left out.

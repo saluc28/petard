@@ -47,7 +47,7 @@ mechanism:
   description: >
     A relationship with a userset subject, `document#viewer@team:design#member`, grants `viewer` to
     the members of `team:design`: resolving the relation follows the userset subject to its own
-    relation and checks membership there (`internal/graph/check.go:765-779` at v1.56.2, which
+    relation and checks membership there (`internal/graph/check.go:775-789` at v1.57.1, which
     matches a subject against the members a userset resolves to). The coalition writes
     `team:design#member@attacker`, becomes a member, and holds `viewer` of the document through the
     grant the document already made to the team. The decisive write is the join.
@@ -135,12 +135,12 @@ false_positives:
     measurement: out-of-band
 
 not_a_lint_rule: >
-  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.56.2); a relation
+  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.57.1); a relation
   that grants to a userset is a supported, recommended construct. `zed validate` confirms the
   members of the userset hold the grant, which is what it is for. Who can become a member of the
   userset is in the write model, not the schema.
   OpenFGA's validation of a model reads the model alone as well
-  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.23.0), and the checks of a store file stay right
   in the same way.
 
 fixture:
@@ -159,7 +159,7 @@ fixture:
 references:
   - title: authzed/spicedb, how a userset subject is matched
     note: >
-      At v1.56.2, `internal/graph/check.go:765-779`: a relation with a userset subject is satisfied
+      At v1.57.1, `internal/graph/check.go:775-789`: a relation with a userset subject is satisfied
       for a subject that resolves to a member of that userset, so a relationship granting to
       `team#member` grants to whoever is a member of the team.
 
@@ -174,7 +174,7 @@ verified:
     grants to the team, and the engine's answers agree with SpiceDB's on the whole corpus the oracle
     runs.
     On `fixtures/vulnerable-openfga` the engine reports the same finding, and the test suite holds
-    its witnesses to OpenFGA v1.22.1: `Check` of a server in process does not allow the permission
+    its witnesses to OpenFGA v1.23.0: `Check` of a server in process does not allow the permission
     before the writes of the witness, and allows it after them. `TestOracle` holds the engine's
     answers to the same server over the fixture and OpenFGA's own test suite.
 
@@ -188,7 +188,7 @@ related:
 notes:
   - >
     In OpenFGA the userset is written `define viewer: [team#member]`, and a check follows a userset
-    tuple to the relation it names (`internal/graph/check.go:648-792` at v1.22.1).
+    tuple to the relation it names (`internal/graph/check.go:649-800` at v1.23.0).
   - >
     Every relation of OpenFGA can be asked by a check, so on the fixture the report also names
     `document#viewer`, which the join raises as it raises `document#view`.

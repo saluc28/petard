@@ -25,7 +25,7 @@ category:
     written `a - b` holds where `a` holds and `b` does not, so a relationship of `b` is what keeps
     the deny, and deleting it lifts the permission for whoever `a` already grants. A missing
     relationship grants nothing on its own, and an arrow with `all` over nothing holds for nobody
-    (`internal/graph/check.go:842-844` at v1.56.2), so the Zanzibar fail-open is the delete of a
+    (`internal/graph/check.go:852-854` at v1.57.1), so the Zanzibar fail-open is the delete of a
     present tuple, not a gap left by one never written.
 
 summary: >
@@ -44,8 +44,8 @@ preconditions:
 mechanism:
   description: >
     `access = view - banned` subtracts the members of `banned` from those of `view`: an exclusion
-    dispatches to a set difference (`internal/graph/check.go:552-555` at v1.56.2) and the excluded
-    sets are taken away from the base (`internal/graph/check.go:1233-1243`). A subject that holds
+    dispatches to a set difference (`internal/graph/check.go:562-565` at v1.57.1) and the excluded
+    sets are taken away from the base (`internal/graph/check.go:1243-1256`). A subject that holds
     `view` and is `banned` does not hold `access`. Deleting the `banned` relationship removes it
     from the subtracted set, and `access` holds for that subject with nothing else changed. The
     decisive write is the delete.
@@ -136,12 +136,12 @@ false_positives:
     measurement: out-of-band
 
 not_a_lint_rule: >
-  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.56.2), and an
+  SpiceDB's warnings read the schema alone (`pkg/development/warningdefs.go` at v1.57.1), and an
   exclusion is a correct construct they do not flag. `zed validate` confirms that a banned viewer
   is denied, which stays true until the ban is deleted. Who may delete the ban is in the write
   model, not the schema, so neither check can see the deny is one relationship away from gone.
   OpenFGA's validation of a model reads the model alone as well
-  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.23.0), and the checks of a store file stay right
   in the same way.
 
 fixture:
@@ -160,12 +160,12 @@ fixture:
 references:
   - title: authzed/spicedb, how an exclusion resolves
     note: >
-      At v1.56.2, `internal/graph/check.go:552-555` dispatches an exclusion to a set difference, and
-      `1233-1243` subtracts the members of the excluded sets from the base. A subject in the
+      At v1.57.1, `internal/graph/check.go:562-565` dispatches an exclusion to a set difference, and
+      `1243-1256` subtracts the members of the excluded sets from the base. A subject in the
       subtracted set does not hold the permission; removing it from that set restores it.
   - title: authzed/spicedb, an arrow with all over nothing
     note: >
-      At v1.56.2, `internal/graph/check.go:842-844`: an `all` arrow over a relation that reaches
+      At v1.57.1, `internal/graph/check.go:852-854`: an `all` arrow over a relation that reaches
       nothing holds for nobody, so a missing relationship does not fail open the way an empty
       `every` does in Rego. The Zanzibar fail-open is the delete of a present tuple.
 
@@ -180,7 +180,7 @@ verified:
     relationship is gone, and the engine's answers agree with SpiceDB's on the whole corpus the
     oracle runs.
     On `fixtures/vulnerable-openfga` the engine reports the same finding, and the test suite holds
-    its witnesses to OpenFGA v1.22.1: `Check` of a server in process does not allow the permission
+    its witnesses to OpenFGA v1.23.0: `Check` of a server in process does not allow the permission
     before the writes of the witness, and allows it after them. `TestOracle` holds the engine's
     answers to the same server over the fixture and OpenFGA's own test suite.
 
@@ -198,6 +198,6 @@ notes:
   - >
     In OpenFGA the exclusion is written `define access: view but not banned`. A check resolves both
     sides and allows where the base answers true and the subtracted side answers false
-    (`internal/graph/check.go:295-373` at v1.22.1), so deleting the tuple lifts the deny in the same
+    (`internal/graph/check.go:293-372` at v1.23.0), so deleting the tuple lifts the deny in the same
     way. A relation read only to subtract it stays a relation for the engine, so `document#banned`
     is not reported as raised.

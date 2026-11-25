@@ -5,7 +5,7 @@
 //
 // It is the one package of petard that imports OpenFGA, so that what the engine
 // knows about a model is what this package chose to tell it. Every OpenFGA line
-// cited in this package was read at v1.22.1.
+// cited in this package was read at v1.23.0.
 package openfga
 
 import (
@@ -215,10 +215,10 @@ func lower(file string, model *openfgav1.AuthorizationModel, at map[string]zanzi
 
 // walkOf is how a check of OpenFGA follows the tuples of a model. It reads a tuple's
 // condition before it follows the tuple, and leaves it behind when the condition does
-// not hold (internal/checkutil/checkutil.go:85-91, internal/graph/check.go:909-915).
+// not hold (internal/checkutil/checkutil.go:85-91, internal/graph/check.go:910-916).
 // And a relation that only reaches itself it can walk with a set of what it has seen,
 // for a subject that is not a userset, which meets no loop
-// (internal/graph/check.go:664-723, :925-932, internal/graph/recursive_resolver.go:277-300).
+// (internal/graph/check.go:664-723, :925-933, internal/graph/recursive_resolver.go:273-305).
 // It chooses that walk or dispatching each step, which meets the loop, by how fast
 // each has been (internal/planner/plan.go:47), and starts out expecting the walk to be
 // faster (internal/graph/recursive_resolver.go:28-30, internal/graph/default_resolver.go:34-37).
@@ -409,7 +409,7 @@ func parameterType(ref *openfgav1.ConditionParamTypeRef) string {
 // a parameter missing or a value of the wrong type, OpenFGA refuses to answer that
 // branch, even where the parameters given already settle the expression
 // (internal/condition/eval/eval.go:125-138), and the refusal only stands if no other
-// branch grants (internal/graph/check.go:197-200). Conditional is what stands in for
+// branch grants (internal/graph/check.go:205-207). Conditional is what stands in for
 // that refusal here, and the engine's three valued logic answers from what the tuples
 // say: a condition that cannot change the result does not hold it back, where OpenFGA
 // refuses on any it reads, and a tuple it cannot decide stays open, where OpenFGA drops

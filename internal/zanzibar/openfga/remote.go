@@ -80,7 +80,7 @@ const readTimeout = 30 * time.Second
 // positions, so what it reports names the endpoint alone.
 //
 // A tuple the model does not admit is left out, as a check of OpenFGA leaves it out
-// (internal/validation/validation.go:379-384 at v1.22.1): one written under an older
+// (internal/validation/validation.go:379-384 at v1.23.0): one written under an older
 // model counts for nothing rather than for what it used to mean.
 //
 // token is the bearer the server needs, empty when it needs none; the caller reads it

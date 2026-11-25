@@ -148,7 +148,7 @@ func (s Site) String() string {
 // (experimental_service_grpc.pb.go:43 in authzed-go v1.11.0).
 //
 // OpenFGA names its call Write (openfga/v1/openfga_service.proto:142 in openfga/api at
-// f153694bfc20), which says nothing outside the call, so a site is found by what its SDKs
+// c0650ce2169b), which says nothing outside the call, so a site is found by what its SDKs
 // name distinctly: the request a write takes, ClientWriteRequest, and the calls that
 // write or delete tuples (client/client.go:1506, :1920 and :1984 in go-sdk v0.8.3,
 // client.ts:220, :611 and :633 in js-sdk v0.9.7, openfga_sdk/client/models/write_request.py:6
@@ -166,7 +166,7 @@ var writeNames = map[string]string{
 // writePaths are the HTTP paths a write is posted to, for a source that calls the API
 // without an SDK: those of SpiceDB's gateway (permission_service.pb.gw.go:507, :524 and
 // :626 in authzed-go v1.11.0) and OpenFGA's (openfga_service.proto:144 in openfga/api at
-// f153694bfc20).
+// c0650ce2169b).
 var writePaths = []struct {
 	pattern *regexp.Regexp
 	product string

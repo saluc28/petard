@@ -39,7 +39,7 @@ type File struct {
 	Schema *Schema
 
 	// Validation is true for a validation file, the format zed validate reads
-	// (pkg/validationfile/fileformat.go:21-47 at v1.56.2).
+	// (pkg/validationfile/fileformat.go:21-47 at v1.57.1).
 	Validation bool
 
 	Relationships []zanzibar.Relationship
@@ -64,7 +64,7 @@ func (f *File) Sample(now time.Time) zanzibar.Sample {
 }
 
 // validationKeys are the top level keys of a validation file
-// (pkg/validationfile/fileformat.go:23-46 at v1.56.2, without the two that
+// (pkg/validationfile/fileformat.go:23-46 at v1.57.1, without the two that
 // belong to the format before the schema language). A YAML file whose keys
 // are not among them is something else, and is left alone.
 var validationKeys = map[string]bool{
@@ -182,7 +182,7 @@ func (r reader) readValidation(rel string) (*File, error) {
 		return nil, fmt.Errorf("%w: %s: %w", ErrValidationFile, name, err)
 	}
 	if v.SchemaFile != "" && v.Schema.Value != "" {
-		// pkg/validationfile/loader.go:124-126 at v1.56.2 refuses it too,
+		// pkg/validationfile/loader.go:124-126 at v1.57.1 refuses it too,
 		// rather than choosing one.
 		return nil, fmt.Errorf("%w: %s: holds both schema and schemaFile, and only one can be given", ErrValidationFile, name)
 	}
@@ -210,7 +210,7 @@ func (r reader) readValidation(rel string) (*File, error) {
 	}
 
 	if v.SchemaFile != "" {
-		// As SpiceDB resolves it (pkg/validationfile/loader.go:153-158 at v1.56.2).
+		// As SpiceDB resolves it (pkg/validationfile/loader.go:153-158 at v1.57.1).
 		schemaRel, err := r.Named(rel, v.SchemaFile)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s: schemaFile %s: %w", ErrValidationFile, name, v.SchemaFile, err)
@@ -243,7 +243,7 @@ func (r reader) readValidation(rel string) (*File, error) {
 }
 
 // parseAssertion reads one assertion the way SpiceDB does
-// (pkg/validationfile/blocks/assertions.go:82-128 at v1.56.2): a check in the
+// (pkg/validationfile/blocks/assertions.go:82-128 at v1.57.1): a check in the
 // notation of a relationship, then, after " with ", the context it supplies as
 // a JSON object.
 func parseAssertion(file string, node yaml.Node, level zanzibar.Level) (zanzibar.Assertion, error) {

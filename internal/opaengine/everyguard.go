@@ -293,8 +293,8 @@ func SameAnswer(ctx context.Context, a, b *Bundle, data *Data, decision string, 
 //
 // Partial evaluation does not write out everything it leaves. A comprehension
 // over something unknown, and a call to a function with an else, come back as
-// they are written, naming the rules they use (v1/topdown/eval.go:1241 and
-// 2215 at v1.21.1). Two answers that read the same can then mean different
+// they are written, naming the rules they use (v1/topdown/eval.go:1469 and
+// 2472 at v1.22.4). Two answers that read the same can then mean different
 // things, when one of those rules is not the same in the two bundles. So an
 // answer that still refers to a rule the second bundle changed, or to a rule
 // that uses one, is not shown equal.

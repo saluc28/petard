@@ -9,11 +9,11 @@ and what a run on them prints, and [concepts.md](concepts.md) what every engine 
 
 A Zanzibar model declares types of object, the relations a relationship can be stored against,
 and permissions computed from them. SpiceDB compiles its schema language into that form, the
-userset rewrites of the Zanzibar paper (`pkg/schemadsl/compiler/compiler.go:36-42` at v1.56.2),
+userset rewrites of the Zanzibar paper (`pkg/schemadsl/compiler/compiler.go:36-42` at v1.57.1),
 and Petard reads the compiled form rather than the text. The front end in
 `internal/zanzibar/spicedb` compiles a schema with SpiceDB's own compiler and lowers what it
 returns into the model of `internal/zanzibar`, which imports nothing from SpiceDB. OpenFGA compiles
-its language into the same rewrites (`pkg/typesystem/typesystem.go:1005-1124` at v1.22.1), and the
+its language into the same rewrites (`pkg/typesystem/typesystem.go:1005-1124` at v1.23.0), and the
 front end in `internal/zanzibar/openfga` lowers them into the same model.
 
 A relation lists the subjects a relationship of it may hold:
@@ -26,7 +26,7 @@ A relation lists the subjects a relationship of it may hold:
 
 OpenFGA writes the same list in brackets, `[user, group#member, user:*, user with ip_allowlist]`,
 and its tuples carry no expiration (`openfga/v1/openfga.proto:161-199` in openfga/api at
-f153694bfc20).
+c0650ce2169b).
 
 A permission is an expression over the relations and permissions of the same object:
 
@@ -46,7 +46,7 @@ both under one name: `define viewer: [user] or editor` stores tuples under `view
 relation and a permission of one name, the permission reading the relation through the expression
 `Stored`, the `_this` of the Zanzibar paper. So a relation of an OpenFGA model can be asked and can
 be raised, except for two kinds that stay relations alone: one an arrow walks, which OpenFGA holds
-to be direct (`pkg/typesystem/typesystem.go:1349-1353` at v1.22.1), and one read only to subtract
+to be direct (`pkg/typesystem/typesystem.go:1349-1353` at v1.23.0), and one read only to subtract
 it, where holding it opens nothing.
 
 A caveat is a condition a relationship can carry: a CEL expression over typed parameters, such as
@@ -62,32 +62,32 @@ answers: no, yes, or conditional. Conditional is yes if a caveat on the way turn
 the check leaves open when it does not supply every value the caveat reads. Combined, `+` takes
 the higher of two answers and `&` the lower. `a - b` is no where `b` is yes, and conditional
 where `b` is conditional and `a` holds at all. That is the three-valued logic SpiceDB applies to
-caveats it cannot settle (`internal/caveats/run.go:274-357` at v1.56.2). OpenFGA has no conditional
+caveats it cannot settle (`internal/caveats/run.go:274-357` at v1.57.1). OpenFGA has no conditional
 answer: a check that stops on a condition it cannot decide is refused, and the engine reads that as
 conditional.
 
-For a SpiceDB schema the rest follows SpiceDB, at v1.56.2:
+For a SpiceDB schema the rest follows SpiceDB, at v1.57.1:
 
 - A caveat is evaluated on the context the check supplies, with the context written on the
   relationship copied over it, so a value the relationship carries wins
-  (`internal/caveats/run.go:222-230`). This is what `PTD-ZAN-001` rests on.
+  (`internal/caveats/run.go:223-230`). This is what `PTD-ZAN-001` rests on.
 - A userset asked as a subject holds its own relation: a check of `member` on `group:eng` with
-  the subject `group:eng#member` is yes (`internal/graph/check.go:765-779`).
+  the subject `group:eng#member` is yes (`internal/graph/check.go:775-789`).
 - A wildcard cannot be the subject of a check, and asking one is an error
   (`internal/graph/check.go:179`).
 - `.all()` over a relation that reaches nothing holds for nobody
-  (`internal/graph/check.go:842-844`).
+  (`internal/graph/check.go:852-854`).
 - A relationship whose expiration is at the time of the run or before does not count, as the SQL
   datastores read it (`internal/datastore/common/sql.go:207-211`). The in-memory datastore still
   counts one that expires at that very instant (`internal/datastore/memdb/readonly.go:572`).
 
 A check that comes back to itself on the way is answered from the paths without the loop, and
 the answer says a loop was cut. SpiceDB follows the loop until its dispatch depth runs out, 50 by
-default (`pkg/cmd/server/server.go:100`), and the check then fails with an error
+default (`pkg/cmd/server/server.go:107`), and the check then fails with an error
 (`internal/dispatch/dispatch.go:133-135`). A way that grants ends the walk before that only where
-SpiceDB does not wait for every result (`internal/graph/check.go:1106` at v1.57.0). It waits on the
-base and the subtracted side of an exclusion and on the operands of an intersection (`:1142`,
-`:1198`, `:1207`), so a loop met there fails the check even beside a way that grants, and the engine
+SpiceDB does not wait for every result (`internal/graph/check.go:1116` at v1.57.1). It waits on the
+base and the subtracted side of an exclusion and on the operands of an intersection (`:1152`,
+`:1208`, `:1217`), so a loop met there fails the check even beside a way that grants, and the engine
 answers no, as it does for a loop met with no way that grants at all. A check sent on to another
 object starts over (`:224-227`), and `zed validate` answers the same for several objects sent at
 once. `internal/zanzibar/spicedb/testdata/loops.yaml` holds these answers, and the oracle below holds
@@ -95,7 +95,7 @@ them to SpiceDB. Petard
 stops at ten thousand nested checks, so a chain of relationships long enough to exhaust the stack
 ends in an error rather than a crash.
 
-For an OpenFGA model the rest follows OpenFGA, at v1.22.1:
+For an OpenFGA model the rest follows OpenFGA, at v1.23.0:
 
 - A condition is evaluated on the context the check supplies, with the context written on the tuple
   merged over it, so a value the tuple carries wins (`internal/condition/eval/eval.go:112-123`,
@@ -104,30 +104,33 @@ For an OpenFGA model the rest follows OpenFGA, at v1.22.1:
   (`internal/condition/eval/eval.go:131-137`), and a check that stops on it is refused with a
   validation error.
 - A tuple whose condition does not hold is not followed (`internal/checkutil/checkutil.go:85-91`,
-  `internal/graph/check.go:909-915`), so a loop behind it is never met.
-- A userset asked as a subject holds its own relation (`internal/graph/check.go:434-438`).
+  `internal/graph/check.go:910-916`), so a loop behind it is never met.
+- A userset asked as a subject holds its own relation (`internal/graph/check.go:432-435`).
 - A wildcard can be the subject of a check, as OpenFGA's own suite asks
-  (`assets/tests/consolidated_1_1_tests.yaml:2972-2976`). The engine has no question that stands for
+  (`assets/tests/consolidated_1_1_tests.yaml:2682-2683`). The engine has no question that stands for
   it, and leaves such a check out.
 
 A relation that only reaches itself OpenFGA can walk with a set of what it has seen, which meets no
-loop (`internal/graph/recursive_resolver.go:277-300`). Otherwise it dispatches each step, and a loop
+loop (`internal/graph/recursive_resolver.go:273-305`). Otherwise it dispatches each step, and a loop
 it meets on the side an exclusion subtracts means the exclusion is not allowed
-(`internal/graph/check.go:358-360`). The front end tells the engine which loops a check meets, in
+(`internal/graph/check.go:356-358`). The front end tells the engine which loops a check meets, in
 `Model.Walk`. Past its resolution depth, 25 by default (`pkg/server/config/config.go:25`), a check
-fails with an error (`internal/graph/check.go:415-416`).
+fails with an error (`internal/graph/check.go:413-414`).
 
 ## Held to SpiceDB
 
 The engine's answers are held to SpiceDB's own in CI. For every validation file of Petard's tests,
 the SpiceDB fixture `petard demo` carries, and every integration test configuration SpiceDB
-v1.56.2 ships, the engine answers every check the objects of the file allow, with objects and
+v1.57.1 ships, the engine answers every check the objects of the file allow, with objects and
 usersets as subjects, with no context and with each context the assertions of the file supply. It
 writes the answers into the file as assertions, and `zed validate`, from zed v1.2.1, says whether
 SpiceDB gives the same ones.
 
-On 77 files that is 26,746 checks, and SpiceDB agrees on all of them. Another 157 are left out:
-the engine answers that SpiceDB fails them at its depth limit on a loop, rather than answering. To
+On 78 files that is 26,796 checks, and SpiceDB agrees on all of them. Another 157 are left out,
+where the engine answers that SpiceDB fails them at its depth limit on a loop rather than
+answering. One file is left out for another reason: the zed binary bundles a SpiceDB older than the
+one compiled in, which answers an expired relationship as still holding, so the engine is held to
+that file's own assertions instead. To
 run it with a zed binary of your own:
 
 ```
@@ -137,7 +140,7 @@ PETARD_ZED=zed PETARD_ZANZIBAR_CORPUS="$(go list -m -f '{{.Dir}}' github.com/aut
 ## Held to OpenFGA
 
 The engine's answers are held to OpenFGA's own `Check` on every `go test`, with nothing to install
-and nothing reached over a network. A server from `pkg/server` of OpenFGA v1.22.1 runs in the test
+and nothing reached over a network. A server from `pkg/server` of OpenFGA v1.23.0 runs in the test
 process, as it ships, with its in-memory store. For every stage of Petard's test models, the OpenFGA
 fixture `petard demo` carries and the check tests OpenFGA ships (`assets/tests`), the engine answers
 every check the objects of the stage allow, with objects and usersets as subjects, with no context
@@ -153,7 +156,7 @@ few from one run to the next, and the test holds on each. To run it:
 go test ./internal/zanzibar/openfga -run 'TestOracle|TestCorpus' -v
 ```
 
-`TestCorpus` reads the answers OpenFGA's own suite asserts, 454 answers and 13 refusals, and the
+`TestCorpus` reads the answers OpenFGA's own suite asserts, 493 answers and 13 refusals, and the
 engine agrees with them.
 
 ## The patterns
@@ -174,8 +177,8 @@ in `taxonomy-registry/zanzibar/` are the source of truth.
 
 `PTD-ZAN-001` reads, for every parameter of every caveat a relation allows, whether the parameter
 is meant for the check and who writes the relation. A write may set any parameter of the caveat
-(`internal/relationships/validation.go:248-262` at SpiceDB v1.56.2,
-`internal/validation/validation.go:284-309` at OpenFGA v1.22.1), so the writer can fix such a
+(`internal/relationships/validation.go:248-262` at SpiceDB v1.57.1,
+`internal/validation/validation.go:284-309` at OpenFGA v1.23.0), so the writer can fix such a
 parameter once, for every check to come. In the fixtures those parameters are the caller's address
 and the time of the request.
 
@@ -343,7 +346,7 @@ repository is fixed. `-proofs` takes a directory that does not exist yet or is e
 belong outside the paths a run reads, where they would be read as inputs.
 
 The proofs of both fixtures are held to the products in CI: `zed validate` passes on every SpiceDB
-proof, and `fga model test` from openfga/cli v0.8.2 on every OpenFGA one. `go test` runs the OpenFGA
+proof, and `fga model test` from openfga/cli v0.9.0 on every OpenFGA one. `go test` runs the OpenFGA
 proofs on a server in the test process as well. Each proof fails once its last state holds the store
 before the writes.
 
@@ -361,7 +364,7 @@ A `writes` entry is a rule for one relation:
 | Field | What |
 |---|---|
 | `resource`, `relation` | the relation written |
-| `operations` | `create`, `touch`, `delete`. A `create` fails on a tuple that is there, whatever its caveat (`internal/datastore/memdb/readwrite.go:66-93` at SpiceDB v1.57.0, `pkg/storage/memory/memory.go:459-471` at OpenFGA v1.22.1), so only a rule that also touches or deletes can lift a conditional tuple |
+| `operations` | `create`, `touch`, `delete`. A `create` fails on a tuple that is there, whatever its caveat (`internal/datastore/memdb/readwrite.go:66-93` at SpiceDB v1.57.1, `pkg/storage/memory/memory.go:465-474` at OpenFGA v1.23.0), so only a rule that also touches or deletes can lift a conditional tuple |
 | `gate` | who may write: `anyone`, `{ holds: <permission> }` the writer holds on the resource, or `{ service: <name> }` for a write no end user can cause |
 | `subject` | what may be written as the subject: `self`, `any`, a list of types or usersets (`[user, "team#member"]`), or `{ holds: <permission> }` an object that holds the permission on the resource |
 | `wildcard` | whether the writer may write `T:*` |

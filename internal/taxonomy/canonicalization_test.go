@@ -257,10 +257,12 @@ func TestGrantsBeforeCanonicalizationOnPathsADocumentLists(t *testing.T) {
 	}
 }
 
-// A decision OPA panics on cannot be asked either, and is a candidate that says
-// why. OPA v1.21.2 panics on the partial evaluation of a negated rule whose
-// body holds an every over a part of the request left unknown.
-func TestGrantsBeforeCanonicalizationWhenOPAPanics(t *testing.T) {
+// A negated rule whose body holds an every over a part of the request left
+// unknown once made OPA v1.21.2 panic, and petard reported the decision as a
+// candidate it could not ask. OPA v1.22 evaluates it, so the decision is asked
+// and the grant before canonicalization is a finding. The defensive recover
+// stays for a panic from another input, held by TestRunSkipsAPatternWhenOPAPanics.
+func TestGrantsBeforeCanonicalizationUnderANegatedEvery(t *testing.T) {
 	policy := canonicalPolicy(`allow if {
 	startswith(input.path, "/public/")
 	not blocked
@@ -278,9 +280,9 @@ blocked if {
 	if err != nil {
 		t.Fatalf("GrantsBeforeCanonicalization() error = %v", err)
 	}
-	if len(findings) != 1 || findings[0].Verdict != VerdictCandidate ||
-		!strings.Contains(findings[0].Summary, "OPA panicked evaluating it") {
-		t.Errorf("results = %v, want a candidate saying OPA panicked", findings)
+	if len(findings) != 1 || findings[0].Verdict != VerdictFinding ||
+		!strings.Contains(findings[0].Summary, "grants input.path as it is written and refuses what it resolves to") {
+		t.Errorf("results = %v, want a finding on the path granted before canonicalization", findings)
 	}
 }
 

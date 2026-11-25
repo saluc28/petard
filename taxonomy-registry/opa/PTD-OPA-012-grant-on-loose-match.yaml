@@ -61,7 +61,7 @@ mechanism:
     }
   example_note: >
     The document rule of the fixture has the same shape, and it was measured with the rego package
-    of OPA v1.21.1: a request for `handbook/public/intro` is allowed, and a request for
+    of OPA v1.22.4: a request for `handbook/public/intro` is allowed, and a request for
     `public-incident-q3`, a document that is not public, is allowed too, because its id embeds the
     marker.
 
@@ -250,7 +250,7 @@ verified:
     policy computes and is not among them. The shape recognizer names `input.doc` the resource at
     level D, from its field name, so the substring is a finding at that level.
     The numbers behind it, `data.quill.verify.loose_match`, measured with the rego package of OPA
-    v1.21.1: a request for `handbook/public/intro`, where the marker is a whole component, is
+    v1.22.4: a request for `handbook/public/intro`, where the marker is a whole component, is
     allowed, a request for `public-incident-q3`, which embeds the marker, is allowed too, and a
     request for `secret-report` is refused.
     `regal` v0.42.0 reports no violations on `policy-v1`.

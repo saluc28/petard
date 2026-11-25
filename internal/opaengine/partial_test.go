@@ -966,10 +966,10 @@ func TestEvaluatedTurnsAPanicIntoAnError(t *testing.T) {
 	}
 }
 
-// OPA v1.21.2 panics on the partial evaluation of a negated rule whose body
-// holds an every over a value left unknown. Whichever way the OPA in use
-// answers, the question returns: with what is left of the decision, or with the
-// panic as an error.
+// A negated rule whose body holds an every over a value left unknown made OPA
+// panic through v1.21.2, and is evaluated from v1.22. Whichever way the OPA in
+// use answers, the question returns: with what is left of the decision, or, if
+// it panics, with the panic as an error.
 func TestResidualsOnANegatedEveryOverAnUnknown(t *testing.T) {
 	policy := `package p
 

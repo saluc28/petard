@@ -29,7 +29,7 @@ about how to reason about the attack surface of policy plus data.
 So there is guidance on how to *write* clean Rego and on how to *expose* OPA safely, and none on
 who can make a policy say what they want by writing the data it reads.
 
-For a SpiceDB schema, SpiceDB's own warnings read the schema alone. At v1.56.2 there are five
+For a SpiceDB schema, SpiceDB's own warnings read the schema alone. At v1.57.1 there are five
 (`pkg/development/warnings.go:19-31`, defined in `pkg/development/warningdefs.go`): a relation or
 a permission whose name ends with the name of its type, a permission that references itself, and
 three about arrows. One names a target that none of the types it walks to declares, one walks a
@@ -39,7 +39,7 @@ the answers SpiceDB gives, and those stay right until somebody writes a relation
 Neither asks who can write a relationship, or with which context.
 
 For an OpenFGA model, the validation OpenFGA runs when a model is written reads the model alone
-(`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1): names, type restrictions, rewrites and
+(`pkg/typesystem/typesystem.go:1170-1233` at v1.23.0): names, type restrictions, rewrites and
 conditions. The tests of a store file check the answers the file asserts, and those stay right until
 somebody writes a tuple differently. Neither asks who can write a tuple, or with which context.
 
@@ -103,7 +103,7 @@ model fails open and grants globally through different mechanisms:
 
 - FAIL-OPEN-ON-ABSENCE is `PTD-ZAN-002`, through a delete and not a gap: a relationship that is
   not there grants nothing, and an arrow with `all` over nothing gives nobody
-  (`internal/graph/check.go:842-844` at v1.56.2), where an `every` over an empty domain in Rego
+  (`internal/graph/check.go:852-854` at v1.57.1), where an `every` over an empty domain in Rego
   holds. The Zanzibar fail-open is deleting a tuple an exclusion subtracts, which lifts the deny
   it kept.
 - GLOBAL-SWITCH is `PTD-ZAN-003`, through a wildcard subject and not a document: there is no
@@ -291,7 +291,7 @@ flag (`awx/main/tasks/policy.py:49` and `194` at `bbda905`), where no recognizer
 
 Both declarations are level A. OPA takes a declaration of its input from either place too: it
 checks the input against a schema given in an annotation or on the command line
-(`opa eval --schema`, `cmd/eval.go:289` at `v1.21.1`). A declared subject that no decision reads
+(`opa eval --schema`, `cmd/eval.go:289` at `v1.22.4`). A declared subject that no decision reads
 is refused, the way an entrypoint that names no rule is.
 
 A declared subject says who is asking and nothing of what is asked for. The action and the
@@ -309,7 +309,7 @@ to say it. Gatekeeper queries `violation` on every constraint template
 carries the deny action (`pkg/webhook/policy.go:206` at `v3.21.0`). conftest counts every element
 of a rule named `deny` or `violation`, with a suffix or without, as a failure
 (`policy/engine.go:48` and `393` at `v0.71.0`). OPA's annotations mark an entrypoint and carry no
-direction (`v1/ast/annotations.go:28` at `v1.21.1`).
+direction (`v1/ast/annotations.go:28` at `v1.22.4`).
 
 So a decision that refuses is declared, `-deny-entrypoint k8sallowedrepos/violation`, like the
 decision itself and the subject. A name alone does not say it: a rule called `deny` can just as

@@ -77,7 +77,7 @@ func undone(p *zanzibar.Proof) *zanzibar.Proof {
 // file: each test on a store of its own, written with the model of the file and the
 // tuples of the test, and every check asked of it, where an error fails the check
 // (internal/storetest/tests.go:33, localtest.go:244 and testresult.go:24 at openfga/cli
-// v0.8.2). It returns the checks that fail.
+// v0.9.0). It returns the checks that fail.
 func runStoreFile(ctx context.Context, t *testing.T, s *server.Server, path string) []string {
 	t.Helper()
 	raw, err := os.ReadFile(path)

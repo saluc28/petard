@@ -509,10 +509,11 @@ func TestRunSaysWhenTheResidualBoundCuts(t *testing.T) {
 	}
 }
 
-// A decision OPA panics on does not end the report. OPA v1.21.2 panics on a
-// negated rule whose body holds an every over a value left unknown; the row of
-// the decision says so, and an OPA that answers prints what is left instead.
-func TestRunSurvivesADecisionOPAPanicsOn(t *testing.T) {
+// A decision OPA cannot evaluate does not end the report. A negated rule whose
+// body holds an every over a value left unknown made OPA panic through v1.21.2
+// and is evaluated from v1.22; the row of the decision names the panic when it
+// panics, and an OPA that answers prints what is left instead.
+func TestRunSurvivesANegatedEveryOverAnUnknown(t *testing.T) {
 	dir := t.TempDir()
 	policy := `package p
 

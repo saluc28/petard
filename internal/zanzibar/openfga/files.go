@@ -35,7 +35,7 @@ const modFile = "fga.mod"
 
 // File is one OpenFGA input found on disk: a model, or a store file that holds or
 // names one with the tuples and the tests written against it, the format fga model
-// test reads (internal/storetest/storedata.go:45-89 at openfga/cli v0.8.2).
+// test reads (internal/storetest/storedata.go:45-89 at openfga/cli v0.9.0).
 type File struct {
 	// Path is where the file was found, written with forward slashes on every
 	// system, as the files of a policy are.
@@ -52,7 +52,7 @@ type File struct {
 
 	// Test names the test of a store file this is read with, when the test brings
 	// tuples of its own: fga model test sends them with that test's checks alone
-	// (internal/storetest/localtest.go:237-265 at openfga/cli v0.8.2), so they make
+	// (internal/storetest/localtest.go:237-265 at openfga/cli v0.9.0), so they make
 	// a state of their own. It is empty for what the whole file shares.
 	Test string
 
@@ -166,7 +166,7 @@ func (r reader) read(rel string) ([]*File, error) {
 }
 
 // compileModel compiles the model in a file, told apart the way fga tells it apart
-// (internal/authorizationmodel/read-from-input.go:63-71 at openfga/cli v0.8.2).
+// (internal/authorizationmodel/read-from-input.go:63-71 at openfga/cli v0.9.0).
 func (r reader) compileModel(rel string) (*Schema, error) {
 	if strings.HasSuffix(rel, modFile) {
 		schema, _, err := r.compileMod(rel)
@@ -283,7 +283,7 @@ func isYAML(rel string) bool {
 }
 
 // storeKeys are the top level keys of a store file
-// (internal/storetest/storedata.go:82-89 at openfga/cli v0.8.2).
+// (internal/storetest/storedata.go:82-89 at openfga/cli v0.9.0).
 var storeKeys = []string{"name", "model", "model_file", "tuples", "tuple_file", "tuple_files", "tests"}
 
 // dslHeader finds the header a model in the DSL opens with.
@@ -423,7 +423,7 @@ func (r reader) readStore(rel string) ([]*File, error) {
 
 // storeModel compiles the model of a store file. The model written in the file wins
 // over a model_file, as it does for fga (internal/storetest/storedata.go:160-162 at
-// openfga/cli v0.8.2).
+// openfga/cli v0.9.0).
 func (r reader) storeModel(rel string, store storeFile) (*Schema, string, error) {
 	name := r.Display(rel)
 	if store.Model.Value != "" {
@@ -482,7 +482,7 @@ func lowerStoreTuple(schema *Schema, pos zanzibar.Position, tuple storeTuple) (z
 }
 
 // tupleFile reads the tuples of a file a store file names, in the formats fga reads
-// (internal/tuplefile/read.go:37-49 at openfga/cli v0.8.2).
+// (internal/tuplefile/read.go:37-49 at openfga/cli v0.9.0).
 func (r reader) tupleFile(schema *Schema, storeRel, named string) ([]zanzibar.Relationship, error) {
 	storeName := r.Display(storeRel)
 	rel, err := r.Named(storeRel, named)
@@ -536,7 +536,7 @@ func jsonlTuples(schema *Schema, name string, raw []byte) ([]zanzibar.Relationsh
 }
 
 // csvTuples reads a tuple file in CSV, by the names of its columns
-// (internal/tuplefile/csv.go:98-117 at openfga/cli v0.8.2).
+// (internal/tuplefile/csv.go:98-117 at openfga/cli v0.9.0).
 func csvTuples(schema *Schema, name string, raw []byte) ([]zanzibar.Relationship, error) {
 	reader := csv.NewReader(bytes.NewReader(raw))
 	header, err := reader.Read()
@@ -650,7 +650,7 @@ func parseChecks(schema *Schema, name string, test storeTest) ([]zanzibar.Assert
 }
 
 // oneOrMany is the values of a field a check can write singly or as a list, not both
-// and not neither (internal/storetest/storedata.go:237-258 at openfga/cli v0.8.2).
+// and not neither (internal/storetest/storedata.go:237-258 at openfga/cli v0.9.0).
 func oneOrMany(one string, many []string, field string) ([]string, error) {
 	switch {
 	case one != "" && len(many) > 0:

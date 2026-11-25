@@ -17,7 +17,7 @@ var ErrRelationship = errors.New("spicedb: invalid relationship")
 // SpiceDB, document:readme#viewer@user:alice, with a caveat and an expiration
 // written after it in brackets. Blank lines and lines starting with // are
 // skipped, as in the relationships block of a validation file
-// (pkg/validationfile/blocks/relationships.go at v1.56.2). firstLine is the
+// (pkg/validationfile/blocks/relationships.go at v1.57.1). firstLine is the
 // line of the file the text starts on, so that positions point into the file.
 func ParseRelationships(file string, firstLine int, text string) ([]zanzibar.Relationship, error) {
 	var out []zanzibar.Relationship

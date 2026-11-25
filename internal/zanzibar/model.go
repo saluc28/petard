@@ -64,10 +64,10 @@ type Walk struct {
 	Fixpoint map[FixpointWalk]bool
 
 	// AnswersLoops is true when the product notices a loop it meets and answers the
-	// check without it, as OpenFGA does (internal/graph/check.go:419-428 and :478-491
-	// at v1.22.1). SpiceDB follows a loop to its dispatch depth limit and fails the
+	// check without it, as OpenFGA does (internal/graph/check.go:417-426 and :473-486
+	// at v1.23.0). SpiceDB follows a loop to its dispatch depth limit and fails the
 	// check, unless a way that grants ends the walk first, which it does only where it
-	// does not wait for every result (internal/graph/check.go:1106 at v1.57.0).
+	// does not wait for every result (internal/graph/check.go:1116 at v1.57.1).
 	AnswersLoops bool
 }
 

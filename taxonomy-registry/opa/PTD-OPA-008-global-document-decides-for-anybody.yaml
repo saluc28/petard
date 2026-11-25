@@ -95,7 +95,7 @@ detection:
         the rest of the request unknown and the document left unknown too. The decision depends on
         the document when something partial evaluation leaves mentions it, or names a rule of the
         policy that reads it: a comprehension over something unknown and a call to a function with
-        an else come back as they are written (`v1/topdown/eval.go:1241` and `2215` at v1.21.1).
+        an else come back as they are written (`v1/topdown/eval.go:1469` and `2472` at v1.22.4).
         A rule with an else would too (`eval.go:2967`), and the engine rewrites its branches into
         rules that exclude each other before it asks, so the branch the stranger takes is the one
         measured.

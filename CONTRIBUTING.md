@@ -38,7 +38,8 @@ the rest of the rules, and `taxonomy-registry/SCHEMA.md` has the fields.
 
 ## Getting set up
 
-Go 1.26.9 or newer, which is the floor SpiceDB v1.57.0 declares.
+Go 1.27.4 or newer, which go.mod declares for the net/http and crypto/x509
+toolchain fixes govulncheck reported.
 
 ```
 go build ./...
@@ -85,7 +86,7 @@ PETARD_ZED=zed PETARD_ZANZIBAR_CORPUS="$(go list -m -f '{{.Dir}}' github.com/aut
 
 It is held to OpenFGA by `TestOracle` in `internal/zanzibar/openfga`, which needs
 nothing installed and runs with every `go test`. It starts a server from
-`pkg/server` of OpenFGA v1.22.1 in the test process, and asks it every check the
+`pkg/server` of OpenFGA v1.23.0 in the test process, and asks it every check the
 objects of `testdata`, the OpenFGA fixture and the test suite OpenFGA ships allow.
 `TestFixtureWitnessesHoldOnCheck` makes the writes of every escalation found on the
 fixture on a real store, and asks `Check` before and after.

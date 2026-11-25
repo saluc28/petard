@@ -61,7 +61,7 @@ mechanism:
     }
   example_note: >
     The internal sync rule of the fixture has the same shape, and it was measured with the rego
-    package of OPA v1.21.1: a call from another workload is refused, the same call from the sync
+    package of OPA v1.22.4: a call from another workload is refused, the same call from the sync
     service account is allowed, and the agent identity the mesh pins is allowed too, which is the
     point, since the policy reads the two identities the same way.
 
@@ -215,7 +215,7 @@ verified:
     point and not in the write model. Without an `assumable_by` entry it is a candidate, and without
     a declaration the pattern does not run.
     The numbers behind it, `data.quill.verify.assumable_identity`, measured with the rego package of
-    OPA v1.21.1: a call from another workload is refused, the same call from the sync service account
+    OPA v1.22.4: a call from another workload is refused, the same call from the sync service account
     is allowed, and the pinned agent identity is allowed too, since the policy reads the two
     identities the same way.
     `regal` v0.42.0 reports no violations on `policy-v1`.

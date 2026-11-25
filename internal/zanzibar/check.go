@@ -12,7 +12,7 @@ import (
 // or unconditionally. The order is the order of the constants, so that a
 // conjunction is the lower of two levels and a disjunction the higher, which is
 // the three valued logic SpiceDB applies to partially evaluated caveats
-// (internal/caveats/run.go at v1.56.2).
+// (internal/caveats/run.go at v1.57.1).
 type Level int
 
 const (
@@ -83,7 +83,7 @@ type CaveatEvaluator interface {
 var ErrUnknown = errors.New("zanzibar: not declared")
 
 // ErrWildcardSubject is returned for a check whose subject is a wildcard, which
-// SpiceDB refuses as well (internal/graph/check.go:179 at v1.56.2): a wildcard
+// SpiceDB refuses as well (internal/graph/check.go:179 at v1.57.1): a wildcard
 // is something a relationship grants to, not somebody who asks.
 var ErrWildcardSubject = errors.New("zanzibar: a wildcard cannot be checked as a subject")
 
@@ -91,8 +91,8 @@ var ErrWildcardSubject = errors.New("zanzibar: a wildcard cannot be checked as a
 // than maxDepth levels deep. The relationships come from files the engine is
 // pointed at, and a chain long enough would otherwise exhaust the stack, which
 // in Go ends the process rather than failing the check. SpiceDB stops much
-// earlier, at a dispatch depth of 50 by default (pkg/cmd/server/server.go:100
-// at v1.56.2).
+// earlier, at a dispatch depth of 50 by default (pkg/cmd/server/server.go:107
+// at v1.57.1).
 var ErrTooDeep = errors.New("zanzibar: relationships nest too deep")
 
 // maxDepth is how many checks may be open at once, one inside the other.
@@ -151,8 +151,8 @@ type Checker struct {
 
 	// waits is true where SpiceDB waits for every result of what it is
 	// answering: the base and the subtracted side of an exclusion, and the
-	// operands of an intersection (internal/graph/check.go:1142, :1198 and :1207
-	// at v1.57.0). A way that grants does not end the walk there, so a loop on
+	// operands of an intersection (internal/graph/check.go:1152, :1208 and :1217
+	// at v1.57.1). A way that grants does not end the walk there, so a loop on
 	// another way fails the check.
 	waits bool
 }
@@ -194,7 +194,7 @@ func NewChecker(model *Model, relationships []Relationship, caveats CaveatEvalua
 // Check says how far subject holds name, a relation or a permission, on
 // resource. context is what the check supplies for caveats, nil when it
 // supplies nothing; a relationship's own context is written over it, as SpiceDB
-// does (internal/caveats/run.go:222-230 at v1.56.2).
+// does (internal/caveats/run.go:223-230 at v1.57.1).
 func (c *Checker) Check(resource Object, name string, subject Subject, context map[string]any) (Result, error) {
 	if t := c.model.Type(resource.Type); t == nil || !t.Declares(name) {
 		return Result{}, fmt.Errorf("%w: %s#%s", ErrUnknown, resource.Type, name)
@@ -245,7 +245,7 @@ func (c *Checker) check(resource Object, name string, subject Subject) (Level, c
 	}
 	if subject.Relation == name && subject.Object == resource {
 		// The members of a relation of an object are members of it, whatever
-		// is stored (internal/graph/check.go:765-779 at v1.56.2).
+		// is stored (internal/graph/check.go:775-789 at v1.57.1).
 		return Yes, 0, nil
 	}
 	if len(c.inProgress) >= maxDepth {
@@ -275,7 +275,7 @@ func (c *Checker) check(resource Object, name string, subject Subject) (Level, c
 
 // send answers name on another object, or on the same one under another name, as SpiceDB
 // answers a check it dispatches: over again, without waiting for every result. That is
-// what it does with a check of one object (internal/graph/check.go:224-227 at v1.57.0),
+// what it does with a check of one object (internal/graph/check.go:224-227 at v1.57.1),
 // and what zed validate answers for several objects of a type sent on together, as
 // TestCheckALoopWhereSpiceDBWaitsForEveryResult holds.
 func (c *Checker) send(resource Object, name string, subject Subject) (Level, cuts, error) {
@@ -294,8 +294,8 @@ func (c *Checker) waitForAll() func() {
 }
 
 // endsAt says whether a way that grants ends the walk where it is answering: it does where
-// the product does not wait for every result (internal/graph/check.go:430 and :1106 at
-// v1.57.0). Ending there, the product never meets a loop on another way, so a failure on
+// the product does not wait for every result (internal/graph/check.go:440 and :1116 at
+// v1.57.1). Ending there, the product never meets a loop on another way, so a failure on
 // one is forgotten.
 func (c *Checker) endsAt(level Level) bool {
 	return level == Yes && !c.waits
@@ -439,7 +439,7 @@ func (c *Checker) eval(resource Object, expr Expr, subject Subject) (Level, cuts
 			// it: its No is the provisional one a cut answers with, which proves
 			// nothing once it is negated. So the exclusion grants nothing, which
 			// is the answer OpenFGA gives when it meets the loop
-			// (internal/graph/check.go:358-360 at v1.22.1). SpiceDB fails such a
+			// (internal/graph/check.go:356-358 at v1.23.0). SpiceDB fails such a
 			// check at its depth limit instead, which grants nothing either.
 			if cut&cutMet != 0 {
 				return No, cycle, nil
@@ -503,7 +503,7 @@ func (c *Checker) arrow(resource Object, a Arrow, subject Subject) (Level, cuts,
 	how := anyOf
 	if a.All {
 		if len(walked) == 0 {
-			// internal/graph/check.go:842-844 at v1.56.2: nothing to walk is
+			// internal/graph/check.go:852-854 at v1.57.1: nothing to walk is
 			// nobody, unlike an every over an empty domain in Rego.
 			return No, 0, nil
 		}

@@ -28,7 +28,7 @@ var ErrProof = errors.New("openfga: no proof")
 //
 // fga model test runs each test on a store of its own, written with the tuples of the
 // file and those of the test (internal/storetest/tests.go:33 and localtest.go:244 at
-// openfga/cli v0.8.2), so the file has no tuples outside its tests and the tuples of a
+// openfga/cli v0.9.0), so the file has no tuples outside its tests and the tuples of a
 // test are the whole store of its state.
 //
 // OpenFGA answers a check that waits on a condition it has no context for with an error,

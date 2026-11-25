@@ -52,11 +52,8 @@ var (
 // EvaluatorPanicError is returned when OPA panics while it evaluates a decision.
 //
 // A panic inside the evaluator is a defect of OPA and says nothing about the
-// policy: at v1.21.1, partial evaluation of a negated rule whose body holds an
-// every over a value left unknown panics (containsNestedRefOrCall,
-// v1/topdown/eval.go:4891). It comes back as an error so that the question it
-// interrupted is reported as one nobody could ask, and the ones around it are
-// still asked.
+// policy. It comes back as an error so that the question it interrupted is
+// reported as one nobody could ask, and the ones around it are still asked.
 type EvaluatorPanicError struct {
 	// Decision is the decision OPA was asked about.
 	Decision string
@@ -82,7 +79,7 @@ func panicAs(err *error, decision string) {
 // EvaluatorPanicError.
 //
 // OPA closes the transaction it opens once the evaluation has returned, not in
-// a defer (Partial, v1/rego/rego.go:1641 and :1642 at v1.21.1), so a panic would
+// a defer (Partial, v1/rego/rego.go:1653 and :1654 at v1.22.4), so a panic would
 // leave its read of the store open. A transaction handed to it is closed here,
 // whichever way the evaluation ends.
 func evaluated[T any](ctx context.Context, data *Data, decision string, evaluate func(storage.Transaction) (T, error)) (result T, err error) {
@@ -118,11 +115,11 @@ var documentExts = []string{".json", ".yaml", ".yml"}
 // name: a users.json holding {"users": {...}} directly inside the directory
 // given here lands on data.users, and one inside a tenants/ subdirectory lands
 // on data.tenants.users. That is the rule opa eval follows for -d, verified in
-// the OPA sources at v1.21.1 (v1/loader/loader.go:678 and 865), and it is
+// the OPA sources at v1.22.4 (v1/loader/loader.go:681 and 881), and it is
 // replicated rather than reused for one reason:
 //
 // the loader of OPA splits a path on its first colon, to support the
-// prefix:path syntax of the command line (SplitPrefix, v1/loader/loader.go:592).
+// prefix:path syntax of the command line (SplitPrefix, v1/loader/loader.go:582).
 // On Windows that reads C:\data as the prefix "C" over the path "\data", which
 // does not exist, so every absolute path fails with an error that names a
 // directory nobody asked for. Passing the paths through an fs.FS instead trades
@@ -183,7 +180,7 @@ func LoadRequest(path string) (map[string]any, error) {
 }
 
 // bundleDataNames are the files a bundle keeps its data in (dataFile,
-// yamlDataFile and ymlDataFile, v1/bundle/bundle.go:50 to :52 at v1.21.1).
+// yamlDataFile and ymlDataFile, v1/bundle/bundle.go:50 to :52 at v1.22.4).
 var bundleDataNames = []string{"data.json", "data.yaml", "data.yml"}
 
 // LoadBundleData reads the data a bundle keeps next to its policies, and
@@ -191,7 +188,7 @@ var bundleDataNames = []string{"data.json", "data.yaml", "data.yml"}
 //
 // Only a file called data.json, data.yaml or data.yml counts, placed at the
 // path of its directory below the one given, which is how OPA reads a bundle
-// (v1/bundle/bundle.go:717 and :737 at v1.21.1). The other JSON a repository
+// (v1/bundle/bundle.go:744 and :764 at v1.22.4). The other JSON a repository
 // of policies holds, a package.json or the input of a test, is not data to OPA
 // and is left out here too. A bundle archive is read the same way, from the
 // paths inside it. Any other path that is a file is a policy, and holds no
@@ -554,7 +551,7 @@ func (d *Data) Replaced(ctx context.Context, path string, replace func(current a
 // write lands inside it: the path itself and no pointer when the path is made
 // of names, or else the nearest document above it that is, with the JSON
 // pointer (RFC 6901) from there to the place written. A with modifier takes a
-// path of names only (IsValidImportPath, v1/topdown/input.go:22 at v1.21.1), so
+// path of names only (IsValidImportPath, v1/topdown/input.go:21 at v1.22.4), so
 // a write into data.team.members[0].role is repeated by patching
 // data.team.members at /0/role.
 func WithTarget(path string) (target, pointer string, err error) {
@@ -1370,7 +1367,7 @@ func valuesComparedWith(ctx context.Context, bundle *Bundle, data *Data, ask Req
 // generated to hold one, or a rule of the policy it left for evaluation time.
 // That last one is what a comprehension over something unknown and a call to a
 // function with an else come back as: partial evaluation saves both as they are
-// written (v1/topdown/eval.go:1241 and 2215 at v1.21.1), so they name the rules
+// written (v1/topdown/eval.go:1469 and 2472 at v1.22.4), so they name the rules
 // they use and not the document those rules read.
 //
 // Nothing is interpreted, and in particular the side is not: a document that

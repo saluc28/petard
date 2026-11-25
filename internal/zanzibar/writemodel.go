@@ -38,7 +38,7 @@ const (
 // Filler says who supplies a caveat parameter or an expiration: the writer, who
 // fixes it on the tuple, or the application, which brings it with the check.
 // Written context wins at check time (SpiceDB copies it over the check's,
-// internal/caveats/run.go:222-230 at v1.56.2), so a parameter the writer fills
+// internal/caveats/run.go:223-230 at v1.57.1), so a parameter the writer fills
 // is the writer's for every check that follows.
 type Filler string
 
@@ -96,7 +96,7 @@ type WriteRule struct {
 
 	// Caveats are the caveats the writer may attach, with who fills each
 	// parameter. A write may set any declared parameter of the caveat
-	// (internal/relationships/validation.go:248-262 at v1.56.2), so a parameter
+	// (internal/relationships/validation.go:248-262 at v1.57.1), so a parameter
 	// left to the writer here is one the writer can fix.
 	Caveats []CaveatWrite `yaml:"caveat"`
 

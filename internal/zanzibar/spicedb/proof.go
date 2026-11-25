@@ -86,7 +86,7 @@ func (s *Schema) ProofFiles(dir, name string, title []string, p *zanzibar.Proof)
 }
 
 // Admit says whether SpiceDB would store a relationship of this schema, asking what it
-// asks of a write (internal/relationships/validation.go:145-269 at v1.57.0): identifiers
+// asks of a write (internal/relationships/validation.go:145-269 at v1.57.1): identifiers
 // it can store, a relation of the resource that is not a permission, a subject of a form
 // the relation allows with the same caveat and the same presence of an expiration, and a
 // caveat context whose values have the types of the caveat's parameters.
@@ -134,7 +134,7 @@ func (s *Schema) Admit(r zanzibar.Relationship) error {
 	}
 
 	// The pattern a subject identifier is held to binds only its start
-	// (pkg/tuple/parsing.go:21 and :47 at v1.57.0), so one the parser of a
+	// (pkg/tuple/parsing.go:21 and :47 at v1.57.1), so one the parser of a
 	// validation file refuses can pass it. Reading the relationship back is the
 	// question the file asks.
 	text, err := relationshipText(r)
@@ -191,7 +191,7 @@ func relationshipText(r zanzibar.Relationship) (string, error) {
 	}
 	if r.Expires != nil {
 		// The parser reads an expiration in UTC alone, written with Z
-		// (pkg/tuple/parsing.go:42 at v1.57.0).
+		// (pkg/tuple/parsing.go:42 at v1.57.1).
 		utc := r.Expires.UTC()
 		rel.OptionalExpiration = &utc
 	}

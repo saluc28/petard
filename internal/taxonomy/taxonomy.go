@@ -446,8 +446,8 @@ type Finding struct {
 // decision on Request twice, the second time with the one document replaced,
 // repeats the argument with OPA alone, the way the fixture's measuring
 // instrument does with a with modifier (verify/measure.rego). A with modifier
-// takes a path of names only (IsValidImportPath, v1/topdown/input.go:22 at
-// v1.21.1), so a Document inside a list, data.team.members[0].role, is repeated
+// takes a path of names only (IsValidImportPath, v1/topdown/input.go:21 at
+// v1.22.4), so a Document inside a list, data.team.members[0].role, is repeated
 // by patching the list at that place.
 type Witness struct {
 	Decision string

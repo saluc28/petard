@@ -62,7 +62,7 @@ mechanism:
     }
   example_note: >
     The mint decision of the fixture has the same shape, and it was measured with the rego package of
-    OPA v1.21.1: a request for a scope within the role but outside the edge is granted, while the
+    OPA v1.22.4: a request for a scope within the role but outside the edge is granted, while the
     counter case, the same decision narrowed by the edge as well, refuses it.
 
 detection:

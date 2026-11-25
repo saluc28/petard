@@ -74,7 +74,7 @@ raise `owner`, which a check of OpenFGA can ask.
 
 ## How it is held
 
-The test suite holds this file to OpenFGA v1.22.1, with a server running in the test process and
+The test suite holds this file to OpenFGA v1.23.0, with a server running in the test process and
 nothing reached over a network:
 
 ```

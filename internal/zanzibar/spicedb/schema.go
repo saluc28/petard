@@ -47,7 +47,7 @@ type Schema struct {
 // written inside a validation file; imports is where the schema's imports are
 // read from, nil when it has none. SpiceDB keeps an import inside it, refusing
 // a path with .. or one that is not local (pkg/schemadsl/compiler/importer.go
-// at v1.56.2).
+// at v1.57.1).
 func Compile(file string, imports fs.FS, firstLine int, text string) (*Schema, error) {
 	var opts []compiler.Option
 	if imports != nil {
@@ -252,7 +252,7 @@ func (at origin) position(pos *core.SourcePosition) zanzibar.Position {
 // through, the references a definition makes to names it does not declare.
 // petard does not import the type system, which brings SpiceDB's datastore
 // with it; the checks here are the ones of
-// pkg/schema/typesystem_validation.go at v1.56.2 that the engine relies on.
+// pkg/schema/typesystem_validation.go at v1.57.1 that the engine relies on.
 func validate(m *zanzibar.Model) error {
 	for _, t := range m.Types {
 		for _, r := range t.Relations {

@@ -141,7 +141,7 @@ may be held to a network with the caveat `is_valid_ip(user_ip ipaddress, cidr st
 relationships write the network, and the checks bring the caller's address.
 
 ```bash
-git clone --branch v1.56.2 https://github.com/authzed/spicedb
+git clone --branch v1.57.1 https://github.com/authzed/spicedb
 cd spicedb/internal/services/integrationtesting/testconfigs
 ```
 

@@ -957,7 +957,7 @@ func writes(ops []Operation) bool {
 // replaces says whether a rule can put a tuple where one of the same resource,
 // relation and subject is there already, a caveat on it or not. A create cannot: the
 // product refuses it whatever the caveat (internal/datastore/memdb/readwrite.go:66-93
-// at SpiceDB v1.57.0, pkg/storage/memory/memory.go:459-471 at OpenFGA v1.22.1), so it
+// at SpiceDB v1.57.1, pkg/storage/memory/memory.go:465-474 at OpenFGA v1.23.0), so it
 // cannot lift a conditional tuple to an unconditional one. A touch overwrites, and a
 // delete makes room.
 func replaces(ops []Operation) bool {

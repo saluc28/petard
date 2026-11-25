@@ -95,9 +95,9 @@ detection:
         A relation lets its relationships carry a caveat, and the caveat declares a parameter.
       rationale: >
         A write may set any declared parameter of the caveat
-        (`internal/relationships/validation.go:248-262` at v1.56.2), and the context of the
+        (`internal/relationships/validation.go:248-262` at v1.57.1), and the context of the
         relationship is copied over the one the check supplies
-        (`internal/caveats/run.go:222-230`). OpenFGA does the same at v1.22.1
+        (`internal/caveats/run.go:223-230`). OpenFGA does the same at v1.23.0
         (`internal/validation/validation.go:284-309`, `internal/condition/eval/eval.go:112-123`). Every
         parameter of a caveat on a relation is therefore one its writers can fix.
     - order: 2
@@ -224,13 +224,13 @@ false_positives:
     measurement: out-of-band
 
 not_a_lint_rule: >
-  The warnings of SpiceDB read the schema alone (`pkg/development/warningdefs.go` at v1.56.2: names,
+  The warnings of SpiceDB read the schema alone (`pkg/development/warningdefs.go` at v1.57.1: names,
   a permission that references itself, arrows), and `zed validate` checks the answers the file
   asserts, which stay right: a check that supplies the address gets the answer it expects until
   somebody writes the address on a relationship. Which parameters are meant for the check is in the
   checks and the relationships, not in the schema.
   OpenFGA's validation of a model reads the model alone as well
-  (`pkg/typesystem/typesystem.go:1170-1233` at v1.22.1), and the checks of a store file stay right
+  (`pkg/typesystem/typesystem.go:1170-1233` at v1.23.0), and the checks of a store file stay right
   in the same way.
 
 fixture:
@@ -250,22 +250,22 @@ fixture:
 references:
   - title: authzed/spicedb, the context a caveat is run on
     note: >
-      At v1.56.2, `internal/caveats/run.go:222-230`: the context of the check is cloned and the
+      At v1.57.1, `internal/caveats/run.go:223-230`: the context of the check is cloned and the
       context written on the relationship is copied over it, with the comment that the written
       context takes precedence.
   - title: authzed/spicedb, the context a write may carry
     note: >
-      At v1.56.2, `internal/relationships/validation.go:248-262`: a write with a context is checked
+      At v1.57.1, `internal/relationships/validation.go:248-262`: a write with a context is checked
       by converting the context to the parameters of the caveat, refusing a key that names no
       parameter. Any declared parameter passes.
   - title: openfga/openfga, the context a condition is run on
     note: >
-      At v1.22.1, `internal/condition/condition.go:197-222` and
+      At v1.23.0, `internal/condition/condition.go:197-222` and
       `internal/condition/eval/eval.go:112-123`: the context of the request comes first and the
       context of the tuple is merged after it, and the last one wins.
   - title: openfga/openfga, the context a write may carry
     note: >
-      At v1.22.1, `internal/validation/validation.go:284-309`: a write with a condition has its
+      At v1.23.0, `internal/validation/validation.go:284-309`: a write with a condition has its
       context cast to the parameters of the condition, refusing a key that names no parameter. Any
       declared parameter passes.
   - title: CWE-807, Reliance on Untrusted Inputs in a Security Decision
@@ -284,7 +284,7 @@ verified:
     written as the finding says, the check from outside the network and the check after the date
     are granted. The case of the first declared false positive runs as part of the test suite, as a
     validation file and as a store file. On `fixtures/vulnerable-openfga` the engine reports the same
-    two, and the test suite holds them to OpenFGA v1.22.1: with the tuple written as the finding says,
+    two, and the test suite holds them to OpenFGA v1.23.0: with the tuple written as the finding says,
     `Check` of a server in process allows the check from outside the network and the check after the
     date, and a check that supplies nothing.
 
@@ -306,6 +306,6 @@ notes:
     of the caveat are reported on such a relation as on any other.
   - >
     In OpenFGA a condition evaluated without a parameter it reads is an error
-    (`internal/condition/eval/eval.go:131-137` at v1.22.1), and a check that stops on it is refused
+    (`internal/condition/eval/eval.go:131-137` at v1.23.0), and a check that stops on it is refused
     with a validation error, where SpiceDB answers that it is caveated. So a store file has nothing
     to match `assertCaveated`. The engine reads both as conditional.

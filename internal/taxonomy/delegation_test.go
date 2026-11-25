@@ -499,9 +499,11 @@ revoked if {
 	}
 }
 
-// The same for the graph: a question OPA panics on is counted and left out, and
-// the graph is still built.
-func TestAssembleCountsWhatOPAPanicsOn(t *testing.T) {
+// A way of granting Assemble cannot draw is counted and left out, and the graph
+// is still built. Here the grant stays conditional on input.flags, so it is a
+// conditional way; a decision OPA panics on is counted unasked instead. Either
+// way the grant is accounted for and nothing is drawn as a bare capability.
+func TestAssembleCountsAWayItCannotGraph(t *testing.T) {
 	policy := `package p
 
 # METADATA
@@ -532,8 +534,8 @@ revoked if {
 	if g == nil {
 		t.Fatal("no graph")
 	}
-	if gaps.UnaskedCapabilities == 0 && len(edgesOfKind(g, graph.EdgeKindCanPerform)) == 0 {
-		t.Error("alice has no capability and no question went unasked, want one or the other")
+	if gaps.UnaskedCapabilities == 0 && gaps.ConditionalWays == 0 && len(edgesOfKind(g, graph.EdgeKindCanPerform)) == 0 {
+		t.Error("the grant on input.flags was neither drawn, counted as a conditional way, nor left unasked")
 	}
 }
 
@@ -647,9 +649,9 @@ allow_narrowed if {
 // A ceiling can be a document in the data, the scopes of the role the request
 // names. It is asked about with every document its path names holding none of
 // what is asked for, since the request picks one of them. Where the request
-// picks the role inside the every, partial evaluation keeps the every whole and
-// leaves no condition to build a request from: the decision is a candidate that
-// says it could not be asked, and a request given as granted asks it.
+// picks the role inside the every, OPA v1.22 evaluates the every and leaves a
+// condition to build a request from, so the decision is asked and the scope
+// left unbounded is a finding, with or without a request given.
 func TestDelegationAsksACeilingInTheData(t *testing.T) {
 	const gateway = `schema_version: 1
 id: test-gateway
@@ -716,7 +718,7 @@ fields:
 		{
 			name:     "bounded by the role, picked inside the every, and no request given",
 			body:     roleInside,
-			expected: []string{"candidate data.p.allow"},
+			expected: []string{"finding data.p.allow input.delegation_edge.scopes"},
 		},
 		{
 			name:     "the same, with a request given",

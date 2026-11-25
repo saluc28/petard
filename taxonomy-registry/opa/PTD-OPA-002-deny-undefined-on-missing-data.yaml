@@ -92,7 +92,7 @@ detection:
         The two negations are counted together because it is their parity that says what the
         absence does: one negation between the decision and the read, and missing data lets the
         request through; two, and the same missing data denies. The walk records the path on the
-        way down, because `ast.Graph` (`v1/ast/compile.go:4835` at v1.21.1) holds adjacency only
+        way down, because `ast.Graph` (`v1/ast/compile.go:5186` at v1.22.4) holds adjacency only
         and does not keep the expression; the negation of the expression is `Expr.Negated`, a
         bool.
         Knowing which side applies the check depends on the PEP, and it stays the fragile point

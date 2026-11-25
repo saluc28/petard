@@ -310,7 +310,7 @@ func TestParsePathTakesTheNumbersOPATakes(t *testing.T) {
 	}
 }
 
-// A quoted key reads the way ast.ParseRef reads it at OPA v1.21.1: one string
+// A quoted key reads the way ast.ParseRef reads it at OPA v1.22.4: one string
 // segment, unescaped as JSON in double quotes and as it stands in backquotes,
 // and a literal even when it looks like a capture or a subtree. String writes
 // it back so that it parses to the same path.

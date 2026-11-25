@@ -158,7 +158,7 @@ func writeQuietGroup(b *strings.Builder, names []string) {
 
 // operationsLine is the writes a skeleton proposes. OpenFGA has no write that also
 // sets a new condition on a tuple already written: a tuple written twice is an error
-// or is ignored (pkg/server/commands/write.go:58-66 at v1.22.1).
+// or is ignored (pkg/server/write.go:58-66 at v1.23.0).
 func operationsLine(product zanzibarsetup.Product) string {
 	if product == zanzibarsetup.OpenFGA {
 		return "    operations: [create]\n"

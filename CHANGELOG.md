@@ -63,6 +63,10 @@
 
 ### Changed
 
+- SpiceDB v1.57.1, OpenFGA v1.23.0 and OPA v1.22.4 are compiled in, and `fga model test` reads
+  proofs from openfga/cli v0.9.0. Building from source needs Go 1.27.4 or later. OPA now evaluates a
+  negated rule whose body holds an `every` over an unknown, which it could not before, so a decision
+  reached that way is asked and can carry a finding instead of being recorded as one it could not ask.
 - `PTD-ZAN-004` is titled "An arrow links an object to one the coalition holds a permission on" and
   `PTD-ZAN-005` "Joining a group an object grants to takes on its access", since the linked object
   need not be one the coalition made and the group need not be a userset.

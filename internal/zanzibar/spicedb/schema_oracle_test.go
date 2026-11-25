@@ -25,6 +25,14 @@ const (
 	corpusEnv = "PETARD_ZANZIBAR_CORPUS"
 )
 
+// zedBehind names validation files whose answers zed gets wrong because the
+// SpiceDB it bundles predates a fix the SpiceDB petard compiles in has. petard
+// matches the current SpiceDB, held to the file's own assertions by
+// TestAssertions, so these are left out of the zed comparison.
+var zedBehind = map[string]string{
+	"expirationwithnonterminalsibling.yaml": "zed 1.2.1 bundles a SpiceDB predating the expiration and non-terminal-sibling fix, so it answers the expired grant as held; petard matches SpiceDB v1.57.1",
+}
+
 // The engine against SpiceDB itself. For every validation file, those of
 // testdata, the SpiceDB fixture the demo carries and the corpus, every check
 // the file's objects allow is answered by the engine and written as an
@@ -59,6 +67,9 @@ func TestOracle(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run(filepath.Base(path), func(t *testing.T) {
+			if reason := zedBehind[filepath.Base(path)]; reason != "" {
+				t.Skip("left out: " + reason)
+			}
 			generated, count, skipped := oracleFile(t, path)
 			out, err := exec.Command(zed, "validate", generated).CombinedOutput()
 			if err != nil {

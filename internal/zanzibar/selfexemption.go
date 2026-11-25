@@ -15,10 +15,10 @@ const SelfAssertedExemptionID = "PTD-ZAN-001"
 // SelfAssertedExemptions finds, under a write model, the relations a coalition
 // can write with a caveat whose check-supplied parameter it can set itself.
 // SpiceDB lets a write carry any declared parameter of the caveat
-// (internal/relationships/validation.go:248-262 at v1.56.2), and the written
-// context wins over the check's (internal/caveats/run.go:222-230), and OpenFGA
+// (internal/relationships/validation.go:248-262 at v1.57.1), and the written
+// context wins over the check's (internal/caveats/run.go:223-230), and OpenFGA
 // does the same (internal/validation/validation.go:284-309,
-// internal/condition/eval/eval.go:112-123 at v1.22.1), so a parameter the write
+// internal/condition/eval/eval.go:112-123 at v1.23.0), so a parameter the write
 // model marks as the application's is the writer's to fix. Fixing it raises the
 // permissions the relation feeds from conditional to unconditional.
 //

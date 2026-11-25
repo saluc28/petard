@@ -10,7 +10,7 @@ there:
 
 - a schema file, ending in `.zed`;
 - a validation file, the YAML format `zed validate` reads (`pkg/validationfile/fileformat.go:21-47`
-  at v1.56.2): a `schema` written inline or a `schemaFile` naming one, the `relationships` written
+  at v1.57.1): a `schema` written inline or a `schemaFile` naming one, the `relationships` written
   against it, the `assertions` checked against them, under `assertTrue`, `assertFalse` and
   `assertCaveated`, and the expected relations under `validation`.
 
@@ -31,20 +31,20 @@ for a candidate. A `writes.yaml` beside the schema, a `relationship-writes` writ
 into a finding: it says who writes a relation and, per caveat parameter, whether the writer or the
 application fills it. Petard counts the expected relations of a file and does not read them.
 
-Schemas are compiled with SpiceDB's own compiler, from SpiceDB v1.57.0, which `petard version`
+Schemas are compiled with SpiceDB's own compiler, from SpiceDB v1.57.1, which `petard version`
 names. A schema that does not compile stops the run, as a policy that does not parse does, and so
 does one that names a type, a relation, a permission or a caveat it does not declare, or that
 walks a permission or a wildcard with an arrow. A schema reads its imports from its own
 directory, and SpiceDB refuses an import path that holds `..` or is not local
-(`pkg/schemadsl/compiler/importer.go:35-50` at v1.56.2).
+(`pkg/schemadsl/compiler/importer.go:35-50` at v1.57.1).
 
 Nothing outside the paths given is read. The files are opened through an `os.Root`, so a link
 that leads out of a directory is refused rather than followed. A `schemaFile` is resolved against
 the directory of its validation file, as SpiceDB resolves it
-(`pkg/validationfile/loader.go:153-158` at v1.56.2), and one that is absolute or climbs out of the
+(`pkg/validationfile/loader.go:153-158` at v1.57.1), and one that is absolute or climbs out of the
 directory analyzed is refused. So is a validation file that holds a schema and names a
 `schemaFile` as well, which SpiceDB refuses too (`pkg/validationfile/loader.go:124-126` at
-v1.56.2).
+v1.57.1).
 
 Caveats are evaluated with SpiceDB's own caveat package, in the CEL environment SpiceDB uses, so
 `ipaddress` and `in_cidr` behave as they do there. A parameter the context leaves out stays

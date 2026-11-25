@@ -16,12 +16,12 @@ import (
 
 // corpusFiles are OpenFGA's own check tests, which ship in the module and hold models,
 // tuples and the answers OpenFGA's suite holds OpenFGA to (tests/check/check.go:63-91
-// at v1.22.1).
+// at v1.23.0).
 var corpusFiles = []string{"tests/consolidated_1_1_tests.yaml", "tests/abac_tests.yaml"}
 
 // The codes of OpenFGA's refusals that this tells apart. validationErrorCode is the
 // first of the validation codes (pkg/server/errors/encoded_errors.go:16 at
-// v1.22.1): a request it does not take, or a condition it cannot decide, a parameter
+// v1.23.0): a request it does not take, or a condition it cannot decide, a parameter
 // missing from the context among them. depthErrorCode is a check past its resolution
 // depth, availability and not an answer (section 1 of the definitions).
 const (

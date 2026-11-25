@@ -1,0 +1,26 @@
+# Expiration on a relation that also admits a non-terminal-sibling subject
+# (user#manager). The expired grant of alice is not held, which is what SpiceDB
+# v1.57.1 answers and petard matches. zed 1.2.1 bundles an older SpiceDB that
+# answers the expired grant as held, so TestOracle leaves this file out and
+# TestAssertions holds petard to the answers below.
+schema: |
+  use expiration
+
+  definition user {
+    relation manager: user
+  }
+
+  definition document {
+    relation viewer: user with expiration | user#manager
+    permission view = viewer
+  }
+relationships: |
+  document:somedoc#viewer@user:alice[expiration:2020-01-01T00:00:00Z]
+  document:somedoc#viewer@user:bob[expiration:2999-01-01T00:00:00Z]
+assertions:
+  assertTrue:
+    - "document:somedoc#viewer@user:bob"
+    - "document:somedoc#view@user:bob"
+  assertFalse:
+    - "document:somedoc#viewer@user:alice"
+    - "document:somedoc#view@user:alice"

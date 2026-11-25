@@ -17,9 +17,9 @@ const maxWitnessRewrites = 200
 //
 // A relationship carries its caveat with a context, and that context is
 // written over the one a check supplies: SpiceDB merges them that way
-// (internal/caveats/run.go:222-230 at v1.56.2), and so does OpenFGA. A write may
+// (internal/caveats/run.go:223-230 at v1.57.1), and so does OpenFGA. A write may
 // set any parameter of the caveat (internal/relationships/validation.go:248-262
-// at v1.56.2). So a parameter meant to come with the check, the address of the
+// at v1.57.1). So a parameter meant to come with the check, the address of the
 // caller or the time of the request, is the writer's to fix: written once, the
 // value the check brings stops counting, for that relationship and every check
 // that goes through it.

@@ -25,7 +25,7 @@ import (
 )
 
 // oracleWriteChunk is how many tuples one write of the oracle carries, below the
-// limit a write takes (pkg/server/config/config.go:19 at v1.22.1).
+// limit a write takes (pkg/server/config/config.go:19 at v1.23.0).
 const oracleWriteChunk = 40
 
 // oracleCount is what a run of the oracle found.
