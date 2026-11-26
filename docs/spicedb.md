@@ -194,7 +194,8 @@ can get there.
 
 `-questions <file>` writes the proposal out as a `relationship-writes` write model, one entry per
 relation without a rule in the same order, gated by a safe permission, with what it can raise
-above it and the subject and the `via` to fill in.
+above it and the subject and the `via` to fill in. With `-code` as well, the skeleton lists the
+write sites found in the source above the entries, to assign each to a `via`.
 Confirm the gate the application really uses, then rerun with `-write-model <file>` and it is input
 no longer. A run that also reads a policy writes the policy's questions there instead.
 

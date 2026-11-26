@@ -182,7 +182,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		printZanzibar(stdout, schemas, patterns, pr)
 		printEvidence(stdout, cited, style, *quiet)
 		if *questionsPath != "" {
-			written, err := writeSchemaQuestions(*questionsPath, schemas.proposals)
+			written, err := writeSchemaQuestions(*questionsPath, schemas.proposals, cited.uncited)
 			if err != nil {
 				fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 				return exitFailure

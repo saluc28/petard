@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/saluc28/petard/internal/cli/zanzibarsetup"
+	"github.com/saluc28/petard/internal/evidence"
 	"github.com/saluc28/petard/internal/opaengine"
 	"github.com/saluc28/petard/internal/taxonomy"
 	"github.com/saluc28/petard/internal/writemodel"
@@ -216,7 +217,7 @@ func TestSchemaSkeletonGathersTheRelationsThatRaiseNothing(t *testing.T) {
 			{Type: "doc", Relation: "c"},
 		},
 	}}
-	content, entries := schemaSkeleton(groups)
+	content, entries := schemaSkeleton(groups, nil)
 	if entries != 4 {
 		t.Errorf("entries = %d, want 4", entries)
 	}
@@ -233,6 +234,36 @@ func TestSchemaSkeletonGathersTheRelationsThatRaiseNothing(t *testing.T) {
 	}
 	if strings.Contains(content, "doc#a raises no permission") {
 		t.Errorf("a relation that raises nothing still has its own line:\n%s", content)
+	}
+	if strings.Contains(content, "write sites") {
+		t.Errorf("a skeleton with no -code sites still has a sites block:\n%s", content)
+	}
+}
+
+// With -code, the sites it found are listed above the skeleton for the author to
+// assign to a via, with the note that petard found the write, not the relation.
+func TestSchemaSkeletonListsTheWriteSites(t *testing.T) {
+	groups := []schemaProposals{{
+		product: zanzibarsetup.SpiceDB,
+		schema:  "schema.zed",
+		proposals: []zanzibar.GateProposal{
+			{Type: "document", Relation: "viewer", Safe: []string{"edit"}, Raises: []string{"document#view"}},
+		},
+	}}
+	sites := []evidence.Site{
+		{Path: "api/share.go", Line: 88, Call: "WriteRelationships", Product: "SpiceDB"},
+		{Path: "api/ban.go", Line: 42, Call: "DeleteRelationships", Product: "SpiceDB"},
+	}
+	content, _ := schemaSkeleton(groups, sites)
+	for _, want := range []string{
+		"-code found these write sites",
+		"not which relation it writes",
+		"api/share.go:88  WriteRelationships  SpiceDB",
+		"api/ban.go:42  DeleteRelationships  SpiceDB",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("the skeleton does not contain %q:\n%s", want, content)
+		}
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/saluc28/petard/internal/cli/zanzibarsetup"
+	"github.com/saluc28/petard/internal/evidence"
 	"github.com/saluc28/petard/internal/zanzibar"
 )
 
@@ -21,7 +22,7 @@ import (
 
 // writeSchemaQuestions writes the skeleton to path and returns how many entries it
 // holds. It refuses a path that already exists.
-func writeSchemaQuestions(path string, groups []schemaProposals) (int, error) {
+func writeSchemaQuestions(path string, groups []schemaProposals, sites []evidence.Site) (int, error) {
 	if _, err := os.Stat(path); err == nil {
 		return 0, fmt.Errorf("%s already exists, and a write model is not something to overwrite", path)
 	} else if !os.IsNotExist(err) {
@@ -33,7 +34,7 @@ func writeSchemaQuestions(path string, groups []schemaProposals) (int, error) {
 			return 0, fmt.Errorf("creating %s: %w", dir, err)
 		}
 	}
-	content, entries := schemaSkeleton(groups)
+	content, entries := schemaSkeleton(groups, sites)
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		return 0, fmt.Errorf("writing the write model: %w", err)
 	}
@@ -46,7 +47,7 @@ func writeSchemaQuestions(path string, groups []schemaProposals) (int, error) {
 // permission petard proposes as the gate. The author confirms the gate, narrows
 // the subjects, and fills the via. A relation with no safe gate is written as a
 // comment, since proposing an unsafe gate would be wrong.
-func schemaSkeleton(groups []schemaProposals) (string, int) {
+func schemaSkeleton(groups []schemaProposals, sites []evidence.Site) (string, int) {
 	var b strings.Builder
 	b.WriteString("# Write model skeleton written by petard analyze -questions.\n")
 	b.WriteString("#\n")
@@ -58,6 +59,7 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 	b.WriteString("# rather than the writer. A relation nobody can write is one to leave out rather\n")
 	b.WriteString("# than open. The relations whose writes can raise the most permissions come first,\n")
 	b.WriteString("# each with what it can raise, and the relations that raise nothing gathered at the end.\n")
+	writeSitesHeader(&b, sites)
 	b.WriteString("schema_version: 1\n")
 	b.WriteString("model: relationship-writes\n")
 	b.WriteString("writes:\n")
@@ -99,6 +101,23 @@ func schemaSkeleton(groups []schemaProposals) (string, int) {
 		writeQuietGroup(&b, quiet)
 	}
 	return b.String(), entries
+}
+
+// writeSitesHeader lists the write sites -code found above the skeleton, for the
+// author to assign to a rule's via and cite in evidence. petard finds where a
+// write happens, not which relation it writes, so the author makes the match;
+// without -code there are no sites and the block is left out, so the skeleton is
+// what it was before.
+func writeSitesHeader(b *strings.Builder, sites []evidence.Site) {
+	if len(sites) == 0 {
+		return
+	}
+	b.WriteString("#\n")
+	b.WriteString("# -code found these write sites. Assign each to a rule's via below and cite it in\n")
+	b.WriteString("# evidence; petard found where a write happens, not which relation it writes.\n")
+	for _, s := range sites {
+		fmt.Fprintf(b, "#   %s  %s  %s\n", s, s.Call, s.Product)
+	}
 }
 
 // writeReach writes, above an entry, the permissions writing the relation can raise,

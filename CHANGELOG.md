@@ -73,6 +73,9 @@
 - A write model with a key the format does not have now fails with that key and its line, and a
   wrong key in a `gate` or `subject` lists the keys that block allows. It holds for the
   relationship-writes and the write-paths model alike.
+- With `-code`, the `-questions` skeleton lists the write sites found in the source, to assign each
+  to a `via` in the file instead of hunting the codebase. petard lists where a write happens, not
+  which relation it writes, so the author makes the match.
 - SpiceDB v1.57.1, OpenFGA v1.23.0 and OPA v1.22.4 are compiled in, and `fga model test` reads
   proofs from openfga/cli v0.9.0. Building from source needs Go 1.27.4 or later. OPA now evaluates a
   negated rule whose body holds an `every` over an unknown, which it could not before, so a decision
