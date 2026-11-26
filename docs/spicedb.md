@@ -29,7 +29,8 @@ assertions:
 Those contexts, and the contexts the relationships carry, are the evidence `PTD-ZAN-001` reads
 for a candidate. A `writes.yaml` beside the schema, a `relationship-writes` write model, turns it
 into a finding: it says who writes a relation and, per caveat parameter, whether the writer or the
-application fills it. Petard counts the expected relations of a file and does not read them.
+application fills it. Petard counts the expected relations of a file and does not read them;
+`zed validate` checks them in full.
 
 Schemas are compiled with SpiceDB's own compiler, from SpiceDB v1.57.1, which `petard version`
 names. A schema that does not compile stops the run, as a policy that does not parse does, and so
