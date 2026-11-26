@@ -593,6 +593,9 @@ func TestTheFooterComesAfterEverySummary(t *testing.T) {
 	if !strings.Contains(alone.String(), "Run petard explain") {
 		t.Errorf("a SpiceDB-alone run does not point to petard explain:\n%s", alone.String())
 	}
+	if !strings.Contains(alone.String(), "Run petard why") {
+		t.Errorf("a SpiceDB-alone run with escalations does not point to petard why:\n%s", alone.String())
+	}
 }
 
 // A schema with no write model that no validation file reads gives the patterns

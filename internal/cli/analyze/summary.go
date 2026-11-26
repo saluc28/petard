@@ -169,7 +169,9 @@ func printSummary(out io.Writer, a taxonomy.Analysis, s summary, coverage taxono
 // the run sums up, the policies and the SpiceDB files alike, and offers -v only
 // where -v adds something: the reads behind the policies, or the writes behind a
 // SpiceDB escalation. A run already verbose is shown the evidence and is not
-// offered the flag again.
+// offered the flag again. When there are escalations it also points at petard
+// why, which reads one of them as a chain, since -v shows the writes but not
+// where they land or how to check them.
 func printFooter(out io.Writer, p printing, policies, spiceEvidence bool) {
 	if p.quiet {
 		return
@@ -181,6 +183,9 @@ func printFooter(out io.Writer, p printing, policies, spiceEvidence bool) {
 		fmt.Fprint(out, "Run with -v for the reads behind this, and every place to look.\n")
 	case spiceEvidence:
 		fmt.Fprint(out, "Run with -v for the writes behind each escalation.\n")
+	}
+	if spiceEvidence {
+		fmt.Fprint(out, "Run petard why <finding> for one escalation's chain of writes and how to check it.\n")
 	}
 	fmt.Fprint(out, "Run petard explain <id> for what a pattern looks for and what it will not report.\n")
 }

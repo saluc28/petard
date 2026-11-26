@@ -430,6 +430,20 @@ func TestRunReportsTheSplitGrant(t *testing.T) {
 	}
 }
 
+// A run that finds no policy and no schema names what petard reads and where to
+// see it work, so a wrong path reads as a wrong path and not as a clean run.
+func TestNothingToAnalyzeNamesWhatPetardReads(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{t.TempDir()}, &stdout, &stderr); code != exitFailure {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFailure, stderr.String())
+	}
+	for _, want := range []string{"nothing to analyze", "SpiceDB schemas (.zed)", "OpenFGA models (.fga)", "run petard demo"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("the error does not say %q:\n%s", want, stderr.String())
+		}
+	}
+}
+
 // The reading room setting decides for somebody no document names, and the
 // report says who writes it. The console setting next to it does not come out:
 // it only decides for somebody with a record.

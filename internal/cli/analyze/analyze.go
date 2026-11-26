@@ -198,6 +198,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		printFooter(stdout, pr, false, schemas.hasEvidence())
 		return max(schemas.exitCode(*failOn), cited.exitCode(*failOn))
 	}
+	if errors.Is(err, opaengine.ErrNoModules) {
+		// ErrNoModules here means no Zanzibar files were found either, so the
+		// paths hold nothing petard reads. Name what it reads and where to see it
+		// work, rather than leave the reader with a bare "no rego file".
+		fmt.Fprintln(stderr, "petard analyze: nothing to analyze under the paths. petard reads Rego policies, SpiceDB schemas (.zed) and OpenFGA models (.fga); run petard demo for a worked example.")
+		return exitFailure
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "petard analyze: %v\n", err)
 		return exitFailure
