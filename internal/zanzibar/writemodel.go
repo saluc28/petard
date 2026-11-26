@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/saluc28/petard/internal/evidence"
 	"github.com/saluc28/petard/internal/writemodel"
@@ -463,7 +464,7 @@ func onlyKeys(node *yaml.Node, allowed ...string) error {
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		key := node.Content[i].Value
 		if !slices.Contains(allowed, key) {
-			return fmt.Errorf("%w: line %d: unknown key %q", writemodel.ErrInvalid, node.Content[i].Line, key)
+			return fmt.Errorf("%w: line %d: unknown key %q, the keys here are %s", writemodel.ErrInvalid, node.Content[i].Line, key, strings.Join(allowed, ", "))
 		}
 	}
 	return nil

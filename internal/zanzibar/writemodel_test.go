@@ -3,6 +3,7 @@ package zanzibar
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/saluc28/petard/internal/evidence"
@@ -136,7 +137,7 @@ func TestParseWriteModelErrors(t *testing.T) {
 		{
 			name:    "unknown top-level key",
 			content: "schema_version: 1\nmodel: relationship-writes\nentries: []\n",
-			want:    nil, // a decode error, not one of ours
+			want:    writemodel.ErrInvalid, // named as an unknown key, not a Go type
 		},
 		{
 			name:    "no operations",
@@ -243,5 +244,20 @@ func TestParseWriteModelWildcardNeedsNoSubject(t *testing.T) {
 	}
 	if len(m.Writes) != 1 || !m.Writes[0].Wildcard || !m.Writes[0].Subject.empty() {
 		t.Fatalf("want one wildcard rule with an empty subject spec, got %+v", m.Writes)
+	}
+}
+
+// A key a gate does not have fails with the keys it does have, so the writer
+// learns the shape from the error instead of from the source.
+func TestUnknownGateKeyListsTheValidKeys(t *testing.T) {
+	content := []byte("schema_version: 1\nmodel: relationship-writes\nwrites:\n  - resource: document\n    relation: viewer\n    operations: [create]\n    gate: { hold: edit }\n    subject: [user]\n")
+	_, err := ParseWriteModel(content)
+	if !errors.Is(err, writemodel.ErrInvalid) {
+		t.Fatalf("error is not ErrInvalid: %v", err)
+	}
+	for _, want := range []string{`unknown key "hold"`, "holds, holds_on_subject, service"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not list the valid keys (%q): %v", want, err)
+		}
 	}
 }

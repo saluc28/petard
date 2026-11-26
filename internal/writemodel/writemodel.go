@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	yaml "go.yaml.in/yaml/v3"
@@ -233,10 +234,55 @@ func DecodeStrict(content []byte, into any) error {
 	decoder.KnownFields(true)
 	// An empty file decodes to nothing, which the caller refuses in its own
 	// words.
-	if err := decoder.Decode(into); err != nil && !errors.Is(err, io.EOF) {
+	err := decoder.Decode(into)
+	if err == nil || errors.Is(err, io.EOF) {
+		return nil
+	}
+	return teachKeys(err)
+}
+
+// teachKeys turns the YAML library's report of an unknown field, which names the
+// Go type the field was looked for in, into a sentence in the reader's terms. A
+// misspelled key then reads as a misspelled key with its line, not as the name
+// of a struct nobody writing a write model has seen. A message of any other
+// shape, a type mismatch among them, is left in the library's own words.
+func teachKeys(err error) error {
+	var typeErr *yaml.TypeError
+	if !errors.As(err, &typeErr) {
 		return err
 	}
-	return nil
+	keys := make([]string, 0, len(typeErr.Errors))
+	for _, msg := range typeErr.Errors {
+		key, line, ok := unknownField(msg)
+		if !ok {
+			return err
+		}
+		keys = append(keys, fmt.Sprintf("line %d: unknown key %q", line, key))
+	}
+	return fmt.Errorf("%w: %s", ErrInvalid, strings.Join(keys, "; "))
+}
+
+// unknownField reads the YAML library's "line N: field X not found in type T"
+// and returns the key and its line. It returns false for any other message, so a
+// type mismatch keeps the words the library gave it.
+func unknownField(msg string) (key string, line int, ok bool) {
+	rest, found := strings.CutPrefix(msg, "line ")
+	if !found {
+		return "", 0, false
+	}
+	lineText, rest, found := strings.Cut(rest, ": field ")
+	if !found {
+		return "", 0, false
+	}
+	field, _, found := strings.Cut(rest, " not found in type ")
+	if !found {
+		return "", 0, false
+	}
+	n, err := strconv.Atoi(lineText)
+	if err != nil {
+		return "", 0, false
+	}
+	return field, n, true
 }
 
 // parse fills in the parsed path and checks what the format calls mandatory.

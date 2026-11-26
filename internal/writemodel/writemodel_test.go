@@ -502,6 +502,63 @@ func TestLoadRefusesAKeyTheFormatDoesNotHave(t *testing.T) {
 	if !strings.Contains(err.Error(), "authorised_by") {
 		t.Errorf("Load() error = %v, want it to name the key", err)
 	}
+	if strings.Contains(err.Error(), "not found in type") {
+		t.Errorf("Load() error names a Go type rather than the key: %v", err)
+	}
+}
+
+// A key the format does not have fails with the key and its line, in the
+// reader's terms, not with the YAML library's "field X not found in type
+// writemodel.Model".
+func TestDecodeStrictNamesAnUnknownKey(t *testing.T) {
+	var m Model
+	err := DecodeStrict([]byte("schema_version: 1\nnope: 1\n"), &m)
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("error is not ErrInvalid: %v", err)
+	}
+	for _, want := range []string{`unknown key "nope"`, "line 2"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not say %q: %v", want, err)
+		}
+	}
+	for _, leak := range []string{"not found in type", "writemodel.Model", "yaml:"} {
+		if strings.Contains(err.Error(), leak) {
+			t.Errorf("the error leaks %q: %v", leak, err)
+		}
+	}
+}
+
+// A value of the wrong type is not a key mistake, so it keeps the library's
+// words rather than being relabeled an unknown key.
+func TestDecodeStrictKeepsATypeMismatch(t *testing.T) {
+	var m Model
+	err := DecodeStrict([]byte("schema_version: notanumber\n"), &m)
+	if err == nil {
+		t.Fatal("want an error for the type mismatch")
+	}
+	if strings.Contains(err.Error(), "unknown key") {
+		t.Errorf("a type mismatch was relabeled a key: %v", err)
+	}
+}
+
+func TestUnknownField(t *testing.T) {
+	tests := []struct {
+		msg  string
+		key  string
+		line int
+		ok   bool
+	}{
+		{"line 4: field nope not found in type zanzibar.WriteRule", "nope", 4, true},
+		{"line 12: field foo not found in type writemodel.Model", "foo", 12, true},
+		{"cannot unmarshal !!str `x` into int", "", 0, false},
+		{"line x: field foo not found in type T", "", 0, false},
+	}
+	for _, tt := range tests {
+		key, line, ok := unknownField(tt.msg)
+		if key != tt.key || line != tt.line || ok != tt.ok {
+			t.Errorf("unknownField(%q) = %q, %d, %v; want %q, %d, %v", tt.msg, key, line, ok, tt.key, tt.line, tt.ok)
+		}
+	}
 }
 
 func TestLoadRejects(t *testing.T) {
